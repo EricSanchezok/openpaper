@@ -4,7 +4,6 @@ import stripe
 from app.api.subscription.config import MONTHLY_PRICE_ID, YEARLY_PRICE_ID, YOUR_DOMAIN
 from app.auth.dependencies import get_required_user
 from app.database.crud.subscription_crud import subscription_crud
-from app.database.crud.user_crud import user as user_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser

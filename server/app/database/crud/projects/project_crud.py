@@ -4,7 +4,6 @@ from typing import List, Optional
 from uuid import UUID
 
 from app.database.crud.projects.project_base_crud import ProjectBaseCRUD
-from app.database.crud.user_crud import user as user_crud
 from app.database.models import (
     AudioOverviewJob,
     ConversableType,

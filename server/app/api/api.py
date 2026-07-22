@@ -1,9 +1,8 @@
-from pathlib import Path
-
-from app.helpers.email import send_onboarding_email
+from app.auth.dependencies import get_required_user
 from app.llm.operations import Operations
+from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 load_dotenv()
@@ -12,6 +11,13 @@ load_dotenv()
 router = APIRouter()
 
 llm_operations = Operations()
+
+
+@router.get("/me", response_model=CurrentUser)
+async def get_me(
+    current_user: CurrentUser = Depends(get_required_user),
+) -> CurrentUser:
+    return current_user
 
 
 @router.get("/health")

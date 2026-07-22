@@ -270,7 +270,7 @@ async def reject_invitation(
         logger.error(f"Error rejecting invitation: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to reject invitation"},
+            content={"message": "Failed to reject invitation"},
         )
 
 

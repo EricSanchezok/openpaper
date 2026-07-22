@@ -146,7 +146,7 @@ def change_subscription_interval(
         notify_converted_billing_interval(
             email=current_user.email,
             new_interval=new_interval.value,
-            name=current_user.name,
+            name=current_user.display_name,
         )
 
         return {

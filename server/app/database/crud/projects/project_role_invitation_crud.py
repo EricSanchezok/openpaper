@@ -3,18 +3,14 @@ from typing import List, Optional
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.crud.projects.project_crud import project_crud
-from app.database.crud.user_crud import user as user_crud
+from app.database.crud.user_repository import user_repository
 from app.database.models import (
     Project,
     ProjectRole,
     ProjectRoleInvitation,
     ProjectRoles,
 )
-from app.helpers.email import (
-    CLIENT_DOMAIN,
-    send_general_invite_email,
-    send_project_invite_email,
-)
+from app.helpers.email import send_general_invite_email, send_project_invite_email
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session, joinedload
@@ -126,7 +122,7 @@ class ProjectRoleInvitationCRUD(
         """Invite a user to a project with a specific role by creating an invitation."""
         try:
             # Check if the user is already a member of the project
-            invited_user = user_crud.get_by_email(db, email=email)
+            invited_user = user_repository.get_by_email(db, email=email)
             if invited_user:
                 existing_role = (
                     db.query(ProjectRole)
@@ -167,18 +163,16 @@ class ProjectRoleInvitationCRUD(
                     logger.error(f"Project with id {project_id} not found.")
                     return invitation
 
-                invite_link = f"{CLIENT_DOMAIN}/project/{project_id}/accept-invite"
-
                 if invited_user:
                     send_project_invite_email(
                         to_email=email,
                         project_title=project.title,
-                        from_name=str(inviting_user.name),
+                        from_name=str(inviting_user.display_name or inviting_user.email),
                     )
                 else:
                     send_general_invite_email(
                         to_email=email,
-                        from_name=str(inviting_user.name),
+                        from_name=str(inviting_user.display_name or inviting_user.email),
                     )
 
             return invitation
@@ -295,7 +289,7 @@ class ProjectRoleInvitationCRUD(
             )
             .filter(
                 ProjectRoleInvitation.email == email,
-                ProjectRoleInvitation.accepted_at == None,
+                ProjectRoleInvitation.accepted_at is None,
             )
             .all()
         )

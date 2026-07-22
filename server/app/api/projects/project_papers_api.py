@@ -3,7 +3,6 @@ import uuid
 from typing import List
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.paper_crud import paper_crud
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.crud.projects.project_paper_crud import (
     ProjectPaperCreate,
@@ -285,7 +284,7 @@ async def get_project_papers(
         logger.error(f"Error fetching project papers: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch project papers"},
+            content={"message": "Failed to fetch project papers"},
         )
 
 

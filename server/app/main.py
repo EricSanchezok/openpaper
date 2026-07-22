@@ -30,6 +30,7 @@ from app.api.search_api import search_router
 from app.api.subscription import subscription_router
 from app.api.webhook_api import webhook_router
 from app.api.zotero_import_api import zotero_router
+from app.auth.runtime import auth_lifespan, cloud_auth_router, cloud_user_router
 from app.database.admin import setup_admin
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -48,6 +49,7 @@ app = FastAPI(
     title="Open Paper",
     description="A web application for uploading and annotating papers.",
     version="1.0.0",
+    lifespan=auth_lifespan,
 )
 
 client_domain = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
@@ -59,13 +61,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
-    allow_credentials=True,  # This is required for cookies
+    allow_credentials=False,
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 # Include the router in the main app
 app.include_router(router, prefix="/api")
-app.include_router(auth_router, prefix="/api/auth")  # Auth routes
+app.include_router(cloud_auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(cloud_user_router, prefix="/api/user", tags=["user"])
+app.include_router(auth_router, prefix="/api/auth")
 app.include_router(paper_router, prefix="/api/paper")
 app.include_router(conversation_router, prefix="/api/conversation")
 app.include_router(message_router, prefix="/api/message")

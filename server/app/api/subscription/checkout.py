@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 import stripe
 from app.api.referral.service import get_active_attributed_referral
@@ -79,7 +78,7 @@ def create_checkout_session(
             # Create a new customer in Stripe
             customer = stripe.Customer.create(
                 email=current_user.email,
-                name=current_user.name if current_user.name else current_user.email,
+                name=current_user.display_name or current_user.email,
                 metadata={"user_id": str(current_user.id)},
             )
             customer_id = customer.id
@@ -213,7 +212,7 @@ async def session_status(
             if client_reference_id:
                 try:
                     # Check if we have the subscription in our database
-                    user_id = uuid.UUID(client_reference_id)
+                    user_id = int(client_reference_id)
                     subscription = subscription_crud.get_by_user_id(db, user_id)
 
                     if subscription and subscription.stripe_subscription_id:
@@ -237,7 +236,7 @@ async def session_status(
                             f"despite completed checkout session {session_id}"
                         )
 
-                except ValueError as ve:
+                except ValueError:
                     logger.error(
                         f"Invalid user ID in session client_reference_id: {client_reference_id}"
                     )

@@ -1,86 +1,47 @@
-import logging
-import uuid
-from typing import Annotated, Optional
+from __future__ import annotations
 
-from app.database.crud.subscription_crud import subscription_crud
-from app.database.crud.user_crud import user as user_crud
+from typing import Annotated
+
+from app.auth.runtime import get_optional_cloud_user
+from app.database.crud.user_repository import user_repository
 from app.database.database import get_db
 from app.schemas.user import CurrentUser
-from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import APIKeyHeader
+from cloud_auth.models.user import UserRecord
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
 
-# Session cookie name
-SESSION_COOKIE_NAME = "session_token"
-
-# Setup header auth
-api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
-
-
-def get_current_user(
-    request: Request,
+async def get_current_user(
+    cloud_user: Annotated[UserRecord | None, Depends(get_optional_cloud_user)],
     db: Session = Depends(get_db),
-    authorization: str = Depends(api_key_header),
-) -> Optional[CurrentUser]:
-    """
-    Get the current user from session token in cookie or Authorization header.
-
-    This is a FastAPI dependency that can be used in route functions.
-    """
-    token = None
-
-    # First try from Authorization header
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.replace("Bearer ", "")
-
-    # Then try from cookie
-    if not token:
-        token = request.cookies.get(SESSION_COOKIE_NAME)
-
-    if not token:
+) -> CurrentUser | None:
+    if cloud_user is None:
         return None
 
-    # Get session from database
-    db_session = user_crud.get_by_token(db=db, token=token)
-    if not db_session:
-        return None
+    profile = user_repository.get_or_create_profile(db, user_id=cloud_user.id)
+    if profile.is_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="OpenPaper access is suspended",
+        )
 
-    # Get user from session
-    db_user = user_crud.get(db=db, id=db_session.user_id)
-    if not db_user or not db_user.is_active:
-        return None
-
-    if not db_user.id:
-        logger.error("User ID is missing in the database record.")
-        return None
-
-    id_as_uuid = uuid.UUID(str(db_user.id))
-
-    is_user_active = subscription_crud.is_user_active(db, db_user)
-
-    # Return CurrentUser model
     return CurrentUser(
-        id=id_as_uuid,
-        email=str(db_user.email),
-        name=db_user.name,  # type: ignore
-        is_admin=bool(db_user.is_admin),
-        picture=db_user.picture,  # type: ignore
-        is_email_verified=bool(db_user.is_email_verified),
-        is_active=is_user_active,
-        is_blocked=bool(db_user.is_blocked),
+        id=cloud_user.id,
+        email=cloud_user.email,
+        display_name=cloud_user.display_name,
+        status=cloud_user.status,
+        email_verified=cloud_user.email_verified,
+        locale=profile.locale,
+        is_admin=profile.is_admin,
+        is_blocked=profile.is_blocked,
+        is_active=True,
     )
 
 
 async def get_required_user(
-    current_user: Annotated[Optional[CurrentUser], Depends(get_current_user)]
+    current_user: Annotated[CurrentUser | None, Depends(get_current_user)],
 ) -> CurrentUser:
-    """
-    Require a logged-in user for protected routes.
-    Raises 401 Unauthorized if no user is found.
-    """
-    if not current_user:
+    if current_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -90,12 +51,8 @@ async def get_required_user(
 
 
 async def get_admin_user(
-    current_user: Annotated[CurrentUser, Depends(get_required_user)]
+    current_user: Annotated[CurrentUser, Depends(get_required_user)],
 ) -> CurrentUser:
-    """
-    Require an admin user for admin-only routes.
-    Raises 403 Forbidden if user is not admin.
-    """
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

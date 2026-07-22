@@ -1,110 +1,20 @@
-from datetime import datetime
-from typing import Optional
-from uuid import UUID
+from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
-
-
-# Base User Schema
-class UserBase(BaseModel):
-    email: EmailStr
-    name: Optional[str] = None
-    picture: Optional[str] = None
-    is_active: bool = True
-    is_admin: bool = False
-    is_email_verified: bool = False
-    locale: Optional[str] = None
+from cloud_auth.models.user import AccountStatus
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-# Schema for creating a new user
-class UserCreate(UserBase):
-    password: str
-
-
-# Schema for creating a user from OAuth
-class UserCreateWithProvider(UserBase):
-    auth_provider: str
-    provider_user_id: str
-
-
-# Schema for updating a user
-class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    name: Optional[str] = None
-    picture: Optional[str] = None
-    is_active: Optional[bool] = None
-    is_admin: Optional[bool] = None
-    locale: Optional[str] = None
-
-
-# Schema for returning a user
-class User(UserBase):
-    id: UUID
-    auth_provider: str
-    is_email_verified: bool = False
-    created_at: datetime
-    updated_at: datetime
-
-    class ConfigDict:
-        from_attributes = True
-
-
-# Base Session Schema
-class SessionBase(BaseModel):
-    user_id: UUID
-    expires_at: datetime
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-
-
-# Schema for creating a session
-class SessionCreate(SessionBase):
-    token: str
-
-
-# Schema for returning a session
-class Session(SessionBase):
-    id: UUID
-    token: str
-    created_at: datetime
-
-    class ConfigDict:
-        from_attributes = True
-
-
-# Token schema for JWT
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-# Schema to encode in JWT
-class TokenPayload(BaseModel):
-    sub: str  # user_id
-    exp: int  # expiration time
-
-
-# OAuth response
-class OAuthUserInfo(BaseModel):
-    id: str
-    email: EmailStr
-    name: Optional[str] = None
-    picture: Optional[str] = None
-    locale: Optional[str] = None
-
-
-# Current user with scopes/permissions
 class CurrentUser(BaseModel):
-    id: UUID
+    """Authenticated cloud-auth identity enriched with OpenPaper product state."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
     email: EmailStr
-    name: Optional[str] = None
+    display_name: str | None = None
+    status: AccountStatus
+    email_verified: bool
+    locale: str | None = None
     is_admin: bool = False
-    picture: Optional[str] = None
-    is_email_verified: bool = False
-
-    # is_active describes if the user account is on the RESEARCHER or BASIC plan
-    is_active: bool = False
     is_blocked: bool = False
-
-    class ConfigDict:
-        from_attributes = True
+    is_active: bool = False

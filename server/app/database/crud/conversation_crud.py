@@ -41,7 +41,7 @@ class ConversationCRUD(CRUDBase[Conversation, ConversationCreate, ConversationUp
         )
 
     def get_conversation_by_id(
-        self, db: Session, *, conversation_id: UUID, user_id: UUID
+        self, db: Session, *, conversation_id: UUID, user_id: int
     ) -> Optional[Conversation]:
         """Get a conversation by its ID"""
         return (
@@ -58,7 +58,7 @@ class ConversationCRUD(CRUDBase[Conversation, ConversationCreate, ConversationUp
             db.query(Paper)
             .filter(
                 Paper.share_id == share_paper_id,
-                Paper.is_public == True,
+                Paper.is_public.is_(True),
             )
             .first()
         )

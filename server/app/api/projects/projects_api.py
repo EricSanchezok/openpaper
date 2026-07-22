@@ -289,8 +289,7 @@ async def get_project_collaborators(
         collaborators = [
             {
                 "id": str(role.id),
-                "picture": role.user.picture,
-                "name": role.user.name,
+                "name": role.user.display_name or role.user.email,
                 "role": role.role,
                 "email": role.user.email,
             }

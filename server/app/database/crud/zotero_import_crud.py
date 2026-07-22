@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 class CRUDZoteroImport:
     def get_by_item_key(
-        self, db: Session, *, user_id: UUID, zotero_item_key: str
+        self, db: Session, *, user_id: int, zotero_item_key: str
     ) -> Optional[ZoteroImportedItem]:
         return (
             db.query(ZoteroImportedItem)
@@ -36,7 +36,7 @@ class CRUDZoteroImport:
         )
 
     def get_max_last_synced_at(
-        self, db: Session, *, user_id: UUID
+        self, db: Session, *, user_id: int
     ) -> Optional[datetime]:
         return (
             db.query(func.max(ZoteroImportedItem.last_synced_at))
@@ -45,7 +45,7 @@ class CRUDZoteroImport:
         )
 
     def get_auto_import_since(
-        self, db: Session, *, user_id: UUID
+        self, db: Session, *, user_id: int
     ) -> Optional[datetime]:
         return (
             db.query(func.max(ZoteroImportedItem.created_at))
@@ -57,7 +57,7 @@ class CRUDZoteroImport:
         )
 
     def list_recent_by_user(
-        self, db: Session, *, user_id: UUID, limit: int = 20
+        self, db: Session, *, user_id: int, limit: int = 20
     ) -> List[Tuple[ZoteroImportedItem, Optional[str]]]:
         return (
             db.query(ZoteroImportedItem, Paper.title)
@@ -69,7 +69,7 @@ class CRUDZoteroImport:
         )
 
     def list_by_item_keys(
-        self, db: Session, *, user_id: UUID, item_keys: List[str]
+        self, db: Session, *, user_id: int, item_keys: List[str]
     ) -> List[Tuple[ZoteroImportedItem, Optional[str]]]:
         if not item_keys:
             return []
@@ -88,7 +88,7 @@ class CRUDZoteroImport:
         self,
         db: Session,
         *,
-        user_id: UUID,
+        user_id: int,
         zotero_item_key: str,
         import_source: str,
         zotero_attachment_key: Optional[str] = None,
@@ -134,7 +134,7 @@ class CRUDZoteroImport:
         return item
 
     def list_syncable_by_user(
-        self, db: Session, *, user_id: UUID, limit: int
+        self, db: Session, *, user_id: int, limit: int
     ) -> List[ZoteroImportedItem]:
         return (
             db.query(ZoteroImportedItem)

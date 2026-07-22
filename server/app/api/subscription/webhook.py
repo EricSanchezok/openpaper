@@ -1,5 +1,4 @@
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -13,7 +12,7 @@ from app.api.subscription.config import (
 )
 from app.database.crud.referral_crud import referral_crud
 from app.database.crud.subscription_crud import subscription_crud
-from app.database.crud.user_crud import user as user_crud
+from app.database.crud.user_repository import user_repository
 from app.database.database import get_db
 from app.database.models import ReferralStatus, SubscriptionPlan, SubscriptionStatus
 from app.database.telemetry import track_event
@@ -135,7 +134,7 @@ async def handle_stripe_webhook(
                     db, customer_id
                 )
 
-                user_id: Optional[uuid.UUID] = None
+                user_id: Optional[int] = None
                 if existing_subscription:
                     user_id = existing_subscription.user_id  # type: ignore
                 else:
@@ -144,12 +143,10 @@ async def handle_stripe_webhook(
                         customer_email = stripe_customer.email
 
                         if customer_email:
-                            user = user_crud.get_by_email(db=db, email=customer_email)
+                            user = user_repository.get_by_email(db=db, email=customer_email)
 
                             if user:
-                                user_id = (
-                                    uuid.UUID(str(user.id)) if str(user.id) else None
-                                )
+                                user_id = user.id
                                 logger.info(
                                     f"Found user {user_id} by email {customer_email} for customer {customer_id}"
                                 )
@@ -199,7 +196,7 @@ async def handle_stripe_webhook(
                     )
 
                     # Send welcome email
-                    user = user_crud.get(db, id=user_id)
+                    user = user_repository.get(db, id=user_id)
                     if user:
                         send_subscription_welcome_email(str(user.email))
 
@@ -294,11 +291,11 @@ async def handle_stripe_webhook(
                         is_scheduled_for_cancellation
                         and not was_scheduled_for_cancellation
                     ):
-                        user_obj = user_crud.get(db, id=subscription.user_id)
+                        user_obj = user_repository.get(db, id=subscription.user_id)
                         if user_obj:
                             user_display_name = (
-                                str(user_obj.name).split(" ")[0]
-                                if user_obj.name
+                                str(user_obj.display_name).split(" ")[0]
+                                if user_obj.display_name
                                 else None
                             )
                             send_confirmation_cancellation_email(
@@ -434,7 +431,7 @@ async def handle_stripe_webhook(
                             db=db,
                         )
 
-                        user = user_crud.get(db, id=subscription.user_id)
+                        user = user_repository.get(db, id=subscription.user_id)
 
                         if not user:
                             logger.warning(
@@ -449,7 +446,7 @@ async def handle_stripe_webhook(
                         email_message = "Payment failed for your subscription. Please update your payment method"
 
                         notify_billing_issue(
-                            str(user.email), email_message, str(user.name)
+                            str(user.email), email_message, str(user.display_name or "")
                         )
 
             except Exception as e:
@@ -512,7 +509,7 @@ async def handle_stripe_webhook(
                             f"Payment action required for subscription {subscription_id}"
                         )
 
-                        user = user_crud.get(db, id=subscription.user_id)
+                        user = user_repository.get(db, id=subscription.user_id)
                         if not user:
                             logger.warning(
                                 f"No user found for subscription {subscription_id} when processing payment action required"
@@ -522,7 +519,7 @@ async def handle_stripe_webhook(
                         email_message = "Payment action required for your subscription. Please complete the required action."
 
                         notify_billing_issue(
-                            str(user.email), email_message, str(user.name)
+                            str(user.email), email_message, str(user.display_name or "")
                         )
 
             except Exception as e:
@@ -558,14 +555,16 @@ async def handle_stripe_webhook(
 
                     logger.warning(f"Subscription {subscription_id} is now past due")
 
-                    user = user_crud.get(db, id=subscription.user_id)
+                    user = user_repository.get(db, id=subscription.user_id)
                     if not user:
                         logger.warning(
                             f"No user found for subscription {subscription_id} when processing past due subscription"
                         )
                         return {"success": False}
                     email_message = "Your subscription is past due. Please update your payment method to avoid service interruption."
-                    notify_billing_issue(str(user.email), email_message, str(user.name))
+                    notify_billing_issue(
+                        str(user.email), email_message, str(user.display_name or "")
+                    )
 
             except Exception as e:
                 logger.error(
@@ -644,7 +643,7 @@ async def handle_stripe_webhook(
                     ):
                         subscription_crud.create_or_update(
                             db,
-                            uuid.UUID(str(subscription.user_id)),
+                            subscription.user_id,
                             {"stripe_schedule_id": None},
                         )
                         logger.info(

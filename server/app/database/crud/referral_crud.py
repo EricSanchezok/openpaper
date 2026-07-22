@@ -24,7 +24,7 @@ CODE_MAX_GENERATION_ATTEMPTS = 8
 
 
 class ReferralCodeCreate(BaseModel):
-    user_id: uuid.UUID
+    user_id: int
     code: str
 
 
@@ -33,8 +33,8 @@ class ReferralCodeUpdate(BaseModel):
 
 
 class ReferralCreate(BaseModel):
-    referrer_user_id: uuid.UUID
-    referee_user_id: uuid.UUID
+    referrer_user_id: int
+    referee_user_id: int
     code_used: str
     attribution_method: str = ReferralAttributionMethod.LINK.value
     status: str = ReferralStatus.ATTRIBUTED.value
@@ -55,14 +55,14 @@ def _generate_code() -> str:
 
 
 class CRUDReferralCode(CRUDBase[ReferralCode, ReferralCodeCreate, ReferralCodeUpdate]):
-    def get_by_user_id(self, db: Session, user_id: uuid.UUID) -> Optional[ReferralCode]:
+    def get_by_user_id(self, db: Session, user_id: int) -> Optional[ReferralCode]:
         return db.query(self.model).filter(self.model.user_id == user_id).first()
 
     def get_by_code(self, db: Session, code: str) -> Optional[ReferralCode]:
         return db.query(self.model).filter(self.model.code == code.upper()).first()
 
     def get_or_create_for_user(
-        self, db: Session, user_id: uuid.UUID
+        self, db: Session, user_id: int
     ) -> tuple[ReferralCode, bool]:
         """Returns (code, newly_created). The bool lets callers fire a
         telemetry event when a code is generated for the first time."""
@@ -92,7 +92,7 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         return db.query(self.model).filter(self.model.id == referral_id).first()
 
     def get_by_referee(
-        self, db: Session, referee_user_id: uuid.UUID
+        self, db: Session, referee_user_id: int
     ) -> Optional[Referral]:
         return (
             db.query(self.model)
@@ -101,7 +101,7 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         )
 
     def get_attributed_for_referee(
-        self, db: Session, referee_user_id: uuid.UUID
+        self, db: Session, referee_user_id: int
     ) -> Optional[Referral]:
         return (
             db.query(self.model)
@@ -116,8 +116,8 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         self,
         db: Session,
         *,
-        referrer_user_id: uuid.UUID,
-        referee_user_id: uuid.UUID,
+        referrer_user_id: int,
+        referee_user_id: int,
         code_used: str,
         attribution_method: ReferralAttributionMethod,
     ) -> Optional[Referral]:
@@ -197,7 +197,7 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         return referral
 
     def get_summary_for_referrer(
-        self, db: Session, referrer_user_id: uuid.UUID
+        self, db: Session, referrer_user_id: int
     ) -> dict:
         rows = (
             db.query(

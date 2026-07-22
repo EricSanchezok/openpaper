@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime
 from enum import Enum
 from types import NoneType
 
+from cloud_auth.models.user import AccountStatus
 from sqlalchemy import (  # type: ignore
     ARRAY,
     UUID,
@@ -10,7 +12,6 @@ from sqlalchemy import (  # type: ignore
     CheckConstraint,
     Column,
     DateTime,
-    Float,
     ForeignKey,
     Identity,
     Index,
@@ -21,10 +22,11 @@ from sqlalchemy import (  # type: ignore
     and_,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import (  # type: ignore
     DeclarativeBase,
+    Mapped,
     foreign,
+    mapped_column,
     relationship,
     sessionmaker,
 )
@@ -73,14 +75,6 @@ class Base(DeclarativeBase):
         }
 
 
-class AuthProvider(str, Enum):
-    GOOGLE = "google"
-    EMAIL = "email"  # For email-based authentication with passcode
-    # Add more providers as needed
-    # GITHUB = "github"
-    # MICROSOFT = "microsoft"
-
-
 # BASIC plans are not considered active subscriptions.
 # They are used for users who have not yet subscribed.
 class SubscriptionPlan(str, Enum):
@@ -118,40 +112,27 @@ class ReferralAttributionMethod(str, Enum):
     MANUAL_CODE = "manual_code"
 
 
-class User(Base):
+class AuthUser(Base):
     __tablename__ = "users"
+    __table_args__ = {"schema": "auth"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String, unique=True, nullable=False, index=True)
-    name = Column(String, nullable=True)
-    picture = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)
-    is_blocked = Column(Boolean, default=False, nullable=False)
-
-    # OAuth related fields
-    auth_provider = Column(String, nullable=False)
-    provider_user_id = Column(String, nullable=False, index=True)
-
-    # Email authentication fields
-    is_email_verified = Column(
-        Boolean, default=False, nullable=False
-    )  # Track if email is verified
-    email_verification_token = Column(String, nullable=True)  # Store 6-digit code
-    email_verification_expires_at = Column(
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    email: Mapped[str] = mapped_column(String, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[AccountStatus] = mapped_column(String, nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )  # Expiry time
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    # Optional profile information
-    locale = Column(String, nullable=True)
-
-    # One-shot timestamp for the in-app "refer a friend" milestone toast.
-    referral_toast_seen_at = Column(DateTime(timezone=True), nullable=True)
+    profile: Mapped["UserProfile | None"] = relationship(
+        "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
 
     papers = relationship("Paper", back_populates="user", cascade="all, delete-orphan")
-    sessions = relationship(
-        "Session", back_populates="user", cascade="all, delete-orphan"
-    )
     messages = relationship(
         "Message", back_populates="user", cascade="all, delete-orphan"
     )
@@ -234,6 +215,24 @@ class User(Base):
     )
 
 
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    locale: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    referral_toast_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[AuthUser] = relationship("AuthUser", back_populates="profile")
+
+
 class ZoteroImportSource(str, Enum):
     PDF_ATTACHMENT = "pdf_attachment"
     URL = "url"
@@ -246,33 +245,18 @@ class ZoteroImportStatus(str, Enum):
     FAILED = "failed"
 
 
-class Session(Base):
-    __tablename__ = "sessions"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    token = Column(String, unique=True, nullable=False, index=True)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    user_agent = Column(String, nullable=True)
-    ip_address = Column(String, nullable=True)
-
-    user = relationship("User", back_populates="sessions")
-
-
 class ZoteroOAuthPending(Base):
     __tablename__ = "zotero_oauth_pending"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
     oauth_token = Column(String, nullable=False, index=True)
     oauth_token_secret = Column(String, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
-    user = relationship("User", back_populates="zotero_oauth_pending")
+    user = relationship("AuthUser", back_populates="zotero_oauth_pending")
 
 
 class ZoteroConnection(Base):
@@ -280,15 +264,15 @@ class ZoteroConnection(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
     zotero_user_id = Column(String, nullable=False)
     api_key = Column(String, nullable=False)
 
-    user = relationship("User", back_populates="zotero_connection")
+    user = relationship("AuthUser", back_populates="zotero_connection")
 
 
 class ZoteroImportedItem(Base):
@@ -296,7 +280,7 @@ class ZoteroImportedItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
     zotero_item_key = Column(String, nullable=False)
     zotero_attachment_key = Column(String, nullable=True)
@@ -321,7 +305,7 @@ class ZoteroImportedItem(Base):
         ),
     )
 
-    user = relationship("User", back_populates="zotero_imported_items")
+    user = relationship("AuthUser", back_populates="zotero_imported_items")
 
 
 class JobStatus(str, Enum):
@@ -342,14 +326,14 @@ class PaperUploadJob(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
     status = Column(String, nullable=False, default=JobStatus.PENDING)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     task_id = Column(String, nullable=True)  # For tracking task in Celery
 
-    user = relationship("User", back_populates="paper_upload_jobs")
+    user = relationship("AuthUser", back_populates="paper_upload_jobs")
 
 
 class PaperStatus(str, Enum):
@@ -381,9 +365,9 @@ class Message(Base):
     # mentioned paper/project is later renamed or deleted.
     scope = Column(JSONB, nullable=True)
     sequence = Column(Integer, nullable=False)  # To maintain message order
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=True)
 
-    user = relationship("User", back_populates="messages")
+    user = relationship("AuthUser", back_populates="messages")
     conversation = relationship("Conversation", back_populates="messages")
     artifacts = relationship(
         "Artifact",
@@ -439,7 +423,7 @@ class Conversation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String, nullable=True)  # Optional conversation title
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=True)
 
     # Polymorphic Columns
     conversable_id = Column(UUID(as_uuid=True), nullable=True)
@@ -456,7 +440,7 @@ class Conversation(Base):
         viewonly=True,
     )
 
-    user = relationship("User", back_populates="conversations")
+    user = relationship("AuthUser", back_populates="conversations")
 
     messages = relationship(
         "Message",
@@ -499,8 +483,8 @@ class Artifact(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -541,10 +525,10 @@ class PaperTag(Base):
     name = Column(String, nullable=False)
     color = Column(String, nullable=True)  # Optional color for the tag
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
 
-    user = relationship("User", back_populates="paper_tags")
+    user = relationship("AuthUser", back_populates="paper_tags")
     papers = relationship(
         "Paper",
         secondary="paper_tag_association",
@@ -594,7 +578,7 @@ class Paper(Base):
     page_offset_map = Column(
         JSONB, nullable=True
     )  # Maps page numbers to text offsets. Useful for re-annotation.
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=True)
     last_accessed_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -630,7 +614,7 @@ class Paper(Base):
         nullable=True,
     )
 
-    user = relationship("User", back_populates="papers")
+    user = relationship("AuthUser", back_populates="papers")
     conversations = relationship(
         "Conversation",
         back_populates="paper",
@@ -706,7 +690,7 @@ class Project(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    admin_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=False)
 
     project_roles = relationship("ProjectRole", back_populates="project")
     project_papers = relationship("ProjectPaper", back_populates="project")
@@ -743,14 +727,14 @@ class ProjectRoleInvitation(Base):
         UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=False
     )
     email = Column(String, nullable=False)
-    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    invited_by = Column(BigInteger, ForeignKey("auth.users.id"), nullable=False)
     role = Column(String, nullable=False)
     invited_at = Column(DateTime(timezone=True), server_default=func.now())
     accepted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     inviter = relationship(
-        "User", foreign_keys=[invited_by], back_populates="invitations"
+        "AuthUser", foreign_keys=[invited_by], back_populates="invitations"
     )
     project = relationship(
         "Project", back_populates="invitations", foreign_keys=[project_id]
@@ -768,11 +752,11 @@ class ProjectRole(Base):
     project_id = Column(
         UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=False
     )
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=False)
     role = Column(String, nullable=False, default=ProjectRoles.ADMIN)
 
     project = relationship("Project", back_populates="project_roles")
-    user = relationship("User", back_populates="project_roles")
+    user = relationship("AuthUser", back_populates="project_roles")
 
 
 class ProjectPaper(Base):
@@ -854,9 +838,9 @@ class PaperNote(Base):
     )
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=True)
 
-    user = relationship("User", back_populates="paper_notes")
+    user = relationship("AuthUser", back_populates="paper_notes")
 
     paper = relationship("Paper", back_populates="paper_notes")
 
@@ -891,7 +875,7 @@ class Highlight(Base):
     # Role
     # This can be user for user-created highlights or assistant for AI-generated highlights
     role = Column(String, nullable=False, default="user")  # 'user' or 'assistant'
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=True)
     color = Column(String, nullable=True, default="blue")
     zotero_annotation_key = Column(String, nullable=True)
 
@@ -906,7 +890,7 @@ class Highlight(Base):
     )
 
     # Relationships
-    user = relationship("User", back_populates="highlights")
+    user = relationship("AuthUser", back_populates="highlights")
     annotations = relationship(
         "Annotation", back_populates="highlight", cascade="all, delete-orphan"
     )
@@ -930,10 +914,10 @@ class Annotation(Base):
 
     # Role tracking
     role = Column(String, nullable=False, default="user")  # 'user' or 'assistant'
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("auth.users.id"), nullable=False)
 
     # Relationships
-    user = relationship("User", back_populates="annotations")
+    user = relationship("AuthUser", back_populates="annotations")
     highlight = relationship("Highlight", back_populates="annotations")
 
 
@@ -942,7 +926,7 @@ class AudioOverviewJob(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
 
     conversable_id = Column(UUID(as_uuid=True), nullable=False)
@@ -954,7 +938,7 @@ class AudioOverviewJob(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    user = relationship("User", back_populates="audio_overview_jobs")
+    user = relationship("AuthUser", back_populates="audio_overview_jobs")
 
     # Specific relationship for papers (viewonly)
     paper = relationship(
@@ -982,7 +966,7 @@ class AudioOverview(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
 
     s3_object_key = Column(
@@ -1026,8 +1010,8 @@ class Subscription(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
@@ -1054,8 +1038,7 @@ class Subscription(Base):
     # When the subscription was canceled, if it was
     canceled_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Relationship with User
-    user = relationship("User", back_populates="subscription")
+    user = relationship("AuthUser", back_populates="subscription")
 
 
 class Onboarding(Base):
@@ -1063,7 +1046,7 @@ class Onboarding(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
     # Basic user information
     name = Column(String, nullable=True)
@@ -1085,7 +1068,7 @@ class Onboarding(Base):
     referral_source = Column(String, nullable=True)
     referral_source_other = Column(String, nullable=True)
 
-    user = relationship("User", back_populates="onboarding")
+    user = relationship("AuthUser", back_populates="onboarding")
 
 
 class DiscoverSearch(Base):
@@ -1093,13 +1076,13 @@ class DiscoverSearch(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
     question = Column(Text, nullable=False)
     subqueries = Column(JSONB, nullable=True)
     results = Column(JSONB, nullable=True)
 
-    user = relationship("User")
+    user = relationship("AuthUser")
 
 
 class DataTableExtractionJob(Base):
@@ -1107,7 +1090,7 @@ class DataTableExtractionJob(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
 
     project_id = Column(
@@ -1124,7 +1107,7 @@ class DataTableExtractionJob(Base):
 
     error_message = Column(Text, nullable=True)
 
-    user = relationship("User")
+    user = relationship("AuthUser")
     project = relationship("Project")
 
     # Relationship to results
@@ -1171,14 +1154,14 @@ class ReferralCode(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
     code = Column(String(16), nullable=False, unique=True, index=True)
 
-    user = relationship("User", back_populates="referral_code")
+    user = relationship("AuthUser", back_populates="referral_code")
 
 
 class Referral(Base):
@@ -1186,14 +1169,14 @@ class Referral(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     referrer_user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     referee_user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
@@ -1219,10 +1202,10 @@ class Referral(Base):
     fraud_reason = Column(Text, nullable=True)
 
     referrer = relationship(
-        "User", foreign_keys=[referrer_user_id], back_populates="referrals_made"
+        "AuthUser", foreign_keys=[referrer_user_id], back_populates="referrals_made"
     )
     referee = relationship(
-        "User", foreign_keys=[referee_user_id], back_populates="referral_received"
+        "AuthUser", foreign_keys=[referee_user_id], back_populates="referral_received"
     )
 
     __table_args__ = (

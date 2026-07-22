@@ -12,12 +12,12 @@ from app.api.referral.service import (
 )
 from app.auth.dependencies import get_required_user
 from app.database.crud.referral_crud import referral_crud
-from app.database.crud.user_crud import user as user_crud
+from app.database.crud.user_repository import user_repository
 from app.database.database import get_db
 from app.database.models import ReferralAttributionMethod
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,7 @@ async def get_my_referral_info(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
-    user = user_crud.get(db, id=current_user.id)
+    user = user_repository.get(db, id=current_user.id)
     assert user is not None  # get_required_user already guarantees existence
     return get_summary_payload(db, user)
 
@@ -47,7 +47,7 @@ async def attribute(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
-    user = user_crud.get(db, id=current_user.id)
+    user = user_repository.get(db, id=current_user.id)
     assert user is not None  # get_required_user already guarantees existence
 
     method = (
@@ -114,9 +114,8 @@ async def get_toast_status(
     Distinct from /me — does not lazy-create a referral code, so calling it on
     every authenticated page load is cheap and doesn't clutter the DB.
     """
-    user = user_crud.get(db, id=current_user.id)
-    assert user is not None  # get_required_user already guarantees existence
-    return {"toast_seen": user.referral_toast_seen_at is not None}
+    profile = user_repository.get_or_create_profile(db, user_id=current_user.id)
+    return {"toast_seen": profile.referral_toast_seen_at is not None}
 
 
 @router.post("/toast-seen")
@@ -125,14 +124,13 @@ async def mark_toast_seen(
     db: Session = Depends(get_db),
 ):
     """Idempotent: stamp the user as having seen the referral milestone toast."""
-    user = user_crud.get(db, id=current_user.id)
-    assert user is not None  # get_required_user already guarantees existence
-    if user.referral_toast_seen_at is None:
-        setattr(user, "referral_toast_seen_at", datetime.now(timezone.utc))
+    profile = user_repository.get_or_create_profile(db, user_id=current_user.id)
+    if profile.referral_toast_seen_at is None:
+        profile.referral_toast_seen_at = datetime.now(timezone.utc)
         db.commit()
         track_event(
             "referral_toast_shown",
-            user_id=str(user.id),
+            user_id=str(current_user.id),
             db=db,
         )
     return {"success": True}

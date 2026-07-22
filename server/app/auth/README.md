@@ -1,131 +1,47 @@
-# Auth System Setup
+# OpenPaper authentication
 
-This directory contains the authentication system for the application.
+OpenPaper uses the shared [`cloud-auth`](https://github.com/EricSanchezok/cloud-auth)
+service library. It does not maintain a second user table or login session.
 
-## Setup
+## Identity boundary
 
-1. Create a Google OAuth Client ID:
+- Canonical identities live in `auth.users` and use `BIGINT` IDs.
+- OpenPaper-owned settings live in `user_profiles` and reference
+  `auth.users.id`.
+- Every OpenPaper user-owned table references `auth.users.id` directly.
+- Access and refresh tokens are scoped to the `openpaper` client through their
+  JWT audience and refresh-token `client_id`.
+- Zotero OAuth only connects a library to an authenticated user; it is not a
+  login provider.
 
-   a. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-   b. Create a new project (or use an existing one)
-   c. Navigate to "APIs & Services" > "Credentials"
-   d. Click "Create Credentials" > "OAuth client ID"
-   e. Select "Web application" as the application type
-   f. Add the following Authorized redirect URIs:
-      - `http://localhost:8000/api/auth/google/callback` (for development)
-      - `https://yourdomain.com/api/auth/google/callback` (for production)
-   g. Click "Create" and note your Client ID and Client Secret
+## HTTP API
 
-2. Add the following environment variables to your `.env` file:
+The cloud-auth routers are mounted directly by `app.main`:
 
-```
-# Google OAuth
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
+- `/api/auth/*`: register, verify email, login, refresh, logout, password reset
+- `/api/user/*`: shared identity profile operations
+- `/api/me`: shared identity enriched with OpenPaper profile state
 
-# Session settings
-SESSION_COOKIE_DOMAIN=localhost  # Optional, only needed for production
-SECURE_COOKIES=false  # Set to true in production
-```
+Protected endpoints require `Authorization: Bearer <access-token>`. OpenPaper
+does not issue or accept a product login cookie.
 
-3. Run migrations to create the auth tables:
+## Required configuration
 
-```bash
-python -m app.scripts.run_migrations
-```
+Cloud-auth settings use the `AUTH_` prefix. Production must provide at least:
 
-## How it Works
-
-1. The auth system uses cookies and Bearer tokens for authentication
-2. Google OAuth is implemented for authentication
-3. User sessions are stored in the database for security
-4. The system is designed to be extensible for additional OAuth providers
-
-## Protecting Routes
-
-Use the dependencies from `app.auth.dependencies` to protect your routes:
-
-```python
-from fastapi import Depends
-from app.auth.dependencies import get_required_user, get_admin_user
-from app.schemas.user import CurrentUser
-
-@router.get("/protected-route")
-async def protected_route(current_user: CurrentUser = Depends(get_required_user)):
-    # Only authenticated users can access this
-    return {"user": current_user}
-
-@router.get("/admin-route")
-async def admin_route(current_user: CurrentUser = Depends(get_admin_user)):
-    # Only admin users can access this
-    return {"admin": current_user}
+```dotenv
+AUTH_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
+AUTH_CLIENT_ID=openpaper
+AUTH_JWT_SECRET=replace-with-a-long-random-secret
+AUTH_ALIYUN_DM_ACCESS_KEY_ID=...
+AUTH_ALIYUN_DM_ACCESS_KEY_SECRET=...
+AUTH_ALIYUN_DM_ACCOUNT_NAME=...
+AUTH_ALIYUN_DM_FROM_ALIAS=OpenPaper
 ```
 
-## Frontend Integration
+`AUTH_DATABASE_URL` defaults to `DATABASE_URL`, so the synchronous OpenPaper
+ORM and the asynchronous cloud-auth pool can share one RDS database.
 
-1. On the frontend, redirect users to `/api/auth/google/login` to begin authentication
-2. Google will redirect to our callback URL which will set the session cookie
-3. After successful authentication, the user will be redirected to `/auth/callback` on the frontend
-4. Use `/api/me` endpoint to retrieve current user information
-
-## Logging Out
-
-Use the `/api/logout` endpoint to log out users. Set `all_devices=true` query parameter to log out from all devices.
-
-## Zotero OAuth (Account Connect)
-
-Zotero OAuth 1.0a links a user's Zotero library to their existing Open Paper account. It does **not** create login sessions or new users.
-
-### Setup
-
-1. Register an application at [zotero.org/oauth/apps](https://www.zotero.org/oauth/apps).
-2. Set the **Callback URL** to match `ZOTERO_REDIRECT_URI` exactly (must include scheme, host, and path):
-   - Development: `http://localhost:8000/api/auth/zotero/callback`
-   - Production: `https://your-api-domain/api/auth/zotero/callback`
-3. Add environment variables:
-
-```
-ZOTERO_CLIENT_KEY=your_zotero_client_key
-ZOTERO_CLIENT_SECRET=your_zotero_client_secret
-ZOTERO_REDIRECT_URI=http://localhost:8000/api/auth/zotero/callback
-```
-
-### API Endpoints
-
-| Endpoint | Auth | Description |
-|----------|------|-------------|
-| `GET /api/auth/zotero/connect` | Required | Returns `{ "auth_url": "..." }` to redirect the user to Zotero |
-| `GET /api/auth/zotero/callback` | None | Zotero redirect; stores API key and redirects to `/settings?zotero=connected` |
-| `GET /api/auth/zotero/status` | Required | Returns connection status (never exposes the API key) |
-| `DELETE /api/auth/zotero/disconnect` | Required | Removes the stored connection |
-
-### Manual Test
-
-1. Log in via Google or email.
-2. `GET /api/auth/zotero/connect` with your session cookie.
-3. Open `auth_url` in a browser and approve access on Zotero.
-4. Confirm redirect to `/settings?zotero=connected`.
-5. `GET /api/auth/zotero/status` should return `connected: true`.
-6. `DELETE /api/auth/zotero/disconnect` should return success; status should show `connected: false`.
-
-## Zotero Import
-
-Import journal articles (with PDF or URL fallback) from a connected Zotero library.
-
-| Endpoint | Auth | Description |
-|----------|------|-------------|
-| `POST /api/zotero/import` | Required | Body `{ "limit": 50 }` — import up to 50 new `journalArticle`, `conferencePaper`, or `preprint` items |
-| `GET /api/zotero/import/status` | Required | Recent import records for the user |
-
-**Behavior:**
-
-- Only `journalArticle`, `conferencePaper`, and `preprint` items; books and web pages are skipped.
-- PDF from Zotero attachment when available; otherwise fetches `url` or DOI link as PDF.
-- Zotero metadata (title, authors, abstract, DOI, publish date) is treated as authoritative, so imports run synchronously on the server: upload the PDF to S3, extract text and page offsets with `pypdf`, persist the paper, and apply Zotero highlights inline.
-- The Celery jobs worker and any LLM API key are **not** required for Zotero import. (Manual uploads still use the jobs worker for AI enrichment.)
-- Highlights are applied only when imported via PDF attachment; URL fallbacks skip annotations.
-- **Annotation sync (automatic):** New Zotero PDF highlights are synced automatically by a periodic background task (every 24 hours). Sync is append-only and does not count against upload limits.
-- Failed imports (e.g. no PDF available) are marked `failed` and can be retried. Completed items whose underlying paper has since been deleted are automatically re-imported.
-
-**Settings UI:** Use **Import** when connected.
+Run cloud-auth migrations before OpenPaper migrations. The OpenPaper identity
+migration deliberately fails if legacy user-owned data exists; an explicit
+identity mapping is required in that case.

@@ -9,8 +9,7 @@ from typing import Dict, List, Optional
 import boto3
 import requests
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
-from app.database.models import Paper, User
+from app.database.models import AuthUser, Paper
 from app.schemas.user import CurrentUser
 from botocore.exceptions import ClientError
 from sqlalchemy.orm import Session
@@ -96,7 +95,7 @@ class S3Service:
         except ClientError as e:
             logger.error(f"Error uploading file to S3: {e}")
             raise
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.error(f"File not found: {file_path}")
             raise ValueError(f"File not found: {file_path}")
 
@@ -361,7 +360,7 @@ class S3Service:
 
         try:
             # Get the owner user object
-            owner = db.query(User).filter(User.id == owner_id).first()
+            owner = db.query(AuthUser).filter(AuthUser.id == int(owner_id)).first()
             if not owner:
                 return None
 
@@ -369,9 +368,11 @@ class S3Service:
             current_user = CurrentUser(
                 id=owner.id,
                 email=owner.email,
-                name=owner.name,
-                picture=owner.picture,
-                is_admin=owner.is_admin,
+                display_name=owner.display_name,
+                status=owner.status,
+                email_verified=owner.email_verified_at is not None,
+                is_admin=bool(owner.profile and owner.profile.is_admin),
+                is_active=owner.status == "active" and owner.deleted_at is None,
             )
 
             # Use the existing method

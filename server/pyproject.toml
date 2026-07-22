@@ -5,6 +5,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [project]
 name = "open-paper"
 version = "0.1.0"
@@ -12,6 +15,7 @@ requires-python = ">= 3.12"
 description = "An Application to Read & Understand Papers with AI"
 readme = "README.md"
 dependencies = [
+    "cloud-auth[aliyun,fastapi] @ git+https://github.com/EricSanchezok/cloud-auth.git@4b261c7b3b6eb9e4286e53e97452251aa8b832de",
     "fastapi>=0.115",
     "uvicorn>=0.34",
     "pydantic[email]>=2.10",
@@ -26,7 +30,6 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "types-psycopg2>=2.9.21.20250318",
     "types-requests>=2.32.0.20250306",
-    "sqlalchemy2-stubs>=0.0.2a38",
     "boto3>=1.37.33",
     "types-boto3>=1.37.33",
     "sqladmin[full]>=0.25.1",
@@ -63,3 +66,7 @@ plugins = [
 ]
 show_error_codes = true
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*", "requests_oauthlib", "requests_oauthlib.*"]
+ignore_missing_imports = true

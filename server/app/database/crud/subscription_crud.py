@@ -1,6 +1,5 @@
-import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Subscription, SubscriptionPlan, SubscriptionStatus
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Session
 class SubscriptionCreate(BaseModel):
     """Schema for creating a subscription"""
 
-    user_id: uuid.UUID
+    user_id: int
     stripe_customer_id: Optional[str] = None
     stripe_subscription_id: Optional[str] = None
     stripe_price_id: Optional[str] = None
@@ -41,7 +40,10 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
 
     def is_user_active(self, db: Session, user: CurrentUser) -> bool:
         """Check if the user has an active subscription"""
-        subscription = self.get_by_user_id(db, user.id)
+        return self.is_user_id_active(db, user.id)
+
+    def is_user_id_active(self, db: Session, user_id: int) -> bool:
+        subscription = self.get_by_user_id(db, user_id)
         if not subscription or not subscription.current_period_end:
             return False
         # User is active if `current_period_end` is in the future
@@ -49,7 +51,7 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
             tz=timezone.utc
         )  # type: ignore
 
-    def get_by_user_id(self, db: Session, user_id: uuid.UUID) -> Optional[Subscription]:
+    def get_by_user_id(self, db: Session, user_id: int) -> Optional[Subscription]:
         """Get subscription by user_id"""
         return db.query(self.model).filter(self.model.user_id == user_id).first()
 
@@ -74,7 +76,7 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
         )
 
     def create_or_update(
-        self, db: Session, user_id: uuid.UUID, subscription_data: Dict[str, Any]
+        self, db: Session, user_id: int, subscription_data: Dict[str, Any]
     ) -> Subscription:
         """Create a subscription or update if exists"""
         subscription = self.get_by_user_id(db, user_id)

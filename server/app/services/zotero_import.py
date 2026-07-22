@@ -68,10 +68,14 @@ class ImportProcessingResult(TypedDict):
 ImportOneResult = Union[ImportErrorResult, ImportProcessingResult]
 
 
-def _parse_zotero_date_added(date_str: Optional[str]) -> Optional[datetime]:
+def _parse_zotero_date_added(date_str: str | datetime | None) -> Optional[datetime]:
     """Parse Zotero item.data.dateAdded (ISO 8601) for auto-import window checks."""
     if not date_str:
         return None
+    if isinstance(date_str, datetime):
+        if date_str.tzinfo is None:
+            return date_str.replace(tzinfo=timezone.utc)
+        return date_str
     try:
         normalized = date_str.strip().replace("Z", "+00:00")
         parsed = datetime.fromisoformat(normalized)
