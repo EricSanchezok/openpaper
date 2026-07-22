@@ -34,7 +34,11 @@ from app.auth.runtime import auth_lifespan, cloud_auth_router, cloud_user_router
 from app.database.admin import setup_admin
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from app.database.database import get_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,6 +100,17 @@ app.include_router(onboarding_router, prefix="/api/onboarding")
 app.include_router(discover_router, prefix="/api/discover")
 app.include_router(referral_router, prefix="/api/referral")
 app.include_router(zotero_router, prefix="/api/zotero")
+
+
+@app.get("/livez", include_in_schema=False)
+def livez() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/readyz", include_in_schema=False)
+def readyz(db: Session = Depends(get_db)) -> dict[str, str]:
+    db.execute(text("SELECT 1"))
+    return {"status": "ready"}
 
 setup_admin(app)  # Setup admin interface
 

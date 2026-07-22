@@ -1,16 +1,56 @@
-FROM python:3.12-slim-bookworm
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+FROM ${PYTHON_IMAGE} AS builder
+
+ARG PRIVATE_DEP_REVISION=c4c15784c6a9425fb42310d2b9408ab151b36489
+ARG PRIVATE_DEP_ARCHIVE=https://api.github.com/repos/EricSanchezok/cloud-auth/tarball
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir uv==0.9.2
 
 WORKDIR /app
+RUN --mount=type=secret,id=github_token \
+    mkdir -p /app/cloud-auth \
+    && curl --fail --location --silent --show-error \
+        --header "Authorization: Bearer $(tr -d '\n' </run/secrets/github_token)" \
+        --header "X-GitHub-Api-Version: 2022-11-28" \
+        --output /tmp/cloud-auth.tar.gz \
+        "${PRIVATE_DEP_ARCHIVE}/${PRIVATE_DEP_REVISION}" \
+    && tar -xzf /tmp/cloud-auth.tar.gz --strip-components=1 -C /app/cloud-auth \
+    && rm /tmp/cloud-auth.tar.gz
 
-COPY pyproject.toml ./
-COPY app ./app
-COPY migrations .//migrations
-COPY alembic.ini ./
-COPY shell.py ./
-COPY gunicorn.config.py ./
-COPY app/scripts/run_migrations.py ./app/scripts/run_migrations.py
+COPY server/pyproject.toml server/uv.lock server/README.md /app/
+RUN uv sync --frozen --no-dev --no-install-project --no-install-package cloud-auth \
+    && uv pip install --no-deps /app/cloud-auth/
 
-RUN pip install uv
-RUN uv pip install --system -r pyproject.toml
+COPY server/app/ /app/app/
+COPY server/migrations/ /app/migrations/
+COPY server/alembic.ini server/gunicorn.config.py /app/
+RUN uv pip install --no-deps /app
+
+FROM ${PYTHON_IMAGE} AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 openpaper
+
+WORKDIR /app
+COPY --from=builder /app/.venv/ /app/.venv/
+COPY --from=builder /app/cloud-auth/migrations/ /app/cloud-auth/migrations/
+COPY --from=builder /app/app/ /app/app/
+COPY --from=builder /app/migrations/ /app/migrations/
+COPY --from=builder /app/alembic.ini /app/gunicorn.config.py /app/
+
+ENV PATH=/app/.venv/bin:$PATH \
+    ENVIRONMENT=production \
+    PORT=8000
+
+USER openpaper
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/livez', timeout=3)"
 
 CMD ["gunicorn", "-c", "gunicorn.config.py", "app.main:app"]

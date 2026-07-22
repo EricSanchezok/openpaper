@@ -24,6 +24,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 logger = logging.getLogger(__name__)
+OPENPAPER_AUTH_CLIENT_ID = "openpaper"
+_DEVELOPMENT_JWT_SECRET = "development-only-openpaper-auth-secret"
 
 
 class AuthRuntimeSettings(BaseSettings):
@@ -34,8 +36,7 @@ class AuthRuntimeSettings(BaseSettings):
     database_url: str = os.getenv(
         "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/annotated-paper"
     )
-    client_id: str = "openpaper"
-    jwt_secret: str = "development-only-openpaper-auth-secret"
+    jwt_secret: str = _DEVELOPMENT_JWT_SECRET
     jwt_access_token_ttl_minutes: int = 15
     jwt_refresh_token_ttl_days: int = 7
     pg_ssl_root_cert: str = ""
@@ -49,7 +50,7 @@ class AuthRuntimeSettings(BaseSettings):
 
 settings = AuthRuntimeSettings()
 auth_config = AuthConfig(
-    client_id=settings.client_id,
+    client_id=OPENPAPER_AUTH_CLIENT_ID,
     jwt_secret=settings.jwt_secret,
     jwt_access_token_ttl_minutes=settings.jwt_access_token_ttl_minutes,
     jwt_refresh_token_ttl_days=settings.jwt_refresh_token_ttl_days,
@@ -94,6 +95,21 @@ cloud_user_router = get_user_router(
 @asynccontextmanager
 async def auth_lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global _auth_pool
+
+    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+        if settings.jwt_secret == _DEVELOPMENT_JWT_SECRET:
+            raise RuntimeError("AUTH_JWT_SECRET must be set in production")
+        if len(settings.jwt_secret.encode("utf-8")) < 32:
+            raise RuntimeError("AUTH_JWT_SECRET must contain at least 32 UTF-8 bytes")
+        email_values = (
+            settings.aliyun_dm_access_key_id,
+            settings.aliyun_dm_access_key_secret,
+            settings.aliyun_dm_account_name,
+        )
+        if not all(email_values):
+            raise RuntimeError(
+                "Aliyun DirectMail credentials are required for production registration"
+            )
 
     database_url = make_url(settings.database_url)
     _auth_pool = await create_pool(

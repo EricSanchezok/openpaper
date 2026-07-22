@@ -1,91 +1,45 @@
-# Use the official Node.js 24 slim image as the base image
-FROM node:24-slim as base
+ARG NODE_IMAGE=node:22-bookworm-slim
+FROM ${NODE_IMAGE} AS dependencies
 
-
-# Set the working directory inside the container
 WORKDIR /app
+RUN corepack enable && corepack prepare yarn@1.22.22 --activate
+COPY client/package.json client/yarn.lock /app/
+RUN yarn install --frozen-lockfile
 
-# posthog-cli loads CA certs from the system store, which node:slim doesn't ship
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+FROM dependencies AS builder
 
+ARG NEXT_PUBLIC_API_URL=
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+ARG NEXT_PUBLIC_POSTHOG_KEY=
+ARG NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY} \
+    NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY} \
+    NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST} \
+    NEXT_TELEMETRY_DISABLED=1
 
-# Set as environment variable for build time
-# These are set early as they might be needed by package scripts during install
-ENV NEXT_PUBLIC_API_URL=https://api.openpaper.ai
-ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_51O33aTCUG3OIDR6rhzcP0aDTftZyC07Iyf59NG8dAjPCLcmKyv0ADqSfO9CUYz5ugF7GI91JcyM6rIwp56Ehp41V00MYxGF8d7
-
-# womp womp add posthog env vars
-ENV NEXT_PUBLIC_POSTHOG_KEY=phc_i84JqfidoQncsSmusoeZF9oshYHV2SebGZkKMVtF8AG
-ENV NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
-
-
-# Copy package.json and yarn.lock to the working directory
-# This is done separately to leverage Docker cache.
-# If these files haven't changed, Docker will use the cached layer for yarn install.
-COPY package.json yarn.lock ./
-
-
-# Install dependencies using yarn and posthog-cli for source map uploads
-# Only run this if package.json or yarn.lock changed
-# Using --frozen-lockfile for reproducible and potentially faster installs
-RUN yarn install --frozen-lockfile && \
-    yarn global add @posthog/cli
-
-# Add yarn global bin to PATH
-ENV PATH="/root/.yarn/bin:$PATH"
-
-
-# Copy the rest of the application code to the working directory
-# This layer will only be rebuilt if the application code changes.
-# Ensure .dockerignore is properly configured to exclude unnecessary files.
-COPY . .
-
-
-# Build the Next.js application
-# This will only run if the code (above) or dependencies (further above) changed.
+COPY client/ /app/
 RUN yarn build
 
-# Upload source maps to PostHog, then delete them from the build
-RUN --mount=type=secret,id=POSTHOG_ENV_ID \
-    --mount=type=secret,id=POSTHOG_CLI_TOKEN \
-    export POSTHOG_CLI_ENV_ID="$(cat /run/secrets/POSTHOG_ENV_ID)" && \
-    export POSTHOG_CLI_TOKEN="$(cat /run/secrets/POSTHOG_CLI_TOKEN)" && \
-    posthog-cli sourcemap inject --directory .next && \
-    posthog-cli sourcemap upload --directory .next && \
-    find .next -name '*.map' -delete
+FROM ${NODE_IMAGE} AS runtime
 
-
-# Use the official Node.js 24 slim image for running the app
-FROM node:24-slim as production
-
-
-# Set the working directory
 WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
 
+RUN groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs nextjs
 
-# Set production environment variables
-ENV NODE_ENV=production
-# Ensure NEXT_PUBLIC_API_URL is also available in the production stage if needed by the start command or runtime
-ENV NEXT_PUBLIC_API_URL=https://api.openpaper.ai
-ENV NEXT_PUBLIC_POSTHOG_KEY=phc_i84JqfidoQncsSmusoeZF9oshYHV2SebGZkKMVtF8AG
-ENV NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+COPY --from=builder --chown=nextjs:nodejs /app/public /app/public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone /app/
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static /app/.next/static
 
-
-# Copy the built application from the base image
-COPY --from=base /app/.next ./.next
-COPY --from=base /app/public ./public
-COPY --from=base /app/package.json ./
-COPY --from=base /app/yarn.lock ./
-
-
-# Install only the production dependencies
-# This ensures a smaller final image by not including devDependencies
-RUN yarn install --production --frozen-lockfile
-
-
-# Expose port 3000 to the outside world
+USER nextjs
 EXPOSE 3000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-# Define the command to start the Next.js application
-CMD ["yarn", "start"]
+CMD ["node", "server.js"]

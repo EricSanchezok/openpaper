@@ -1,41 +1,26 @@
-FROM python:3.12-slim
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+FROM ${PYTHON_IMAGE} AS builder
 
-# Set working directory
+RUN python -m pip install --no-cache-dir uv==0.9.2
 WORKDIR /app
+COPY jobs/pyproject.toml jobs/uv.lock jobs/README.md /app/
+RUN uv sync --frozen --no-dev --no-install-project
+COPY jobs/src/ /app/src/
+RUN uv pip install --no-deps /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+FROM ${PYTHON_IMAGE} AS runtime
 
-# Copy dependency files
-COPY pyproject.toml uv.lock README.md ./
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 openpaper
 
-# Install uv for faster package management
-RUN pip install uv
+WORKDIR /app
+COPY --from=builder /app/.venv/ /app/.venv/
+COPY --from=builder /app/src/ /app/src/
 
-# Install Python dependencies
-RUN uv sync --frozen
-
-# Copy application code and scripts
-COPY src/ ./src/
-COPY scripts/ ./scripts/
-
-# Make scripts executable
-RUN chmod +x scripts/*.sh
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash appuser
-RUN chown -R appuser:appuser /app
-USER appuser
-
-# Health check for ECS
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
-
-# Expose port for FastAPI (matching your script's port 8001)
+ENV PATH=/app/.venv/bin:$PATH
+USER openpaper
 EXPOSE 8001
 
-# Default command - will be overridden in ECS task definitions
-CMD ["python", "--version"]
+CMD ["python", "-m", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8001"]

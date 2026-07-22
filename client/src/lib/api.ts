@@ -5,7 +5,8 @@ import {
     refreshAccessToken,
 } from "./auth-session";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+    ?? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
 
 async function requestWithAuth(endpoint: string, options: RequestInit): Promise<Response> {
     const token = getAccessToken();

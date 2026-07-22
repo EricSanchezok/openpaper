@@ -1,0 +1,225 @@
+name: openpaper
+
+x-api-image: &api-image
+  image: ${OPENPAPER_API_IMAGE:?OPENPAPER_API_IMAGE must be a digest-qualified reference}
+
+x-jobs-image: &jobs-image
+  image: ${OPENPAPER_JOBS_IMAGE:?OPENPAPER_JOBS_IMAGE must be a digest-qualified reference}
+
+x-restart: &restart
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "5"
+
+x-broker-environment: &broker-environment
+  CELERY_BROKER_URL: amqp://openpaper:${OPENPAPER_RABBITMQ_PASSWORD:?OPENPAPER_RABBITMQ_PASSWORD is required}@rabbitmq:5672//
+  CELERY_RESULT_BACKEND: redis://:${OPENPAPER_REDIS_PASSWORD:?OPENPAPER_REDIS_PASSWORD is required}@redis:6379/0
+  CELERY_API_URL: http://jobs-api:8001
+  WEBHOOK_BASE_URL: http://api:8000
+
+x-storage-environment: &storage-environment
+  AWS_REGION: ${OPENPAPER_AWS_REGION:?OPENPAPER_AWS_REGION is required}
+  S3_BUCKET_NAME: ${OPENPAPER_S3_BUCKET_NAME:?OPENPAPER_S3_BUCKET_NAME is required}
+  CLOUDFLARE_BUCKET_NAME: ${OPENPAPER_CLOUDFLARE_BUCKET_NAME:-}
+
+x-jobs-environment: &jobs-environment
+  <<: [*broker-environment, *storage-environment]
+  GEMINI_API_KEY: ${OPENPAPER_GEMINI_API_KEY:?OPENPAPER_GEMINI_API_KEY is required}
+  POSTHOG_API_KEY: ${OPENPAPER_POSTHOG_API_KEY:-}
+  DEBUG: "false"
+
+services:
+  client:
+    image: ${OPENPAPER_CLIENT_IMAGE:?OPENPAPER_CLIENT_IMAGE must be a digest-qualified reference}
+    <<: *restart
+    expose:
+      - "3000"
+    networks:
+      edge:
+        aliases:
+          - openpaper-client
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+
+  api:
+    <<: [*api-image, *restart]
+    environment:
+      <<: [*broker-environment, *storage-environment]
+      DATABASE_URL: ${OPENPAPER_APP_DATABASE_URL:?OPENPAPER_APP_DATABASE_URL is required}
+      OPENPAPER_DB_SCHEMA: openpaper
+      AUTH_JWT_SECRET: ${OPENPAPER_AUTH_JWT_SECRET:?OPENPAPER_AUTH_JWT_SECRET is required}
+      AUTH_PG_SSL_ROOT_CERT: /etc/ssl/certs/global-bundle.pem
+      AUTH_PG_POOL_MIN_SIZE: ${OPENPAPER_AUTH_PG_POOL_MIN_SIZE:-2}
+      AUTH_PG_POOL_MAX_SIZE: ${OPENPAPER_AUTH_PG_POOL_MAX_SIZE:-10}
+      AUTH_ALIYUN_DM_ACCESS_KEY_ID: ${OPENPAPER_ALIYUN_DM_ACCESS_KEY_ID:?OPENPAPER_ALIYUN_DM_ACCESS_KEY_ID is required}
+      AUTH_ALIYUN_DM_ACCESS_KEY_SECRET: ${OPENPAPER_ALIYUN_DM_ACCESS_KEY_SECRET:?OPENPAPER_ALIYUN_DM_ACCESS_KEY_SECRET is required}
+      AUTH_ALIYUN_DM_ACCOUNT_NAME: ${OPENPAPER_ALIYUN_DM_ACCOUNT_NAME:?OPENPAPER_ALIYUN_DM_ACCOUNT_NAME is required}
+      AUTH_ALIYUN_DM_FROM_ALIAS: ${OPENPAPER_ALIYUN_DM_FROM_ALIAS:-OpenPaper}
+      CLIENT_DOMAIN: https://${OPENPAPER_DOMAIN:?OPENPAPER_DOMAIN is required}
+      ENVIRONMENT: production
+      PORT: "8000"
+      WEB_CONCURRENCY: ${OPENPAPER_WEB_CONCURRENCY:-2}
+      FORWARDED_ALLOW_IPS: "*"
+      GEMINI_API_KEY: ${OPENPAPER_GEMINI_API_KEY:?OPENPAPER_GEMINI_API_KEY is required}
+      OPENAI_API_KEY: ${OPENPAPER_OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${OPENPAPER_ANTHROPIC_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${OPENPAPER_AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${OPENPAPER_AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_VERSION: ${OPENPAPER_AZURE_OPENAI_VERSION:-2025-04-01-preview}
+      EXA_API_KEY: ${OPENPAPER_EXA_API_KEY:?OPENPAPER_EXA_API_KEY is required}
+      FIRECRAWL_API_KEY: ${OPENPAPER_FIRECRAWL_API_KEY:?OPENPAPER_FIRECRAWL_API_KEY is required}
+      STRIPE_API_KEY: ${OPENPAPER_STRIPE_API_KEY:?OPENPAPER_STRIPE_API_KEY is required}
+      STRIPE_WEBHOOK_SECRET: ${OPENPAPER_STRIPE_WEBHOOK_SECRET:?OPENPAPER_STRIPE_WEBHOOK_SECRET is required}
+      STRIPE_MONTHLY_PRICE_ID: ${OPENPAPER_STRIPE_MONTHLY_PRICE_ID:?OPENPAPER_STRIPE_MONTHLY_PRICE_ID is required}
+      STRIPE_YEARLY_PRICE_ID: ${OPENPAPER_STRIPE_YEARLY_PRICE_ID:?OPENPAPER_STRIPE_YEARLY_PRICE_ID is required}
+      ZOTERO_CLIENT_KEY: ${OPENPAPER_ZOTERO_CLIENT_KEY:?OPENPAPER_ZOTERO_CLIENT_KEY is required}
+      ZOTERO_CLIENT_SECRET: ${OPENPAPER_ZOTERO_CLIENT_SECRET:?OPENPAPER_ZOTERO_CLIENT_SECRET is required}
+      ZOTERO_REDIRECT_URI: https://${OPENPAPER_DOMAIN}/api/auth/zotero/callback
+      RESEND_API_KEY: ${OPENPAPER_RESEND_API_KEY:-}
+      RESEND_MAIN_AUDIENCE_ID: ${OPENPAPER_RESEND_MAIN_AUDIENCE_ID:-}
+      POSTHOG_API_KEY: ${OPENPAPER_POSTHOG_API_KEY:-}
+      ADMIN_SECRET_KEY: ${OPENPAPER_ADMIN_SECRET_KEY:?OPENPAPER_ADMIN_SECRET_KEY is required}
+      DEBUG: "false"
+    volumes:
+      - ${OPENPAPER_RDS_CA_PATH:-/etc/openpaper/global-bundle.pem}:/etc/ssl/certs/global-bundle.pem:ro
+    expose:
+      - "8000"
+    networks:
+      internal:
+      edge:
+        aliases:
+          - openpaper-api
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jobs-api:
+        condition: service_healthy
+
+  jobs-api:
+    <<: [*jobs-image, *restart]
+    environment:
+      <<: *jobs-environment
+    expose:
+      - "8001"
+    networks:
+      - internal
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+
+  worker:
+    <<: [*jobs-image, *restart]
+    command:
+      - celery
+      - --app
+      - src.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=${OPENPAPER_CELERY_CONCURRENCY:-2}
+      - --queues=pdf_processing,user_processing,zotero_sync
+      - --max-tasks-per-child=1000
+      - --without-gossip
+      - --without-mingle
+      - --time-limit=300
+      - --soft-time-limit=240
+    environment:
+      <<: *jobs-environment
+    networks:
+      - internal
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    <<: [*jobs-image, *restart]
+    command: ["celery", "--app", "src.celery_app", "beat", "--loglevel=info"]
+    environment:
+      <<: *jobs-environment
+    networks:
+      - internal
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  rabbitmq:
+    image: rabbitmq:4.1-alpine
+    <<: *restart
+    environment:
+      RABBITMQ_DEFAULT_USER: openpaper
+      RABBITMQ_DEFAULT_PASS: ${OPENPAPER_RABBITMQ_PASSWORD:?OPENPAPER_RABBITMQ_PASSWORD is required}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    <<: *restart
+    environment:
+      OPENPAPER_REDIS_PASSWORD: ${OPENPAPER_REDIS_PASSWORD:?OPENPAPER_REDIS_PASSWORD is required}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${OPENPAPER_REDIS_PASSWORD}\""]
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$OPENPAPER_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  migrate:
+    <<: *api-image
+    profiles: ["migrate"]
+    command: ["python", "-m", "app.scripts.migrate_all"]
+    environment:
+      DATABASE_URL: ${OPENPAPER_MIGRATION_DATABASE_URL:?OPENPAPER_MIGRATION_DATABASE_URL is required}
+      OPENPAPER_DB_SCHEMA: openpaper
+      AUTH_PG_SSL_ROOT_CERT: /etc/ssl/certs/global-bundle.pem
+      AUTH_MIGRATIONS_DIR: /app/cloud-auth/migrations
+    volumes:
+      - ${OPENPAPER_RDS_CA_PATH:-/etc/openpaper/global-bundle.pem}:/etc/ssl/certs/global-bundle.pem:ro
+    networks:
+      - internal
+    restart: "no"
+    healthcheck:
+      disable: true
+
+volumes:
+  rabbitmq-data:
+  redis-data:
+
+networks:
+  internal:
+    internal: true
+  edge:
+    external: true
+    name: ${SANCHEZCLOUD_EDGE_NETWORK:-sanchezcloud-edge}
