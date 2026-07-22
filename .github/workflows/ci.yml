@@ -46,11 +46,15 @@ jobs:
           version: "0.9.2"
           enable-cache: true
       - name: Install locked dependencies
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.CLOUD_AUTH_READ_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
         run: uv sync --frozen --group dev
       - name: Ruff
         run: uv run ruff check app tests
-      - name: Mypy
-        run: uv run mypy app
+      - name: Strict type check for auth and migration boundary
+        run: uv run mypy app/auth app/cli.py app/scripts/migrate_all.py
       - name: Tests
         run: uv run pytest -q
 

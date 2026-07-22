@@ -189,7 +189,7 @@ class OpenAlexWork(BaseOpenAlexModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_work(cls, data):
+    def validate_work(_cls, data):
         if "abstract_inverted_index" in data and data["abstract_inverted_index"]:
             data["abstract"] = build_abstract_from_inverted_index(
                 data["abstract_inverted_index"]
@@ -203,7 +203,7 @@ class OpenAlexResponse(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_results(cls, data):
+    def validate_results(_cls, data):
         if "results" in data:
             valid_results = []
             for item in data["results"]:
@@ -223,7 +223,7 @@ class OpenAlexCitationGraph(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_citation_graph(cls, data):
+    def validate_citation_graph(_cls, data):
         if "cites" in data:
             data["cites"] = OpenAlexResponse(**data["cites"])
         if "cited_by" in data:

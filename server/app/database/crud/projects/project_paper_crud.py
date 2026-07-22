@@ -1,6 +1,5 @@
 import logging
 import uuid
-from ctypes import cast
 from typing import List, Optional
 
 from app.database.crud.paper_crud import paper_crud

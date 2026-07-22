@@ -163,7 +163,7 @@ services:
         condition: service_healthy
 
   rabbitmq:
-    image: rabbitmq:4.1-alpine
+    image: rabbitmq:4.1-alpine@sha256:f45d8808ab7dfbf116d343e7814590e79483fee4c5bf21070a4d43274d217791
     <<: *restart
     environment:
       RABBITMQ_DEFAULT_USER: openpaper
@@ -180,7 +180,7 @@ services:
       start_period: 20s
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     <<: *restart
     environment:
       OPENPAPER_REDIS_PASSWORD: ${OPENPAPER_REDIS_PASSWORD:?OPENPAPER_REDIS_PASSWORD is required}

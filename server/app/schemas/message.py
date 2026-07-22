@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from app.schemas.citation import CitationResult
 from app.schemas.responses import ToolCall, ToolCallResult

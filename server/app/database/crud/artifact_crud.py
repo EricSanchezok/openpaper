@@ -12,7 +12,7 @@ from app.database.models import (
     Message,
 )
 from app.schemas.user import CurrentUser
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 

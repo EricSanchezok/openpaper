@@ -49,7 +49,7 @@ class AnnotationCrud(CRUDBase[Annotation, AnnotationCreate, AnnotationUpdate]):
         return (
             db.query(Annotation)
             .join(Paper, Annotation.paper_id == Paper.id)
-            .filter(Paper.share_id == str(share_id), Paper.is_public == True)
+            .filter(Paper.share_id == str(share_id), Paper.is_public.is_(True))
             .order_by(Annotation.created_at)
             .all()
         )

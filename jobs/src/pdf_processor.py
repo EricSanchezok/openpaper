@@ -98,7 +98,7 @@ async def process_pdf_file(
                 pdf_text = await extract_text(
                     temp_file_path,
                 )
-                status_callback(f"Processed bits and bytes")
+                status_callback("Processed bits and bytes")
                 logger.info(f"Extracted {len(pdf_text)} characters of text from PDF")
                 page_offsets = map_pages_to_text_offsets(temp_file_path)
         except Exception as e:

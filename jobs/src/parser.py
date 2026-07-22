@@ -6,11 +6,9 @@ from io import BytesIO
 import logging
 import uuid
 from PIL import Image # type: ignore
+from src.s3_service import s3_service
 
 md = MarkItDown()
-
-from src.s3_service import s3_service
-from src.llm_client import fast_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +53,7 @@ def extract_text_from_pdf(file_path: str) -> str:
             raise ValueError("No text found in the PDF file.")
 
         return md_text
-    except Exception as e:
+    except Exception:
         try:
             # Attempt to extract text using pymupdf4llm
             md_text = pymupdf4llm.to_markdown(file_path)

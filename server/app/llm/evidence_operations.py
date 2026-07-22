@@ -1,11 +1,10 @@
 import asyncio
 import json
 import logging
-import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, AsyncGenerator, Dict, List, Mapping, Optional, Sequence, Union
+from typing import Any, AsyncGenerator, Dict, List, Mapping, Optional, Union
 
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
@@ -110,7 +109,6 @@ class EvidenceOperations(BaseLLMClient):
         current_user: CurrentUser,
         conversation_id: Optional[str] = None,
         llm_provider: Optional[LLMProvider] = None,
-        user_references: Optional[Sequence[str]] = None,
         project_id: Optional[str] = None,
         restrict_to_paper_ids: Optional[List[str]] = None,
         db: Session = Depends(get_db),
@@ -122,14 +120,6 @@ class EvidenceOperations(BaseLLMClient):
         This function will interact with the LLM to gather relevant information
         and citations from the user's knowledge base.
         """
-        from app.llm.citation_handler import CitationHandler
-
-        user_citations = (
-            CitationHandler.convert_references_to_citations(user_references)
-            if user_references
-            else None
-        )
-
         conversation_history = (
             message_crud.get_conversation_messages(
                 db,

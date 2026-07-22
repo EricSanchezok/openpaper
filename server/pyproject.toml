@@ -47,8 +47,7 @@ dependencies = [
 ]
 
 [project.scripts]
-# openpaper = "app.main"
-start = "app:start"
+start = "app.cli:start"
 
 [tool.uv]
 constraint-dependencies = [

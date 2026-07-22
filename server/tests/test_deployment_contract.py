@@ -34,6 +34,7 @@ def test_only_public_application_edges_join_shared_network() -> None:
 
 def test_release_images_are_required_and_runtime_containers_are_non_root() -> None:
     compose_text = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
+    compose = load_compose()
     for variable in (
         "OPENPAPER_API_IMAGE",
         "OPENPAPER_CLIENT_IMAGE",
@@ -48,6 +49,10 @@ def test_release_images_are_required_and_runtime_containers_are_non_root() -> No
     assert "HEALTHCHECK" in (ROOT / "server" / "Dockerfile").read_text(encoding="utf-8")
     assert "HEALTHCHECK" in (ROOT / "client" / "Dockerfile").read_text(encoding="utf-8")
     assert "healthcheck:" in compose_text
+    for service in ("rabbitmq", "redis"):
+        assert re.fullmatch(
+            r"[^\s]+@sha256:[0-9a-f]{64}", compose["services"][service]["image"]
+        )
 
 
 def test_database_contract_shares_auth_and_isolates_openpaper() -> None:

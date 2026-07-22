@@ -117,7 +117,7 @@ class S3Service:
         except ClientError as e:
             logger.error(f"Error uploading file to S3: {e}")
             raise
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.error(f"File not found: {file_path}")
             raise ValueError(f"File not found: {file_path}")
 

@@ -317,7 +317,6 @@ async def chat_message_multipaper(
                     question=request.user_query,
                     current_user=current_user,
                     llm_provider=LLMProvider.CEREBRAS,
-                    user_references=request.user_references,
                     db=db,
                     project_id=request.project_id,
                     restrict_to_paper_ids=scoped_paper_ids,

@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Set
+from typing import Any, Optional, Set
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -100,7 +100,7 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
         return (
             db.query(Highlight)
             .join(Paper, Highlight.paper_id == Paper.id)
-            .filter(Paper.share_id == share_id, Paper.is_public == True)
+            .filter(Paper.share_id == share_id, Paper.is_public.is_(True))
             .order_by(Highlight.created_at)
             .all()
         )

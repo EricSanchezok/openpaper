@@ -36,7 +36,7 @@ Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js + Yarn, PostgreSQL, 
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                             | server + jobs                                             |
 | `CELERY_API_URL`                                                                         | server                                                    |
 | `WEBHOOK_BASE_URL`                                                                       | jobs                                                      |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`                        | server                                                    |
+| `AUTH_JWT_SECRET` (32+ bytes)                                                            | server                                                    |
 | `CLIENT_DOMAIN`, `API_DOMAIN`                                                            | server (`http://localhost:3000`, `http://localhost:8000`) |
 | `NEXT_PUBLIC_API_URL`                                                                    | client                                                    |
 
@@ -51,8 +51,9 @@ git clone git@github.com:khoj-ai/openpaper.git && cd openpaper
 
 # Server
 cd server && uv sync && cp .env.example .env
-# fill .env, then:
-python3 app/scripts/run_migrations.py
+# Create the database named by DATABASE_URL, fill .env, then apply cloud-auth
+# and OpenPaper migrations in their required order:
+uv run python -m app.scripts.migrate_all
 
 # Jobs
 cd ../jobs && uv sync

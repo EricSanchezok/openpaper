@@ -86,7 +86,6 @@ def upload_and_process_file(
     s3_object_key: str,
     webhook_url: str,
     skip_metadata_extraction: bool = False,
-    **processing_kwargs
 ) -> Dict[str, Any]:
     """
     Process a PDF file from S3 object key and send results to webhook.
