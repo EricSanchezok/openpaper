@@ -22,8 +22,6 @@ export function AnnotationHoverCard({
     position,
     user,
 }: AnnotationHoverCardProps) {
-    if (annotations.length === 0) return null;
-
     const sorted = useMemo(
         () =>
             [...annotations].sort(
@@ -31,6 +29,8 @@ export function AnnotationHoverCard({
             ),
         [annotations]
     );
+
+    if (annotations.length === 0) return null;
 
     // Clamp so the card stays within the viewport
     const left = Math.min(position.x, window.innerWidth - CARD_WIDTH - VIEWPORT_PADDING);
@@ -54,19 +54,12 @@ export function AnnotationHoverCard({
                             >
                                 {isAI ? (
                                     <File size={12} className="text-blue-500" />
-                                ) : user?.picture ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={user.picture}
-                                        alt={user.name}
-                                        className="w-full h-full object-cover"
-                                    />
                                 ) : (
                                     <UserIcon size={12} className="text-muted-foreground" />
                                 )}
                             </div>
                             <span className="text-xs font-medium text-foreground">
-                                {isAI ? "Open Paper" : user?.name || "User"}
+                                {isAI ? "Open Paper" : user?.display_name || "User"}
                             </span>
                             <span className="text-[11px] text-muted-foreground">
                                 {formatAnnotationDate(ann.created_at)}

@@ -1,427 +1,322 @@
-"use client"
+"use client";
 
-import { useAuth } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, Loader2, Tag } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import Link from "next/link";
-import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { fetchFromApi } from "@/lib/api";
-import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/lib/auth";
+import { AlertCircle, ArrowLeft, Check, Loader2, Tag } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 
-const REFERRAL_STORAGE_KEY = 'op_ref';
-const REFERRAL_MANUAL_FLAG_KEY = 'op_ref_via_manual';
+const REFERRAL_STORAGE_KEY = "op_ref";
+const REFERRAL_MANUAL_FLAG_KEY = "op_ref_via_manual";
 const REFERRAL_CODE_PATTERN = /^[A-Z0-9]{4,16}$/;
-const REFERRAL_REDEMPTION_WINDOW_DAYS = 30;
+
+type Mode = "signin" | "register" | "verify" | "forgot" | "reset";
+
+const COPY: Record<Mode, { title: string; description: string }> = {
+    signin: {
+        title: "Sign in to OpenPaper",
+        description: "Access your papers, projects, and annotations.",
+    },
+    register: {
+        title: "Create your OpenPaper account",
+        description: "One identity for OpenPaper and the SanchezCloud ecosystem.",
+    },
+    verify: {
+        title: "Verify your email",
+        description: "Paste the verification token from your email.",
+    },
+    forgot: {
+        title: "Reset your password",
+        description: "We will email you a password reset token.",
+    },
+    reset: {
+        title: "Choose a new password",
+        description: "Paste the reset token and enter a new password.",
+    },
+};
+
+function safeReturnTo(value: string | null): string {
+    return value?.startsWith("/") && !value.startsWith("//") ? value : "/";
+}
+
+async function attributeStoredReferral(): Promise<void> {
+    const code = localStorage.getItem(REFERRAL_STORAGE_KEY);
+    if (!code) return;
+    const viaLink = localStorage.getItem(REFERRAL_MANUAL_FLAG_KEY) !== "true";
+    try {
+        await fetchFromApi("/api/referral/attribute", {
+            method: "POST",
+            body: JSON.stringify({ code, via_link: viaLink }),
+        });
+    } catch {
+        // Referral failure must not block account access.
+    } finally {
+        localStorage.removeItem(REFERRAL_STORAGE_KEY);
+        localStorage.removeItem(REFERRAL_MANUAL_FLAG_KEY);
+    }
+}
 
 function LoginContent() {
-	const { user, loading, error: authError, login } = useAuth();
-	const [error, setError] = useState<string | null>(null);
-	const router = useRouter();
-	const searchParams = useSearchParams();
-	const returnTo = searchParams.get('returnTo') || '/';
-	const errorParam = searchParams.get('error');
+    const auth = useAuth();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const returnTo = safeReturnTo(searchParams.get("returnTo"));
 
-	const [email, setEmail] = useState('');
-	const [showOtp, setShowOtp] = useState(false);
-	const [emailError, setEmailError] = useState<string | null>(null);
-	const [isEmailLoading, setIsEmailLoading] = useState(false);
-	const [showNameInput, setShowNameInput] = useState(false);
-	const [firstName, setFirstName] = useState('');
-	const [lastName, setLastName] = useState('');
-	const [lastUsedProvider, setLastUsedProvider] = useState<string | null>(null);
-	const [referralCode, setReferralCode] = useState('');
-	const [referralOpen, setReferralOpen] = useState(false);
-	const [referralApplied, setReferralApplied] = useState(false);
+    const [mode, setMode] = useState<Mode>("signin");
+    const [email, setEmail] = useState("");
+    const [displayName, setDisplayName] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [token, setToken] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+    const [newAccount, setNewAccount] = useState(false);
+    const [referralCode, setReferralCode] = useState("");
+    const [referralOpen, setReferralOpen] = useState(false);
+    const [referralApplied, setReferralApplied] = useState(false);
 
-	useEffect(() => {
-		const storedProvider = localStorage.getItem('signin-provider');
-		if (storedProvider) {
-			setLastUsedProvider(storedProvider);
-		}
-		// Surface the existing referral if the user landed via a shared link.
-		// The ReferralCapture provider writes it to localStorage on any page
-		// load with ?r=<code>.
-		const existing = localStorage.getItem(REFERRAL_STORAGE_KEY);
-		if (existing) {
-			setReferralCode(existing);
-			setReferralApplied(true);
-			setReferralOpen(true);
-		}
-	}, []);
+    useEffect(() => {
+        const storedCode = localStorage.getItem(REFERRAL_STORAGE_KEY);
+        if (!storedCode) return;
+        setReferralCode(storedCode);
+        setReferralApplied(true);
+        setReferralOpen(true);
+    }, []);
 
-	const applyReferralCode = () => {
-		const normalized = referralCode.trim().toUpperCase();
-		if (!REFERRAL_CODE_PATTERN.test(normalized)) {
-			setEmailError('That referral code doesn’t look right.');
-			return;
-		}
-		setEmailError(null);
-		localStorage.setItem(REFERRAL_STORAGE_KEY, normalized);
-		localStorage.setItem(REFERRAL_MANUAL_FLAG_KEY, 'true');
-		setReferralCode(normalized);
-		setReferralApplied(true);
-	};
+    useEffect(() => {
+        if (auth.user && !auth.loading) router.replace(returnTo);
+    }, [auth.user, auth.loading, returnTo, router]);
 
+    const passwordMismatch = useMemo(
+        () => (mode === "register" || mode === "reset")
+            && Boolean(confirmPassword)
+            && password !== confirmPassword,
+        [confirmPassword, mode, password],
+    );
 
-	// Handle error query param
-	useEffect(() => {
-		if (errorParam) {
-			switch (errorParam) {
-				case 'callback_failed':
-					setError('Login failed. Please try again.');
-					break;
-				case 'authentication_error':
-					setError('Authentication error occurred. Please try again.');
-					break;
-				case 'missing_code':
-					setError('Authentication code missing. Please try again.');
-					break;
-				case 'different_provider':
-					setError('This email is already associated with a different sign-in method. Please use your original sign-in method.');
-					break;
-				default:
-					setError('An error occurred during login. Please try again.');
-			}
-		}
-	}, [errorParam]);
+    const changeMode = (nextMode: Mode) => {
+        setMode(nextMode);
+        setError(null);
+        setNotice(null);
+        setToken("");
+        setConfirmPassword("");
+    };
 
-	// If user is already logged in, redirect to return path
-	useEffect(() => {
-		if (user && !loading) {
-			router.push(returnTo);
-		}
-	}, [user, loading, router, returnTo]);
+    const applyReferralCode = () => {
+        const normalized = referralCode.trim().toUpperCase();
+        if (!REFERRAL_CODE_PATTERN.test(normalized)) {
+            setError("That referral code does not look right.");
+            return;
+        }
+        localStorage.setItem(REFERRAL_STORAGE_KEY, normalized);
+        localStorage.setItem(REFERRAL_MANUAL_FLAG_KEY, "true");
+        setReferralCode(normalized);
+        setReferralApplied(true);
+        setError(null);
+    };
 
-	const handleLogin = async () => {
-		setError(null);
-		localStorage.setItem('signin-provider', 'google');
-		await login();
-	};
+    const submit = async (event: FormEvent) => {
+        event.preventDefault();
+        setBusy(true);
+        setError(null);
+        setNotice(null);
+        try {
+            if (mode === "signin") {
+                await auth.login(email, password);
+                await attributeStoredReferral();
+                router.replace(returnTo);
+            } else if (mode === "register") {
+                if (password.length < 12) throw new Error("Password must be at least 12 characters.");
+                if (passwordMismatch) throw new Error("Passwords do not match.");
+                const message = await auth.register(email, password, displayName.trim());
+                setNewAccount(true);
+                setNotice(message);
+                setMode("verify");
+            } else if (mode === "verify") {
+                const message = await auth.verifyEmail(token.trim());
+                setNotice(message);
+                if (password) {
+                    await auth.login(email, password);
+                    await attributeStoredReferral();
+                    router.replace(newAccount ? "/onboarding" : returnTo);
+                } else {
+                    setMode("signin");
+                }
+            } else if (mode === "forgot") {
+                setNotice(await auth.forgotPassword(email));
+                setMode("reset");
+            } else {
+                if (password.length < 12) throw new Error("Password must be at least 12 characters.");
+                if (passwordMismatch) throw new Error("Passwords do not match.");
+                setNotice(await auth.resetPassword(token.trim(), password));
+                setMode("signin");
+                setPassword("");
+                setConfirmPassword("");
+            }
+        } catch (submitError) {
+            setError(submitError instanceof Error ? submitError.message : "Authentication failed.");
+        } finally {
+            setBusy(false);
+        }
+    };
 
-	const handleBackToStart = () => {
-		setShowNameInput(false);
-		setShowOtp(false);
-		setEmailError(null);
-	};
+    if (auth.loading) {
+        return <div className="flex h-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin" /></div>;
+    }
 
-	const handleEmailSignIn = async (e: React.FormEvent) => {
-		e.preventDefault();
-		localStorage.setItem('signin-provider', 'email');
-		setIsEmailLoading(true);
-		setEmailError(null);
-		try {
-			const data = await fetchFromApi('/api/auth/email/signin', {
-				method: 'POST',
-				body: JSON.stringify({ email }),
-			});
-			if (data.success) {
-				setError(null);
-				if (data.newly_created || data.needs_name) {
-					setShowNameInput(true);
-				} else {
-					setShowOtp(true);
-				}
-			} else {
-				setEmailError(data.message || 'Failed to send verification code.');
-			}
-		} catch (error) {
-			if (error instanceof Error) {
-				setEmailError(error.message);
-			} else {
-				setEmailError('An unexpected error occurred.');
-			}
-		} finally {
-			setIsEmailLoading(false);
-		}
-	};
+    return (
+        <div className="flex h-full items-center justify-center p-4">
+            <Card className="relative w-full max-w-md">
+                <CardHeader className="text-center">
+                    {mode !== "signin" && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute left-5 top-6"
+                            onClick={() => changeMode("signin")}
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                        </Button>
+                    )}
+                    <CardTitle className="text-2xl">{COPY[mode].title}</CardTitle>
+                    <CardDescription>{COPY[mode].description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {(error || auth.error) && (
+                        <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>{error || auth.error}</AlertDescription>
+                        </Alert>
+                    )}
+                    {notice && (
+                        <Alert>
+                            <Check className="h-4 w-4" />
+                            <AlertDescription>{notice}</AlertDescription>
+                        </Alert>
+                    )}
 
-	const handleNameSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!firstName || !lastName) {
-			setEmailError("Please enter your full name.");
-			return;
-		}
-		setIsEmailLoading(true);
-		setEmailError(null);
-		try {
-			const name = `${firstName} ${lastName}`;
-			const data = await fetchFromApi('/api/auth/email/fullname', {
-				method: 'POST',
-				body: JSON.stringify({ email, name }),
-			});
-			if (data.success) {
-				setShowNameInput(false);
-				setShowOtp(true);
-			} else {
-				setEmailError(data.message || 'Failed to set name.');
-			}
-		} catch (error) {
-			if (error instanceof Error) {
-				setEmailError(error.message);
-			} else {
-				setEmailError('An unexpected error occurred.');
-			}
-		} finally {
-			setIsEmailLoading(false);
-		}
-	};
+                    <form onSubmit={submit} className="space-y-3">
+                        {(mode === "signin" || mode === "register" || mode === "forgot") && (
+                            <Input
+                                type="email"
+                                autoComplete="email"
+                                placeholder="you@example.com"
+                                value={email}
+                                onChange={(event) => setEmail(event.target.value)}
+                                required
+                            />
+                        )}
+                        {mode === "register" && (
+                            <Input
+                                autoComplete="name"
+                                placeholder="Display name"
+                                value={displayName}
+                                onChange={(event) => setDisplayName(event.target.value)}
+                                required
+                            />
+                        )}
+                        {(mode === "verify" || mode === "reset") && (
+                            <Input
+                                autoComplete="one-time-code"
+                                placeholder={mode === "verify" ? "Verification token" : "Reset token"}
+                                value={token}
+                                onChange={(event) => setToken(event.target.value)}
+                                required
+                            />
+                        )}
+                        {(mode === "signin" || mode === "register" || mode === "reset") && (
+                            <Input
+                                type="password"
+                                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                                placeholder="Password"
+                                value={password}
+                                onChange={(event) => setPassword(event.target.value)}
+                                minLength={mode === "signin" ? undefined : 12}
+                                required
+                            />
+                        )}
+                        {(mode === "register" || mode === "reset") && (
+                            <Input
+                                type="password"
+                                autoComplete="new-password"
+                                placeholder="Confirm password"
+                                value={confirmPassword}
+                                onChange={(event) => setConfirmPassword(event.target.value)}
+                                aria-invalid={passwordMismatch}
+                                required
+                            />
+                        )}
+                        <Button className="w-full" type="submit" disabled={busy || passwordMismatch}>
+                            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : {
+                                signin: "Sign in",
+                                register: "Create account",
+                                verify: "Verify email",
+                                forgot: "Send reset token",
+                                reset: "Reset password",
+                            }[mode]}
+                        </Button>
+                    </form>
 
-	const handleVerifyCode = async (code: string) => {
-		setIsEmailLoading(true);
-		setEmailError(null);
-		try {
-			const data = await fetchFromApi('/api/auth/email/verify', {
-				method: 'POST',
-				body: JSON.stringify({ email, code }),
-			});
+                    {mode === "verify" && (
+                        <Button
+                            variant="ghost"
+                            className="w-full"
+                            disabled={busy || !email}
+                            onClick={() => void auth.resendVerification(email).then(setNotice).catch((reason: unknown) => {
+                                setError(reason instanceof Error ? reason.message : "Could not resend token.");
+                            })}
+                        >
+                            Resend verification email
+                        </Button>
+                    )}
+                    {mode === "signin" && (
+                        <div className="flex justify-between text-sm">
+                            <button className="text-primary hover:underline" onClick={() => changeMode("register")}>Create account</button>
+                            <button className="text-primary hover:underline" onClick={() => changeMode("forgot")}>Forgot password?</button>
+                        </div>
+                    )}
 
-			if (!data.success) {
-				setEmailError(data.message || 'Failed to verify code.');
-				setIsEmailLoading(false);
-				return;
-			}
-
-			if (data.redirectUrl) {
-				window.location.href = data.redirectUrl;
-				return;
-			}
-
-			router.push(returnTo);
-		} catch (error) {
-			if (error instanceof Error) {
-				setEmailError(error.message);
-			} else {
-				setEmailError('An unexpected error occurred.');
-			}
-		} finally {
-			setIsEmailLoading(false);
-		}
-	};
-
-
-	if (loading) {
-		return (
-			<div className="h-full flex flex-col items-center justify-center py-8 space-y-6">
-				<Loader2 className="h-12 w-12 animate-spin text-primary" />
-			</div>
-		);
-	}
-
-	let headerContent = {
-		title: "Sign in to Open Paper",
-		description: "Connect with an account to access your papers, projects, and annotations."
-	};
-
-	if (showNameInput) {
-		headerContent = {
-			title: "What's your name?",
-			description: "This will be displayed on your profile."
-		};
-	} else if (showOtp) {
-		headerContent = {
-			title: "Check your email",
-			description: `Enter the 6-digit code we sent to ${email}. This will expire in 10 minutes.`,
-		};
-	}
-
-	return (
-		<div className="flex items-center justify-center h-full p-4">
-			<Card className="w-full max-w-md relative">
-				<CardHeader className="text-center">
-					{ (showNameInput || showOtp) && (
-						<Button variant="ghost" size="icon" className="absolute top-6 left-5" onClick={handleBackToStart}>
-							<ArrowLeft className="h-5 w-5" />
-						</Button>
-					)}
-					<CardTitle className="text-2xl">{headerContent.title}</CardTitle>
-					<CardDescription>{headerContent.description}</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="space-y-4">
-						{(error || authError) && (
-							<Alert variant="destructive">
-								<AlertCircle className="h-4 w-4" />
-								<AlertDescription>
-									{error || authError}
-								</AlertDescription>
-							</Alert>
-						)}
-
-						{!showNameInput && !showOtp && (
-							<>
-								<Button
-									onClick={handleLogin}
-									className="w-full"
-									size="lg"
-								>
-									<Image
-										src="/logos/g_logo.webp"
-										alt="Google"
-										width={20}
-										height={20}
-										className="mr-2"
-									/>
-									Continue with Google
-									{lastUsedProvider === 'google' && <Badge variant="secondary" className="ml-auto">Last Used</Badge>}
-								</Button>
-
-								<div className="relative my-4">
-									<div className="absolute inset-0 flex items-center">
-										<span className="w-full border-t" />
-									</div>
-									<div className="relative flex justify-center text-xs uppercase">
-										<span className="bg-card px-2 text-muted-foreground">
-											Or
-										</span>
-									</div>
-								</div>
-							</>
-						)}
-
-						{showOtp ? (
-							<div className="space-y-4 text-center">
-								<div className="flex justify-center">
-									<InputOTP maxLength={6} onComplete={handleVerifyCode} disabled={isEmailLoading}>
-										<InputOTPGroup>
-											<InputOTPSlot index={0} />
-											<InputOTPSlot index={1} />
-											<InputOTPSlot index={2} />
-											<InputOTPSlot index={3} />
-											<InputOTPSlot index={4} />
-											<InputOTPSlot index={5} />
-										</InputOTPGroup>
-									</InputOTP>
-								</div>
-								{isEmailLoading && <Loader2 className="h-6 w-6 animate-spin mx-auto" />}
-							</div>
-						) : showNameInput ? (
-							<form onSubmit={handleNameSubmit}>
-								<div className="space-y-2">
-									<Input
-										placeholder="First Name"
-										value={firstName}
-										onChange={(e) => setFirstName(e.target.value)}
-										disabled={isEmailLoading}
-										required
-									/>
-									<Input
-										placeholder="Last Name"
-										value={lastName}
-										onChange={(e) => setLastName(e.target.value)}
-										disabled={isEmailLoading}
-										required
-									/>
-									<Button
-										type="submit"
-										className="w-full"
-										disabled={isEmailLoading || !firstName || !lastName}
-									>
-										{isEmailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}
-									</Button>
-								</div>
-							</form>
-						) : (
-							<form onSubmit={handleEmailSignIn}>
-								<div className="space-y-2">
-									<Input
-										type="email"
-										placeholder="m@example.com"
-										value={email}
-										onChange={(e) => setEmail(e.target.value)}
-										disabled={isEmailLoading}
-										required
-									/>
-									<Button
-										type="submit"
-										className="w-full"
-										disabled={isEmailLoading || !email}
-									>
-										{isEmailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue with Email"}
-										{!isEmailLoading && lastUsedProvider === 'email' && <Badge variant="secondary" className="ml-auto">Last Used</Badge>}
-									</Button>
-								</div>
-							</form>
-						)}
-
-						{emailError && (
-							<Alert variant="destructive">
-								<AlertCircle className="h-4 w-4" />
-								<AlertDescription>
-									{emailError}
-								</AlertDescription>
-							</Alert>
-						)}
-						{!showNameInput && !showOtp && (
-							<div className="pt-2">
-								{!referralOpen ? (
-									<button
-										type="button"
-										className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-										onClick={() => setReferralOpen(true)}
-									>
-										<Tag className="h-3 w-3" />
-										Have a referral code?
-									</button>
-								) : (
-									<div className="space-y-2">
-										<div className="flex gap-2">
-											<Input
-												placeholder="ABCD123"
-												value={referralCode}
-												onChange={(e) => {
-													setReferralCode(e.target.value.toUpperCase());
-													setReferralApplied(false);
-												}}
-												className="font-mono text-sm tracking-widest"
-												maxLength={16}
-											/>
-											<Button
-												type="button"
-												variant={referralApplied ? "secondary" : "default"}
-												onClick={applyReferralCode}
-												disabled={referralApplied || !referralCode}
-											>
-												{referralApplied ? <Check className="h-4 w-4" /> : 'Apply'}
-											</Button>
-										</div>
-										{referralApplied && (
-											<p className="text-xs text-muted-foreground">
-												50% off your first month — applied at checkout. Redeem within {REFERRAL_REDEMPTION_WINDOW_DAYS} days.
-											</p>
-										)}
-									</div>
-								)}
-							</div>
-						)}
-					</div>
-				</CardContent>
-				<CardFooter className="text-sm text-muted-foreground text-start">
-					<div className="flex flex-wrap gap-1 justify-start">
-						<span>By signing in, you agree to our</span>
-						<Link href="/tos" className="text-primary hover:underline">Terms of Service</Link>
-						<span>and</span>
-						<Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
-					</div>
-				</CardFooter>
-			</Card>
-		</div>
-	);
+                    {(mode === "signin" || mode === "register") && (
+                        <div className="rounded-md border p-3">
+                            <button
+                                className="flex w-full items-center gap-2 text-sm font-medium"
+                                onClick={() => setReferralOpen((open) => !open)}
+                                type="button"
+                            >
+                                <Tag className="h-4 w-4" />
+                                Have a referral code?
+                                {referralApplied && <Check className="ml-auto h-4 w-4 text-green-600" />}
+                            </button>
+                            {referralOpen && (
+                                <div className="mt-3 flex gap-2">
+                                    <Input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="Referral code" />
+                                    <Button type="button" variant="secondary" onClick={applyReferralCode}>Apply</Button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+                <CardFooter className="justify-center text-xs text-muted-foreground">
+                    Review our <Link href="/privacy" className="ml-1 underline">Privacy Policy</Link>.
+                </CardFooter>
+            </Card>
+        </div>
+    );
 }
 
 export default function LoginPage() {
-	return (
-		<Suspense fallback={
-			<div className="h-full flex items-center justify-center">
-				<Loader2 className="h-12 w-12 animate-spin text-primary" />
-			</div>
-		}>
-			<LoginContent />
-		</Suspense>
-	)
+    return <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin" /></div>}><LoginContent /></Suspense>;
 }

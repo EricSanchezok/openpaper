@@ -66,7 +66,7 @@ const REFERRAL_CODE_PATTERN = /^[A-Z0-9]{4,16}$/
 // Captures `?r=<code>` into localStorage on every navigation so the post-auth
 // attribution flow can pick it up after a user signs up. localStorage is
 // preferable to a cookie here because we don't need server-side access — the
-// attribution POST is fired from the client at /auth/callback.
+// attribution POST is fired after a successful password login.
 function ReferralCapture() {
     const searchParams = useSearchParams()
 

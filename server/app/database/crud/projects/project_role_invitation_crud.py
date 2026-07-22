@@ -26,7 +26,7 @@ class ProjectRoleInvitationBase(BaseModel):
 
 class ProjectRoleInvitationCreate(ProjectRoleInvitationBase):
     project_id: str
-    invited_by: str
+    invited_by: int
 
 
 class ProjectRoleInvitationUpdate(BaseModel):
@@ -54,7 +54,7 @@ class ProjectRoleInvitationCRUD(
         if not project_crud.has_role(
             db,
             project_id=obj_in.project_id,
-            user_id=str(user.id),
+            user_id=user.id,
             role=ProjectRoles.ADMIN,
         ):
             logger.error(
@@ -153,7 +153,7 @@ class ProjectRoleInvitationCRUD(
                 project_id=project_id,
                 email=email,
                 role=role,
-                invited_by=str(inviting_user.id),
+                invited_by=inviting_user.id,
             )
             invitation = self.create(db, obj_in=invitation_create, user=inviting_user)
 
@@ -227,7 +227,7 @@ class ProjectRoleInvitationCRUD(
             # Create a project role for the user
             project_role = ProjectRole(
                 project_id=invitation.project_id,
-                user_id=str(user.id),
+                user_id=user.id,
                 role=invitation.role,
             )
             db.add(project_role)
@@ -315,7 +315,7 @@ class ProjectRoleInvitationCRUD(
             if not project_crud.has_role(
                 db,
                 project_id=str(invitation.project_id),
-                user_id=str(user.id),
+                user_id=user.id,
                 role=ProjectRoles.ADMIN,
             ):
                 logger.warning(

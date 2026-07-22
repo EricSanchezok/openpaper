@@ -1,7 +1,6 @@
 import logging
 import os
-import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import SessionLocal
@@ -14,24 +13,32 @@ logger = logging.getLogger(__name__)
 POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY", None)
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
 
-posthog = Posthog(
-    POSTHOG_API_KEY,
-    host="https://us.i.posthog.com",
-    enable_exception_autocapture=True,
+posthog = (
+    Posthog(
+        POSTHOG_API_KEY,
+        host="https://us.i.posthog.com",
+        enable_exception_autocapture=True,
+    )
+    if POSTHOG_API_KEY
+    else None
 )
 
-posthog_sync = Posthog(
-    POSTHOG_API_KEY,
-    host="https://us.i.posthog.com",
-    sync_mode=True,
-    enable_exception_autocapture=True,
+posthog_sync = (
+    Posthog(
+        POSTHOG_API_KEY,
+        host="https://us.i.posthog.com",
+        sync_mode=True,
+        enable_exception_autocapture=True,
+    )
+    if POSTHOG_API_KEY
+    else None
 )
 
-if DEBUG:
+if DEBUG and posthog:
     posthog.debug = True
 
 
-def _lookup_subscription(db: Optional[Session], user_id: str):
+def _lookup_subscription(db: Optional[Session], user_id: int):
     """
     Look up a user's subscription for event enrichment.
 
@@ -41,14 +48,9 @@ def _lookup_subscription(db: Optional[Session], user_id: str):
     InvalidRequestError), silently fall back to a fresh session — telemetry
     should never take down the caller's flow.
     """
-    try:
-        user_uuid = uuid.UUID(user_id)
-    except (ValueError, TypeError):
-        return None
-
     if db is not None:
         try:
-            return subscription_crud.get_by_user_id(db, user_id=user_uuid)
+            return subscription_crud.get_by_user_id(db, user_id=user_id)
         except (InvalidRequestError, OperationalError) as e:
             logger.warning(
                 "track_event: provided db session unusable (%s); falling back",
@@ -57,19 +59,19 @@ def _lookup_subscription(db: Optional[Session], user_id: str):
 
     try:
         with SessionLocal() as fresh_db:
-            return subscription_crud.get_by_user_id(fresh_db, user_id=user_uuid)
+            return subscription_crud.get_by_user_id(fresh_db, user_id=user_id)
     except Exception as e:
         logger.warning("track_event: subscription lookup failed: %s", e)
         return None
 
 
 def track_event(
-    event_name,
-    properties={},
-    user_id=None,
-    sync=False,
+    event_name: str,
+    properties: Optional[dict[str, Any]] = None,
+    user_id: Optional[str] = None,
+    sync: bool = False,
     db: Optional[Session] = None,
-):
+) -> None:
     """
     Track an event with PostHog.
 
@@ -80,22 +82,26 @@ def track_event(
     :param db: Optional request-scoped session to reuse for the subscription
                lookup. Falls back to a fresh session if None or unusable.
     """
-    if POSTHOG_API_KEY and not DEBUG:
+    event_properties = dict(properties or {})
+    if POSTHOG_API_KEY and posthog and posthog_sync and not DEBUG:
         subscription = None
         if user_id is None:
             user_id = "anonymous"
         else:
-            subscription = _lookup_subscription(db, str(user_id))
+            try:
+                subscription = _lookup_subscription(db, int(user_id))
+            except (TypeError, ValueError):
+                logger.warning("track_event: invalid user id %r", user_id)
 
             if subscription:
-                properties.update(
+                event_properties.update(
                     {
                         "subscription_plan": subscription.plan,
                         "subscription_status": subscription.status,
                     }
                 )
             else:
-                properties.update(
+                event_properties.update(
                     {
                         "subscription_plan": None,
                         "subscription_status": None,
@@ -104,13 +110,13 @@ def track_event(
 
         if sync:
             posthog_sync.capture(
-                distinct_id=user_id, event=event_name, properties=properties
+                distinct_id=user_id, event=event_name, properties=event_properties
             )
         else:
             posthog.capture(
-                distinct_id=user_id, event=event_name, properties=properties
+                distinct_id=user_id, event=event_name, properties=event_properties
             )
     else:
         print(
-            f"PostHog tracking disabled. Event: {event_name}, Properties: {properties}"
+            f"PostHog tracking disabled. Event: {event_name}, Properties: {event_properties}"
         )

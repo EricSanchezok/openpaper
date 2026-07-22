@@ -73,6 +73,7 @@ if settings.aliyun_dm_account_name:
         access_key_secret=settings.aliyun_dm_access_key_secret,
         account_name=settings.aliyun_dm_account_name,
         from_alias=settings.aliyun_dm_from_alias,
+        brand="OpenPaper",
     )
 
 auth_manager = UserManager(db=auth_db, email_sender=email_sender, config=auth_config)

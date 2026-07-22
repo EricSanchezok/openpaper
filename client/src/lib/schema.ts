@@ -178,8 +178,7 @@ export interface Conversation {
     title: string;
     updated_at: string;
     is_owner?: boolean;
-    owner_picture?: string;
-    owner_name?: string;
+    owner_display_name?: string;
 }
 
 
@@ -458,8 +457,7 @@ export type ProjectRole = (typeof ProjectRole)[keyof typeof ProjectRole];
 
 export interface Collaborator {
     id: string;
-    name: string;
-    picture: string;
+    display_name: string;
     email: string;
     role: ProjectRole;
 }

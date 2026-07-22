@@ -685,7 +685,7 @@ async def get_shared_pdf(
     response["highlights"] = [highlight.to_dict() for highlight in highlights]
     response["annotations"] = [annotation.to_dict() for annotation in annotations]
     response["owner"] = {
-        "name": paper.user.display_name or paper.user.email,
+        "display_name": paper.user.display_name or paper.user.email,
         "id": str(paper.user.id),
     }  # type: ignore
 

@@ -165,7 +165,8 @@ consumers are interchangeable.
 **All network access goes through `src/lib/api.ts`.** Never call `fetch` directly in a
 component. Use `fetchFromApi` for JSON, `fetchStreamFromApi` for SSE/streaming.
 
-- Auth is cookie-based: the wrapper sets `credentials: 'include'`. Don't pass tokens manually.
+- Auth uses a short-lived Bearer access token in memory and a product-scoped refresh token in
+  local storage. `fetchFromApi` attaches and rotates tokens; components must not manage tokens.
 - `Content-Type: application/json` is set automatically unless the body is `FormData`.
 - **API error contract:** the backend returns an error under one of `message`, `error`, or
   `detail`. The wrapper normalizes these into a thrown `Error`. Server code should keep using
@@ -324,9 +325,12 @@ spinner is `Loader2` + `animate-spin`; `animate-pulse` for skeleton shimmer; `an
 - **Route groups organize by layout**, not feature: `(main)` = authenticated shell,
   `(paper)` = reader, `(home)`/`(blog)`/`(legal)` = public. Put a route where its chrome
   belongs.
-- **Auth state** comes from `useAuth()` (`AuthProvider` in `lib/auth.tsx`): Google OAuth →
-  `auth_url` redirect → cookie set by backend → `/auth/callback`. Session is verified against
-  `/api/auth/me`.
+- **Auth state** comes from `useAuth()` (`AuthProvider` in `lib/auth.tsx`). Email/password
+  registration, verification, login, refresh, and password reset use the shared cloud-auth
+  endpoints under `/api/auth`. The access token stays in memory; the product-scoped refresh
+  token is persisted as `openpaper.refresh_token`, rotated under a browser lock, and shared
+  across tabs. `lib/api.ts` attaches the Bearer token and retries one 401 after rotation.
+  The product-enriched identity is loaded from `/api/me`.
 
 **Gating — `RequireAuth` at a nested `(protected)` group.** Auth is enforced once at the
 layout level, not re-implemented per page. The wrapper lives at

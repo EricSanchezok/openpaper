@@ -23,9 +23,9 @@ export default function EmptyConversationState({ owner }: EmptyConversationState
 
             {/* Improved description with owner context */}
             <p className="text-gray-600 dark:text-gray-400 mb-4 max-w-sm leading-relaxed">
-                {owner?.name ? (
+                {owner?.display_name ? (
                     <>
-                        <span className="font-medium text-gray-800 dark:text-gray-200">{owner.name}</span> hasn&apos;t started chatting with this paper yet.
+                        <span className="font-medium text-gray-800 dark:text-gray-200">{owner.display_name}</span> hasn&apos;t started chatting with this paper yet.
                     </>
                 ) : (
                     'The owner hasn&apos;t started chatting with this paper yet.'

@@ -5,22 +5,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ZoteroIntegrationCard } from "@/components/zotero";
-import { fetchFromApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Loader2 } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 function SettingsContent() {
-	const { user, loading } = useAuth();
+	const { user, loading, updateProfile } = useAuth();
 	const [name, setName] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
-		if (user?.name) {
-			setName(user.name);
+		if (user?.display_name) {
+			setName(user.display_name);
 		}
-	}, [user?.name]);
+	}, [user?.display_name]);
 
 	// Content renders after the user loads, so the browser's native hash scroll
 	// fires too early — re-run it once the anchor target exists.
@@ -40,16 +39,8 @@ function SettingsContent() {
 
 		setIsSaving(true);
 		try {
-			const data = await fetchFromApi("/api/auth/profile", {
-				method: "PATCH",
-				body: JSON.stringify({ name: trimmed }),
-			});
-			if (data.success) {
-				toast.success("Profile updated.");
-				window.location.reload();
-			} else {
-				toast.error(data.message || "Failed to update profile.");
-			}
+			await updateProfile(trimmed);
+			toast.success("Profile updated.");
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : "Failed to update profile.");
 		} finally {

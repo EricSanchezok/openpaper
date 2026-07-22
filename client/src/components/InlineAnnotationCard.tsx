@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { BasicUser } from "@/lib/auth";
 import { PaperHighlightAnnotation } from "@/lib/schema";
@@ -67,8 +67,8 @@ export function InlineAnnotationCard({
     /** Reply row (pill or expanded); used to collapse reply when clicking elsewhere on the card */
     const replySectionRef = useRef<HTMLDivElement>(null);
 
-    const displayName = user?.name || "Anonymous";
-    const avatarBg = user?.name ? getAlphaHashToBackgroundColor(user.name) : "bg-muted";
+    const displayName = user?.display_name || "Anonymous";
+    const avatarBg = user?.display_name ? getAlphaHashToBackgroundColor(user.display_name) : "bg-muted";
 
     const sortedThread = useMemo(
         () =>
@@ -282,7 +282,6 @@ export function InlineAnnotationCard({
                 <div className="p-4 flex flex-col gap-3">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9 flex-shrink-0">
-                            {user?.picture && <AvatarImage src={user.picture} alt={displayName} />}
                             <AvatarFallback
                                 className="text-xs text-white font-medium"
                                 style={{ backgroundColor: avatarBg }}
@@ -376,7 +375,6 @@ export function InlineAnnotationCard({
                                         </div>
                                     ) : (
                                         <Avatar className="h-7 w-7 flex-shrink-0">
-                                            {user?.picture && <AvatarImage src={user.picture} alt={annName} />}
                                             <AvatarFallback
                                                 className="text-[10px] text-white font-medium"
                                                 style={{ backgroundColor: avatarBg }}

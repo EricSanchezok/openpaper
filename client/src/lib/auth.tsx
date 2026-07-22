@@ -1,165 +1,233 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { ShieldX } from 'lucide-react';
-import { fetchFromApi } from './api';
+import { ShieldX } from "lucide-react";
+import {
+    createContext,
+    ReactNode,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+
+import { fetchFromApi } from "./api";
+import {
+    clearSession,
+    establishSession,
+    hasRefreshToken,
+    refreshAccessToken,
+    subscribeToSessionChanges,
+    TokenResponse,
+} from "./auth-session";
+
+export type AccountStatus = "pending_verification" | "active" | "disabled" | "locked";
 
 export interface BasicUser {
-	name: string;
-	picture: string;
-	id?: string;
+    id?: number | string;
+    display_name: string | null;
 }
 
 export interface User extends BasicUser {
-	id: string;
-	email: string;
-	is_active: boolean;
-	is_blocked: boolean;
+    id: number;
+    email: string;
+    status: AccountStatus;
+    email_verified: boolean;
+    locale: string | null;
+    is_admin: boolean;
+    is_active: boolean;
+    is_blocked: boolean;
 }
 
 interface AuthContextType {
-	user: User | null;
-	loading: boolean;
-	error: string | null;
-	login: () => Promise<void>;
-	logout: (allDevices?: boolean) => Promise<void>;
+    user: User | null;
+    loading: boolean;
+    error: string | null;
+    login: (email: string, password: string) => Promise<User>;
+    register: (email: string, password: string, displayName: string) => Promise<string>;
+    verifyEmail: (token: string) => Promise<string>;
+    resendVerification: (email: string) => Promise<string>;
+    forgotPassword: (email: string) => Promise<string>;
+    resetPassword: (token: string, newPassword: string) => Promise<string>;
+    updateProfile: (displayName: string) => Promise<User>;
+    refreshUser: () => Promise<User>;
+    logout: () => Promise<void>;
 }
-
-const AUTH_STORAGE_KEY = 'auth_user';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-	// Always initialize to null to match server render and avoid hydration mismatch.
-	// localStorage is read in the effect below for fast optimistic state.
-	const [user, setUser] = useState<User | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-	// Sync user state with localStorage whenever it changes
-	useEffect(() => {
-		if (user) {
-			localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-		} else {
-			localStorage.removeItem(AUTH_STORAGE_KEY);
-		}
-	}, [user]);
+    const loadUser = useCallback(async (): Promise<User> => {
+        const currentUser = (await fetchFromApi("/api/me")) as User;
+        setUser(currentUser);
+        setError(null);
+        return currentUser;
+    }, []);
 
-	// Check if user is logged in
-	useEffect(() => {
-		// Immediately restore cached user for fast UI update
-		const storedUser = localStorage.getItem(AUTH_STORAGE_KEY);
-		if (storedUser) {
-			try {
-				setUser(JSON.parse(storedUser));
-			} catch {
-				localStorage.removeItem(AUTH_STORAGE_KEY);
-			}
-		}
+    useEffect(() => {
+        let active = true;
+        const restore = async () => {
+            if (!hasRefreshToken()) {
+                if (active) {
+                    setUser(null);
+                    setLoading(false);
+                }
+                return;
+            }
+            try {
+                await refreshAccessToken();
+                const currentUser = await loadUser();
+                if (!active) return;
+                setUser(currentUser);
+            } catch (restoreError) {
+                if (!active) return;
+                clearSession(false);
+                setUser(null);
+                setError(restoreError instanceof Error ? restoreError.message : null);
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
 
-		async function checkAuth() {
-			try {
-				const response = await fetchFromApi('/api/auth/me');
-				if (response.success && response.user) {
-					setUser(response.user);
-				} else {
-					// Auth check failed, clear the user
-					setUser(null);
-				}
-			} catch (err) {
-				console.error('Auth check failed:', err);
-				setError('Failed to check authentication status');
-				// Also clear the user on error
-				setUser(null);
-			} finally {
-				setLoading(false);
-			}
-		}
+        void restore();
+        const unsubscribe = subscribeToSessionChanges(() => {
+            if (!hasRefreshToken()) {
+                setUser(null);
+                setLoading(false);
+                return;
+            }
+            setLoading(true);
+            void refreshAccessToken()
+                .then(loadUser)
+                .catch(() => {
+                    clearSession(false);
+                    setUser(null);
+                })
+                .finally(() => setLoading(false));
+        });
+        return () => {
+            active = false;
+            unsubscribe();
+        };
+    }, [loadUser]);
 
-		checkAuth();
-	}, []);
+    const login = useCallback(async (email: string, password: string): Promise<User> => {
+        setLoading(true);
+        setError(null);
+        try {
+            const tokens = (await fetchFromApi("/api/auth/login", {
+                method: "POST",
+                body: JSON.stringify({ email, password }),
+            })) as TokenResponse;
+            establishSession(tokens);
+            return await loadUser();
+        } catch (loginError) {
+            const message = loginError instanceof Error ? loginError.message : "Unable to sign in";
+            setError(message);
+            throw loginError;
+        } finally {
+            setLoading(false);
+        }
+    }, [loadUser]);
 
-	// Start Google login flow
-	const login = async () => {
-		try {
-			setLoading(true);
-			const response = await fetchFromApi('/api/auth/google/login');
-			if (response.auth_url) {
-				// Store the page the user was trying to reach as the post-login
-				// return location. RequireAuth redirects unauthenticated users to
-				// /login?returnTo=<path>, so prefer that param; fall back to the
-				// current path for users who opened /login directly.
-				const params = new URLSearchParams(window.location.search);
-				const returnTo = params.get('returnTo') || window.location.pathname;
-				localStorage.setItem('returnTo', returnTo);
-				// Redirect to Google OAuth
-				window.location.href = response.auth_url;
-			}
-		} catch (err) {
-			console.error('Login failed:', err);
-			setError('Failed to start login process');
-		} finally {
-			setLoading(false);
-		}
-	};
+    const register = useCallback(
+        async (email: string, password: string, displayName: string): Promise<string> => {
+            const response = await fetchFromApi("/api/auth/register", {
+                method: "POST",
+                body: JSON.stringify({ email, password, display_name: displayName }),
+            });
+            return response.message as string;
+        },
+        [],
+    );
 
-	// Logout user
-	const logout = async (allDevices = false) => {
-		try {
-			setLoading(true);
-			await fetchFromApi(`/api/auth/logout?all_devices=${allDevices}`);
-			setUser(null);
-		} catch (err) {
-			console.error('Logout failed:', err);
-			setError('Failed to logout');
-		} finally {
-			setLoading(false);
-		}
-	};
+    const messageAction = useCallback(async (endpoint: string, body: object): Promise<string> => {
+        const response = await fetchFromApi(endpoint, {
+            method: "POST",
+            body: JSON.stringify(body),
+        });
+        return response.message as string;
+    }, []);
 
-	if (!loading && user?.is_blocked) {
-		return (
-			<AuthContext.Provider value={{ user, loading, error, login, logout }}>
-				<div className="flex items-center justify-center h-screen p-4">
-					<div className="w-full max-w-lg text-center space-y-4">
-						<div className="mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 p-4 w-fit">
-							<ShieldX className="h-8 w-8 text-red-600 dark:text-red-400" />
-						</div>
-						<h1 className="text-2xl font-bold">Account Suspended</h1>
-						<p className="text-muted-foreground">
-							Your account has been flagged and suspended for suspected misconduct
-							of the platform.
-						</p>
-						<p className="text-muted-foreground">
-							If you believe this is an error, please contact us at{" "}
-							<a href="mailto:team@khoj.dev" className="text-primary hover:underline font-medium">
-								team@khoj.dev
-							</a>{" "}
-							and we will review your account.
-						</p>
-						<button
-							onClick={() => logout()}
-							className="mt-4 inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
-						>
-							Sign out
-						</button>
-					</div>
-				</div>
-			</AuthContext.Provider>
-		);
-	}
+    const updateProfile = useCallback(async (displayName: string): Promise<User> => {
+        await fetchFromApi("/api/user/profile", {
+            method: "PUT",
+            body: JSON.stringify({ display_name: displayName }),
+        });
+        return loadUser();
+    }, [loadUser]);
 
-	return (
-		<AuthContext.Provider value={{ user, loading, error, login, logout }}>
-			{children}
-		</AuthContext.Provider>
-	);
+    const logout = useCallback(async () => {
+        setLoading(true);
+        try {
+            await fetchFromApi("/api/auth/logout", { method: "POST" });
+        } catch {
+            // Local logout remains authoritative if the API is unavailable.
+        } finally {
+            clearSession();
+            setUser(null);
+            setError(null);
+            setLoading(false);
+        }
+    }, []);
+
+    const value = useMemo<AuthContextType>(() => ({
+        user,
+        loading,
+        error,
+        login,
+        register,
+        verifyEmail: (token) => messageAction("/api/auth/verify-email", { token }),
+        resendVerification: (email) => messageAction("/api/auth/resend-verification", { email }),
+        forgotPassword: (email) => messageAction("/api/auth/forgot-password", { email }),
+        resetPassword: (token, newPassword) =>
+            messageAction("/api/auth/reset-password", { token, new_password: newPassword }),
+        updateProfile,
+        refreshUser: loadUser,
+        logout,
+    }), [
+        user,
+        loading,
+        error,
+        login,
+        register,
+        messageAction,
+        updateProfile,
+        loadUser,
+        logout,
+    ]);
+
+    if (!loading && !user && error === "OpenPaper access is suspended") {
+        return (
+            <AuthContext.Provider value={value}>
+                <div className="flex h-screen items-center justify-center p-4">
+                    <div className="w-full max-w-lg space-y-4 text-center">
+                        <div className="mx-auto w-fit rounded-full bg-red-100 p-4 dark:bg-red-900/30">
+                            <ShieldX className="h-8 w-8 text-red-600 dark:text-red-400" />
+                        </div>
+                        <h1 className="text-2xl font-bold">Account suspended</h1>
+                        <p className="text-muted-foreground">
+                            OpenPaper access for this account is suspended. Contact support if you
+                            believe this is an error.
+                        </p>
+                        <button className="rounded-md border px-4 py-2" onClick={() => void logout()}>
+                            Sign out
+                        </button>
+                    </div>
+                </div>
+            </AuthContext.Provider>
+        );
+    }
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-	const context = useContext(AuthContext);
-	if (context === undefined) {
-		throw new Error('useAuth must be used within an AuthProvider');
-	}
-	return context;
+export function useAuth(): AuthContextType {
+    const context = useContext(AuthContext);
+    if (!context) throw new Error("useAuth must be used within an AuthProvider");
+    return context;
 }

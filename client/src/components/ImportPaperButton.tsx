@@ -109,7 +109,7 @@ export function ImportPaperButton() {
     }
 
     // Don't render if user is the owner
-    if (ownerInfo?.owner_id && user?.id && ownerInfo.owner_id === user.id) {
+    if (ownerInfo?.owner_id && user?.id && String(ownerInfo.owner_id) === String(user.id)) {
         return null;
     }
 

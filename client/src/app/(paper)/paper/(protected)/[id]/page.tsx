@@ -220,7 +220,6 @@ export default function PaperView() {
             preAnnotateWidthRef.current = null;
         }
     // leftPanelWidth, annotationCardsVisible intentionally excluded — only read on transition
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAnnotating, isReadMode, annotationGoesToSidePanel]);
 
     /** Tracks the last non-Read panel so we can restore it when exiting focus mode. */
@@ -237,7 +236,6 @@ export default function PaperView() {
         }
         prevRightSideRef.current = rightSideFunction;
     // annotationCardsVisible intentionally excluded — only read on transition into Read mode
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rightSideFunction]);
 
     const handleToggleReadMode = useCallback(() => {

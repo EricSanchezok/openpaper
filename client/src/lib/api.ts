@@ -1,4 +1,36 @@
+import {
+    clearSession,
+    getAccessToken,
+    hasRefreshToken,
+    refreshAccessToken,
+} from "./auth-session";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+async function requestWithAuth(endpoint: string, options: RequestInit): Promise<Response> {
+    const token = getAccessToken();
+    const headers = new Headers(options.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+    });
+
+    if (response.status !== 401 || (!token && !hasRefreshToken())) return response;
+
+    try {
+        const refreshedToken = await refreshAccessToken();
+        const retryHeaders = new Headers(options.headers);
+        retryHeaders.set("Authorization", `Bearer ${refreshedToken}`);
+        return fetch(`${API_BASE_URL}${endpoint}`, {
+            ...options,
+            headers: retryHeaders,
+        });
+    } catch {
+        clearSession();
+        return response;
+    }
+}
 
 export async function fetchFromApi(endpoint: string, options: RequestInit = {}) {
     const headers: HeadersInit = {};
@@ -8,13 +40,12 @@ export async function fetchFromApi(endpoint: string, options: RequestInit = {}) 
         headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await requestWithAuth(endpoint, {
         ...options,
         headers: {
             ...headers,
             ...options.headers,
         },
-        credentials: 'include', // Include cookies for auth
     });
 
     if (!response.ok) {
@@ -52,14 +83,13 @@ export async function fetchStreamFromApi(
     endpoint: string,
     options: RequestInit = {}
 ): Promise<ReadableStream<Uint8Array>> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await requestWithAuth(endpoint, {
         ...options,
         headers: {
             ...options.headers,
             // For SSE, we want text/event-stream instead of octet-stream
             Accept: 'text/event-stream',
         },
-        credentials: 'include', // Include cookies for auth
     });
 
     if (!response.ok) {

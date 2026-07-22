@@ -196,7 +196,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
             logger.error(f"Error touching project {project_id}: {str(e)}")
 
     def has_role(
-        self, db: Session, *, project_id: str, user_id: str, role: ProjectRoles
+        self, db: Session, *, project_id: str, user_id: int, role: ProjectRoles
     ) -> bool:
         """Check if a user has a specific role in a project."""
         project_role = (
@@ -217,7 +217,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
             db.query(ProjectRole)
             .filter(
                 ProjectRole.project_id == project_id,
-                ProjectRole.user_id == str(user.id),
+                ProjectRole.user_id == user.id,
             )
             .first()
         )
@@ -238,7 +238,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
     ) -> Optional[ProjectRole]:
         """Remove a collaborator from a specific project."""
         admin_project_role = self.has_role(
-            db, project_id=project_id, user_id=str(user.id), role=ProjectRoles.ADMIN
+            db, project_id=project_id, user_id=user.id, role=ProjectRoles.ADMIN
         )
 
         if not admin_project_role:
@@ -276,7 +276,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
             db.query(ProjectRole)
             .filter(
                 ProjectRole.project_id == project_id,
-                ProjectRole.user_id == str(user.id),
+                ProjectRole.user_id == user.id,
             )
             .first()
         )
@@ -307,7 +307,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
     ) -> Optional[ProjectRole]:
         """Change a collaborator's role in a specific project."""
         admin_project_role = self.has_role(
-            db, project_id=project_id, user_id=str(user.id), role=ProjectRoles.ADMIN
+            db, project_id=project_id, user_id=user.id, role=ProjectRoles.ADMIN
         )
 
         if not admin_project_role:

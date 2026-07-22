@@ -117,7 +117,7 @@ export function AppSidebarFooter({
                                 <SidebarMenuButton className="flex items-center gap-2">
                                     <span className="flex min-w-0 flex-1 items-center gap-2">
                                         <UserAvatar user={user} className="h-6 w-6 shrink-0" iconSize={16} />
-                                        <span className="truncate">{user.name || user.email}</span>
+                                        <span className="truncate">{user.display_name || user.email}</span>
                                     </span>
                                     <ChevronsUpDown className="h-4 w-4 shrink-0" />
                                 </SidebarMenuButton>
@@ -132,7 +132,7 @@ export function AppSidebarFooter({
                                 <SidebarMenuButton className="flex items-center gap-2">
                                     <span className="flex min-w-0 flex-1 items-center gap-2">
                                         <UserAvatar user={user} className="h-6 w-6 shrink-0" iconSize={16} />
-                                        <span className="truncate">{user.name || user.email}</span>
+                                        <span className="truncate">{user.display_name || user.email}</span>
                                     </span>
                                     <ChevronsUpDown className="h-4 w-4 shrink-0" />
                                 </SidebarMenuButton>

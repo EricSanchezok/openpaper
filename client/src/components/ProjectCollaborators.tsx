@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import {
 	Dialog,
@@ -295,12 +295,11 @@ export function ProjectCollaborators({ projectId, currentUserIsAdmin, setHasColl
 					) : (
 						<>
 							{visibleCollaborators.map((collaborator: Collaborator) => {
-								const displayName = collaborator.name || collaborator.email;
+                                const displayName = collaborator.display_name || collaborator.email;
 								return (
 								<Tooltip key={collaborator.id}>
 									<TooltipTrigger asChild>
 										<Avatar className="h-8 w-8 border-2 border-background ring-0">
-											<AvatarImage src={collaborator.picture} alt={displayName} />
 											<AvatarFallback className={`text-xs ${getAlphaHashToBackgroundColor(displayName)}`}>
 												{getInitials(displayName)}
 											</AvatarFallback>
@@ -372,12 +371,11 @@ export function ProjectCollaborators({ projectId, currentUserIsAdmin, setHasColl
 					<div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
 						{/* Active Collaborators */}
 						{collaborators.map((collaborator: Collaborator) => {
-							const displayName = collaborator.name || collaborator.email;
+                            const displayName = collaborator.display_name || collaborator.email;
 							return (
 							<div key={collaborator.id} className="flex items-center justify-between">
 								<div className="flex items-center space-x-3">
 									<Avatar className="h-9 w-9">
-										<AvatarImage src={collaborator.picture} alt={displayName} />
 										<AvatarFallback className={getAlphaHashToBackgroundColor(displayName)}>
 											{getInitials(displayName)}
 										</AvatarFallback>

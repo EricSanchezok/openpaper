@@ -101,7 +101,7 @@ async def invite_user_to_project(
         if not project_crud.has_role(
             db,
             project_id=str(project.id),
-            user_id=str(current_user.id),
+            user_id=current_user.id,
             role=ProjectRoles.ADMIN,
         ):
             return JSONResponse(

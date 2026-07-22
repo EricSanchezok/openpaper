@@ -11,7 +11,7 @@ import {
     Sun,
     User as UserIcon,
 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
     Tooltip,
@@ -23,11 +23,10 @@ import { getAlphaHashToBackgroundColor, getInitials } from "@/lib/utils";
 import { ReferralEntry } from "./referralEntry";
 
 export const UserAvatar = ({ user, className, iconSize }: { user: User, className: string, iconSize: number }) => {
-    const displayName = user.name || user.email;
+    const displayName = user.display_name || user.email;
 
     return (
         <Avatar className={className}>
-            {user.picture && <AvatarImage src={user.picture} alt={displayName || "User"} />}
             <AvatarFallback className={displayName ? getAlphaHashToBackgroundColor(displayName) : "bg-muted text-muted-foreground"}>
                 {displayName ? getInitials(displayName) : <UserIcon size={iconSize} />}
             </AvatarFallback>
@@ -54,10 +53,10 @@ export const UserMenuContent = ({
             <div className="min-w-0 flex-1">
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <h3 className="truncate font-medium">{user.name || user.email}</h3>
+                        <h3 className="truncate font-medium">{user.display_name || user.email}</h3>
                     </TooltipTrigger>
                     <TooltipContent side="top" align="start" className="max-w-72 break-words text-left">
-                        {user.name || user.email}
+                        {user.display_name || user.email}
                     </TooltipContent>
                 </Tooltip>
                 <Tooltip>
