@@ -11,6 +11,7 @@ from app.database.crud.paper_image_crud import paper_image_crud
 from app.database.crud.paper_tag_crud import paper_tag_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
+    AuthUser,
     Highlight,
     JobStatus,
     Paper,
@@ -19,7 +20,6 @@ from app.database.models import (
     PaperTag,
     PaperUploadJob,
     RoleType,
-    User,
 )
 from app.helpers.paper_search import normalize_doi
 from app.helpers.parser import get_start_page_from_offset
@@ -242,8 +242,8 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         """Get a paper by its share_id if it's public"""
         return (
             db.query(Paper)
-            .join(User, Paper.user_id == User.id)
-            .filter(Paper.share_id == share_id, Paper.is_public == True)
+            .join(AuthUser, Paper.user_id == AuthUser.id)
+            .filter(Paper.share_id == share_id, Paper.is_public.is_(True))
             .first()
         )
 
@@ -499,11 +499,18 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         if not user_id:
             raise ValueError(f"User for paper with ID {paper_id} not found")
 
-        user = db.query(User).filter(User.id == user_id[0]).first()
+        user = db.query(AuthUser).filter(AuthUser.id == user_id[0]).first()
         if not user:
             raise ValueError(f"User for paper with ID {paper_id} not found")
 
-        current_user = CurrentUser(id=user.id, email=user.email)
+        current_user = CurrentUser(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            status=user.status,
+            email_verified=user.email_verified_at is not None,
+            is_active=user.status == "active" and user.deleted_at is None,
+        )
 
         # Call the original method with the created user
         return self.get_summary_replace_image_placeholders(
@@ -788,7 +795,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         return forked_paper
 
     def get_by_doi_for_user(
-        self, db: Session, *, user_id: uuid.UUID, doi: str
+        self, db: Session, *, user_id: int, doi: str
     ) -> Optional[Paper]:
         """Return the user's paper with a matching normalized DOI, if any."""
         normalized = normalize_doi(doi)

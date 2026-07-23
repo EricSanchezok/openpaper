@@ -171,7 +171,7 @@ export function OPOnboarding() {
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			name: user?.name,
+            name: user?.display_name || "",
 			email: "",
 			company: "",
 			researchFields: [],

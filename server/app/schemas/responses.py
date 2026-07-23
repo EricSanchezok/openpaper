@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 from app.database.models import HighlightType

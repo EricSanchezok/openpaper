@@ -48,7 +48,7 @@ import { toast } from "sonner";
 import { fetchFromApi, fetchStreamFromApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useSubscription, getChatCreditUsagePercentage, isChatCreditAtLimit, isChatCreditNearLimit } from '@/hooks/useSubscription';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Avatar, AvatarFallback } from './ui/avatar';
 import { getAlphaHashToBackgroundColor, getInitials } from '@/lib/utils';
 
 
@@ -668,9 +668,8 @@ export function SidePanelContent({
                 {
                     msg.role === 'user' && user && (
                         <Avatar className="h-6 w-6">
-                            <AvatarImage src={user.picture} alt={user.name || user.email} />
-                            <AvatarFallback className={getAlphaHashToBackgroundColor(user.name || user.email)}>
-                                {getInitials(user.name || user.email)}
+                            <AvatarFallback className={getAlphaHashToBackgroundColor(user.display_name || user.email)}>
+                                {getInitials(user.display_name || user.email)}
                             </AvatarFallback>
                         </Avatar>
                     )

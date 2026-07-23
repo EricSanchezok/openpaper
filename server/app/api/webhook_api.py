@@ -24,7 +24,7 @@ from app.database.crud.projects.project_data_table_crud import (
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.crud.referral_crud import referral_crud
 from app.database.crud.subscription_crud import subscription_crud
-from app.database.crud.user_crud import user as user_crud
+from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal, engine, get_db
@@ -363,8 +363,13 @@ async def handle_paper_processing_webhook(
     job_user: CurrentUser = CurrentUser(
         id=user.id,
         email=user.email,
-        name=user.name,
-        is_admin=user.is_admin,
+        display_name=user.display_name,
+        status=user.status,
+        email_verified=user.email_verified_at is not None,
+        locale=user.profile.locale if user.profile else None,
+        is_admin=bool(user.profile and user.profile.is_admin),
+        is_blocked=bool(user.profile and user.profile.is_blocked),
+        is_active=user.status == "active" and user.deleted_at is None,
     )
 
     # Serialize concurrent/duplicate deliveries for the same job. Celery retries
@@ -850,12 +855,12 @@ async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
         # Already settled, refunded inside the hold window, or fraud-rejected.
         return {"success": True, "status": str(referral.status), "no_op": True}
 
-    referrer = user_crud.get(db, id=referral.referrer_user_id)
+    referrer = user_repository.get(db, id=referral.referrer_user_id)
     if referrer is None:
         logger.error(f"Referrer {referral.referrer_user_id} missing during settlement")
         raise HTTPException(status_code=500, detail="Referrer not found")
 
-    sub = subscription_crud.get_by_user_id(db, uuid.UUID(str(referrer.id)))
+    sub = subscription_crud.get_by_user_id(db, referrer.id)
     customer_id: Optional[str] = (
         str(sub.stripe_customer_id) if sub and sub.stripe_customer_id else None
     )
@@ -866,7 +871,7 @@ async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
         try:
             customer = stripe.Customer.create(
                 email=str(referrer.email),
-                name=str(referrer.name) if referrer.name else str(referrer.email),
+                name=str(referrer.display_name or referrer.email),
                 metadata={"user_id": str(referrer.id)},
             )
         except Exception as e:
@@ -879,7 +884,7 @@ async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
         customer_id = customer.id
         subscription_crud.create_or_update(
             db,
-            uuid.UUID(str(referrer.id)),
+            referrer.id,
             {"stripe_customer_id": customer_id},
         )
 
@@ -956,7 +961,7 @@ async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db
     results = []
     skipped = []
     for user_id in user_ids:
-        user = user_crud.get(db, id=user_id)
+        user = user_repository.get(db, id=user_id)
         if not user:
             logger.info(f"Skipping Zotero auto-sync for {user_id}: user not found")
             skipped.append({"user_id": str(user_id), "reason": "user_not_found"})

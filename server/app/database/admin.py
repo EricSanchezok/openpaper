@@ -1,9 +1,7 @@
 import logging
 import os
 
-from app.auth.dependencies import SESSION_COOKIE_NAME
-from app.database.crud.user_crud import user as user_crud
-from app.database.database import aget_db, engine
+from app.database.database import engine
 from app.database.models import (
     Annotation,
     Conversation,
@@ -22,78 +20,49 @@ from app.database.models import (
     Referral,
     ReferralCode,
     Subscription,
-    User,
+    AuthUser,
+    UserProfile,
     ZoteroConnection,
     ZoteroImportedItem,
     ZoteroOAuthPending,
 )
 from fastapi import FastAPI, Request
-from sqladmin import Admin, ModelView, action
+from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
-from starlette.requests import Request as StarletteRequest
-from starlette.responses import RedirectResponse as StarletteRedirect
 
 logger = logging.getLogger(__name__)
 
 
-class UserAdmin(ModelView, model=User):
+class AuthUserAdmin(ModelView, model=AuthUser):
+    name = "Cloud Auth User"
+    name_plural = "Cloud Auth Users"
     column_list = [
-        User.id,
-        User.email,
-        User.name,
-        User.is_active,
-        User.is_admin,
-        User.is_blocked,
+        AuthUser.id,
+        AuthUser.email,
+        AuthUser.display_name,
+        AuthUser.status,
+        AuthUser.email_verified_at,
+        AuthUser.created_at,
     ]
-    column_searchable_list = [User.email, User.name]
+    column_searchable_list = [AuthUser.email, AuthUser.display_name]
+    can_create = False
+    can_edit = False
+    can_delete = False
 
-    @action(
-        name="block_users",
-        label="Block selected users",
-        confirmation_message="Are you sure you want to block the selected users? "
-        "They will be notified by email.",
-        add_in_detail=True,
-        add_in_list=True,
-    )
-    async def action_block_users(self, request: StarletteRequest):
-        pks = request.query_params.get("pks", "")
-        pk_list = [pk.strip() for pk in pks.split(",") if pk.strip()]
 
-        async with aget_db() as db:
-            for pk in pk_list:
-                user_obj = db.query(User).get(pk)
-                if user_obj and not user_obj.is_blocked:
-                    user_crud.set_blocked(db, user=user_obj, blocked=True)
-            db.commit()
-
-        referer = request.headers.get("referer", "/admin/user/list")
-        return StarletteRedirect(referer)
-
-    @action(
-        name="unblock_users",
-        label="Unblock selected users",
-        confirmation_message="Are you sure you want to unblock the selected users?",
-        add_in_detail=True,
-        add_in_list=True,
-    )
-    async def action_unblock_users(self, request: StarletteRequest):
-        pks = request.query_params.get("pks", "")
-        pk_list = [pk.strip() for pk in pks.split(",") if pk.strip()]
-
-        async with aget_db() as db:
-            for pk in pk_list:
-                user_obj = db.query(User).get(pk)
-                if user_obj and user_obj.is_blocked:
-                    user_crud.set_blocked(db, user=user_obj, blocked=False)
-            db.commit()
-
-        referer = request.headers.get("referer", "/admin/user/list")
-        return StarletteRedirect(referer)
-
-    async def after_model_change(self, data, model, is_created, request):
-        """Send notification email when a user is blocked via edit form."""
-        if not is_created and getattr(model, "is_blocked", False):
-            user_crud.send_block_notification(model)
+class UserProfileAdmin(ModelView, model=UserProfile):
+    name = "OpenPaper User Profile"
+    name_plural = "OpenPaper User Profiles"
+    column_list = [
+        UserProfile.user_id,
+        UserProfile.locale,
+        UserProfile.is_admin,
+        UserProfile.is_blocked,
+        UserProfile.created_at,
+    ]
+    column_searchable_list = [UserProfile.user_id, UserProfile.locale]
+    can_create = False
+    can_delete = False
 
 
 class OnboardingAdmin(ModelView, model=Onboarding):
@@ -410,77 +379,31 @@ class ZoteroOAuthPendingAdmin(ModelView, model=ZoteroOAuthPending):
 
 
 class AdminAuthenticationBackend(AuthenticationBackend):
-    super_password = os.getenv("SUPER_PASSWORD", "admin")
+    super_password = os.getenv("SUPER_PASSWORD", "")
     root_email = os.getenv("ROOT_EMAIL", None)
 
     async def login(self, request: Request) -> bool:
         form = await request.form()
         username, password = form.get("username"), form.get("password")
 
-        # Use async with to handle the database session
-        async with aget_db() as database:
-            # Validate username/password
-            db_user = user_crud.get_by_email(db=database, email=username)
-
-            if not db_user:
-                return False
-
-            if not db_user.is_admin:
-                if self.root_email and db_user.email != self.root_email:
-                    return False
-                if not self.root_email:
-                    return False
-
-            # Check password
-            if password != self.super_password:
-                return False
-
-            # If everything is ok, set the session
-            user_agent = request.headers.get("user-agent")
-            client_host = request.client.host if request.client else "unknown"
-
-            session = user_crud.create_session(
-                db=database,
-                user_id=db_user.id,
-                user_agent=user_agent,
-                ip_address=client_host,
-            )
-
-            # Set the session token in the request session
-            request.session[SESSION_COOKIE_NAME] = session.token
-
-            print(f"User {username} logged in to admin page.")
-
-            return True
+        if not self.root_email or not self.super_password:
+            logger.error("ROOT_EMAIL and SUPER_PASSWORD must be configured for /admin")
+            return False
+        if username != self.root_email or password != self.super_password:
+            return False
+        request.session["admin_email"] = self.root_email
+        return True
 
     async def logout(self, request: Request) -> bool:
-        # Clear the session cookie
-        token = request.session.get(SESSION_COOKIE_NAME)
-        if token:
-            async with aget_db() as database:
-                user_crud.revoke_session(db=database, token=token)
-
         request.session.clear()
         return True
 
     async def authenticate(self, request: Request) -> bool:
-        token = request.session.get(SESSION_COOKIE_NAME)
-
-        async with aget_db() as database:
-
-            db_session = user_crud.get_by_token(db=database, token=token)
-            if not db_session:
-                return False
-
-            if not db_session.user.is_admin:
-                if self.root_email and db_session.user.email != self.root_email:
-                    return False
-                if not self.root_email:
-                    return False
-
-            return True
-
-        return False
+        return bool(
+            self.root_email
+            and self.super_password
+            and request.session.get("admin_email") == self.root_email
+        )
 
 
 def setup_admin(app: FastAPI):
@@ -491,7 +414,8 @@ def setup_admin(app: FastAPI):
         authentication_backend=AdminAuthenticationBackend(secret_key=secret_key),
     )
 
-    admin.add_view(UserAdmin)
+    admin.add_view(AuthUserAdmin)
+    admin.add_view(UserProfileAdmin)
     admin.add_view(OnboardingAdmin)
     admin.add_view(PaperAdmin)
     admin.add_view(HighlightAdmin)

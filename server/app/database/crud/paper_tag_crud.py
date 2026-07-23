@@ -2,7 +2,7 @@ import uuid
 from typing import List, Optional
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Paper, PaperTag, PaperTagAssociation, User
+from app.database.models import Paper, PaperTag, PaperTagAssociation
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -55,7 +55,7 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         db: Session,
         *,
         name: str,
-        user_id: uuid.UUID,
+        user_id: int,
         commit: bool = True,
     ) -> Optional[PaperTag]:
         """Return the user's tag matching ``name`` (case-insensitive, trimmed),
@@ -97,7 +97,7 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         *,
         paper_id: uuid.UUID,
         keywords: List[str],
-        user_id: uuid.UUID,
+        user_id: int,
         commit: bool = True,
     ) -> int:
         """Turn a paper's extracted keywords into user tags and attach them.

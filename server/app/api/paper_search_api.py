@@ -1,6 +1,5 @@
 import logging
-from enum import Enum
-from typing import Optional, cast
+from typing import Optional
 
 from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.paper_crud import PaperUpdate, paper_crud

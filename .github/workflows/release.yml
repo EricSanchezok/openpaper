@@ -1,0 +1,279 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Publish images, publish and deploy, or roll back production
+        required: true
+        type: choice
+        options: [publish, deploy, rollback]
+      ref:
+        description: Git commit or tag to publish
+        required: false
+        default: master
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: openpaper-production-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: inputs.operation != 'rollback'
+    runs-on: ubuntu-latest
+    outputs:
+      release_sha: ${{ steps.revision.outputs.release_sha }}
+      package_sha: ${{ steps.package.outputs.package_sha }}
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Resolve immutable revision
+        id: revision
+        run: echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Resolve production package digest
+        id: package
+        run: echo "package_sha=$(bash deploy/production/release.sh package-sha)" >> "$GITHUB_OUTPUT"
+      - name: Require revision to be merged into master
+        env:
+          RELEASE_SHA: ${{ steps.revision.outputs.release_sha }}
+        run: git merge-base --is-ancestor "$RELEASE_SHA" origin/master
+
+  quality:
+    if: inputs.operation != 'rollback'
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.release_sha }}
+    secrets:
+      CLOUD_AUTH_READ_TOKEN: ${{ secrets.CLOUD_AUTH_READ_TOKEN }}
+
+  publish-api:
+    if: inputs.operation != 'rollback'
+    needs: [prepare, quality]
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          persist-credentials: false
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and push API
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: ${{ vars.PRODUCTION_PLATFORM }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_API_REPOSITORY }}:git-${{ needs.prepare.outputs.release_sha }}
+          provenance: mode=max
+          sbom: true
+          secrets: |
+            github_token=${{ secrets.CLOUD_AUTH_READ_TOKEN }}
+      - name: Export API reference
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "reference=${REGISTRY}/${REPOSITORY}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  publish-client:
+    if: inputs.operation != 'rollback'
+    needs: [prepare, quality]
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          persist-credentials: false
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and push client
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: client/Dockerfile
+          platforms: ${{ vars.PRODUCTION_PLATFORM }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_CLIENT_REPOSITORY }}:git-${{ needs.prepare.outputs.release_sha }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_POSTHOG_KEY=${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
+            NEXT_PUBLIC_POSTHOG_HOST=${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+      - name: Export client reference
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_CLIENT_REPOSITORY }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "reference=${REGISTRY}/${REPOSITORY}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  publish-jobs:
+    if: inputs.operation != 'rollback'
+    needs: [prepare, quality]
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          persist-credentials: false
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and push jobs
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: jobs/Dockerfile
+          platforms: ${{ vars.PRODUCTION_PLATFORM }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_JOBS_REPOSITORY }}:git-${{ needs.prepare.outputs.release_sha }}
+          provenance: mode=max
+          sbom: true
+      - name: Export jobs reference
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_JOBS_REPOSITORY }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "reference=${REGISTRY}/${REPOSITORY}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  release-manifest:
+    if: inputs.operation != 'rollback'
+    needs: [prepare, publish-api, publish-client, publish-jobs]
+    runs-on: ubuntu-latest
+    outputs:
+      api_image: ${{ needs.publish-api.outputs.image }}
+      client_image: ${{ needs.publish-client.outputs.image }}
+      jobs_image: ${{ needs.publish-jobs.outputs.image }}
+    steps:
+      - name: Create release manifest
+        env:
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+          PACKAGE_SHA: ${{ needs.prepare.outputs.package_sha }}
+          API_IMAGE: ${{ needs.publish-api.outputs.image }}
+          CLIENT_IMAGE: ${{ needs.publish-client.outputs.image }}
+          JOBS_IMAGE: ${{ needs.publish-jobs.outputs.image }}
+        run: |
+          {
+            echo 'OPENPAPER_RELEASE_CONTRACT_VERSION=1'
+            echo "OPENPAPER_PACKAGE_SHA=${PACKAGE_SHA}"
+            echo "OPENPAPER_RELEASE_SHA=${RELEASE_SHA}"
+            echo "OPENPAPER_API_IMAGE=${API_IMAGE}"
+            echo "OPENPAPER_CLIENT_IMAGE=${CLIENT_IMAGE}"
+            echo "OPENPAPER_JOBS_IMAGE=${JOBS_IMAGE}"
+          } > release.env
+      - name: Upload release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openpaper-release-${{ needs.prepare.outputs.release_sha }}
+          path: release.env
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    if: inputs.operation == 'deploy'
+    needs: [prepare, release-manifest]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          persist-credentials: false
+      - name: Configure AWS deployment credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy through Systems Manager
+        env:
+          INSTANCE_ID: ${{ vars.PRODUCTION_INSTANCE_ID }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+          PACKAGE_SHA: ${{ needs.prepare.outputs.package_sha }}
+          API_IMAGE: ${{ needs.release-manifest.outputs.api_image }}
+          CLIENT_IMAGE: ${{ needs.release-manifest.outputs.client_image }}
+          JOBS_IMAGE: ${{ needs.release-manifest.outputs.jobs_image }}
+        run: |
+          command=$(printf 'sudo /opt/openpaper/release.sh deploy --contract-version 1 --package-sha %q --release-sha %q --api-image %q --client-image %q --jobs-image %q' \
+            "$PACKAGE_SHA" "$RELEASE_SHA" "$API_IMAGE" "$CLIENT_IMAGE" "$JOBS_IMAGE")
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters "commands=[\"$command\"]" \
+            --query 'Command.CommandId' --output text)
+          bash deploy/production/wait-ssm.sh "$command_id" "$INSTANCE_ID"
+
+  rollback:
+    if: inputs.operation == 'rollback'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Configure AWS deployment credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Roll back through Systems Manager
+        env:
+          INSTANCE_ID: ${{ vars.PRODUCTION_INSTANCE_ID }}
+        run: |
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["sudo /opt/openpaper/release.sh rollback"]' \
+            --query 'Command.CommandId' --output text)
+          bash deploy/production/wait-ssm.sh "$command_id" "$INSTANCE_ID"

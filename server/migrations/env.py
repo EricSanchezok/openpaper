@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from app.database.config import Settings
 from app.database.models import Base
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -26,7 +26,7 @@ if config.config_file_name is not None:
 
 # Set the database URL in the Alembic config
 settings = Settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -71,10 +71,22 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        connection.execute(text("SELECT pg_advisory_lock(hashtext('openpaper-migrations'))"))
+        # Session-level advisory locks survive commits. End SQLAlchemy's implicit
+        # transaction so historical migrations can enter Alembic autocommit blocks.
+        connection.commit()
+        try:
+            context.configure(connection=connection, target_metadata=target_metadata)
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+        finally:
+            if connection.in_transaction():
+                connection.rollback()
+            connection.execute(
+                text("SELECT pg_advisory_unlock(hashtext('openpaper-migrations'))")
+            )
+            connection.commit()
 
 
 if context.is_offline_mode():

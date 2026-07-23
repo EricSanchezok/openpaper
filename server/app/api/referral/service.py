@@ -2,18 +2,16 @@
 
 import logging
 import os
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import stripe
 from app.database.crud.referral_crud import referral_code_crud, referral_crud
-from app.database.crud.user_crud import user as user_crud
+from app.database.crud.user_repository import user_repository
 from app.database.models import (
+    AuthUser,
     Referral,
     ReferralAttributionMethod,
-    ReferralStatus,
-    User,
 )
 from app.database.telemetry import track_event
 from app.helpers.abuse_detection import check_referral_fraud
@@ -51,7 +49,7 @@ def build_share_url(code: str) -> str:
     return f"{CLIENT_DOMAIN}/?r={code}"
 
 
-def get_summary_payload(db: Session, user: User) -> dict:
+def get_summary_payload(db: Session, user: AuthUser) -> dict:
     code, newly_created = referral_code_crud.get_or_create_for_user(db, user.id)  # type: ignore[arg-type]
     if newly_created:
         track_event(
@@ -70,7 +68,7 @@ def get_summary_payload(db: Session, user: User) -> dict:
         "referee_discount_percent": REFEREE_DISCOUNT_PERCENT,
         "credit_hold_days": credit_hold_days,
         "summary": summary,
-        "toast_seen": user.referral_toast_seen_at is not None,
+        "toast_seen": bool(user.profile and user.profile.referral_toast_seen_at),
     }
 
 
@@ -112,7 +110,7 @@ def _create_referee_coupon(referral: Referral) -> Optional[str]:
 def attribute_referral(
     db: Session,
     *,
-    referee: User,
+    referee: AuthUser,
     code: str,
     attribution_method: ReferralAttributionMethod,
 ) -> Optional[Referral]:
@@ -143,7 +141,7 @@ def attribute_referral(
     if referral_code is None:
         raise ReferralAttributionError("Unknown referral code")
 
-    referrer = user_crud.get(db, id=referral_code.user_id)
+    referrer = user_repository.get(db, id=referral_code.user_id)
     if referrer is None:
         raise ReferralAttributionError("Referrer no longer exists")
 
@@ -156,8 +154,8 @@ def attribute_referral(
 
     referral = referral_crud.create_attribution(
         db,
-        referrer_user_id=uuid.UUID(str(referrer.id)),
-        referee_user_id=uuid.UUID(str(referee.id)),
+        referrer_user_id=referrer.id,
+        referee_user_id=referee.id,
         code_used=code,
         attribution_method=attribution_method,
     )
@@ -171,7 +169,7 @@ def attribute_referral(
     return referral
 
 
-def handle_referee_converted(db: Session, referee_user_id: uuid.UUID) -> None:
+def handle_referee_converted(db: Session, referee_user_id: int) -> None:
     """
     Called from the Stripe subscription webhook when a user converts to a paid
     plan. If the user has an attributed referral, runs the second-pass fraud
@@ -184,8 +182,8 @@ def handle_referee_converted(db: Session, referee_user_id: uuid.UUID) -> None:
     if referral is None:
         return
 
-    referrer = user_crud.get(db, id=referral.referrer_user_id)
-    referee = user_crud.get(db, id=referee_user_id)
+    referrer = user_repository.get(db, id=referral.referrer_user_id)
+    referee = user_repository.get(db, id=referee_user_id)
     if referrer is None or referee is None:
         logger.error(f"Could not load referrer/referee for referral {referral.id}")
         return
@@ -219,7 +217,7 @@ def handle_referee_converted(db: Session, referee_user_id: uuid.UUID) -> None:
     except Exception as e:
         logger.error(f"Failed to send referral_converted email: {e}", exc_info=True)
 
-    summary = referral_crud.get_summary_for_referrer(db, uuid.UUID(str(referrer.id)))
+    summary = referral_crud.get_summary_for_referrer(db, referrer.id)
     if summary["pending_cents"] + summary["available_cents"] >= REVIEW_THRESHOLD_CENTS:
         send_referral_threshold_alert(
             referrer_email=str(referrer.email),
@@ -240,7 +238,7 @@ def handle_referee_converted(db: Session, referee_user_id: uuid.UUID) -> None:
 
 
 def get_active_attributed_referral(
-    db: Session, referee_user_id: uuid.UUID
+    db: Session, referee_user_id: int
 ) -> Optional[Referral]:
     """
     Return the referee's attributed (un-converted) referral if it's still

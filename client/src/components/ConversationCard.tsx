@@ -1,7 +1,7 @@
 "use client";
 
 import { Conversation } from "@/lib/schema";
-import { formatDate, getInitials } from "@/lib/utils";
+import { formatDate, getAlphaHashToBackgroundColor, getInitials } from "@/lib/utils";
 import { ArrowRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -15,9 +15,8 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Button } from "./ui/button";
-import { getAlphaHashToBackgroundColor } from "@/lib/utils";
 
 interface ConversationCardProps {
 	convo: Conversation;
@@ -50,12 +49,11 @@ export default function ConversationCard({ convo, href, onDelete, showAvatar = t
 					className="group flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-accent"
 				>
 					<span className="min-w-0 flex-1 truncate text-sm">{convo.title}</span>
-					{showAvatar && convo.owner_name && (
+                    {showAvatar && convo.owner_display_name && (
 						<Avatar className="size-5 shrink-0">
-							<AvatarImage src={convo.owner_picture} />
 							<AvatarFallback
-								className={`${getAlphaHashToBackgroundColor(convo.owner_name)} text-[9px]`}>
-								{getInitials(convo.owner_name)}
+                                className={`${getAlphaHashToBackgroundColor(convo.owner_display_name)} text-[9px]`}>
+                                {getInitials(convo.owner_display_name)}
 							</AvatarFallback>
 						</Avatar>
 					)}
@@ -105,14 +103,13 @@ export default function ConversationCard({ convo, href, onDelete, showAvatar = t
 						</p>
 					</div>
 					<div className="flex flex-col items-end">
-						{showAvatar && convo.owner_name && (
+                        {showAvatar && convo.owner_display_name && (
 							<Avatar className="size-6 mb-2">
-								<AvatarImage src={convo.owner_picture} />
 								<AvatarFallback
 									className={`${getAlphaHashToBackgroundColor(
-										convo.owner_name,
+                                        convo.owner_display_name,
 									)} text-xs`}>
-									{getInitials(convo.owner_name)}
+                                    {getInitials(convo.owner_display_name)}
 								</AvatarFallback>
 							</Avatar>
 						)}

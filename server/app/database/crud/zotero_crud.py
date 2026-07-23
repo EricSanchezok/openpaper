@@ -1,6 +1,5 @@
 import datetime
 from typing import Optional
-from uuid import UUID
 
 from app.database.models import ZoteroConnection, ZoteroOAuthPending
 from sqlalchemy.orm import Session
@@ -13,7 +12,7 @@ class CRUDZotero:
         self,
         db: Session,
         *,
-        user_id: UUID,
+        user_id: int,
         oauth_token: str,
         oauth_token_secret: str,
     ) -> ZoteroOAuthPending:
@@ -44,7 +43,7 @@ class CRUDZotero:
         db.delete(pending)
         db.commit()
 
-    def delete_pending_for_user(self, db: Session, *, user_id: UUID) -> None:
+    def delete_pending_for_user(self, db: Session, *, user_id: int) -> None:
         db.query(ZoteroOAuthPending).filter(
             ZoteroOAuthPending.user_id == user_id
         ).delete()
@@ -54,7 +53,7 @@ class CRUDZotero:
         self,
         db: Session,
         *,
-        user_id: UUID,
+        user_id: int,
         zotero_user_id: str,
         api_key: str,
     ) -> ZoteroConnection:
@@ -78,7 +77,7 @@ class CRUDZotero:
         return db_obj
 
     def get_by_user_id(
-        self, db: Session, *, user_id: UUID
+        self, db: Session, *, user_id: int
     ) -> Optional[ZoteroConnection]:
         return (
             db.query(ZoteroConnection)
@@ -86,7 +85,7 @@ class CRUDZotero:
             .first()
         )
 
-    def delete_by_user_id(self, db: Session, *, user_id: UUID) -> bool:
+    def delete_by_user_id(self, db: Session, *, user_id: int) -> bool:
         connection = self.get_by_user_id(db, user_id=user_id)
         if not connection:
             return False

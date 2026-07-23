@@ -1,6 +1,7 @@
 "use client"
 
 import { ExternalLink } from "lucide-react"
+import Image from "next/image"
 
 export interface DiscoverResult {
     title: string
@@ -79,9 +80,12 @@ export default function DiscoverResultCard({ result }: DiscoverResultCardProps) 
                     className="font-medium text-sm hover:underline flex items-start gap-1.5"
                 >
                     {result.favicon && (
-                        <img
+                        <Image
                             src={result.favicon}
                             alt=""
+                            width={16}
+                            height={16}
+                            unoptimized
                             className="h-4 w-4 mt-0.5 flex-shrink-0 rounded-sm"
                         />
                     )}

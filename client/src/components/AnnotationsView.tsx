@@ -403,15 +403,12 @@ export function AnnotationsView({
 												<div className={`w-8 h-8 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center ${isAI ? 'bg-blue-100 dark:bg-blue-900' : 'bg-muted'}`}>
 													{isAI ? (
 														<File size={14} className="text-blue-500" />
-													) : user?.picture ? (
-														// eslint-disable-next-line @next/next/no-img-element
-														<img src={user.picture} alt={user.name} className="w-full h-full object-cover" />
-													) : (
+                                                    ) : (
 														<UserIcon size={14} className="text-muted-foreground" />
 													)}
 												</div>
 												<span className="text-sm font-medium text-foreground">
-													{isAI ? 'Open Paper' : user?.name || 'User'}
+                                                    {isAI ? 'Open Paper' : user?.display_name || 'User'}
 												</span>
 												<span className="text-xs text-muted-foreground">
 													{formatAnnotationDate(annotation.created_at)}

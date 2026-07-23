@@ -1,5 +1,4 @@
 # filepath: annotated-paper/server/gunicorn.conf.py
-import multiprocessing
 import os
 
 # Bind address and port
@@ -9,7 +8,7 @@ bind = f"0.0.0.0:{port}"
 
 # Number of worker processes
 # Recommended: (2 * number of CPU cores) + 1
-workers = (multiprocessing.cpu_count() * 2) + 1
+workers = int(os.getenv("WEB_CONCURRENCY", "2"))
 
 # Worker class for ASGI applications (FastAPI)
 worker_class = "uvicorn.workers.UvicornWorker"
@@ -35,5 +34,5 @@ threads = 1  # Number of threads per worker (Uvicorn handles concurrency well, o
 # raw_env = ["VAR1=value1", "VAR2=value2"]
 
 # Forwarded headers (if behind a proxy like Nginx)
-forwarded_allow_ips = "*"  # Trust all proxies, adjust if needed
+forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1")
 proxy_headers = True  # Enable reading proxy headers (X-Forwarded-For, etc.)

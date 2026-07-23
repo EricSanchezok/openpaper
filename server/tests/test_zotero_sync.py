@@ -1,10 +1,8 @@
 import json
 import unittest
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-from app.database.models import ZoteroImportSource, ZoteroImportStatus
 from app.services import zotero_import as zotero_import_module
 from app.services.zotero_import import (
     _normalize_payload_item,

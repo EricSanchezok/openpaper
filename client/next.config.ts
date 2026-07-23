@@ -3,10 +3,11 @@ import createMDX from '@next/mdx'
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    output: 'standalone' as const,
     // Configure `pageExtensions` to include markdown and MDX files
     pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
     // Enable source maps in production for error tracking
-    productionBrowserSourceMaps: true,
+    productionBrowserSourceMaps: process.env.UPLOAD_SOURCE_MAPS === 'true',
     // Transpile packages that import CSS from node_modules
     transpilePackages: ['react-pdf-highlighter-extended', 'pdfjs-dist'],
     // Add image remote patterns configuration
@@ -24,12 +25,6 @@ const nextConfig = {
                 port: '',
                 pathname: '/**',
             },
-            {
-                protocol: 'https' as const,
-                hostname: 'lh3.googleusercontent.com',
-                port: '',
-                pathname: '/**',
-            }
         ],
     },
 }

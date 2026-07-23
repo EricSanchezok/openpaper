@@ -184,8 +184,7 @@ export default function SharedPaperView() {
                 {
                     msg.role === 'user' && owner && (
                         <Avatar className="h-6 w-6">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            {owner.picture ? (<img src={owner.picture} alt={owner.name} />) : (<User size={16} />)}
+                            <User size={16} />
                         </Avatar>
                     )
                 }

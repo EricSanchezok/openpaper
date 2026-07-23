@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.paper_image_crud import paper_image_crud

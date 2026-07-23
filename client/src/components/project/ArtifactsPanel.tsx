@@ -242,7 +242,6 @@ export function ArtifactsPanel() {
         return () => {
             stopPolling();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId]);
 
     const pollAudioData = useCallback(async () => {

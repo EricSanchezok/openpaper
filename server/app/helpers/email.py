@@ -235,7 +235,7 @@ def send_profile_email(
             "from": "Open Paper <support@updates.openpaper.ai>",
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": "saba@openpaper.ai",
-            "subject": f"OP Onboarding",
+            "subject": "OP Onboarding",
             "html": html_content,
         }
 
@@ -269,7 +269,7 @@ def send_general_invite_email(
         )
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": f"Open Paper <noreply@updates.openpaper.ai>",
+            "from": "Open Paper <noreply@updates.openpaper.ai>",
             "to": to_email,
             "subject": subject,
             "html": html_content,
@@ -310,7 +310,7 @@ def send_project_invite_email(
         )
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": f"Open Paper <noreply@updates.openpaper.ai>",
+            "from": "Open Paper <noreply@updates.openpaper.ai>",
             "to": to_email,
             "subject": subject,
             "html": html_content,

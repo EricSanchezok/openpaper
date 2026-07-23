@@ -101,7 +101,7 @@ async def invite_user_to_project(
         if not project_crud.has_role(
             db,
             project_id=str(project.id),
-            user_id=str(current_user.id),
+            user_id=current_user.id,
             role=ProjectRoles.ADMIN,
         ):
             return JSONResponse(
@@ -270,7 +270,7 @@ async def reject_invitation(
         logger.error(f"Error rejecting invitation: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to reject invitation"},
+            content={"message": "Failed to reject invitation"},
         )
 
 

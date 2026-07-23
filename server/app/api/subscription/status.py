@@ -86,7 +86,7 @@ async def get_user_subscription(
                         period_start=period_start,
                         period_end=period_end,
                     )
-            except Exception as e:
+            except Exception:
                 # Log error but continue with local data
                 pass
 

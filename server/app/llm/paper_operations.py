@@ -1,11 +1,13 @@
 import logging
-import re
 import uuid
 from typing import AsyncGenerator, Literal, Optional, Sequence, Union
 
 import httpx
+from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
+from app.database.database import get_db
 from app.database.models import Paper
+from app.helpers.s3 import s3_service
 from app.llm.base import BaseLLMClient, ModelType
 from app.llm.citation_handler import CitationHandler
 from app.llm.json_parser import JSONParser
@@ -26,10 +28,6 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-from app.database.crud.message_crud import message_crud
-from app.database.database import get_db
-from app.helpers.s3 import s3_service
 
 
 class PaperOperations(BaseLLMClient):

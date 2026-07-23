@@ -1,17 +1,16 @@
 import logging
 
 from app.auth.dependencies import get_required_user
+from app.auth.runtime import auth_manager
 from app.database.crud.onboarding_crud import OnboardingCreate, onboarding_crud
-from app.database.crud.user_crud import user as user_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.email import send_profile_email
-from app.schemas.user import CurrentUser, UserUpdate
+from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import func
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +88,8 @@ async def create_onboarding(
         ]
 
         # If the current_user doesn't have a name, update it from onboarding
-        if not current_user.name and request.name:
-            user_update = UserUpdate(name=request.name)
-
-            user_crud.update(
-                db,
-                db_obj=user_crud.get(db, id=current_user.id),
-                obj_in=user_update,
-            )
-            db.commit()
+        if not current_user.display_name and request.name:
+            await auth_manager.update_profile(current_user.id, request.name)
 
         track_event(
             "onboarding_completed",

@@ -1,10 +1,8 @@
 from typing import Optional
-from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Onboarding
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 
 class OnboardingBase(BaseModel):
@@ -21,7 +19,7 @@ class OnboardingBase(BaseModel):
 
 
 class OnboardingCreate(OnboardingBase):
-    user_id: UUID
+    user_id: int
 
 
 class OnboardingUpdate(OnboardingBase):
