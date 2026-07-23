@@ -173,7 +173,7 @@ async def get_optional_cloud_user(
 cloud_auth_router = get_auth_router(
     user_manager=auth_manager,
     get_current_user=get_cloud_user,
-    register_rate_limiter=RegisterRateLimiter(max_success=3, window_seconds=3600),
+    register_rate_limiter=RegisterRateLimiter(max_attempts=3, window_seconds=3600),
     refresh_cookie=refresh_cookie_config,
 )
 cloud_user_router = get_user_router(
