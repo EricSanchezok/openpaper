@@ -1,7 +1,7 @@
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 FROM ${PYTHON_IMAGE} AS builder
 
-ARG PRIVATE_DEP_REVISION=06d180682b6df2e34cc33aeb06834c3be1f661b2
+ARG PRIVATE_DEP_REVISION=40d26c58d019cbc59b98cab9ee7db7eb14af6b15
 ARG PRIVATE_DEP_ARCHIVE=https://api.github.com/repos/EricSanchezok/cloud-auth/tarball
 
 RUN apt-get update \
@@ -38,7 +38,6 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /app/.venv/ /app/.venv/
-COPY --from=builder /app/cloud-auth/migrations/ /app/cloud-auth/migrations/
 COPY --from=builder /app/app/ /app/app/
 COPY --from=builder /app/migrations/ /app/migrations/
 COPY --from=builder /app/alembic.ini /app/gunicorn.config.py /app/

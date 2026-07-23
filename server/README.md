@@ -26,7 +26,7 @@ touch .env
 
 Add the following environment variables to your `.env` file:
 ```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/annotated-paper
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sanchezcloud
 GEMINI_API_KEY="your_gemini_api_key" # Replace with your actual API key from step 3
 ```
 

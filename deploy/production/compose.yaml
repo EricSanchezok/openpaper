@@ -53,7 +53,6 @@ services:
     environment:
       <<: [*broker-environment, *storage-environment]
       DATABASE_URL: ${OPENPAPER_APP_DATABASE_URL:?OPENPAPER_APP_DATABASE_URL is required}
-      OPENPAPER_DB_SCHEMA: openpaper
       AUTH_JWT_SECRET: ${OPENPAPER_AUTH_JWT_SECRET:?OPENPAPER_AUTH_JWT_SECRET is required}
       AUTH_PG_SSL_ROOT_CERT: /etc/ssl/certs/global-bundle.pem
       AUTH_PG_POOL_MIN_SIZE: ${OPENPAPER_AUTH_PG_POOL_MIN_SIZE:-2}
@@ -85,7 +84,7 @@ services:
       RESEND_API_KEY: ${OPENPAPER_RESEND_API_KEY:-}
       RESEND_MAIN_AUDIENCE_ID: ${OPENPAPER_RESEND_MAIN_AUDIENCE_ID:-}
       POSTHOG_API_KEY: ${OPENPAPER_POSTHOG_API_KEY:-}
-      ADMIN_SECRET_KEY: ${OPENPAPER_ADMIN_SECRET_KEY:?OPENPAPER_ADMIN_SECRET_KEY is required}
+      ADMIN_SESSION_SECRET: ${OPENPAPER_ADMIN_SESSION_SECRET:?OPENPAPER_ADMIN_SESSION_SECRET is required}
       DEBUG: "false"
     volumes:
       - ${OPENPAPER_RDS_CA_PATH:-/etc/openpaper/global-bundle.pem}:/etc/ssl/certs/global-bundle.pem:ro
@@ -199,12 +198,9 @@ services:
   migrate:
     <<: *api-image
     profiles: ["migrate"]
-    command: ["python", "-m", "app.scripts.migrate_all"]
+    command: ["python", "-m", "app.scripts.migrate_product"]
     environment:
       DATABASE_URL: ${OPENPAPER_MIGRATION_DATABASE_URL:?OPENPAPER_MIGRATION_DATABASE_URL is required}
-      OPENPAPER_DB_SCHEMA: openpaper
-      AUTH_PG_SSL_ROOT_CERT: /etc/ssl/certs/global-bundle.pem
-      AUTH_MIGRATIONS_DIR: /app/cloud-auth/migrations
     volumes:
       - ${OPENPAPER_RDS_CA_PATH:-/etc/openpaper/global-bundle.pem}:/etc/ssl/certs/global-bundle.pem:ro
     networks:

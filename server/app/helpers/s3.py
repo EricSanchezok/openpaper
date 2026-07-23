@@ -372,7 +372,7 @@ class S3Service:
                 status=owner.status,
                 email_verified=owner.email_verified_at is not None,
                 is_admin=bool(owner.profile and owner.profile.is_admin),
-                is_active=owner.status == "active" and owner.deleted_at is None,
+                is_active=owner.status == "active",
             )
 
             # Use the existing method

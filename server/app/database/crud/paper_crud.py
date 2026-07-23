@@ -509,7 +509,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             display_name=user.display_name,
             status=user.status,
             email_verified=user.email_verified_at is not None,
-            is_active=user.status == "active" and user.deleted_at is None,
+            is_active=user.status == "active",
         )
 
         # Call the original method with the created user
@@ -588,7 +588,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             )
 
         db.execute(
-            text("DELETE FROM paper_passages WHERE paper_id = :paper_id"),
+            text("DELETE FROM openpaper.paper_passages WHERE paper_id = :paper_id"),
             {"paper_id": paper_id},
         )
 
@@ -601,7 +601,8 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             db.execute(
                 text(
                     """
-                    INSERT INTO paper_passages (paper_id, start_line, end_line, content)
+                    INSERT INTO openpaper.paper_passages
+                        (paper_id, start_line, end_line, content)
                     VALUES (:paper_id, :start_line, :end_line, :content)
                 """
                 ),
@@ -645,8 +646,8 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
         sql = f"""
             SELECT pp.paper_id::text, pp.start_line, pp.content
-            FROM paper_passages pp
-            JOIN papers p ON p.id = pp.paper_id
+            FROM openpaper.paper_passages pp
+            JOIN openpaper.papers p ON p.id = pp.paper_id
             WHERE pp.ts_vector @@ ({fts_query_clause})
               AND p.user_id = :user_id
         """
@@ -746,7 +747,9 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             summary=str(original_paper.summary),
             summary_citations=None,  # type: ignore
             starter_questions=original_paper.starter_questions,  # type: ignore
-            publish_date=str(original_paper.publish_date) if original_paper.publish_date else None,  # type: ignore
+            publish_date=str(original_paper.publish_date)
+            if original_paper.publish_date
+            else None,  # type: ignore
             raw_content=original_paper.raw_content,  # type: ignore
             upload_job_id=None,  # New upload job ID
             preview_url=new_preview_url,

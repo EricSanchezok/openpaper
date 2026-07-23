@@ -1,6 +1,4 @@
-import logging
-import os
-
+from app.database.admin_auth import build_admin_authentication_backend
 from app.database.database import engine
 from app.database.models import (
     Annotation,
@@ -26,11 +24,8 @@ from app.database.models import (
     ZoteroImportedItem,
     ZoteroOAuthPending,
 )
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from sqladmin import Admin, ModelView
-from sqladmin.authentication import AuthenticationBackend
-
-logger = logging.getLogger(__name__)
 
 
 class AuthUserAdmin(ModelView, model=AuthUser):
@@ -378,40 +373,11 @@ class ZoteroOAuthPendingAdmin(ModelView, model=ZoteroOAuthPending):
     ]
 
 
-class AdminAuthenticationBackend(AuthenticationBackend):
-    super_password = os.getenv("SUPER_PASSWORD", "")
-    root_email = os.getenv("ROOT_EMAIL", None)
-
-    async def login(self, request: Request) -> bool:
-        form = await request.form()
-        username, password = form.get("username"), form.get("password")
-
-        if not self.root_email or not self.super_password:
-            logger.error("ROOT_EMAIL and SUPER_PASSWORD must be configured for /admin")
-            return False
-        if username != self.root_email or password != self.super_password:
-            return False
-        request.session["admin_email"] = self.root_email
-        return True
-
-    async def logout(self, request: Request) -> bool:
-        request.session.clear()
-        return True
-
-    async def authenticate(self, request: Request) -> bool:
-        return bool(
-            self.root_email
-            and self.super_password
-            and request.session.get("admin_email") == self.root_email
-        )
-
-
-def setup_admin(app: FastAPI):
-    secret_key = os.getenv("ADMIN_SECRET_KEY", "")
+def setup_admin(app: FastAPI) -> None:
     admin = Admin(
         app,
         engine,
-        authentication_backend=AdminAuthenticationBackend(secret_key=secret_key),
+        authentication_backend=build_admin_authentication_backend(),
     )
 
     admin.add_view(AuthUserAdmin)

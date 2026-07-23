@@ -4,12 +4,12 @@ import os
 
 import uvicorn
 
-from app.scripts.migrate_all import main as migrate_all
+from app.scripts.migrate_product import main as migrate_product
 
 
 def start() -> None:
     """Migrate the local database and start the development API."""
-    migrate_all()
+    migrate_product()
     uvicorn.run(
         "app.main:app",
         host=os.getenv("HOST", "0.0.0.0"),

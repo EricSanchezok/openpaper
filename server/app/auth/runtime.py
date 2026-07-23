@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from collections.abc import Awaitable, Callable
+from typing import AsyncIterator, cast
 
 import asyncpg
 from cloud_auth import (
@@ -20,7 +21,10 @@ from cloud_auth import (
     get_user_router,
 )
 from cloud_auth.email.aliyun import AliyunDirectMailSender
-from fastapi import FastAPI
+from cloud_auth.exceptions import AuthError, DBError
+from cloud_auth.models.user import UserRecord
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -35,7 +39,7 @@ class AuthRuntimeSettings(BaseSettings):
     )
 
     database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/annotated-paper"
+        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/sanchezcloud"
     )
     jwt_secret: str = _DEVELOPMENT_JWT_SECRET
     jwt_access_token_ttl_minutes: int = 15
@@ -63,7 +67,7 @@ def build_refresh_cookie_config(*, environment: str) -> RefreshCookieConfig:
         name="openpaper_refresh",
         max_age_seconds=settings.jwt_refresh_token_ttl_days * 24 * 60 * 60,
         secure=environment.lower() == "production",
-        samesite="lax",
+        samesite="strict",
         path="/api/auth",
     )
 
@@ -94,8 +98,69 @@ if settings.aliyun_dm_account_name:
     )
 
 auth_manager = UserManager(db=auth_db, email_sender=email_sender, config=auth_config)
-get_cloud_user = create_get_current_user(db=auth_db, config=auth_config)
-get_optional_cloud_user = create_get_optional_user(db=auth_db, config=auth_config)
+_unchecked_cloud_user = cast(
+    "Callable[..., Awaitable[UserRecord]]",
+    create_get_current_user(db=auth_db, config=auth_config),
+)
+_unchecked_optional_cloud_user = cast(
+    "Callable[..., Awaitable[UserRecord | None]]",
+    create_get_optional_user(db=auth_db, config=auth_config),
+)
+_required_bearer = HTTPBearer(scheme_name="BearerAuth")
+_optional_bearer = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
+
+
+async def _require_active_session(
+    user: UserRecord,
+    credentials: HTTPAuthorizationCredentials,
+) -> UserRecord:
+    try:
+        session_id = auth_manager.session_id_from_access_token(credentials.credentials)
+        if not await auth_manager.touch_session(user.id, session_id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked or expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    except DBError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable",
+            headers={"Retry-After": "5"},
+        ) from exc
+    return user
+
+
+async def get_cloud_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_required_bearer),
+) -> UserRecord:
+    user = await _unchecked_cloud_user(credentials=credentials)
+    return await _require_active_session(user, credentials)
+
+
+async def get_optional_cloud_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
+) -> UserRecord | None:
+    if "authorization" not in request.headers:
+        return None
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = await _unchecked_optional_cloud_user(credentials=credentials)
+    if user is None:
+        return None
+    return await _require_active_session(user, credentials)
+
 
 cloud_auth_router = get_auth_router(
     user_manager=auth_manager,

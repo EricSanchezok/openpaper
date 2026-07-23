@@ -51,9 +51,10 @@ git clone git@github.com:khoj-ai/openpaper.git && cd openpaper
 
 # Server
 cd server && uv sync && cp .env.example .env
-# Create the database named by DATABASE_URL, fill .env, then apply cloud-auth
-# and OpenPaper migrations in their required order:
-uv run python -m app.scripts.migrate_all
+# Provision auth/openpaper schemas with separate owners. Apply cloud-auth from
+# its own repository first, then apply only OpenPaper's migration:
+AUTH_DATABASE_URL="$DATABASE_URL" uv run --project ../../cloud-auth cloud-auth migrate
+uv run python -m app.scripts.migrate_product
 
 # Jobs
 cd ../jobs && uv sync

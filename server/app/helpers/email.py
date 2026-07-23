@@ -222,7 +222,7 @@ def send_profile_email(
 
             formatted_data += f"""
             <div style="background-color:{bg_color};padding:12px;margin:2px 0;border-radius:6px">
-                <div style="font-weight:600;color:#2c3e50;margin-bottom:4px">{key.replace('_', ' ').title()}:</div>
+                <div style="font-weight:600;color:#2c3e50;margin-bottom:4px">{key.replace("_", " ").title()}:</div>
                 <div style="color:#34495e;word-wrap:break-word">{value}</div>
             </div>
             """
@@ -339,7 +339,6 @@ def send_confirmation_cancellation_email(
         bool: True if email was sent successfully, False otherwise
     """
     try:
-
         user_name_str = f", {name}" if name else ""
 
         subject = f"Sorry to see you go{user_name_str} - Open Paper"
@@ -366,7 +365,7 @@ def send_referral_threshold_alert(
     pending_plus_available_cents: int,
 ) -> None:
     """Email admin when a single referrer's earnings cross the review threshold."""
-    admin_email = os.getenv("ROOT_EMAIL", "saba@khoj.dev")
+    admin_email = os.getenv("REFERRAL_REVIEW_EMAIL", "saba@khoj.dev")
     html = f"""
     <div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
         <h2 style="color:#d35400;">Referral Review Threshold Crossed</h2>

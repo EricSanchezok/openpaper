@@ -369,7 +369,7 @@ async def handle_paper_processing_webhook(
         locale=user.profile.locale if user.profile else None,
         is_admin=bool(user.profile and user.profile.is_admin),
         is_blocked=bool(user.profile and user.profile.is_blocked),
-        is_active=user.status == "active" and user.deleted_at is None,
+        is_active=user.status == "active",
     )
 
     # Serialize concurrent/duplicate deliveries for the same job. Celery retries
@@ -747,7 +747,7 @@ async def handle_data_table_processing_webhook(
                     paper_titles=paper_titles,
                     column_labels=result.columns,
                 )
-                or f'Data Table ({", ".join(result.columns)})'
+                or f"Data Table ({', '.join(result.columns)})"
             )
 
             # Create the data table result

@@ -7,7 +7,7 @@ service library. It does not maintain a second user table or login session.
 
 - Canonical identities live in `auth.users` and use `BIGINT` IDs.
 - OpenPaper-owned settings live in `user_profiles` and reference
-  `auth.users.id`.
+  `openpaper.user_profiles` and reference `auth.users.id`.
 - Every OpenPaper user-owned table references `auth.users.id` directly.
 - Access and refresh tokens are scoped to the `openpaper` client through their
   JWT audience and refresh-token `client_id`.
@@ -24,7 +24,7 @@ The cloud-auth routers are mounted directly by `app.main`:
 
 Protected endpoints require `Authorization: Bearer <access-token>`. OpenPaper
 keeps access tokens in browser memory. Refresh tokens are rotated in the
-host-only `openpaper_refresh` cookie with `HttpOnly`, `SameSite=Lax`, and
+host-only `openpaper_refresh` cookie with `HttpOnly`, `SameSite=Strict`, and
 `Secure` enabled in production; JavaScript never receives them.
 
 ## Required configuration
@@ -46,6 +46,6 @@ environment override.
 `AUTH_DATABASE_URL` defaults to `DATABASE_URL`, so the synchronous OpenPaper
 ORM and the asynchronous cloud-auth pool can share one RDS database.
 
-Run cloud-auth migrations before OpenPaper migrations. The OpenPaper identity
-migration deliberately fails if legacy user-owned data exists; an explicit
-identity mapping is required in that case.
+Run cloud-auth migrations independently before OpenPaper migrations. OpenPaper
+only checks the installed auth schema version and never carries or executes
+cloud-auth migration files.

@@ -1,10 +1,13 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from app.auth import dependencies, runtime
+from app.database import admin_auth
+from app.database.models import AuthUser, Base
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 
 
 def _cloud_user() -> UserRecord:
@@ -16,6 +19,17 @@ def _cloud_user() -> UserRecord:
         status="active",
         email_verified=True,
     )
+
+
+def test_every_orm_table_has_an_explicit_owner_schema() -> None:
+    assert Base.metadata.schema == "openpaper"
+    assert AuthUser.__table__.schema == "auth"
+    assert "deleted_at" not in AuthUser.__table__.columns
+    assert {
+        table.schema
+        for table in Base.metadata.tables.values()
+        if table is not AuthUser.__table__
+    } == {"openpaper"}
 
 
 @pytest.mark.asyncio
@@ -71,9 +85,125 @@ def test_refresh_cookie_is_scoped_to_openpaper_auth_routes() -> None:
     assert config.path == "/api/auth"
     assert config.max_age_seconds == 7 * 24 * 60 * 60
     assert config.secure is False
+    assert config.samesite == "strict"
 
 
 def test_refresh_cookie_is_secure_in_production() -> None:
     config = runtime.build_refresh_cookie_config(environment="production")
 
     assert config.secure is True
+
+
+@pytest.mark.asyncio
+async def test_access_token_requires_active_openpaper_session() -> None:
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="access")
+    with (
+        patch.object(
+            runtime.auth_manager, "session_id_from_access_token", return_value=17
+        ),
+        patch.object(
+            runtime.auth_manager,
+            "touch_session",
+            new=AsyncMock(return_value=False),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await runtime._require_active_session(_cloud_user(), credentials)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Session revoked or expired"
+
+
+@pytest.mark.asyncio
+async def test_admin_login_uses_cloud_auth_and_product_role() -> None:
+    request = SimpleNamespace(
+        form=AsyncMock(
+            return_value={"username": "reader@example.com", "password": "secret"}
+        ),
+        headers={"user-agent": "pytest"},
+        session={},
+    )
+    backend = admin_auth.AdminAuthenticationBackend(secret_key="x" * 32)
+
+    with (
+        patch.object(
+            admin_auth.auth_manager,
+            "login",
+            new=AsyncMock(return_value=("access", "discarded-refresh")),
+        ) as login,
+        patch.object(
+            admin_auth.auth_db,
+            "get_user_by_email",
+            new=AsyncMock(return_value=_cloud_user()),
+        ),
+        patch.object(
+            admin_auth.auth_manager,
+            "session_id_from_access_token",
+            return_value=23,
+        ),
+        patch.object(admin_auth.asyncio, "to_thread", new=AsyncMock(return_value=True)),
+    ):
+        result = await backend.login(request)
+
+    assert result is True
+    assert request.session == {
+        "openpaper_admin_user_id": 42,
+        "openpaper_admin_session_id": 23,
+    }
+    login.assert_awaited_once_with(
+        "reader@example.com",
+        "secret",
+        user_agent="pytest",
+    )
+
+
+@pytest.mark.asyncio
+async def test_non_admin_login_revokes_new_cloud_session() -> None:
+    request = SimpleNamespace(
+        form=AsyncMock(
+            return_value={"username": "reader@example.com", "password": "secret"}
+        ),
+        headers={},
+        session={},
+    )
+    backend = admin_auth.AdminAuthenticationBackend(secret_key="x" * 32)
+
+    with (
+        patch.object(
+            admin_auth.auth_manager,
+            "login",
+            new=AsyncMock(return_value=("access", "discarded-refresh")),
+        ),
+        patch.object(
+            admin_auth.auth_db,
+            "get_user_by_email",
+            new=AsyncMock(return_value=_cloud_user()),
+        ),
+        patch.object(
+            admin_auth.auth_manager,
+            "session_id_from_access_token",
+            return_value=23,
+        ),
+        patch.object(
+            admin_auth.auth_manager,
+            "logout",
+            new=AsyncMock(),
+        ) as logout,
+        patch.object(
+            admin_auth.asyncio, "to_thread", new=AsyncMock(return_value=False)
+        ),
+    ):
+        result = await backend.login(request)
+
+    assert result is False
+    logout.assert_awaited_once_with(42, 23)
+
+
+def test_admin_session_secret_fails_closed_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "short")
+
+    with pytest.raises(RuntimeError, match="at least 32"):
+        admin_auth.admin_session_secret()

@@ -16,6 +16,7 @@ from sqlalchemy import (  # type: ignore
     Identity,
     Index,
     Integer,
+    MetaData,
     String,
     Text,
     UniqueConstraint,
@@ -45,6 +46,8 @@ from sqlalchemy.sql import func
 
 
 class Base(DeclarativeBase):
+    metadata = MetaData(schema="openpaper")
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -124,12 +127,11 @@ class AuthUser(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
     profile: Mapped["UserProfile | None"] = relationship(
-        "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+        "UserProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
     papers = relationship("Paper", back_populates="user", cascade="all, delete-orphan")
@@ -224,8 +226,18 @@ class UserProfile(Base):
         primary_key=True,
     )
     locale: Mapped[str | None] = mapped_column(String, nullable=True)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+    is_blocked: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
     referral_toast_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

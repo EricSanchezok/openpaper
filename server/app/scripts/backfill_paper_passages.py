@@ -28,10 +28,10 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         total = db.execute(
             text(
                 """
-                SELECT COUNT(*) FROM papers p
+                SELECT COUNT(*) FROM openpaper.papers p
                 WHERE p.raw_content IS NOT NULL
                   AND NOT EXISTS (
-                    SELECT 1 FROM paper_passages pp WHERE pp.paper_id = p.id
+                    SELECT 1 FROM openpaper.paper_passages pp WHERE pp.paper_id = p.id
                   )
             """
             )
@@ -49,7 +49,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         logger.info("Disabling tsvector trigger for bulk insert...")
         db.execute(
             text(
-                "ALTER TABLE paper_passages DISABLE TRIGGER paper_passages_tsvectorupdate"
+                "ALTER TABLE openpaper.paper_passages "
+                "DISABLE TRIGGER paper_passages_tsvectorupdate"
             )
         )
         db.commit()
@@ -64,10 +65,11 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 text(
                     """
                     SELECT p.id, p.raw_content
-                    FROM papers p
+                    FROM openpaper.papers p
                     WHERE p.raw_content IS NOT NULL
                       AND NOT EXISTS (
-                        SELECT 1 FROM paper_passages pp WHERE pp.paper_id = p.id
+                        SELECT 1 FROM openpaper.paper_passages pp
+                        WHERE pp.paper_id = p.id
                       )
                     ORDER BY p.id
                     LIMIT :limit
@@ -105,7 +107,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                     db.execute(
                         text(
                             """
-                            INSERT INTO paper_passages (paper_id, start_line, end_line, content)
+                            INSERT INTO openpaper.paper_passages
+                                (paper_id, start_line, end_line, content)
                             VALUES (:paper_id, :start_line, :end_line, :content)
                             ON CONFLICT (paper_id, start_line) DO NOTHING
                         """
@@ -138,10 +141,10 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             result = db.execute(
                 text(
                     """
-                    UPDATE paper_passages
+                    UPDATE openpaper.paper_passages
                     SET ts_vector = to_tsvector('pg_catalog.english', coalesce(content, ''))
                     WHERE id IN (
-                        SELECT id FROM paper_passages
+                        SELECT id FROM openpaper.paper_passages
                         WHERE ts_vector IS NULL
                         LIMIT :batch_size
                     )
@@ -170,7 +173,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         logger.info("Re-enabling tsvector trigger...")
         db.execute(
             text(
-                "ALTER TABLE paper_passages ENABLE TRIGGER paper_passages_tsvectorupdate"
+                "ALTER TABLE openpaper.paper_passages "
+                "ENABLE TRIGGER paper_passages_tsvectorupdate"
             )
         )
         db.commit()

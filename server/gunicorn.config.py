@@ -1,4 +1,4 @@
-# filepath: annotated-paper/server/gunicorn.conf.py
+# OpenPaper API process configuration.
 import os
 
 # Bind address and port

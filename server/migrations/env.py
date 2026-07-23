@@ -1,69 +1,107 @@
+from __future__ import annotations
+
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from app.database.config import Settings
 from app.database.models import Base
-from sqlalchemy import engine_from_config, pool, text
+from cloud_auth import AUTH_SCHEMA_VERSION
+from sqlalchemy import Connection, engine_from_config, pool, text
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+OPENPAPER_SCHEMA = "openpaper"
+MIGRATION_TABLE = "schema_migrations"
+MIGRATION_LOCK = "openpaper-migrations"
+
 config = context.config
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
-# Set the database URL in the Alembic config
 settings = Settings()
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
-
-# add your model's MetaData object here
-# for 'autogenerate' support
 target_metadata = Base.metadata
 
 
-def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
+def _object_schema(obj: Any) -> str | None:
+    schema = getattr(obj, "schema", None)
+    if isinstance(schema, str):
+        return schema
+    table = getattr(obj, "table", None)
+    table_schema = getattr(table, "schema", None)
+    return table_schema if isinstance(table_schema, str) else None
 
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
 
-    Calls to context.execute() here emit the given string to the
-    script output.
+def include_object(
+    obj: Any,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to: Any,
+) -> bool:
+    """Keep auth and Alembic's own ledger outside product autogeneration."""
+    del reflected, compare_to
+    schema = _object_schema(obj)
+    if schema == "auth":
+        return False
+    return not (
+        type_ == "table" and name == MIGRATION_TABLE and schema == OPENPAPER_SCHEMA
+    )
 
-    """
-    url = config.get_main_option("sqlalchemy.url")
+
+def _configure(**kwargs: Any) -> None:
     context.configure(
-        url=url,
         target_metadata=target_metadata,
+        include_schemas=True,
+        include_object=include_object,
+        version_table=MIGRATION_TABLE,
+        version_table_schema=OPENPAPER_SCHEMA,
+        compare_type=True,
+        **kwargs,
+    )
+
+
+def _validate_migration_boundary(connection: Connection) -> None:
+    owns_schema = connection.execute(
+        text(
+            "SELECT pg_get_userbyid(nspowner) = current_user "
+            "FROM pg_namespace WHERE nspname = :schema"
+        ),
+        {"schema": OPENPAPER_SCHEMA},
+    ).scalar_one_or_none()
+    if owns_schema is not True:
+        raise RuntimeError(
+            "OpenPaper schema is missing or not owned by the product migration role"
+        )
+
+    auth_ledger = connection.execute(
+        text("SELECT to_regclass('auth.schema_migrations')")
+    ).scalar_one()
+    if auth_ledger is None:
+        raise RuntimeError(
+            "cloud-auth schema must be migrated independently before OpenPaper"
+        )
+
+    auth_version = connection.execute(
+        text("SELECT COALESCE(max(version), 0) FROM auth.schema_migrations")
+    ).scalar_one()
+    if int(auth_version) < AUTH_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"auth schema version {auth_version} is incompatible; "
+            f"version {AUTH_SCHEMA_VERSION} or newer is required"
+        )
+
+
+def run_migrations_offline() -> None:
+    _configure(
+        url=config.get_main_option("sqlalchemy.url"),
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -71,20 +109,21 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        connection.execute(text("SELECT pg_advisory_lock(hashtext('openpaper-migrations'))"))
-        # Session-level advisory locks survive commits. End SQLAlchemy's implicit
-        # transaction so historical migrations can enter Alembic autocommit blocks.
+        _validate_migration_boundary(connection)
+        connection.execute(
+            text("SELECT pg_advisory_lock(hashtext(:name))"), {"name": MIGRATION_LOCK}
+        )
         connection.commit()
         try:
-            context.configure(connection=connection, target_metadata=target_metadata)
-
+            _configure(connection=connection)
             with context.begin_transaction():
                 context.run_migrations()
         finally:
             if connection.in_transaction():
                 connection.rollback()
             connection.execute(
-                text("SELECT pg_advisory_unlock(hashtext('openpaper-migrations'))")
+                text("SELECT pg_advisory_unlock(hashtext(:name))"),
+                {"name": MIGRATION_LOCK},
             )
             connection.commit()
 

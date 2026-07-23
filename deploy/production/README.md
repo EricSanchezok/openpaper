@@ -11,26 +11,40 @@ the OpenPaper client and API over the external `sanchezcloud-edge` Docker networ
 
 ## Database boundary
 
-- Use the same RDS database name as Scholight. Cross-database foreign keys are not possible.
-- Keep `auth.*` shared. OpenPaper foreign keys point directly to `auth.users(id)`.
-- Keep OpenPaper application tables in `openpaper.*` by retaining the encoded `search_path`
-  option in both database URLs from `runtime.env.example`.
+- Use the shared `sanchezcloud` database. Cross-database foreign keys are not possible.
+- `cloud-auth` alone owns `auth.*`; OpenPaper only references `auth.users(id)`.
+- OpenPaper alone owns `openpaper.*`; models and migrations qualify this schema explicitly.
 - Use a dedicated `openpaper_app` login for the API. It receives DML only.
-- Reuse the schema-owning migration login (currently `scholight_migrator`) so both products can
-  serialize and apply cloud-auth migrations. Never expose this login to the API container.
+- Use `auth_migrator` only for `auth.*` and `openpaper_migrator` only for
+  `openpaper.*`. Neither role receives database-level `CREATE`.
 
 Run the bootstrap as the RDS database owner before the first migration and once again after it:
 
 ```bash
 psql "$DATABASE_ADMIN_URL" \
   -v app_role=openpaper_app \
-  -v migrator_role=scholight_migrator \
+  -v auth_migrator_role=auth_migrator \
+  -v product_migrator_role=openpaper_migrator \
   -f deploy/production/bootstrap-db.sql
 ```
 
-The migration container always applies cloud-auth first, then OpenPaper Alembic migrations. Both
-runners use PostgreSQL advisory locks. Normal releases never run down migrations; migrations must
-therefore remain compatible with the immediately previous application release.
+Run this bootstrap before cloud-auth migration, after cloud-auth migration, and
+after OpenPaper migration. The cloud-auth repository independently migrates
+`auth.*`; the OpenPaper migration container checks the auth ledger and applies
+only `openpaper.*`. Both runners use PostgreSQL advisory locks.
+
+The `/admin` login uses an ordinary verified cloud-auth account and then checks
+`openpaper.user_profiles.is_admin`. Bootstrap the first administrator out of band
+after that account registers:
+
+```sql
+INSERT INTO openpaper.user_profiles (user_id, is_admin)
+SELECT id, true FROM auth.users WHERE lower(email) = lower('operator@example.com')
+ON CONFLICT (user_id) DO UPDATE SET is_admin = true;
+```
+
+`OPENPAPER_ADMIN_SESSION_SECRET` only signs the admin browser session; it is not
+an administrator password.
 
 ## One-time host setup
 

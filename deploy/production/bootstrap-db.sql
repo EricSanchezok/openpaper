@@ -1,32 +1,67 @@
 \set ON_ERROR_STOP on
 
--- Run as the RDS database owner before the first migration and again after it.
--- Required psql variables: app_role and migrator_role (existing login roles).
+-- SanchezCloud database privilege bootstrap for OpenPaper.
+-- Required existing LOGIN roles:
+--   auth_migrator_role       owns only auth.*
+--   product_migrator_role    owns only openpaper.*
+--   app_role                 runs the OpenPaper API
+--
+-- Run as the database owner before cloud-auth migration, after cloud-auth
+-- migration, and after OpenPaper migration. Re-running is safe.
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'app_role') \gexec
-SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'migrator_role') \gexec
-SELECT format('GRANT CREATE ON DATABASE %I TO %I', current_database(), :'migrator_role') \gexec
+SELECT format(
+  'GRANT CONNECT ON DATABASE %I TO %I',
+  current_database(),
+  :'auth_migrator_role'
+) \gexec
+SELECT format(
+  'GRANT CONNECT ON DATABASE %I TO %I',
+  current_database(),
+  :'product_migrator_role'
+) \gexec
 
-SELECT format('CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION %I', :'migrator_role') \gexec
-SELECT format('ALTER SCHEMA auth OWNER TO %I', :'migrator_role') \gexec
-SELECT format('CREATE SCHEMA IF NOT EXISTS openpaper AUTHORIZATION %I', :'migrator_role') \gexec
-SELECT format('ALTER SCHEMA openpaper OWNER TO %I', :'migrator_role') \gexec
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM :"app_role";
+REVOKE ALL ON SCHEMA public FROM :"auth_migrator_role";
+REVOKE ALL ON SCHEMA public FROM :"product_migrator_role";
+
+SELECT format(
+  'CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION %I',
+  :'auth_migrator_role'
+) \gexec
+SELECT format('ALTER SCHEMA auth OWNER TO %I', :'auth_migrator_role') \gexec
+SELECT format(
+  'CREATE SCHEMA IF NOT EXISTS openpaper AUTHORIZATION %I',
+  :'product_migrator_role'
+) \gexec
+SELECT format('ALTER SCHEMA openpaper OWNER TO %I', :'product_migrator_role') \gexec
 
 REVOKE CREATE ON SCHEMA auth FROM PUBLIC;
 REVOKE CREATE ON SCHEMA openpaper FROM PUBLIC;
-GRANT USAGE ON SCHEMA auth, openpaper, public TO :"app_role";
-GRANT USAGE, CREATE ON SCHEMA auth, openpaper TO :"migrator_role";
-GRANT USAGE, CREATE ON SCHEMA public TO :"migrator_role";
+GRANT USAGE ON SCHEMA auth TO :"app_role", :"product_migrator_role";
+GRANT USAGE ON SCHEMA openpaper TO :"app_role";
+GRANT USAGE, CREATE ON SCHEMA auth TO :"auth_migrator_role";
+GRANT USAGE, CREATE ON SCHEMA openpaper TO :"product_migrator_role";
 
+-- These grants become available after the independent cloud-auth baseline.
 SELECT format(
-  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I.%I TO %I',
-  schemaname,
-  tablename,
+  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE auth.users, '
+  'auth.refresh_tokens TO %I',
   :'app_role'
 )
-FROM pg_tables
-WHERE schemaname IN ('auth', 'openpaper')
-ORDER BY schemaname, tablename \gexec
+WHERE to_regclass('auth.users') IS NOT NULL
+  AND to_regclass('auth.refresh_tokens') IS NOT NULL \gexec
+SELECT format(
+  'GRANT SELECT ON TABLE auth.schema_migrations TO %I',
+  :'product_migrator_role'
+)
+WHERE to_regclass('auth.schema_migrations') IS NOT NULL \gexec
+SELECT format(
+  'GRANT REFERENCES ON TABLE auth.users TO %I',
+  :'product_migrator_role'
+)
+WHERE to_regclass('auth.users') IS NOT NULL \gexec
 
 SELECT format(
   'GRANT USAGE, SELECT ON SEQUENCE %I.%I TO %I',
@@ -35,43 +70,61 @@ SELECT format(
   :'app_role'
 )
 FROM information_schema.sequences
-WHERE sequence_schema IN ('auth', 'openpaper')
-ORDER BY sequence_schema, sequence_name \gexec
+WHERE sequence_schema = 'auth'
+ORDER BY sequence_name \gexec
 
-SELECT format('GRANT USAGE ON TYPE %I TO %I', type_name, :'app_role')
-FROM (VALUES ('account_status'), ('operation_type')) AS known_types(type_name)
-WHERE to_regtype(type_name) IS NOT NULL
-ORDER BY type_name \gexec
+-- These grants become available after the OpenPaper baseline.
+SELECT format(
+  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I.%I TO %I',
+  schemaname,
+  tablename,
+  :'app_role'
+)
+FROM pg_tables
+WHERE schemaname = 'openpaper'
+  AND tablename <> 'schema_migrations'
+ORDER BY tablename \gexec
 
 SELECT format(
-  'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA auth '
-  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
-  :'migrator_role',
+  'GRANT USAGE, SELECT ON SEQUENCE %I.%I TO %I',
+  sequence_schema,
+  sequence_name,
   :'app_role'
-) \gexec
-SELECT format(
-  'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA auth '
-  'GRANT USAGE, SELECT ON SEQUENCES TO %I',
-  :'migrator_role',
-  :'app_role'
-) \gexec
-SELECT format(
-  'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA openpaper '
-  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
-  :'migrator_role',
-  :'app_role'
-) \gexec
-SELECT format(
-  'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA openpaper '
-  'GRANT USAGE, SELECT ON SEQUENCES TO %I',
-  :'migrator_role',
-  :'app_role'
-) \gexec
+)
+FROM information_schema.sequences
+WHERE sequence_schema = 'openpaper'
+ORDER BY sequence_name \gexec
 
-SELECT format('REVOKE ALL ON TABLE openpaper.alembic_version FROM %I', :'app_role')
-WHERE to_regclass('openpaper.alembic_version') IS NOT NULL \gexec
-SELECT format('REVOKE ALL ON TABLE public._cloud_auth_migrations FROM %I', :'app_role')
-WHERE to_regclass('public._cloud_auth_migrations') IS NOT NULL \gexec
+ALTER DEFAULT PRIVILEGES FOR ROLE :"auth_migrator_role" IN SCHEMA auth
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"auth_migrator_role" IN SCHEMA auth
+  GRANT USAGE, SELECT ON SEQUENCES TO :"app_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"product_migrator_role" IN SCHEMA openpaper
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE :"product_migrator_role" IN SCHEMA openpaper
+  GRANT USAGE, SELECT ON SEQUENCES TO :"app_role";
 
-REVOKE CREATE ON SCHEMA auth, openpaper, public FROM :"app_role";
+SELECT format(
+  'REVOKE ALL ON TABLE auth.schema_migrations FROM %I',
+  :'app_role'
+)
+WHERE to_regclass('auth.schema_migrations') IS NOT NULL \gexec
+SELECT format(
+  'REVOKE ALL ON TABLE openpaper.schema_migrations FROM %I',
+  :'app_role'
+)
+WHERE to_regclass('openpaper.schema_migrations') IS NOT NULL \gexec
+
+REVOKE CREATE ON SCHEMA auth FROM :"app_role", :"product_migrator_role";
+REVOKE CREATE ON SCHEMA openpaper FROM :"app_role", :"auth_migrator_role";
 SELECT format('REVOKE CREATE ON DATABASE %I FROM %I', current_database(), :'app_role') \gexec
+SELECT format(
+  'REVOKE CREATE ON DATABASE %I FROM %I',
+  current_database(),
+  :'auth_migrator_role'
+) \gexec
+SELECT format(
+  'REVOKE CREATE ON DATABASE %I FROM %I',
+  current_database(),
+  :'product_migrator_role'
+) \gexec

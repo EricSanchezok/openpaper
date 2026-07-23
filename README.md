@@ -32,6 +32,9 @@ Select any text to highlight it, attach a comment, or send it to the AI assistan
 
 Group related papers into projects and unlock cross-paper insights. Ask questions that span your whole collection, generate artifacts, and keep verifiable citations throughout. Data tables let you define custom schemas to extract key fields across every paper in a project — each cell grounded in its source — and export to CSV when you're ready to analyze.
 
+Architecture boundaries are documented in
+[docs/architecture/data-ownership.md](docs/architecture/data-ownership.md).
+
 ### Understand topics across your library
 
 Ask a research question and get a synthesized answer drawing on the papers in your library, so your accumulated reading actually compounds.

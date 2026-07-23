@@ -54,7 +54,7 @@ jobs:
       - name: Ruff
         run: uv run ruff check app tests
       - name: Strict type check for auth and migration boundary
-        run: uv run mypy app/auth app/cli.py app/scripts/migrate_all.py
+        run: uv run mypy app/auth app/database/admin_auth.py app/cli.py app/scripts/migrate_product.py
       - name: Tests
         run: uv run pytest -q
 
@@ -115,24 +115,45 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: migration-test-password
-          POSTGRES_DB: scholight
+          POSTGRES_DB: sanchezcloud
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d scholight"
+          --health-cmd "pg_isready -U postgres -d sanchezcloud"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+          --health-start-period 5s
     steps:
       - name: Check out OpenPaper
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+      - name: Check out pinned cloud-auth migration owner
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: EricSanchezok/cloud-auth
+          ref: 40d26c58d019cbc59b98cab9ee7db7eb14af6b15
+          token: ${{ secrets.CLOUD_AUTH_READ_TOKEN }}
+          path: .ci/cloud-auth
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.9.2"
+          enable-cache: true
+      - name: Install pinned auth migration tool
+        working-directory: .ci/cloud-auth
+        run: uv sync --frozen
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Validate deployment files
@@ -148,10 +169,10 @@ jobs:
           OPENPAPER_JOBS_IMAGE: registry.example/openpaper/jobs@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
           OPENPAPER_DOMAIN: openpaper.example.invalid
           OPENPAPER_AWS_REGION: us-east-1
-          OPENPAPER_APP_DATABASE_URL: postgresql://app:password@postgres.example.invalid/scholight
-          OPENPAPER_MIGRATION_DATABASE_URL: postgresql://migrator:password@postgres.example.invalid/scholight
+          OPENPAPER_APP_DATABASE_URL: postgresql://app:password@postgres.example.invalid/sanchezcloud
+          OPENPAPER_MIGRATION_DATABASE_URL: postgresql://migrator:password@postgres.example.invalid/sanchezcloud
           OPENPAPER_AUTH_JWT_SECRET: fixture-secret-at-least-thirty-two-bytes
-          OPENPAPER_ADMIN_SECRET_KEY: fixture-admin-secret
+          OPENPAPER_ADMIN_SESSION_SECRET: fixture-admin-session-secret-at-least-thirty-two-bytes
           OPENPAPER_RABBITMQ_PASSWORD: fixture-rabbit-password
           OPENPAPER_REDIS_PASSWORD: fixture-redis-password
           OPENPAPER_ALIYUN_DM_ACCESS_KEY_ID: fixture
@@ -190,56 +211,114 @@ jobs:
           context: .
           file: client/Dockerfile
           push: false
-      - name: Verify unified migrations with least-privilege roles
+      - name: Verify independent migrations with least-privilege roles
         env:
           PGPASSWORD: migration-test-password
+          AUTH_MIGRATOR_PASSWORD: auth-migrator-test-password
           MIGRATOR_PASSWORD: migrator-test-password
           APP_PASSWORD: app-test-password
         run: |
-          psql -h 127.0.0.1 -U postgres -d scholight -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE scholight_migrator LOGIN PASSWORD '$MIGRATOR_PASSWORD';
+          psql -h 127.0.0.1 -U postgres -d sanchezcloud -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE auth_migrator LOGIN PASSWORD '$AUTH_MIGRATOR_PASSWORD';
+             CREATE ROLE openpaper_migrator LOGIN PASSWORD '$MIGRATOR_PASSWORD';
              CREATE ROLE openpaper_app LOGIN PASSWORD '$APP_PASSWORD';"
 
-          for phase in before after; do
-            psql -h 127.0.0.1 -U postgres -d scholight \
+          for phase in before after-auth after-openpaper; do
+            psql -h 127.0.0.1 -U postgres -d sanchezcloud \
               -v app_role=openpaper_app \
-              -v migrator_role=scholight_migrator \
+              -v auth_migrator_role=auth_migrator \
+              -v product_migrator_role=openpaper_migrator \
               -f deploy/production/bootstrap-db.sql
 
             if [[ $phase == before ]]; then
+              AUTH_DATABASE_URL="postgresql://auth_migrator:${AUTH_MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
+                uv run --project .ci/cloud-auth cloud-auth migrate
+              AUTH_DATABASE_URL="postgresql://auth_migrator:${AUTH_MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
+                uv run --project .ci/cloud-auth cloud-auth check-schema
+            elif [[ $phase == after-auth ]]; then
               for _ in 1 2; do
                 docker run --rm --network host \
-                  -e DATABASE_URL="postgresql+psycopg2://scholight_migrator:${MIGRATOR_PASSWORD}@127.0.0.1:5432/scholight?options=-csearch_path%3Dopenpaper%2Cauth%2Cpublic" \
-                  -e OPENPAPER_DB_SCHEMA=openpaper \
-                  -e AUTH_MIGRATIONS_DIR=/app/cloud-auth/migrations \
-                  openpaper-api:ci python -m app.scripts.migrate_all
+                  -e DATABASE_URL="postgresql+psycopg2://openpaper_migrator:${MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
+                  openpaper-api:ci python -m app.scripts.migrate_product
               done
             fi
           done
 
-          psql -h 127.0.0.1 -U postgres -d scholight -tAc \
-            "SELECT to_regclass('auth.users') IS NOT NULL
+          psql -h 127.0.0.1 -U postgres -d sanchezcloud -tAc \
+            "SELECT to_regclass('auth.schema_migrations') IS NOT NULL
+                 AND to_regclass('openpaper.schema_migrations') IS NOT NULL
+                 AND to_regclass('auth.users') IS NOT NULL
                  AND to_regclass('auth.refresh_tokens') IS NOT NULL
                  AND to_regclass('openpaper.papers') IS NOT NULL
                  AND to_regclass('openpaper.user_profiles') IS NOT NULL
                  AND EXISTS (
-                   SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'auth' AND table_name = 'refresh_tokens'
-                     AND column_name = 'client_id'
-                 )" | grep -qx t
+                   SELECT 1
+                   FROM pg_trigger
+                   WHERE tgname = 'tsvectorupdate' AND NOT tgisinternal
+                 )
+                 AND EXISTS (
+                   SELECT 1
+                   FROM pg_trigger
+                   WHERE tgname = 'paper_passages_tsvectorupdate' AND NOT tgisinternal
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM pg_tables WHERE schemaname = 'public'
+                 )
+                 AND NOT has_database_privilege('auth_migrator', current_database(), 'CREATE')
+                 AND NOT has_database_privilege('openpaper_migrator', current_database(), 'CREATE')
+                 AND NOT has_database_privilege('openpaper_app', current_database(), 'CREATE')" \
+            | grep -qx t
 
-          PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U openpaper_app -d scholight \
+          PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U openpaper_app -d sanchezcloud \
             -v ON_ERROR_STOP=1 -c \
             "BEGIN;
-             SET search_path TO openpaper, auth, public;
              INSERT INTO auth.users (email, password_hash)
                VALUES ('ci@example.invalid', 'fixture') RETURNING id;
              INSERT INTO openpaper.user_profiles (user_id)
                VALUES (currval('auth.users_id_seq'));
+             INSERT INTO openpaper.papers
+               (id, status, file_url, title, raw_content, user_id)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000001',
+                 'reading',
+                 's3://fixture',
+                 'Semantic search',
+                 'retrieval augmented generation',
+                 currval('auth.users_id_seq')
+               );
+             INSERT INTO openpaper.paper_passages
+               (paper_id, start_line, end_line, content)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000001',
+                 1,
+                 1,
+                 'retrieval augmented generation'
+               );
+             SELECT 1 / (
+               (SELECT ts_vector IS NOT NULL FROM openpaper.papers
+                WHERE id = '00000000-0000-0000-0000-000000000001')::int
+               *
+               (SELECT ts_vector IS NOT NULL FROM openpaper.paper_passages
+                WHERE paper_id = '00000000-0000-0000-0000-000000000001')::int
+             );
              ROLLBACK;"
 
-          if PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U openpaper_app -d scholight \
-            -v ON_ERROR_STOP=1 -c "CREATE TABLE openpaper.must_not_create (id integer)"; then
+          if PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U openpaper_app -d sanchezcloud \
+            -v ON_ERROR_STOP=1 -c "CREATE TABLE public.app_must_not_create (id integer)"; then
             printf 'openpaper_app unexpectedly has DDL privileges\n' >&2
+            exit 1
+          fi
+
+          if PGPASSWORD="$MIGRATOR_PASSWORD" psql -h 127.0.0.1 -U openpaper_migrator \
+            -d sanchezcloud -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE auth.product_migrator_must_not_create (id integer)"; then
+            printf 'openpaper_migrator unexpectedly has auth DDL privileges\n' >&2
+            exit 1
+          fi
+
+          if PGPASSWORD="$AUTH_MIGRATOR_PASSWORD" psql -h 127.0.0.1 -U auth_migrator \
+            -d sanchezcloud -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE openpaper.auth_migrator_must_not_create (id integer)"; then
+            printf 'auth_migrator unexpectedly has OpenPaper DDL privileges\n' >&2
             exit 1
           fi
