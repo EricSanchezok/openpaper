@@ -48,6 +48,7 @@ class AuthRuntimeSettings(BaseSettings):
     aliyun_dm_access_key_secret: str = ""
     aliyun_dm_account_name: str = ""
     aliyun_dm_from_alias: str = "OpenPaper"
+    public_web_url: str = "http://localhost:3000"
 
 
 settings = AuthRuntimeSettings()
@@ -84,15 +85,25 @@ def get_auth_pool() -> asyncpg.Pool:
 
 auth_db = AsyncpgUserDatabase(pool_factory=get_auth_pool)
 
-email_sender = None
-if settings.aliyun_dm_account_name:
-    email_sender = AliyunDirectMailSender(
-        access_key_id=settings.aliyun_dm_access_key_id,
-        access_key_secret=settings.aliyun_dm_access_key_secret,
-        account_name=settings.aliyun_dm_account_name,
-        from_alias=settings.aliyun_dm_from_alias,
+
+def build_auth_email_sender(
+    runtime_settings: AuthRuntimeSettings,
+) -> AliyunDirectMailSender | None:
+    if not runtime_settings.aliyun_dm_account_name:
+        return None
+    public_web_url = runtime_settings.public_web_url.rstrip("/")
+    return AliyunDirectMailSender(
+        access_key_id=runtime_settings.aliyun_dm_access_key_id,
+        access_key_secret=runtime_settings.aliyun_dm_access_key_secret,
+        account_name=runtime_settings.aliyun_dm_account_name,
+        verification_url=f"{public_web_url}/login?mode=verify",
+        password_reset_url=f"{public_web_url}/login?mode=reset",
+        from_alias=runtime_settings.aliyun_dm_from_alias,
         brand="OpenPaper",
     )
+
+
+email_sender = build_auth_email_sender(settings)
 
 auth_manager = UserManager(db=auth_db, email_sender=email_sender, config=auth_config)
 _unchecked_cloud_user = cast(

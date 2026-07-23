@@ -35,15 +35,15 @@ const COPY: Record<Mode, { title: string; description: string }> = {
     },
     verify: {
         title: "Verify your email",
-        description: "Paste the verification token from your email.",
+        description: "Confirm the email address for your OpenPaper account.",
     },
     forgot: {
         title: "Reset your password",
-        description: "We will email you a password reset token.",
+        description: "We will email you a secure password reset link.",
     },
     reset: {
         title: "Choose a new password",
-        description: "Paste the reset token and enter a new password.",
+        description: "Enter a new password to finish securing your account.",
     },
 };
 
@@ -73,13 +73,18 @@ function LoginContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const returnTo = safeReturnTo(searchParams.get("returnTo"));
+    const actionToken = searchParams.get("token") ?? "";
+    const requestedMode = searchParams.get("mode");
+    const initialMode: Mode = actionToken && (requestedMode === "verify" || requestedMode === "reset")
+        ? requestedMode
+        : "signin";
 
-    const [mode, setMode] = useState<Mode>("signin");
+    const [mode, setMode] = useState<Mode>(initialMode);
     const [email, setEmail] = useState("");
     const [displayName, setDisplayName] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [token, setToken] = useState("");
+    const [token, setToken] = useState(actionToken);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -95,6 +100,10 @@ function LoginContent() {
         setReferralApplied(true);
         setReferralOpen(true);
     }, []);
+
+    useEffect(() => {
+        if (actionToken) window.history.replaceState({}, "", "/login");
+    }, [actionToken]);
 
     useEffect(() => {
         if (auth.user && !auth.loading) router.replace(returnTo);
@@ -157,7 +166,6 @@ function LoginContent() {
                 }
             } else if (mode === "forgot") {
                 setNotice(await auth.forgotPassword(email));
-                setMode("reset");
             } else {
                 if (password.length < 12) throw new Error("Password must be at least 12 characters.");
                 if (passwordMismatch) throw new Error("Passwords do not match.");
@@ -208,7 +216,7 @@ function LoginContent() {
                         </Alert>
                     )}
 
-                    <form onSubmit={submit} className="space-y-3">
+                    {(mode !== "verify" || token) && <form onSubmit={submit} className="space-y-3">
                         {(mode === "signin" || mode === "register" || mode === "forgot") && (
                             <Input
                                 type="email"
@@ -225,15 +233,6 @@ function LoginContent() {
                                 placeholder="Display name"
                                 value={displayName}
                                 onChange={(event) => setDisplayName(event.target.value)}
-                                required
-                            />
-                        )}
-                        {(mode === "verify" || mode === "reset") && (
-                            <Input
-                                autoComplete="one-time-code"
-                                placeholder={mode === "verify" ? "Verification token" : "Reset token"}
-                                value={token}
-                                onChange={(event) => setToken(event.target.value)}
                                 required
                             />
                         )}
@@ -264,11 +263,11 @@ function LoginContent() {
                                 signin: "Sign in",
                                 register: "Create account",
                                 verify: "Verify email",
-                                forgot: "Send reset token",
+                                forgot: "Send reset link",
                                 reset: "Reset password",
                             }[mode]}
                         </Button>
-                    </form>
+                    </form>}
 
                     {mode === "verify" && (
                         <Button
@@ -276,7 +275,7 @@ function LoginContent() {
                             className="w-full"
                             disabled={busy || !email}
                             onClick={() => void auth.resendVerification(email).then(setNotice).catch((reason: unknown) => {
-                                setError(reason instanceof Error ? reason.message : "Could not resend token.");
+                                setError(reason instanceof Error ? reason.message : "Could not resend email.");
                             })}
                         >
                             Resend verification email

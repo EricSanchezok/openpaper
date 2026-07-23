@@ -94,6 +94,30 @@ def test_refresh_cookie_is_secure_in_production() -> None:
     assert config.secure is True
 
 
+def test_auth_email_sender_uses_openpaper_action_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_settings = runtime.AuthRuntimeSettings(
+        _env_file=None,
+        aliyun_dm_access_key_id="key-id",
+        aliyun_dm_access_key_secret="key-secret",
+        aliyun_dm_account_name="sender@example.com",
+        public_web_url="https://openpaper.example/",
+    )
+    factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(runtime, "AliyunDirectMailSender", factory)
+
+    runtime.build_auth_email_sender(runtime_settings)
+
+    assert factory.call_args.kwargs["verification_url"] == (
+        "https://openpaper.example/login?mode=verify"
+    )
+    assert factory.call_args.kwargs["password_reset_url"] == (
+        "https://openpaper.example/login?mode=reset"
+    )
+    assert factory.call_args.kwargs["brand"] == "OpenPaper"
+
+
 @pytest.mark.asyncio
 async def test_access_token_requires_active_openpaper_session() -> None:
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="access")
