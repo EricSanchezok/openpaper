@@ -10,19 +10,16 @@ import asyncpg
 from cloud_auth import (
     AsyncpgUserDatabase,
     AuthConfig,
-    RefreshCookieConfig,
     RegisterRateLimiter,
     UserManager,
     close_pool,
-    create_get_current_user,
-    create_get_optional_user,
     create_pool,
-    get_auth_router,
-    get_user_router,
 )
+from cloud_auth.dependencies import create_get_current_user, create_get_optional_user
 from cloud_auth.email.aliyun import AliyunDirectMailSender
 from cloud_auth.exceptions import AuthError, DBError
 from cloud_auth.models.user import UserRecord
+from cloud_auth.routers import RefreshCookieConfig, get_auth_router, get_user_router
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic_settings import BaseSettings, SettingsConfigDict

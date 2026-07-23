@@ -747,8 +747,8 @@ wheels = [
 
 [[package]]
 name = "cloud-auth"
-version = "0.3.1"
-source = { git = "https://github.com/EricSanchezok/cloud-auth.git?rev=40d26c58d019cbc59b98cab9ee7db7eb14af6b15#40d26c58d019cbc59b98cab9ee7db7eb14af6b15" }
+version = "0.3.2"
+source = { git = "https://github.com/EricSanchezok/cloud-auth.git?rev=3d95e2a8bb351c0d99aefca9572fb25deb88cc52#3d95e2a8bb351c0d99aefca9572fb25deb88cc52" }
 dependencies = [
     { name = "asyncpg" },
     { name = "bcrypt" },
@@ -1530,7 +1530,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.96.0" },
     { name = "boto3", specifier = ">=1.37.33" },
     { name = "celery", specifier = ">=5.5.3" },
-    { name = "cloud-auth", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/cloud-auth.git?rev=40d26c58d019cbc59b98cab9ee7db7eb14af6b15" },
+    { name = "cloud-auth", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/cloud-auth.git?rev=3d95e2a8bb351c0d99aefca9572fb25deb88cc52" },
     { name = "exa-py", specifier = ">=1.0.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "firecrawl-py", specifier = ">=4.28.2" },
