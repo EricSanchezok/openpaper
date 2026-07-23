@@ -249,6 +249,12 @@ jobs:
                  AND to_regclass('openpaper.schema_migrations') IS NOT NULL
                  AND to_regclass('auth.users') IS NOT NULL
                  AND to_regclass('auth.refresh_tokens') IS NOT NULL
+                 AND NOT has_table_privilege(
+                   'openpaper_app', 'auth.users', 'DELETE'
+                 )
+                 AND NOT has_table_privilege(
+                   'openpaper_app', 'auth.refresh_tokens', 'DELETE'
+                 )
                  AND to_regclass('openpaper.papers') IS NOT NULL
                  AND to_regclass('openpaper.user_profiles') IS NOT NULL
                  AND EXISTS (

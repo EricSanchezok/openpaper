@@ -62,6 +62,9 @@ def test_database_contract_shares_auth_and_isolates_openpaper() -> None:
     assert "GRANT CREATE ON DATABASE" not in bootstrap
     assert "auth_migrator_role" in bootstrap
     assert "product_migrator_role" in bootstrap
+    assert "GRANT SELECT, INSERT, UPDATE ON TABLE auth.users" in bootstrap
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE auth.users" not in bootstrap
+    assert 'FOR ROLE :"auth_migrator_role"' not in bootstrap
     assert (
         'REVOKE CREATE ON SCHEMA auth FROM :"app_role", :"product_migrator_role"'
         in bootstrap
