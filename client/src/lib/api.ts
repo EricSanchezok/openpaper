@@ -1,7 +1,6 @@
 import {
     clearSession,
     getAccessToken,
-    hasRefreshToken,
     refreshAccessToken,
 } from "./auth-session";
 
@@ -15,9 +14,10 @@ async function requestWithAuth(endpoint: string, options: RequestInit): Promise<
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         headers,
+        credentials: "include",
     });
 
-    if (response.status !== 401 || (!token && !hasRefreshToken())) return response;
+    if (response.status !== 401 || !token) return response;
 
     try {
         const refreshedToken = await refreshAccessToken();
@@ -26,6 +26,7 @@ async function requestWithAuth(endpoint: string, options: RequestInit): Promise<
         return fetch(`${API_BASE_URL}${endpoint}`, {
             ...options,
             headers: retryHeaders,
+            credentials: "include",
         });
     } catch {
         clearSession();

@@ -9,6 +9,7 @@ import asyncpg
 from cloud_auth import (
     AsyncpgUserDatabase,
     AuthConfig,
+    RefreshCookieConfig,
     RegisterRateLimiter,
     UserManager,
     close_pool,
@@ -56,6 +57,21 @@ auth_config = AuthConfig(
     jwt_refresh_token_ttl_days=settings.jwt_refresh_token_ttl_days,
 )
 
+
+def build_refresh_cookie_config(*, environment: str) -> RefreshCookieConfig:
+    return RefreshCookieConfig(
+        name="openpaper_refresh",
+        max_age_seconds=settings.jwt_refresh_token_ttl_days * 24 * 60 * 60,
+        secure=environment.lower() == "production",
+        samesite="lax",
+        path="/api/auth",
+    )
+
+
+refresh_cookie_config = build_refresh_cookie_config(
+    environment=os.getenv("ENVIRONMENT", "development")
+)
+
 _auth_pool: asyncpg.Pool | None = None
 
 
@@ -85,6 +101,7 @@ cloud_auth_router = get_auth_router(
     user_manager=auth_manager,
     get_current_user=get_cloud_user,
     register_rate_limiter=RegisterRateLimiter(max_success=3, window_seconds=3600),
+    refresh_cookie=refresh_cookie_config,
 )
 cloud_user_router = get_user_router(
     user_manager=auth_manager,

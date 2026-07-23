@@ -15,7 +15,6 @@ import { fetchFromApi } from "./api";
 import {
     clearSession,
     establishSession,
-    hasRefreshToken,
     refreshAccessToken,
     subscribeToSessionChanges,
     TokenResponse,
@@ -71,15 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         let active = true;
         const restore = async () => {
-            if (!hasRefreshToken()) {
-                if (active) {
-                    setUser(null);
-                    setLoading(false);
-                }
-                return;
-            }
+            let refreshed = false;
             try {
                 await refreshAccessToken();
+                refreshed = true;
                 const currentUser = await loadUser();
                 if (!active) return;
                 setUser(currentUser);
@@ -87,16 +81,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (!active) return;
                 clearSession(false);
                 setUser(null);
-                setError(restoreError instanceof Error ? restoreError.message : null);
+                setError(
+                    refreshed && restoreError instanceof Error ? restoreError.message : null,
+                );
             } finally {
                 if (active) setLoading(false);
             }
         };
 
         void restore();
-        const unsubscribe = subscribeToSessionChanges(() => {
-            if (!hasRefreshToken()) {
+        const unsubscribe = subscribeToSessionChanges((event) => {
+            if (event === "signed-out") {
+                clearSession(false);
                 setUser(null);
+                setError(null);
                 setLoading(false);
                 return;
             }
@@ -166,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             await fetchFromApi("/api/auth/logout", { method: "POST" });
         } catch {
-            // Local logout remains authoritative if the API is unavailable.
+            // Clear memory even if the server cookie cannot be reached.
         } finally {
             clearSession();
             setUser(null);

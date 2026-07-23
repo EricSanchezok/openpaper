@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.auth import dependencies
+from app.auth import dependencies, runtime
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
 
@@ -62,3 +62,18 @@ async def test_product_block_does_not_modify_shared_account() -> None:
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "OpenPaper access is suspended"
+
+
+def test_refresh_cookie_is_scoped_to_openpaper_auth_routes() -> None:
+    config = runtime.build_refresh_cookie_config(environment="development")
+
+    assert config.name == "openpaper_refresh"
+    assert config.path == "/api/auth"
+    assert config.max_age_seconds == 7 * 24 * 60 * 60
+    assert config.secure is False
+
+
+def test_refresh_cookie_is_secure_in_production() -> None:
+    config = runtime.build_refresh_cookie_config(environment="production")
+
+    assert config.secure is True

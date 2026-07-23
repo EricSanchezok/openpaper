@@ -65,7 +65,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 

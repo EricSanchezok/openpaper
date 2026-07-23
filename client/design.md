@@ -328,8 +328,8 @@ spinner is `Loader2` + `animate-spin`; `animate-pulse` for skeleton shimmer; `an
 - **Auth state** comes from `useAuth()` (`AuthProvider` in `lib/auth.tsx`). Email/password
   registration, verification, login, refresh, and password reset use the shared cloud-auth
   endpoints under `/api/auth`. The access token stays in memory; the product-scoped refresh
-  token is persisted as `openpaper.refresh_token`, rotated under a browser lock, and shared
-  across tabs. `lib/api.ts` attaches the Bearer token and retries one 401 after rotation.
+  token is stored in the host-only `openpaper_refresh` Secure HttpOnly cookie and rotated under
+  a browser lock. `lib/api.ts` attaches the Bearer token and retries one 401 after rotation.
   The product-enriched identity is loaded from `/api/me`.
 
 **Gating — `RequireAuth` at a nested `(protected)` group.** Auth is enforced once at the

@@ -23,7 +23,9 @@ The cloud-auth routers are mounted directly by `app.main`:
 - `/api/me`: shared identity enriched with OpenPaper profile state
 
 Protected endpoints require `Authorization: Bearer <access-token>`. OpenPaper
-does not issue or accept a product login cookie.
+keeps access tokens in browser memory. Refresh tokens are rotated in the
+host-only `openpaper_refresh` cookie with `HttpOnly`, `SameSite=Lax`, and
+`Secure` enabled in production; JavaScript never receives them.
 
 ## Required configuration
 
@@ -31,13 +33,15 @@ Cloud-auth settings use the `AUTH_` prefix. Production must provide at least:
 
 ```dotenv
 AUTH_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
-AUTH_CLIENT_ID=openpaper
 AUTH_JWT_SECRET=replace-with-a-long-random-secret
 AUTH_ALIYUN_DM_ACCESS_KEY_ID=...
 AUTH_ALIYUN_DM_ACCESS_KEY_SECRET=...
 AUTH_ALIYUN_DM_ACCOUNT_NAME=...
 AUTH_ALIYUN_DM_FROM_ALIAS=OpenPaper
 ```
+
+The token audience is fixed to `openpaper` in application code and is not an
+environment override.
 
 `AUTH_DATABASE_URL` defaults to `DATABASE_URL`, so the synchronous OpenPaper
 ORM and the asynchronous cloud-auth pool can share one RDS database.
