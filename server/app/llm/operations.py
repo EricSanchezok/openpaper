@@ -5,7 +5,6 @@ from app.llm.multi_paper_operations import MultiPaperOperations
 from app.llm.paper_operations import PaperOperations
 
 
-# For backward compatibility, create a unified Operations class
 class Operations(
     PaperOperations,
     MultiPaperOperations,
@@ -19,7 +18,6 @@ class Operations(
     pass
 
 
-# Also expose individual components for more targeted usage
 __all__ = [
     "Operations",
     "PaperOperations",

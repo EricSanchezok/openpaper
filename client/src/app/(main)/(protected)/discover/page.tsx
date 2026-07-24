@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Search } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { useSubscription, isDiscoverSearchAtLimit, isDiscoverSearchNearLimit } from "@/hooks/useSubscription"
+import { useSubscription, isTokenCreditAtLimit } from "@/hooks/useSubscription"
 import DiscoverHistory, { DiscoverSearchHistory } from "./DiscoverHistory"
 import DiscoverInput, { DiscoverSource, DiscoverSort, SearchMode, YearFilter } from "./DiscoverInput"
 import DiscoverResultCard, { DiscoverResult } from "./DiscoverResultCard"
@@ -46,47 +46,8 @@ function DiscoverPageContent() {
     const [onlyOpenAccess, setOnlyOpenAccess] = useState(false)
     const [yearFilter, setYearFilter] = useState<YearFilter>(null)
 
-    const { subscription, loading: subscriptionLoading, refetch: refetchSubscription } = useSubscription()
-    const atSearchLimit = isDiscoverSearchAtLimit(subscription)
-    const nearSearchLimit = isDiscoverSearchNearLimit(subscription)
-
-    // Toast notifications for discover search limits (once per session)
-    useEffect(() => {
-        const DISCOVER_LIMIT_TOAST_KEY = "discover_search_limit_toast_shown"
-
-        if (!subscriptionLoading && subscription) {
-            if (sessionStorage.getItem(DISCOVER_LIMIT_TOAST_KEY)) {
-                return
-            }
-
-            let toastShown = false
-
-            if (atSearchLimit) {
-                toast.error("Search limit reached", {
-                    description: "You've used all your weekly discover searches. Limits reset every Monday.",
-                    action: {
-                        label: "Upgrade",
-                        onClick: () => window.location.href = "/pricing"
-                    },
-                })
-                toastShown = true
-            } else if (nearSearchLimit) {
-                const remaining = subscription.usage.discover_searches_remaining
-                toast.warning("Search limit approaching", {
-                    description: `You have ${remaining} search${remaining === 1 ? "" : "es"} remaining this week.`,
-                    action: {
-                        label: "Upgrade",
-                        onClick: () => window.location.href = "/pricing"
-                    },
-                })
-                toastShown = true
-            }
-
-            if (toastShown) {
-                sessionStorage.setItem(DISCOVER_LIMIT_TOAST_KEY, "true")
-            }
-        }
-    }, [subscription, subscriptionLoading, atSearchLimit, nearSearchLimit])
+    const { subscription, refetch: refetchSubscription } = useSubscription()
+    const tokenCreditLimitReached = isTokenCreditAtLimit(subscription)
 
     const loadSearchById = useCallback(async (id: string) => {
         try {
@@ -174,9 +135,9 @@ function DiscoverPageContent() {
     const handleSearch = async () => {
         if (!question.trim() || loading) return
 
-        if (atSearchLimit) {
-            toast.error("Search limit reached", {
-                description: "You've used all your weekly discover searches. Limits reset every Monday.",
+        if (tokenCreditLimitReached) {
+            toast.error("Token Credits exhausted", {
+                description: "You've used this week's Token Credits. They reset every Monday at 00:00 UTC.",
                 action: {
                     label: "Upgrade",
                     onClick: () => window.location.href = "/pricing"
@@ -338,7 +299,7 @@ function DiscoverPageContent() {
                         onOpenAccessChange={setOnlyOpenAccess}
                         yearFilter={yearFilter}
                         onYearFilterChange={setYearFilter}
-                        atSearchLimit={atSearchLimit}
+                        tokenCreditLimitReached={tokenCreditLimitReached}
                     />
 
                     {history.length > 0 && (

@@ -14,7 +14,7 @@ import {
     EMPTY_MENTION_SELECTION,
 } from "@/components/chat/MentionAutocomplete";
 import { AnimatedGradientText } from "@/components/magicui/animated-gradient-text";
-import { isChatCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
+import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
 
 // Project home is the new-chat surface: a centered composer over the project's
@@ -40,21 +40,21 @@ export default function ProjectPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { subscription } = useSubscription();
 
-    const chatDisabled = isChatCreditAtLimit(subscription);
+    const aiDisabled = isTokenCreditAtLimit(subscription);
     const isViewer = project?.role === ProjectRole.Viewer;
 
     useEffect(() => {
-        const CHAT_CREDIT_TOAST_KEY = "chat_credit_limit_toast_shown";
-        if (chatDisabled && !sessionStorage.getItem(CHAT_CREDIT_TOAST_KEY)) {
-            toast.error("Nice! You've used your chat credits for the week. Upgrade your plan to continue chatting.", {
+        const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
+        if (aiDisabled && !sessionStorage.getItem(TOKEN_CREDIT_TOAST_KEY)) {
+            toast.error("You've used this week's Token Credits. Upgrade your plan to continue using AI features.", {
                 action: {
                     label: "Upgrade",
                     onClick: () => router.push("/pricing"),
                 },
             });
-            sessionStorage.setItem(CHAT_CREDIT_TOAST_KEY, "true");
+            sessionStorage.setItem(TOKEN_CREDIT_TOAST_KEY, "true");
         }
-    }, [chatDisabled, router]);
+    }, [aiDisabled, router]);
 
     // Chat scope mirrors the reader tabs: papers open in the reader join the
     // @-mention scope; closing a tab removes them. Diffing against the previous
@@ -204,8 +204,8 @@ export default function ProjectPage() {
                             papersOnly
                             selection={mentionSelection}
                             onSelectionChange={setMentionSelection}
-                            placeholder={chatDisabled ? "Nice! You have used your chat credits for the week. Upgrade your plan to use more." : "Ask a question about your papers, analyze findings, or explore new ideas..."}
-                            disabled={chatDisabled || isSubmitting}
+                            placeholder={aiDisabled ? "You have used this week's Token Credits. Upgrade your plan to continue." : "Ask a question about your papers, analyze findings, or explore new ideas..."}
+                            disabled={aiDisabled || isSubmitting}
                             sendDisabled={!newQuery.trim()}
                             busy={isSubmitting}
                             autoFocus

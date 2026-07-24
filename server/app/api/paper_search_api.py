@@ -5,6 +5,7 @@ from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
+from app.helpers.ai_limits import AILimitExceeded, enforce_rate_limit
 from app.helpers.paper_search import (
     OpenAlexFilter,
     PaperSort,
@@ -14,7 +15,7 @@ from app.helpers.paper_search import (
     search_open_alex,
 )
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,9 @@ paper_search_router = APIRouter()
 
 @paper_search_router.post("/search")
 async def search_papers(
-    query: str,
-    page: int = 1,
+    request: Request,
+    query: str = Query(min_length=1, max_length=1_000),
+    page: int = Query(default=1, ge=1, le=100),
     # Accept filter in the body for more complex queries
     filter: Optional[OpenAlexFilter] = None,
     sort: Optional[PaperSort] = None,
@@ -38,6 +40,11 @@ async def search_papers(
     Search for papers based on the provided query.
     """
     try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id) if current_user else 0,
+            ip_address=request.client.host if request.client else "unknown",
+            feature="external_search",
+        )
         # Perform the search operation
         results = search_open_alex(
             query, filter=filter, page=page, sort=sort.value if sort else None
@@ -56,13 +63,16 @@ async def search_papers(
         return Response(
             content=results.model_dump_json(), media_type="application/json"
         )
+    except AILimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
     except Exception as e:
         logger.error(f"Error searching papers: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")
 
 
 @paper_search_router.post("/match")
 async def get_paper_graph(
+    request: Request,
     doi: Optional[str] = None,
     paper_id: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -75,6 +85,11 @@ async def get_paper_graph(
     the paper's DOI will be used to look up the OpenAlex ID.
     """
     try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=request.client.host if request.client else "unknown",
+            feature="external_search",
+        )
         if not doi and not paper_id:
             raise HTTPException(
                 status_code=400,
@@ -129,15 +144,18 @@ async def get_paper_graph(
             db=db,
         )
         return Response(content=graph.model_dump_json(), media_type="application/json")
+    except AILimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error retrieving paper graph: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")
 
 
 @paper_search_router.get("/author")
 async def get_author_works(
+    request: Request,
     author_id: str,
     page: int = 1,
     db: Session = Depends(get_db),
@@ -151,6 +169,11 @@ async def get_author_works(
         page: Page number for pagination.
     """
     try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=request.client.host if request.client else "unknown",
+            feature="external_search",
+        )
         author_filter = OpenAlexFilter(authors=[author_id])
         results = search_open_alex(search_term=None, filter=author_filter, page=page)
         track_event(
@@ -166,6 +189,8 @@ async def get_author_works(
         return Response(
             content=results.model_dump_json(), media_type="application/json"
         )
+    except AILimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
     except Exception as e:
         logger.error(f"Error retrieving author works: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")

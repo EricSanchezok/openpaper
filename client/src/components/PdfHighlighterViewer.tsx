@@ -1429,7 +1429,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 	const highlightPageMapRef = useRef<Map<string, number[]>>(new Map());
 
 	// Create DOM-based overlays for highlights without position data
-	// This handles both assistant highlights and legacy user highlights (backwards compatibility)
+	// This handles highlights that use text matching instead of stored PDF positions.
 	// Uses MutationObserver to detect when text layers are added/recreated
 	useEffect(() => {
 		if (!pdfReady || !pdfDocumentRef.current) return;
@@ -1437,7 +1437,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 		// Clear existing overlays (needed when scale changes so they can be recreated at new positions)
 		document.querySelectorAll(".text-match-highlight-overlay").forEach((el) => el.remove());
 
-		// Get all highlights without positions (assistant or legacy user highlights)
+		// Get all highlights without stored PDF positions.
 		const highlightsWithoutPosition = highlights.filter(
 			(h) => !h.position && h.raw_text
 		);

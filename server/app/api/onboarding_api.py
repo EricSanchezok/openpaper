@@ -108,5 +108,5 @@ async def create_onboarding(
         logger.error(f"Error creating/updating onboarding: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to save onboarding data: {str(e)}"},
+            content={"message": "Failed to save onboarding data"},
         )

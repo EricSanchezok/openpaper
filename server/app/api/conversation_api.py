@@ -42,13 +42,13 @@ async def rename_conversation(
             return JSONResponse(status_code=200, content={"new_title": new_name})
         else:
             raise ValueError("Failed to rename conversation. No new title generated.")
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"message": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error renaming conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to rename conversation: {str(e)}"},
+            content={"message": "Failed to rename conversation"},
         )
 
 
@@ -80,7 +80,7 @@ async def get_everything_conversations(
         logger.error(f"Error fetching EVERYTHING conversations: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch conversations: {str(e)}"},
+            content={"message": "Failed to fetch conversations"},
         )
 
 
@@ -129,13 +129,13 @@ async def get_shared_paper_conversation(
                 "messages": formatted_messages,
             },
         )
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"message": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error fetching shared paper conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch conversation: {str(e)}"},
+            content={"message": "Failed to fetch conversation"},
         )
 
 
@@ -175,13 +175,13 @@ async def get_conversation(
                 "messages": formatted_messages,
             },
         )
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"message": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error fetching conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch conversation: {str(e)}"},
+            content={"message": "Failed to fetch conversation"},
         )
 
 
@@ -218,7 +218,7 @@ async def create_conversation(
         logger.error(f"Error creating conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create conversation: {str(e)}"},
+            content={"message": "Failed to create conversation"},
         )
 
 
@@ -252,7 +252,7 @@ async def create_everything_conversation(
         logger.error(f"Error creating everything conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create conversation: {str(e)}"},
+            content={"message": "Failed to create conversation"},
         )
 
 
@@ -284,13 +284,13 @@ async def update_conversation(
             status_code=200,
             content={"id": str(conversation.id), "title": conversation.title},
         )
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"message": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error updating conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to update conversation: {str(e)}"},
+            content={"message": "Failed to update conversation"},
         )
 
 
@@ -323,6 +323,6 @@ async def delete_conversation(
         return JSONResponse(
             status_code=404,
             content={
-                "message": f"Conversation not found or couldn't be deleted: {str(e)}"
+                "code": "conversation_delete_failed"
             },
         )

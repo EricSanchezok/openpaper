@@ -10,16 +10,14 @@ import { SubscriptionData } from "@/lib/schema";
 const LOCAL_STORAGE_KEY = "op_referral_toast_seen";
 
 const PAPER_MILESTONE = 10;
-const CHAT_CREDIT_MILESTONE = 5000;
-const AUDIO_OVERVIEW_MILESTONE = 3;
+const TOKEN_CREDIT_MILESTONE = 1_000_000;
 const PROJECT_MILESTONE = 2;
 
 function hasHitAnyMilestone(s: SubscriptionData): boolean {
     const u = s.usage;
     return (
         u.paper_uploads >= PAPER_MILESTONE ||
-        u.chat_credits_used >= CHAT_CREDIT_MILESTONE ||
-        u.audio_overviews_used >= AUDIO_OVERVIEW_MILESTONE ||
+        u.token_credits_used >= TOKEN_CREDIT_MILESTONE ||
         u.projects >= PROJECT_MILESTONE
     );
 }

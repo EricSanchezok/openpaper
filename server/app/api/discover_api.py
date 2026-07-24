@@ -7,11 +7,17 @@ from app.auth.dependencies import get_required_user
 from app.database.crud.discover_crud import discover_search_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
+from app.helpers.ai_limits import (
+    AILimitExceeded,
+    acquire_concurrency,
+    enforce_rate_limit,
+    release_concurrency,
+)
 from app.helpers.discover import run_discover_pipeline
-from app.helpers.subscription_limits import can_user_run_discover_search
+from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.discover import DISCOVER_SOURCES, DiscoverSearchRequest
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -25,23 +31,35 @@ END_DELIMITER = "END_OF_STREAM"
 @discover_router.post("/search")
 async def discover_search(
     request: DiscoverSearchRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> StreamingResponse:
     """Search for research papers by decomposing a question into subqueries."""
 
-    # Check quota
-    can_search, error_msg = can_user_run_discover_search(db, current_user)
-    if not can_search:
-        track_event(
-            "discover_search_quota_exceeded",
-            properties={"error": error_msg},
-            user_id=str(current_user.id),
-            db=db,
+    if not has_token_credits(db, user=current_user):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "token_quota_exceeded",
+                "message": "Your weekly Token Credits are exhausted.",
+                "retryable": False,
+            },
         )
-        raise HTTPException(status_code=429, detail=error_msg)
+    try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=http_request.client.host if http_request.client else "unknown",
+            feature="discover",
+        )
+        concurrency_lease = await acquire_concurrency(
+            user_id=int(current_user.id),
+            category="interactive",
+        )
+    except AILimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    async def response_generator():
+    async def run_response_generator():
         collected_subqueries: list[str] = []
         collected_results: dict[str, list] = {}
 
@@ -108,7 +126,18 @@ async def discover_search(
                 user_id=str(current_user.id),
                 db=db,
             )
-            yield f"{json.dumps({'type': 'error', 'content': str(e)})}{END_DELIMITER}"
+            yield f"{json.dumps({'type': 'error', 'content': 'discover_failed'})}{END_DELIMITER}"
+
+    async def response_generator():
+        try:
+            with llm_usage_context(
+                user_id=int(current_user.id),
+                feature="discover",
+            ):
+                async for event in run_response_generator():
+                    yield event
+        finally:
+            await release_concurrency(concurrency_lease)
 
     return StreamingResponse(response_generator(), media_type="text/event-stream")
 

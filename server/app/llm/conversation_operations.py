@@ -15,7 +15,7 @@ from app.llm.prompts import (
     RENAME_CONVERSATION_SYSTEM_PROMPT,
     RENAME_CONVERSATION_USER_MESSAGE,
 )
-from app.llm.provider import LLMProvider, TextContent
+from app.llm.backend import TextContent
 from app.schemas.user import CurrentUser
 from fastapi import Depends
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 
 class DataTableSchemaProposal(BaseModel):
-    # Strict structured output (OpenAI/Cerebras) requires additionalProperties=false
     model_config = ConfigDict(extra="forbid")
 
     columns: list[str] = Field(description="Column labels for the data table")
@@ -172,8 +171,7 @@ class DataTableOperations(BaseLLMClient):
             contents=message_content,
             system_prompt=PROPOSE_DATA_TABLE_SCHEMA_SYSTEM_PROMPT,
             model_type=ModelType.FAST,
-            schema=DataTableSchemaProposal.model_json_schema(),
-            provider=LLMProvider.CEREBRAS,
+            response_model=DataTableSchemaProposal,
         )
 
         if response and response.text:

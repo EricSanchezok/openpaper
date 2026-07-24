@@ -1,5 +1,5 @@
 import { fetchFromApi } from '@/lib/api';
-import { Download, Clock, FileAudio, History, ChevronDown, Plus, HelpCircle } from 'lucide-react';
+import { Download, Clock, FileAudio, History, ChevronDown, Plus } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -8,19 +8,13 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-    HoverCard,
-    HoverCardContent,
-    HoverCardTrigger,
-} from "@/components/ui/hover-card";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import EnigmaticLoadingExperience from './EnigmaticLoadingExperience';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { JobStatus as JobStatusValue } from '@/lib/schema';
-import { useSubscription, isAudioOverviewAtLimit, nextMonday } from '@/hooks/useSubscription';
-import Link from 'next/link';
+import { useSubscription } from '@/hooks/useSubscription';
 import { EnhancedAudioPlayer } from './EnhancedAudioPlayer';
 import { AudioOverview } from '@/lib/schema';
 
@@ -38,13 +32,6 @@ interface JobStatus {
     paper_id: string;
 }
 
-// Curated voice options - 3 distinct voices to reduce decision fatigue
-const VOICE_OPTIONS = [
-    { id: 'nova', name: 'Nova', description: 'Warm & friendly' },
-    { id: 'onyx', name: 'Onyx', description: 'Deep & authoritative' },
-    { id: 'shimmer', name: 'Shimmer', description: 'Clear & bright' },
-] as const;
-
 // Length options for audio overview
 const LENGTH_OPTIONS = [
     { id: 'short', name: 'Short', description: '~2-3 min' },
@@ -52,12 +39,10 @@ const LENGTH_OPTIONS = [
     { id: 'long', name: 'Long', description: '~10-15 min' },
 ] as const;
 
-type VoiceOption = typeof VOICE_OPTIONS[number]['id'];
 type LengthOption = typeof LENGTH_OPTIONS[number]['id'];
 
 interface AudioOverviewCreateRequestBody {
     additional_instructions?: string;
-    voice?: VoiceOption;
     length?: LengthOption;
 }
 
@@ -105,7 +90,7 @@ const DEFAULT_INSTRUCTIONS = '';
 
 export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTerm }: AudioOverviewProps) {
 
-    const { subscription, refetch: refetchSubscription } = useSubscription();
+    const { refetch: refetchSubscription } = useSubscription();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [audioOverviewJobId, setAudioOverviewJobId] = useState<string | null>(null);
     const [audioOverview, setAudioOverview] = useState<AudioOverview | null>(null);
@@ -119,23 +104,11 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
     const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
     const [selectedFocus, setSelectedFocus] = useState<FocusOption>('summary');
     const [additionalInstructions, setAdditionalInstructions] = useState<string>(DEFAULT_INSTRUCTIONS);
-    const [selectedVoice, setSelectedVoice] = useState<VoiceOption>('nova');
     const [selectedLength, setSelectedLength] = useState<LengthOption>('medium');
 
     // Ref to track if we've started fetching the completed audio (prevents race condition errors)
     const isFetchingCompletedAudioRef = useRef(false);
 
-
-    // Audio overview credit usage state
-    const [audioCreditUsage, setAudioCreditUsage] = useState<{
-        used: number;
-        remaining: number;
-        total: number;
-        usagePercentage: number;
-        showWarning: boolean;
-        isNearLimit: boolean;
-        isCritical: boolean;
-    } | null>(null);
 
     // Check for existing audio overview on component mount
     useEffect(() => {
@@ -189,46 +162,12 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
         setAllAudioOverviews(overviews);
     };
 
-    // useCallback to calculate audio overview credit usage
-    const updateAudioCreditUsage = useCallback(() => {
-        if (!subscription) {
-            setAudioCreditUsage(null);
-            return;
-        }
-
-        const { audio_overviews_used, audio_overviews_remaining } = subscription.usage;
-        const total = audio_overviews_used + audio_overviews_remaining;
-        const usagePercentage = total > 0 ? (audio_overviews_used / total) * 100 : 0;
-
-        setAudioCreditUsage({
-            used: audio_overviews_used,
-            remaining: audio_overviews_remaining,
-            total,
-            usagePercentage,
-            showWarning: usagePercentage > 75,
-            isNearLimit: usagePercentage > 75,
-            isCritical: usagePercentage > 95
-        });
-    }, [subscription]);
-
-    // Update audio credit usage whenever subscription changes
-    useEffect(() => {
-        updateAudioCreditUsage();
-    }, [updateAudioCreditUsage]);
-
-    const createAudioOverview = async (additionalInstructions: string, voice: VoiceOption, length: LengthOption) => {
-        // Check if user has remaining audio overview credits
-        if (isAudioOverviewAtLimit(subscription)) {
-            setError('You have reached your monthly audio overview limit. Please upgrade your plan or wait until next Monday for credits to reset.');
-            return;
-        }
-
+    const createAudioOverview = async (additionalInstructions: string, length: LengthOption) => {
         setIsLoading(true);
         setError(null);
 
         const body: AudioOverviewCreateRequestBody = {
             additional_instructions: additionalInstructions,
-            voice: voice,
             length: length
         }
 
@@ -469,8 +408,7 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
                             </div>
                         </div>
 
-                        {/* Length and Voice in a row */}
-                        <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="mb-4">
                             {/* Length Selection */}
                             <div>
                                 <Label className="block text-sm font-medium text-foreground mb-2">
@@ -491,25 +429,6 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
                                 </div>
                             </div>
 
-                            {/* Voice Selection */}
-                            <div>
-                                <Label className="block text-sm font-medium text-foreground mb-2">
-                                    Voice
-                                </Label>
-                                <div className="flex flex-col gap-1">
-                                    {VOICE_OPTIONS.map((voice) => (
-                                        <Button
-                                            key={voice.id}
-                                            variant="outline"
-                                            onClick={() => setSelectedVoice(voice.id)}
-                                            className={`px-2 py-1.5 text-sm border rounded-lg font-medium transition-colors flex justify-between items-center ${selectedVoice === voice.id ? 'border-blue-300 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800' : 'border-border hover:bg-accent'}`}
-                                        >
-                                            <span className="font-medium text-xs">{voice.name}</span>
-                                            <span className="text-xs text-muted-foreground">{voice.description}</span>
-                                        </Button>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
 
                         {/* Custom Instructions - Collapsible */}
@@ -533,7 +452,6 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
                                     onClick={() => {
                                         setShowGenerationForm(false);
                                         setAdditionalInstructions(DEFAULT_INSTRUCTIONS);
-                                        setSelectedVoice('nova');
                                         setSelectedLength('medium');
                                         setSelectedFocus('summary');
                                     }}
@@ -548,32 +466,15 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
                                     const fullInstructions = additionalInstructions
                                         ? `${focusInstructions}\n\nAdditional instructions: ${additionalInstructions}`
                                         : focusInstructions;
-                                    createAudioOverview(fullInstructions, selectedVoice, selectedLength);
+                                    createAudioOverview(fullInstructions, selectedLength);
                                     setShowGenerationForm(false);
                                 }}
-                                disabled={isLoading || isAudioOverviewAtLimit(subscription)}
+                                disabled={isLoading}
                                 className="bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200"
                             >
-                                {isLoading ? 'Creating...' : isAudioOverviewAtLimit(subscription) ? 'Limit Reached' : 'Create'}
+                                {isLoading ? 'Creating...' : 'Create'}
                             </button>
                         </div>
-
-                        {/* Show limit reached message if at 100% */}
-                        {isAudioOverviewAtLimit(subscription) && (
-                            <div className="text-red-600 dark:text-red-400 text-sm mt-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800">
-                                <div className="flex items-center gap-2">
-                                    <HelpCircle className="w-4 h-4" />
-                                    <span className="font-semibold">Audio Overview Limit Reached</span>
-                                </div>
-                                <p className="mt-1">You&apos;ve used all your monthly audio overviews. Credits reset every Monday at 12 AM UTC.</p>
-                                <Link
-                                    href="/pricing"
-                                    className="text-blue-500 hover:text-blue-700 font-medium"
-                                >
-                                    Upgrade for more audio overviews →
-                                </Link>
-                            </div>
-                        )}
                     </div>
                 </div>
             )}
@@ -615,28 +516,6 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
             {/* Enhanced Audio Player */}
             {audioOverview && !showGenerationForm && (
                 <div className="space-y-6">
-                    {/* Audio Overview Credit Usage Display */}
-                    {audioCreditUsage && audioCreditUsage.showWarning && (
-                        <div className={`text-xs px-2 py-1 mt-4 ${audioCreditUsage.isCritical ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'} justify-between flex`}>
-                            <div className="font-semibold">{audioCreditUsage.used} audio overviews used</div>
-                            <div className="font-semibold">
-                                <HoverCard>
-                                    <HoverCardTrigger asChild>
-                                        <span>{audioCreditUsage.remaining} remaining</span>
-                                    </HoverCardTrigger>
-                                    <HoverCardContent side="top" className="w-48">
-                                        <p className="text-sm">Resets on {nextMonday.toLocaleDateString()}</p>
-                                    </HoverCardContent>
-                                </HoverCard>
-                                <Link
-                                    href="/pricing"
-                                    className="text-blue-500 hover:text-blue-700 ml-1"
-                                >
-                                    Upgrade
-                                </Link>
-                            </div>
-                        </div>
-                    )}
                     <div className="flex items-center justify-between">
                         <div className="text-sm text-secondary-foreground flex items-center gap-2">
                             <Clock className="w-4 h-4" />
@@ -661,19 +540,18 @@ export function AudioOverviewPanel({ paper_id, paper_title, setExplicitSearchTer
                                 onClick={() => {
                                     setShowGenerationForm(true);
                                     setAdditionalInstructions(DEFAULT_INSTRUCTIONS);
-                                    setSelectedVoice('nova');
                                     setSelectedLength('medium');
                                     setSelectedFocus('summary');
                                 }}
-                                disabled={isLoading || isAudioOverviewAtLimit(subscription)}
-                                className={`text-sm font-medium flex items-center gap-1 ${isLoading || isAudioOverviewAtLimit(subscription)
+                                disabled={isLoading}
+                                className={`text-sm font-medium flex items-center gap-1 ${isLoading
                                     ? 'text-gray-400 cursor-not-allowed'
                                     : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-500'
                                     }`}
-                                title={isAudioOverviewAtLimit(subscription) ? 'Audio overview limit reached' : 'Create new audio overview'}
+                                title='Create new audio overview'
                             >
                                 <Plus className="w-4 h-4 mr-1" />
-                                {isAudioOverviewAtLimit(subscription) ? 'Limit Reached' : 'New'}
+                                New
                             </button>
                         </div>
                     </div>

@@ -5,8 +5,8 @@ import {
     isPaperUploadAtLimit,
     isStorageNearLimit,
     isPaperUploadNearLimit,
-    isChatCreditAtLimit,
-    isChatCreditNearLimit,
+    isTokenCreditAtLimit,
+    isTokenCreditNearLimit,
 } from "@/hooks/useSubscription";
 
 export interface SubscriptionWarning {
@@ -66,20 +66,20 @@ export function getSubscriptionWarning(
         };
     }
 
-    if (isChatCreditAtLimit(subscription)) {
+    if (isTokenCreditAtLimit(subscription)) {
         return {
             type: "error",
-            key: "chat-credit-limit",
-            title: "Chat credits exhausted",
-            description: "Upgrade your plan to continue using chat features.",
+            key: "token-credit-limit",
+            title: "Token Credits exhausted",
+            description: "Upgrade your plan to continue using AI features.",
         };
     }
 
-    if (isChatCreditNearLimit(subscription)) {
+    if (isTokenCreditNearLimit(subscription)) {
         return {
             type: "warning",
-            key: "chat-credit-near-limit",
-            title: "Chat credits nearly exhausted",
+            key: "token-credit-near-limit",
+            title: "Token Credits nearly exhausted",
             description: "Consider upgrading your plan to avoid interruptions.",
         };
     }

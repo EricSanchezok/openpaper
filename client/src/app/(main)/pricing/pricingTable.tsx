@@ -31,16 +31,16 @@ const features: PricingFeature[] = [
         teams: "50 GB"
     },
     {
-        name: "Chat credits (weekly)",
-        basic: "5000",
-        researcher: "150,000",
-        teams: "unlimited"
+        name: "Token Credits (weekly)",
+        basic: "3,000,000",
+        researcher: "100,000,000",
+        teams: "Custom"
     },
     {
-        name: "Audio overviews (weekly)",
-        basic: "5",
-        researcher: "100",
-        teams: "unlimited"
+        name: "Audio overviews",
+        basic: true,
+        researcher: true,
+        teams: true
     },
     {
         name: "Projects",
@@ -50,9 +50,9 @@ const features: PricingFeature[] = [
     },
     {
         name: "Data tables",
-        basic: "2",
-        researcher: "50",
-        teams: "100"
+        basic: true,
+        researcher: true,
+        teams: true
     }
 ];
 

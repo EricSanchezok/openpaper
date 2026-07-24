@@ -41,10 +41,7 @@ import DataTableGenerationJobCard from "@/components/DataTableGenerationJobCard"
 import DataTableSchemaModal, { FieldDefinition } from "@/components/DataTableSchemaModal";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import {
-    isAudioOverviewAtLimit,
-    isAudioOverviewNearLimit,
-    isDataTableAtLimit,
-    isDataTableNearLimit,
+    isTokenCreditAtLimit,
     useSubscription,
 } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
@@ -91,8 +88,7 @@ export function ArtifactsPanel() {
     const { projectId, project, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
     const router = useRouter();
     const { subscription, refetch: refetchSubscription } = useSubscription();
-    const atAudioLimit = subscription ? isAudioOverviewAtLimit(subscription) : false;
-    const atDataTableLimit = subscription ? isDataTableAtLimit(subscription) : false;
+    const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
     const isViewer = project?.role === ProjectRole.Viewer;
 
     const [audioInstructions, setAudioInstructions] = useState("");
@@ -252,8 +248,8 @@ export function ArtifactsPanel() {
     }, [getProjectAudioJobs, getProjectAudioOverviews]);
 
     const handleCreateAudioOverview = async () => {
-        if (atAudioLimit) {
-            toast.error("You have reached your audio overview limit. Please upgrade to create more.");
+        if (tokenCreditLimitReached) {
+            toast.error("You have used this week's Token Credits. Please upgrade to continue.");
             setCreateAudioDialogOpen(false);
             return;
         }
@@ -277,36 +273,6 @@ export function ArtifactsPanel() {
             setAudioInstructions("");
 
             refetchSubscription();
-            if (subscription) {
-                const newUsage = {
-                    ...subscription.usage,
-                    audio_overviews_used: subscription.usage.audio_overviews_used + 1,
-                    audio_overviews_remaining: subscription.usage.audio_overviews_remaining - 1,
-                };
-                const tempUpdatedSubscription = {
-                    ...subscription,
-                    usage: newUsage,
-                };
-
-                const newAtLimit = isAudioOverviewAtLimit(tempUpdatedSubscription);
-                const newNearLimit = isAudioOverviewNearLimit(tempUpdatedSubscription);
-
-                if (newAtLimit) {
-                    toast.warning("You've used all of your audio overviews for the week.", {
-                        action: {
-                            label: "Upgrade",
-                            onClick: () => router.push('/pricing'),
-                        }
-                    });
-                } else if (newNearLimit) {
-                    toast.info(`You have ${newUsage.audio_overviews_remaining} audio overviews remaining this week.`, {
-                        action: {
-                            label: "Upgrade",
-                            onClick: () => router.push('/pricing'),
-                        }
-                    });
-                }
-            }
 
             // Immediately poll for jobs and overviews, then start interval polling
             const hasPendingJobs = await pollAudioData();
@@ -348,36 +314,6 @@ export function ArtifactsPanel() {
             toast.success("Data table generation started!");
 
             refetchSubscription();
-            if (subscription) {
-                const newUsage = {
-                    ...subscription.usage,
-                    data_tables_used: subscription.usage.data_tables_used + 1,
-                    data_tables_remaining: subscription.usage.data_tables_remaining - 1,
-                };
-                const tempUpdatedSubscription = {
-                    ...subscription,
-                    usage: newUsage,
-                };
-
-                const newAtLimit = isDataTableAtLimit(tempUpdatedSubscription);
-                const newNearLimit = isDataTableNearLimit(tempUpdatedSubscription);
-
-                if (newAtLimit) {
-                    toast.warning("You've used all of your data tables for the week.", {
-                        action: {
-                            label: "Upgrade",
-                            onClick: () => router.push('/pricing'),
-                        }
-                    });
-                } else if (newNearLimit) {
-                    toast.info(`You have ${newUsage.data_tables_remaining} data tables remaining this week.`, {
-                        action: {
-                            label: "Upgrade",
-                            onClick: () => router.push('/pricing'),
-                        }
-                    });
-                }
-            }
         } catch (err) {
             console.error("Failed to create data table:", err);
             toast.error("Failed to create data table. Please try again.");
@@ -515,9 +451,9 @@ export function ArtifactsPanel() {
                             Generate an audio overview of your project papers. Add custom instructions to guide the content.
                         </DialogDescription>
                     </DialogHeader>
-                    {atAudioLimit ? (
+                    {tokenCreditLimitReached ? (
                         <div className="mt-4 text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/30 rounded-md">
-                            <p className="text-sm text-yellow-800 dark:text-yellow-200">You&apos;ve used all your audio overviews for this week.</p>
+                            <p className="text-sm text-yellow-800 dark:text-yellow-200">You&apos;ve used this week&apos;s Token Credits.</p>
                             <Link href="/pricing" passHref>
                                 <Button variant="link" className="p-0 h-auto text-sm">Upgrade your plan to create more.</Button>
                             </Link>
@@ -555,14 +491,14 @@ export function ArtifactsPanel() {
                             </div>
                         </div>
                     )}
-                    {!atAudioLimit && (
+                    {!tokenCreditLimitReached && (
                         <div className="flex justify-end gap-2 mt-6">
                             <DialogClose asChild>
                                 <Button variant="secondary">
                                     Cancel
                                 </Button>
                             </DialogClose>
-                            <Button onClick={handleCreateAudioOverview} disabled={isCreatingAudio || atAudioLimit}>
+                            <Button onClick={handleCreateAudioOverview} disabled={isCreatingAudio || tokenCreditLimitReached}>
                                 {isCreatingAudio ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Volume2 className="mr-2 h-4 w-4" />}
                                 Create
                             </Button>
@@ -578,7 +514,7 @@ export function ArtifactsPanel() {
                 onSubmit={handleCreateDataTable}
                 projectId={projectId}
                 isCreating={isCreatingDataTable}
-                atLimit={atDataTableLimit}
+                atLimit={tokenCreditLimitReached}
             />
         </>
     );

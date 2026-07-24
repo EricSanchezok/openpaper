@@ -215,13 +215,15 @@ class PDFProcessingResult(BaseModel):
     file_url: Optional[str] = None
     preview_url: Optional[str] = None
     preview_object_key: Optional[str] = None
+    parser_markdown_s3_key: Optional[str] = None
+    parser_archive_s3_key: Optional[str] = None
     error: Optional[str] = None
     duration: Optional[float] = None  # Duration in seconds
 
 class DocumentMapping(BaseModel):
     title: str
-    s3_object_key: str
     id: str
+    raw_content: str
 
 class DataTableSchema(BaseModel):
     columns: List[str] = Field(

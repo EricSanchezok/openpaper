@@ -12,9 +12,8 @@ never clobbered.
 Usage:
     python -m app.scripts.backfill_paper_metadata [--limit N] [--dry-run]
 
-This calls external APIs (AnySearch, Scholight, Cerebras) for every candidate paper
-and is therefore not cheap — use --limit to bound the run, and prefer running
-during off-hours.
+This calls AnySearch, Scholight, and DeepSeek for every candidate paper and is
+therefore not cheap — use --limit to bound the run, and prefer running off-hours.
 """
 
 import argparse

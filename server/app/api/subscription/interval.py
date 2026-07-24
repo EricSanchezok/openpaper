@@ -116,7 +116,7 @@ def change_subscription_interval(
             logger.error(f"Error creating subscription schedule: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to schedule interval change: {str(e)}",
+                detail="Failed to schedule interval change",
             )
 
         effective_ts = current_period_end_ts or current_phase.end_date
@@ -163,7 +163,7 @@ def change_subscription_interval(
             f"Error when scheduling subscription interval change: {stripe_error}",
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=str(stripe_error))
+        raise HTTPException(status_code=500, detail="subscription_interval_failed")
 
 
 @router.post("/cancel-scheduled-change")
@@ -192,7 +192,7 @@ def cancel_scheduled_change(
             logger.error(f"Error releasing subscription schedule {schedule_id}: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to cancel scheduled change: {str(e)}",
+                detail="Failed to cancel scheduled change",
             )
 
         subscription_crud.create_or_update(
@@ -222,4 +222,4 @@ def cancel_scheduled_change(
         raise
     except Exception as e:
         logger.error(f"Error canceling scheduled change: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")

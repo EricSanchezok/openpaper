@@ -28,7 +28,7 @@ class CreateHighlightRequest(BaseModel):
     raw_text: str
     position: Optional[dict[str, Any]] = None  # ScaledPosition JSON
     color: Optional[str] = None  # Highlight color: yellow, green, blue, pink, purple
-    # Legacy fields - kept for backwards compatibility
+    # Text offsets support text-mode highlights; page_number supports PDF navigation.
     start_offset: Optional[int] = None
     end_offset: Optional[int] = None
     page_number: Optional[int] = None
@@ -38,7 +38,7 @@ class UpdateHighlightRequest(BaseModel):
     raw_text: str
     position: Optional[dict[str, Any]] = None  # ScaledPosition JSON
     color: Optional[str] = None  # Highlight color: yellow, green, blue, pink, purple
-    # Legacy fields - kept for backwards compatibility
+    # Text offsets support text-mode highlights.
     start_offset: Optional[int] = None
     end_offset: Optional[int] = None
 
@@ -79,7 +79,7 @@ async def create_highlight(
         logger.error(f"Error creating highlight: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create highlight: {str(e)}"},
+            content={"message": "Failed to create highlight"},
         )
 
 
@@ -102,7 +102,7 @@ async def get_document_highlights(
         logger.error(f"Error fetching highlights: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch highlights: {str(e)}"},
+            content={"message": "Failed to fetch highlights"},
         )
 
 
@@ -138,7 +138,7 @@ async def delete_highlight(
         return JSONResponse(
             status_code=404,
             content={
-                "message": f"Highlight not found or couldn't be deleted: {str(e)}"
+                "code": "highlight_delete_failed"
             },
         )
 
@@ -184,10 +184,10 @@ async def update_highlight(
     except ValueError as e:
 
         logger.error(f"Highlight not found or invalid data: {e}")
-        return JSONResponse(status_code=404, content={"message": str(e)})
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error updating highlight: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to update highlight: {str(e)}"},
+            content={"message": "Failed to update highlight"},
         )

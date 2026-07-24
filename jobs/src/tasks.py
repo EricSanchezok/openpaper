@@ -15,7 +15,9 @@ from src.data_table_processor import construct_data_table
 from src.pdf_processor import process_pdf_file
 from src.celery_app import celery_app, ZOTERO_SYNC_INTERVAL_SECONDS
 from src.s3_service import s3_service
+from src.token_usage import collect_token_usage
 from src.utils import time_it
+from src.webhook_signing import post_signed_json
 
 logger = logging.getLogger(__name__)
 
@@ -114,20 +116,26 @@ def upload_and_process_file(
                 return s3_service.download_file_to_bytes(s3_object_key)
 
         pdf_bytes = run_async_safely(download_with_timer())
+        source_url = s3_service.generate_presigned_download_url(
+            s3_object_key,
+            expiration_seconds=int(os.getenv("MINERU_SOURCE_URL_TTL_SECONDS", "900")),
+        )
 
         write_to_status("Processing PDF file")
 
         # Run the async processing function in a way that properly manages the event loop
         # This prevents "Event loop is closed" errors
-        result = run_async_safely(
-            process_pdf_file(
-                pdf_bytes,
-                s3_object_key,
-                task_id,
-                status_callback=write_to_status,
-                skip_metadata_extraction=skip_metadata_extraction,
+        with collect_token_usage(task_id) as usage:
+            result = run_async_safely(
+                process_pdf_file(
+                    pdf_bytes,
+                    source_url,
+                    s3_object_key,
+                    task_id,
+                    status_callback=write_to_status,
+                    skip_metadata_extraction=skip_metadata_extraction,
+                )
             )
-        )
 
         write_to_status("PDF processing complete!")
 
@@ -136,16 +144,12 @@ def upload_and_process_file(
             "status": "completed" if result.success else "failed",
             "result": result.model_dump(),
             "error": result.error if not result.success else None,
+            "usage_events": usage.events,
         }
 
         # Send webhook notification
         try:
-            response = requests.post(
-                webhook_url,
-                json=webhook_payload,
-                timeout=60,
-                headers={"Content-Type": "application/json"},
-            )
+            response = post_signed_json(webhook_url, webhook_payload, timeout=60)
             response.raise_for_status()
             logger.info(f"Webhook sent successfully for task {task_id}")
         except requests.RequestException as e:
@@ -161,16 +165,15 @@ def upload_and_process_file(
         failure_payload = {
             "task_id": task_id,
             "status": "failed",
-            "result": None,
-            "error": str(exc),
+            "result": {
+                "success": False,
+                "job_id": task_id,
+                "error": "pdf_processing_failed",
+            },
+            "error": "pdf_processing_failed",
         }
         try:
-            requests.post(
-                webhook_url,
-                json=failure_payload,
-                timeout=60,
-                headers={"Content-Type": "application/json"},
-            ).raise_for_status()
+            post_signed_json(webhook_url, failure_payload, timeout=60).raise_for_status()
         except requests.RequestException as e:
             logger.error(f"Failed to send failure webhook for task {task_id}: {e}")
 
@@ -201,12 +204,13 @@ def construct_data_table_task(
     data_table = DataTableSchema.model_validate(data_table)
 
     try:
-        result = run_async_safely(
-            construct_data_table(
-                data_table_schema=data_table,
-                status_callback=write_to_status
+        with collect_token_usage(task_id) as usage:
+            result = run_async_safely(
+                construct_data_table(
+                    data_table_schema=data_table,
+                    status_callback=write_to_status,
+                )
             )
-        )
 
         write_to_status("Data table construction complete!")
 
@@ -216,15 +220,11 @@ def construct_data_table_task(
             "status": "completed" if result[0].success else "failed",
             "result": result[0].model_dump(),
             "error": result[1] if not result[0].success else None,
+            "usage_events": usage.events,
         }
 
         try:
-            response = requests.post(
-                webhook_url,
-                json=webhook_payload,
-                timeout=60,
-                headers={"Content-Type": "application/json"},
-            )
+            response = post_signed_json(webhook_url, webhook_payload, timeout=60)
             response.raise_for_status()
             logger.info(f"Webhook sent successfully for task {task_id}")
         except requests.RequestException as e:
@@ -246,12 +246,7 @@ def construct_data_table_task(
         }
 
         try:
-            requests.post(
-                webhook_url,
-                json=failure_payload,
-                timeout=60,
-                headers={"Content-Type": "application/json"},
-            ).raise_for_status()
+            post_signed_json(webhook_url, failure_payload, timeout=60).raise_for_status()
 
             return
         except requests.RequestException as e:
@@ -322,15 +317,10 @@ def periodic_zotero_sync(self):
     Fires at the interval configured by ZOTERO_SYNC_INTERVAL_SECONDS (default 24h).
     """
     webhook_base = os.getenv("WEBHOOK_BASE_URL", "http://localhost:8000")
-    secret = os.getenv("JOBS_INTERNAL_SECRET", "")
     sync_interval = int(ZOTERO_SYNC_INTERVAL_SECONDS)
     url = f"{webhook_base}/api/webhooks/internal/zotero-sync-all?threshold_seconds={sync_interval}"
     logger.info(f"Triggering periodic Zotero sync via {url}")
-    resp = requests.post(
-        url,
-        timeout=120,
-        headers={"Authorization": f"Bearer {secret}"},
-    )
+    resp = post_signed_json(url, timeout=120)
     resp.raise_for_status()
     result = resp.json()
     logger.info(f"Periodic Zotero sync complete: {result.get('synced_users', 0)} users synced")
@@ -366,6 +356,6 @@ def delayed_referral_settlement_callback(self, webhook_url: str):
     deliver the trigger.
     """
     logger.info(f"Firing referral settlement callback: {webhook_url}")
-    resp = requests.post(webhook_url, timeout=30)
+    resp = post_signed_json(webhook_url, timeout=30)
     resp.raise_for_status()
     return {"status_code": resp.status_code, "webhook_url": webhook_url}

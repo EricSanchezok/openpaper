@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import jwt
 import pytest
 from app.helpers.scholight_search import search_scholight
 from app.integrations.mcp import (
@@ -12,10 +13,11 @@ from app.integrations.mcp import (
     normalize_json_schema,
     server_for_tool,
 )
+from app.llm.token_credits import llm_usage_context
 from mcp.types import Tool
 
 
-def test_mcp_tool_schema_is_forwarded_to_llm_provider() -> None:
+def test_mcp_tool_schema_is_forwarded_to_llm_backend() -> None:
     schema = {
         "type": "object",
         "properties": {"query": {"type": "string"}},
@@ -61,6 +63,27 @@ def test_remote_mcp_auth_header_is_optional() -> None:
 
     assert anonymous.headers is None
     assert authenticated.headers == {"Authorization": "Bearer secret"}
+
+
+def test_scholight_delegation_identifies_current_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.integrations.mcp import SCHOLIGHT_MCP
+
+    monkeypatch.setenv("SCHOLIGHT_MCP_DELEGATION_JWT_SECRET", "d" * 32)
+    with llm_usage_context(user_id=42, feature="test"):
+        authorization = SCHOLIGHT_MCP.headers
+
+    assert authorization is not None
+    token = authorization["Authorization"].removeprefix("Bearer ")
+    claims = jwt.decode(
+        token,
+        "d" * 32,
+        algorithms=["HS256"],
+        audience="scholight-mcp",
+        issuer="openpaper",
+    )
+    assert (claims["sub"], claims["scope"]) == ("42", "search")
 
 
 def test_tool_router_requires_one_unique_server() -> None:

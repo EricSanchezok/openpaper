@@ -76,6 +76,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     catalog = (ROOT / ".env.example").read_text(encoding="utf-8")
     compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
     runtime = (PRODUCTION / "runtime.env.example").read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     for variable in (
         "DATABASE_URL",
@@ -91,7 +92,11 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         "ANYSEARCH_MCP_URL",
         "ANYSEARCH_API_KEY",
         "SCHOLIGHT_MCP_URL",
-        "SCHOLIGHT_ACCESS_KEY",
+        "SCHOLIGHT_MCP_DELEGATION_JWT_SECRET",
+        "DEEPSEEK_API_KEY",
+        "MINERU_API_TOKEN",
+        "MOSS_API_KEY",
+        "JOBS_WEBHOOK_SIGNING_SECRET",
         "NEXT_PUBLIC_API_URL",
     ):
         assert f"{variable}=" in catalog
@@ -102,9 +107,23 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "AUTH_ACCOUNT_LOCKOUT_THRESHOLD:" in compose
     assert "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS:" in compose
     assert "OPENPAPER_ANYSEARCH_API_KEY=" in runtime
-    assert "OPENPAPER_SCHOLIGHT_ACCESS_KEY=" in runtime
+    assert "OPENPAPER_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET=" in runtime
+    assert "OPENPAPER_DEEPSEEK_API_KEY=" in runtime
+    assert "OPENPAPER_MINERU_API_TOKEN=" in runtime
+    assert "OPENPAPER_MOSS_API_KEY=" in runtime
+    assert "OPENPAPER_JOBS_WEBHOOK_SIGNING_SECRET=" in runtime
     assert "ANYSEARCH_MCP_URL:" in compose
     assert "SCHOLIGHT_MCP_URL:" in compose
+    for legacy_variable in (
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "AZURE_OPENAI_API_KEY",
+        "SCHOLIGHT_ACCESS_KEY",
+        "JOBS_INTERNAL_SECRET",
+    ):
+        assert legacy_variable not in catalog + runtime + compose + ci
     assert "EXA_API_KEY" not in catalog + runtime + compose
     assert "FIRECRAWL_API_KEY" not in catalog + runtime + compose
 

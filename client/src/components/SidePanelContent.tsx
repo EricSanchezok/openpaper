@@ -4,6 +4,7 @@ import {
     PaperHighlight,
     PaperHighlightAnnotation,
     CreditUsage,
+    MessageTrace,
     Reference,
 } from '@/lib/schema';
 import { RenderedHighlightPosition } from './PdfHighlighterViewer';
@@ -23,9 +24,6 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-    DropdownMenuSub,
-    DropdownMenuSubTrigger,
-    DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Input } from '@/components/ui/input';
 import { ChatHistorySkeleton } from '@/components/ChatHistorySkeleton';
@@ -47,9 +45,10 @@ import React, { useState, useRef, useEffect, useMemo, useCallback, FormEvent } f
 import { toast } from "sonner";
 import { fetchFromApi, fetchStreamFromApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useSubscription, getChatCreditUsagePercentage, isChatCreditAtLimit, isChatCreditNearLimit } from '@/hooks/useSubscription';
+import { useSubscription, getTokenCreditUsagePercentage, isTokenCreditAtLimit, isTokenCreditNearLimit } from '@/hooks/useSubscription';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { getAlphaHashToBackgroundColor, getInitials } from '@/lib/utils';
+import { MessageTraceViewer } from '@/components/MessageTraceViewer';
 
 
 interface SidePanelContentProps {
@@ -82,7 +81,13 @@ interface ChatRequestBody {
     conversation_id: string | null;
     paper_id: string;
     user_references: string[];
-    llm_provider?: string;
+    reasoning_level: 'standard' | 'deep';
+}
+
+interface ReasoningCapability {
+    id: 'standard' | 'deep';
+    label: string;
+    description: string;
 }
 
 export function SidePanelContent({
@@ -120,8 +125,8 @@ export function SidePanelContent({
     const [streamingReferences, setStreamingReferences] = useState<Reference | undefined>(undefined);
     const [creditUsage, setCreditUsage] = useState<CreditUsage | null>(null);
     const { subscription, refetch: refetchSubscription } = useSubscription();
-    const [selectedModel, setSelectedModel] = useState<string>('');
-    const [availableModels, setAvailableModels] = useState<Record<string, string>>({});
+    const [reasoningLevel, setReasoningLevel] = useState<'standard' | 'deep'>('standard');
+    const [reasoningCapabilities, setReasoningCapabilities] = useState<ReasoningCapability[]>([]);
     const [nextMonday, setNextMonday] = useState(new Date());
     const [pendingStarterQuestion, setPendingStarterQuestion] = useState<string | null>(null);
     const [pageNumberConversationHistory, setPageNumberConversationHistory] = useState(1);
@@ -276,21 +281,21 @@ export function SidePanelContent({
         // Only fetch data when id is available
         if (!id) return;
 
-        async function fetchAvailableModels() {
+        async function fetchCapabilities() {
             try {
-                const response = await fetchFromApi(`/api/message/models`);
-                if (response.models && Object.keys(response.models).length > 0) {
-                    setAvailableModels(response.models);
-                    if (response.default && response.models[response.default]) {
-                        setSelectedModel((current) => current || response.default);
-                    }
+                const response = await fetchFromApi(`/api/message/capabilities`);
+                if (Array.isArray(response.reasoning_levels)) {
+                    setReasoningCapabilities(response.reasoning_levels);
+                }
+                if (response.default_reasoning_level === 'standard' || response.default_reasoning_level === 'deep') {
+                    setReasoningLevel(response.default_reasoning_level);
                 }
             } catch (error) {
-                console.error('Error fetching available models:', error);
+                console.error('Error fetching chat capabilities:', error);
             }
         }
 
-        fetchAvailableModels();
+        fetchCapabilities();
     }, [id]);
 
     const handleScroll = () => {
@@ -382,20 +387,20 @@ export function SidePanelContent({
         }
     }, [isStreaming]);
 
-    // useCallback to calculate chat credit usage
+    // Calculate settled Token Credit usage for the current UTC week.
     const updateCreditUsage = useCallback(() => {
         if (!subscription) {
             setCreditUsage(null);
             return;
         }
 
-        const { chat_credits_used, chat_credits_remaining } = subscription.usage;
-        const total = chat_credits_used + chat_credits_remaining;
-        const usagePercentage = getChatCreditUsagePercentage(subscription);
+        const { token_credits_used, token_credits_remaining } = subscription.usage;
+        const total = subscription.usage.token_credits_weekly;
+        const usagePercentage = getTokenCreditUsagePercentage(subscription);
 
-        const CHAT_CREDIT_TOAST_KEY = "chat_credit_limit_toast_shown";
-        if (isChatCreditAtLimit(subscription) && !sessionStorage.getItem(CHAT_CREDIT_TOAST_KEY)) {
-            toast.error("Nice! You've used your chat credits for the week. Upgrade your plan to continue chatting.", {
+        const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
+        if (isTokenCreditAtLimit(subscription) && !sessionStorage.getItem(TOKEN_CREDIT_TOAST_KEY)) {
+            toast.error("You've used this week's Token Credits. Upgrade your plan to continue using AI features.", {
                 duration: 5000,
                 action: {
                     label: 'Upgrade',
@@ -404,17 +409,17 @@ export function SidePanelContent({
                     }
                 }
             });
-            sessionStorage.setItem(CHAT_CREDIT_TOAST_KEY, "true");
+            sessionStorage.setItem(TOKEN_CREDIT_TOAST_KEY, "true");
         }
 
         setCreditUsage({
-            used: chat_credits_used,
-            remaining: chat_credits_remaining,
+            used: token_credits_used,
+            remaining: token_credits_remaining,
             total,
             usagePercentage,
-            showWarning: isChatCreditNearLimit(subscription),
-            isNearLimit: isChatCreditNearLimit(subscription),
-            isCritical: isChatCreditNearLimit(subscription, 95)
+            showWarning: isTokenCreditNearLimit(subscription),
+            isNearLimit: isTokenCreditNearLimit(subscription),
+            isCritical: isTokenCreditNearLimit(subscription, 95)
         });
     }, [subscription]);
 
@@ -455,11 +460,8 @@ export function SidePanelContent({
             conversation_id: conversationId,
             paper_id: id,
             user_references: userMessageReferences,
+            reasoning_level: reasoningLevel,
         };
-
-        if (selectedModel) {
-            requestBody.llm_provider = selectedModel;
-        }
 
         try {
             const stream = await fetchStreamFromApi('/api/message/chat/paper', {
@@ -474,6 +476,7 @@ export function SidePanelContent({
             const decoder = new TextDecoder();
             let accumulatedContent = '';
             let references: Reference | undefined = undefined;
+            let trace: MessageTrace | undefined = undefined;
             let buffer = ''; // Buffer to accumulate partial chunks
 
             // Debug counters
@@ -537,6 +540,11 @@ export function SidePanelContent({
 
                             // Update the message with the references
                             setStreamingReferences(chunkContent);
+                        } else if (chunkType === 'trace') {
+                            trace = chunkContent as MessageTrace;
+                        } else if (chunkType === 'reasoning') {
+                            // The complete reasoning content arrives in the final
+                            // trace event and is persisted with the message.
                         } else if (chunkType === 'error') {
                             console.error('Server error in stream:', chunkContent);
                             throw new Error(`Server error: ${chunkContent}`);
@@ -561,6 +569,7 @@ export function SidePanelContent({
                     role: 'assistant',
                     content: accumulatedContent,
                     references: references,
+                    trace,
                 };
                 setMessages(prev => [...prev, finalMessage]);
             }
@@ -578,7 +587,7 @@ export function SidePanelContent({
         } finally {
             setIsStreaming(false);
         }
-    }, [currentMessage, isStreaming, conversationId, id, userMessageReferences, selectedModel, transformReferencesToFormat, refetchSubscription]);
+    }, [currentMessage, isStreaming, conversationId, id, userMessageReferences, reasoningLevel, transformReferencesToFormat, refetchSubscription]);
 
 
     const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -714,6 +723,9 @@ export function SidePanelContent({
                         }}>
                         {msg.content}
                     </Markdown>
+                    {msg.role === 'assistant' && (
+                        <MessageTraceViewer trace={msg.trace} />
+                    )}
                     {
                         msg.references && msg.references.citations && msg.references.citations.length > 0 && (
                             <div>
@@ -1113,71 +1125,36 @@ export function SidePanelContent({
                                                             <Button
                                                                 variant="ghost"
                                                                 className="w-fit text-sm gap-1.5"
-                                                                title='Settings - Configure chat model'
+                                                                title='Choose reasoning depth'
                                                                 disabled={isStreaming}
                                                             >
                                                                 <Route
                                                                     className="h-4 w-4 text-secondary-foreground"
                                                                 />
-                                                                {selectedModel && availableModels[selectedModel] && (
-                                                                    <span className="text-xs text-secondary-foreground truncate max-w-[10rem]">
-                                                                        {availableModels[selectedModel]}
-                                                                    </span>
-                                                                )}
+                                                                <span className="text-xs text-secondary-foreground truncate max-w-[10rem]">
+                                                                    {reasoningCapabilities.find((capability) => capability.id === reasoningLevel)?.label ?? 'Standard'}
+                                                                </span>
                                                             </Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent className="w-56">
-                                                            <DropdownMenuSub>
-                                                                <DropdownMenuSubTrigger className="flex items-center">
-                                                                    <Sparkle className="mr-2 h-4 w-4" />
-                                                                    <span className="flex-1">Model {selectedModel ? `(${availableModels[selectedModel]})` : ''}</span>
-                                                                    {subscription && subscription.plan !== 'researcher' && (
-                                                                        <LockIcon className="ml-2 h-3 w-3 text-muted-foreground" />
+                                                            {reasoningCapabilities.map((capability) => (
+                                                                <DropdownMenuItem
+                                                                    key={capability.id}
+                                                                    onClick={() => {
+                                                                        setReasoningLevel(capability.id);
+                                                                        setRightSideFunction('Chat');
+                                                                    }}
+                                                                    className="flex items-start justify-between gap-3"
+                                                                >
+                                                                    <span>
+                                                                        <span className="block font-medium">{capability.label}</span>
+                                                                        <span className="block text-xs text-muted-foreground">{capability.description}</span>
+                                                                    </span>
+                                                                    {capability.id === reasoningLevel && (
+                                                                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
                                                                     )}
-                                                                </DropdownMenuSubTrigger>
-                                                                <DropdownMenuSubContent>
-                                                                    {subscription && subscription.plan !== 'researcher' ? (
-                                                                        <>
-                                                                            {Object.entries(availableModels).map(([modelKey, modelName]) => (
-                                                                                <DropdownMenuItem
-                                                                                    key={modelKey}
-                                                                                    onClick={() => {
-                                                                                        window.location.href = '/pricing';
-                                                                                    }}
-                                                                                    className="flex items-center justify-between text-muted-foreground"
-                                                                                >
-                                                                                    <span>{modelName}</span>
-                                                                                    <LockIcon className="h-3 w-3" />
-                                                                                </DropdownMenuItem>
-                                                                            ))}
-                                                                            <DropdownMenuItem
-                                                                                onClick={() => {
-                                                                                    window.location.href = '/pricing';
-                                                                                }}
-                                                                                className="flex items-center justify-center mt-1 bg-blue-500 text-white focus:bg-blue-400 focus:text-white font-medium"
-                                                                            >
-                                                                                Upgrade to select models
-                                                                            </DropdownMenuItem>
-                                                                        </>
-                                                                    ) : (
-                                                                        Object.entries(availableModels).map(([modelKey, modelName]) => (
-                                                                            <DropdownMenuItem
-                                                                                key={modelKey}
-                                                                                onClick={() => {
-                                                                                    setSelectedModel(modelKey);
-                                                                                    setRightSideFunction('Chat');
-                                                                                }}
-                                                                                className="flex items-center justify-between"
-                                                                            >
-                                                                                <span>{modelName}</span>
-                                                                                {modelKey === selectedModel && (
-                                                                                    <Check className="h-4 w-4 text-green-500" />
-                                                                                )}
-                                                                            </DropdownMenuItem>
-                                                                        ))
-                                                                    )}
-                                                                </DropdownMenuSubContent>
-                                                            </DropdownMenuSub>
+                                                                </DropdownMenuItem>
+                                                            ))}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </div>
@@ -1200,14 +1177,14 @@ export function SidePanelContent({
                                                 </Button>
                                             </div>
                                         </div>
-                                        {/* Chat Credit Usage Display */}
+                                        {/* Token Credit Usage Display */}
                                         {creditUsage && creditUsage.showWarning && (
                                             <div className={`text-xs px-2 py-1 ${creditUsage.isCritical ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'} justify-between flex`}>
-                                                <div className="font-semibold">{creditUsage.used} credits used</div>
+                                                <div className="font-semibold">{creditUsage.used.toLocaleString()} tokens used</div>
                                                 <div className="font-semibold">
                                                     <HoverCard>
                                                         <HoverCardTrigger asChild>
-                                                            <span>{creditUsage.remaining} credits remaining</span>
+                                                            <span>{creditUsage.remaining.toLocaleString()} tokens remaining</span>
                                                         </HoverCardTrigger>
                                                         <HoverCardContent side="top" className="w-48">
                                                             <p className="text-sm">Resets on {nextMonday.toLocaleDateString()}</p>

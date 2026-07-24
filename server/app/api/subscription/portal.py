@@ -39,9 +39,9 @@ def create_customer_portal_session(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error creating customer portal session: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Error creating customer portal session", exc_info=True)
+        raise HTTPException(status_code=500, detail="internal_error")
 
 
 @router.post("/resubscribe")
@@ -256,6 +256,6 @@ def resubscribe(
                     "error": "Previous subscription not found in Stripe",
                 }
 
-    except Exception as e:
-        logger.error(f"Error during resubscription: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Error during resubscription", exc_info=True)
+        raise HTTPException(status_code=500, detail="internal_error")

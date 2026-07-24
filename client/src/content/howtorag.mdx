@@ -28,9 +28,10 @@ In a perfect world, our models would `read_file` their way through the whole kno
 
 Both of the search functions return line numbers in their results, so they can be used in conjunction with `view_file`, which allows the model to specify a range for its search. The model is given a few iterations for retrieving evidence for answering its question, before it has to finalize and respond.
 
-The tool orchestration is done (as of writing this in Spring 2026) by a model called `kimi-k2-thinking` ([see the github](https://github.com/MoonshotAI/Kimi-K2)). This model is downright _excellent_ at tool calling, because it was specifically RL-ed on a variety of [tool execution scenarios](https://www.arxiv.org/pdf/2507.20534) that helped it improve this skill. It's quick and accurate with [function calling](https://huggingface.co/docs/hugs/en/guides/function-calling). We've also been testing Zai's [GLM model](https://github.com/zai-org/GLM-4.5), which is also very effective.
-
-These models, despite being great at tool selection, are not exactly smart enough for the final response - for that, we use [Gemini 3](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-pro). This model is robust for giving well-informed, accurate, grounded answers. We have a fairly gnarly citation protocol that the agent has to adhere to while it's streaming a response, and a lot of models botch this. Importantly, this more intelligent model also comes with a high latency cost.
+The same internal DeepSeek backend now handles tool orchestration and final
+answers. OpenPaper exposes only standard and deep reasoning levels; model names
+and provider credentials remain server-side so the backend can evolve without
+changing the client API.
 
 
 ```ascii

@@ -2,12 +2,10 @@ import logging
 import uuid
 from typing import AsyncGenerator, Literal, Optional, Sequence, Union
 
-import httpx
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
 from app.database.database import get_db
-from app.database.models import Paper
-from app.helpers.s3 import s3_service
+from app.database.models import Paper, ReasoningLevel
 from app.llm.base import BaseLLMClient, ModelType
 from app.llm.citation_handler import CitationHandler
 from app.llm.json_parser import JSONParser
@@ -19,7 +17,7 @@ from app.llm.prompts import (
     GENERATE_NARRATIVE_SUMMARY,
     NORMAL_MODE_INSTRUCTIONS,
 )
-from app.llm.provider import FileContent, LLMProvider, TextContent
+from app.llm.backend import SupplementaryContent, TextContent
 from app.llm.utils import retry_llm_operation
 from app.schemas.message import ResponseStyle
 from app.schemas.responses import AudioOverviewForLLM
@@ -66,27 +64,10 @@ class PaperOperations(BaseLLMClient):
             schema=audio_overview_schema,
         )
 
-        signed_url = s3_service.get_cached_presigned_url(
-            db,
-            paper_id=str(paper.id),
-            object_key=str(paper.s3_object_key),
-            current_user=user,
-        )
-
-        if not signed_url:
-            raise ValueError(
-                f"Could not generate presigned URL for paper with ID {paper_id}."
-            )
-
-        # Retrieve and encode the PDF byte
-        pdf_bytes = httpx.get(signed_url).content
-
         message_content = [
-            FileContent(
-                data=pdf_bytes,
-                mime_type="application/pdf",
-                filename=f"{paper.title or 'paper'}.pdf",
-                text_fallback=str(paper.raw_content) if paper.raw_content else None,
+            SupplementaryContent(
+                label="paper",
+                content=str(paper.raw_content or ""),
             ),
             TextContent(text=formatted_prompt),
         ]
@@ -94,6 +75,7 @@ class PaperOperations(BaseLLMClient):
         # Generate narrative summary using the LLM
         response = self.generate_content(
             contents=message_content,
+            response_model=AudioOverviewForLLM,
         )
 
         try:
@@ -115,7 +97,7 @@ class PaperOperations(BaseLLMClient):
         conversation_id: str,
         question: str,
         current_user: CurrentUser,
-        llm_provider: Optional[LLMProvider] = None,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Optional[Sequence[str]] = None,
         response_style: Optional[str] = "normal",
         model_type: ModelType = ModelType.DEFAULT,
@@ -131,7 +113,7 @@ class PaperOperations(BaseLLMClient):
             else None
         )
 
-        paper: Paper = paper_crud.get(db, id=paper_id)
+        paper: Paper = paper_crud.get(db, id=paper_id, user=current_user)
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found.")
@@ -166,39 +148,24 @@ class PaperOperations(BaseLLMClient):
         START_DELIMITER = "---EVIDENCE---"
         END_DELIMITER = "---END-EVIDENCE---"
 
-        signed_url = s3_service.get_cached_presigned_url(
-            db,
-            paper_id=str(paper.id),
-            object_key=str(paper.s3_object_key),
-            current_user=current_user,
-        )
-
-        if not signed_url:
-            raise ValueError(
-                f"Could not generate presigned URL for paper with ID {paper_id}."
-            )
-
-        # Retrieve and encode the PDF byte
-        pdf_bytes = httpx.get(signed_url).content
-
         message_content = [
+            SupplementaryContent(
+                label="paper",
+                content=str(paper.raw_content or ""),
+            ),
             TextContent(text=formatted_prompt),
         ]
 
         # Chat with the paper using the LLM
         for chunk in self.send_message_stream(
             message=message_content,
-            file=FileContent(
-                data=pdf_bytes,
-                mime_type="application/pdf",
-                filename=f"{paper.title or 'paper'}.pdf",
-                text_fallback=str(paper.raw_content) if paper.raw_content else None,
-            ),
             system_prompt=formatted_system_prompt,
             history=conversation_history,
-            provider=llm_provider,
             model_type=model_type,
+            reasoning_level=reasoning_level,
         ):
+            if chunk.thinking:
+                yield {"type": "reasoning", "content": chunk.thinking}
             text = chunk.text
 
             logger.debug(f"Received chunk: {text}")

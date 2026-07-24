@@ -22,7 +22,7 @@ from app.llm.prompts import (
     KEYWORD_EXTRACTION_PROMPT,
     TOOL_RESULT_COMPACTION_PROMPT,
 )
-from app.llm.provider import LLMProvider, TextContent
+from app.llm.backend import TextContent
 from app.llm.tools.file_tools import (
     read_abstract,
     read_abstract_function,
@@ -50,8 +50,8 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Gemini 3 supports 1M token input (~4M chars). We set conservative limits to leave room for
-# system prompts, history, and responses while keeping costs/latency reasonable.
+# Conservative backend-independent limits leave room for system prompts,
+# history, and responses while keeping cost and latency bounded.
 # At ~4 chars/token: 150k chars ≈ 37.5k tokens, 400k chars ≈ 100k tokens
 CONTENT_LIMIT_EVIDENCE_GATHERING = (
     150000  # Character limit for tool results during evidence gathering
@@ -108,7 +108,6 @@ class EvidenceOperations(BaseLLMClient):
         question: str,
         current_user: CurrentUser,
         conversation_id: Optional[str] = None,
-        llm_provider: Optional[LLMProvider] = None,
         project_id: Optional[str] = None,
         restrict_to_paper_ids: Optional[List[str]] = None,
         db: Session = Depends(get_db),
@@ -207,7 +206,7 @@ class EvidenceOperations(BaseLLMClient):
                     f"characters ({tool_results_size}), compacting."
                 )
                 await self.compact_tool_call_results(
-                    evidence_collection, question, current_user, llm_provider, db=db
+                    evidence_collection, question, current_user, db=db
                 )
 
             evidence_gathering_prompt = EVIDENCE_GATHERING_SYSTEM_PROMPT.format(
@@ -243,8 +242,6 @@ class EvidenceOperations(BaseLLMClient):
                 model_type=ModelType.FAST,
                 function_declarations=function_declarations,
                 tool_call_results=tool_call_results,
-                provider=llm_provider,
-                enable_thinking=True,
             )
 
             if len(llm_response.tool_calls) == 0:
@@ -417,7 +414,7 @@ class EvidenceOperations(BaseLLMClient):
             }
 
             try:
-                keywords = await self._extract_search_keywords(question, llm_provider)
+                keywords = await self._extract_search_keywords(question)
 
                 if keywords:
                     logger.info(f"Fallback search with keywords: {keywords}")
@@ -483,7 +480,6 @@ class EvidenceOperations(BaseLLMClient):
                 evidence_collection,
                 question,
                 current_user,
-                llm_provider,
                 db=db,
             ):
                 yield status
@@ -498,7 +494,6 @@ class EvidenceOperations(BaseLLMClient):
         evidence_collection: EvidenceCollection,
         original_question: str,
         current_user: CurrentUser,
-        llm_provider: Optional[LLMProvider] = None,
         db: Optional[Session] = None,
     ) -> None:
         """
@@ -525,7 +520,7 @@ class EvidenceOperations(BaseLLMClient):
             system_prompt="You are a research assistant that summarizes tool call results while preserving key information.",
             contents=message_content,
             model_type=ModelType.DEFAULT,
-            provider=llm_provider,
+            response_model=ToolResultCompactionResponse,
         )
 
         try:
@@ -573,7 +568,6 @@ class EvidenceOperations(BaseLLMClient):
         evidence_collection: EvidenceCollection,
         original_question: str,
         current_user: CurrentUser,
-        llm_provider: Optional[LLMProvider] = None,
         db: Optional[Session] = None,
     ) -> AsyncGenerator[Dict[str, Union[str, Dict[str, List[str]]]], None]:
         """
@@ -657,7 +651,7 @@ class EvidenceOperations(BaseLLMClient):
             system_prompt="You are a research assistant that summarizes evidence snippets from research papers.",
             contents=message_content,
             model_type=ModelType.FAST,
-            provider=llm_provider,
+            response_model=EvidenceSummaryResponse,
         )
 
         all_compacted: Dict[str, List[str]] = {}
@@ -718,7 +712,6 @@ class EvidenceOperations(BaseLLMClient):
     async def _extract_search_keywords(
         self,
         question: str,
-        llm_provider: Optional[LLMProvider] = None,
     ) -> List[str]:
         """Extract search keywords from a question using LLM."""
         formatted_prompt = KEYWORD_EXTRACTION_PROMPT.format(question=question)
@@ -732,7 +725,6 @@ class EvidenceOperations(BaseLLMClient):
             ),
             contents=message_content,
             model_type=ModelType.FAST,
-            provider=llm_provider,
             schema=KEYWORD_EXTRACTION_SCHEMA,
         )
 

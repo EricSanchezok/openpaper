@@ -26,7 +26,6 @@ from app.integrations.mcp import (
     discover_function_declarations_sync,
 )
 from app.llm.base import BaseLLMClient, ModelType
-from app.llm.provider import LLMProvider
 from app.schemas.citation import CitationStep
 from app.schemas.responses import TextContent, ToolCallResult
 from app.schemas.user import CurrentUser
@@ -37,10 +36,8 @@ logger = logging.getLogger(__name__)
 CONFIDENCE_THRESHOLD = 0.7
 MAX_WEB_ITERATIONS = 3
 
-# JSON schema for the forced extraction backstop. Strict mode (OpenAI/Cerebras)
-# requires every property to be in `required` AND additionalProperties=false; we
-# preserve the honest "couldn't find this" semantics by making the metadata
-# fields nullable — the model must mention each key but can set it to null.
+# JSON schema for the forced extraction backstop. Every field is required and
+# nullable so the model must return a complete, honest result shape.
 CITATION_EXTRACTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -201,17 +198,12 @@ class MetadataRecoveryAgent(BaseLLMClient):
 
         for _ in range(MAX_WEB_ITERATIONS):
             try:
-                # Cerebras (OpenAI-compatible) handles multi-turn tool calling
-                # cleanly; Gemini 3 additionally requires replaying opaque
-                # thought_signatures, which our tool types don't capture.
                 resp = self.generate_content(
                     system_prompt=RECOVERY_SYSTEM_PROMPT,
                     contents=[TextContent(text=user_msg)],
                     function_declarations=function_declarations,
                     tool_call_results=tool_call_results or None,
                     model_type=ModelType.DEFAULT,
-                    provider=LLMProvider.CEREBRAS,
-                    enable_thinking=True,
                 )
             except Exception:
                 logger.exception("Citation web loop LLM call failed")
@@ -327,8 +319,6 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 contents=[TextContent(text=prompt)],
                 schema=CITATION_EXTRACTION_SCHEMA,
                 model_type=ModelType.DEFAULT,
-                provider=LLMProvider.CEREBRAS,
-                enable_thinking=False,
             )
             parsed_findings = json.loads(resp.text)
             if not isinstance(parsed_findings, dict):

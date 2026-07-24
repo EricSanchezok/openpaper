@@ -74,36 +74,20 @@ export const formatFileSize = (sizeInKb: number): string => {
     }
 };
 
-// Chat credit helper functions
-export const getChatCreditUsagePercentage = (subscription: SubscriptionData | null): number => {
+// Token Credit helper functions
+export const getTokenCreditUsagePercentage = (subscription: SubscriptionData | null): number => {
     if (!subscription) return 0;
-    const total = subscription.limits.chat_credits_weekly;
+    const total = subscription.limits.token_credits_weekly;
     if (total === 0) return 0;
-    return (subscription.usage.chat_credits_used / total) * 100;
+    return (subscription.usage.token_credits_used / total) * 100;
 };
 
-export const isChatCreditNearLimit = (subscription: SubscriptionData | null, threshold: number = 75): boolean => {
-    return getChatCreditUsagePercentage(subscription) >= threshold;
+export const isTokenCreditNearLimit = (subscription: SubscriptionData | null, threshold: number = 75): boolean => {
+    return getTokenCreditUsagePercentage(subscription) >= threshold;
 };
 
-export const isChatCreditAtLimit = (subscription: SubscriptionData | null): boolean => {
-    return getChatCreditUsagePercentage(subscription) >= 100;
-};
-
-// Audio overview credit helper functions
-export const getAudioOverviewUsagePercentage = (subscription: SubscriptionData | null): number => {
-    if (!subscription) return 0;
-    const total = subscription.limits.audio_overviews_weekly;
-    if (total === 0) return 0;
-    return (subscription.usage.audio_overviews_used / total) * 100;
-};
-
-export const isAudioOverviewNearLimit = (subscription: SubscriptionData | null, threshold: number = 75): boolean => {
-    return getAudioOverviewUsagePercentage(subscription) >= threshold;
-};
-
-export const isAudioOverviewAtLimit = (subscription: SubscriptionData | null): boolean => {
-    return getAudioOverviewUsagePercentage(subscription) >= 100;
+export const isTokenCreditAtLimit = (subscription: SubscriptionData | null): boolean => {
+    return getTokenCreditUsagePercentage(subscription) >= 100;
 };
 
 // Project usage helper functions
@@ -139,39 +123,6 @@ export const isProjectPaperNearLimit = (subscription: SubscriptionData | null, p
 
 export const isProjectPaperAtLimit = (subscription: SubscriptionData | null, paperCount: number): boolean => {
     return getProjectPaperUsagePercentage(subscription, paperCount) >= 100;
-};
-
-// Data table usage helper functions
-export const getDataTableUsagePercentage = (subscription: SubscriptionData | null): number => {
-    if (!subscription) return 0;
-    const total = subscription.limits.data_tables_weekly;
-    if (total === 0) return 0;
-    return (subscription.usage.data_tables_used / total) * 100;
-};
-
-export const isDataTableNearLimit = (subscription: SubscriptionData | null, threshold: number = 75): boolean => {
-    return getDataTableUsagePercentage(subscription) >= threshold;
-};
-
-export const isDataTableAtLimit = (subscription: SubscriptionData | null): boolean => {
-    return getDataTableUsagePercentage(subscription) >= 100;
-};
-
-// Discover search usage helper functions
-export const getDiscoverSearchUsagePercentage = (subscription: SubscriptionData | null): number => {
-    if (!subscription) return 0;
-    const total = subscription.limits.discover_searches_weekly;
-    if (total === 0) return 0;
-    return (subscription.usage.discover_searches_used / total) * 100;
-};
-
-export const isDiscoverSearchNearLimit = (subscription: SubscriptionData | null, threshold: number = 75): boolean => {
-    return getDiscoverSearchUsagePercentage(subscription) >= threshold;
-};
-
-export const isDiscoverSearchAtLimit = (subscription: SubscriptionData | null): boolean => {
-    if (!subscription) return false;
-    return subscription.usage.discover_searches_remaining <= 0;
 };
 
 // Calculate next Monday at 12 AM UTC for credit reset

@@ -54,6 +54,15 @@ class S3Service:
             logger.error(f"Error downloading file from S3: {e}")
             raise
 
+    def generate_presigned_download_url(
+        self, object_key: str, expiration_seconds: int = 900
+    ) -> str:
+        return self.s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket_name, "Key": object_key},
+            ExpiresIn=expiration_seconds,
+        )
+
     def upload_any_file_from_bytes(
         self,
         file_bytes: bytes,

@@ -1,11 +1,9 @@
 import asyncio
 import logging
-import tempfile
 from typing import Callable, List, Tuple, Optional
 
 from src.schemas import DataTableRow, DataTableSchema, DataTableResult, DataTableCellValue, DocumentMapping
-from src.s3_service import s3_service
-from src.llm_client import fast_llm_client
+from src.llm_client import llm_client
 
 
 logger = logging.getLogger(__name__)
@@ -34,27 +32,14 @@ async def _process_single_paper(
     """
     async with semaphore:
         paper_id = paper.id
-        paper_object_key = paper.s3_object_key
-
         try:
-            # Run S3 download in thread pool to not block the event loop
-            raw_file_bytes = await asyncio.to_thread(
-                s3_service.download_file_to_bytes, paper_object_key
+            paper_col_values = await llm_client.extract_data_table(
+                paper_content=paper.raw_content,
+                columns=columns,
+                paper_id=paper_id,
             )
-
-            with tempfile.NamedTemporaryFile(delete_on_close=True) as temp_file:
-                temp_file.write(raw_file_bytes)
-                temp_file_path = temp_file.name
-
-                # Use LLM to extract data for the specified columns
-                paper_col_values: DataTableRow = await fast_llm_client.extract_data_table(
-                    file_path=temp_file_path,
-                    columns=columns,
-                    paper_id=paper_id
-                )
-
-                status_callback(f"extract for {paper.title} completed")
-                return paper_col_values, None
+            status_callback(f"extract for {paper.title} completed")
+            return paper_col_values, None
 
         except Exception as e:
             logger.error(f"Error processing paper {paper_id} ({paper.title}): {str(e)}", exc_info=True)

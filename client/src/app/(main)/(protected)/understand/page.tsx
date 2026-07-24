@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useSubscription, isChatCreditAtLimit } from '@/hooks/useSubscription';
+import { useSubscription, isTokenCreditAtLimit } from '@/hooks/useSubscription';
 import { fetchFromApi, fetchStreamFromApi, getPaperFileUrl } from '@/lib/api';
 import { useState, useEffect, FormEvent, useRef, useCallback, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -30,6 +30,7 @@ interface ChatRequestBody {
     mentioned_paper_ids?: string[];
     mentioned_project_ids?: string[];
     mentioned_highlight_ids?: string[];
+    reasoning_level: "standard" | "deep";
 }
 
 const chatLoadingMessages = [
@@ -83,6 +84,7 @@ function UnderstandPageContent() {
     const [statusMessage, setStatusMessage] = useState('');
 
     const [isSessionLoading, setIsSessionLoading] = useState(true);
+    const [reasoningLevel, setReasoningLevel] = useState<"standard" | "deep">("standard");
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputMessageRef = useRef<HTMLTextAreaElement>(null);
@@ -90,20 +92,20 @@ function UnderstandPageContent() {
     const END_DELIMITER = "END_OF_STREAM";
 
     const { subscription, refetch: refetchSubscription } = useSubscription();
-    const chatCreditLimitReached = isChatCreditAtLimit(subscription);
+    const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
 
     useEffect(() => {
-        const CHAT_CREDIT_TOAST_KEY = "chat_credit_limit_toast_shown";
-        if (chatCreditLimitReached && !sessionStorage.getItem(CHAT_CREDIT_TOAST_KEY)) {
-            toast.error("Nice! You've used your chat credits for the week. Upgrade your plan to continue chatting.", {
+        const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
+        if (tokenCreditLimitReached && !sessionStorage.getItem(TOKEN_CREDIT_TOAST_KEY)) {
+            toast.error("You've used this week's Token Credits. Upgrade your plan to continue using AI features.", {
                 action: {
                     label: "Upgrade",
                     onClick: () => window.location.href = "/pricing",
                 },
             });
-            sessionStorage.setItem(CHAT_CREDIT_TOAST_KEY, "true");
+            sessionStorage.setItem(TOKEN_CREDIT_TOAST_KEY, "true");
         }
-    }, [chatCreditLimitReached]);
+    }, [tokenCreditLimitReached]);
 
     const [highlightedInfo, setHighlightedInfo] = useState<{ paperId: string; messageIndex: number } | null>(null);
 
@@ -276,6 +278,7 @@ function UnderstandPageContent() {
         const requestBody: ChatRequestBody = {
             user_query: userMessage.content,
             conversation_id: currentConversationId,
+            reasoning_level: reasoningLevel,
         };
         if (!mentionSelectionIsEmpty(submittedMentions)) {
             if (submittedMentions.paperIds.length > 0) {
@@ -386,7 +389,7 @@ function UnderstandPageContent() {
             setStatusMessage('');
             refetchSubscription();
         }
-    }, [currentMessage, isStreaming, conversationId, mentionSelection]);
+    }, [currentMessage, isStreaming, conversationId, mentionSelection, reasoningLevel]);
 
     const [error, setError] = useState<string | null>(null);
 
@@ -400,7 +403,7 @@ function UnderstandPageContent() {
             if (inputMessageRef.current &&
                 !isStreaming &&
                 papers.length > 0 &&
-                !chatCreditLimitReached) {
+                !tokenCreditLimitReached) {
                 // Small delay to ensure DOM is ready
                 setTimeout(() => {
                     inputMessageRef.current?.focus();
@@ -409,7 +412,7 @@ function UnderstandPageContent() {
         };
 
         focusInput();
-    }, [papers.length, isStreaming, chatCreditLimitReached]); // Dependencies that affect focusability
+    }, [papers.length, isStreaming, tokenCreditLimitReached]); // Dependencies that affect focusability
 
     const [isCentered, setIsCentered] = useState(true);
 
@@ -436,7 +439,9 @@ function UnderstandPageContent() {
                 statusMessage={statusMessage}
                 error={error}
                 isSessionLoading={isSessionLoading}
-                chatCreditLimitReached={chatCreditLimitReached}
+                tokenCreditLimitReached={tokenCreditLimitReached}
+                reasoningLevel={reasoningLevel}
+                onReasoningLevelChange={setReasoningLevel}
                 currentMessage={currentMessage}
                 onCurrentMessageChange={setCurrentMessage}
                 onSubmit={handleSubmit}

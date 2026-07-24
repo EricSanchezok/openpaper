@@ -3,7 +3,6 @@ Webhook handlers for PDF processing service integration.
 """
 
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -42,10 +41,13 @@ from app.helpers.email import (
     send_referral_credit_available_email,
 )
 from app.helpers.metadata_hydration import hydrate_paper_metadata
+from app.helpers.jobs_webhooks import verify_jobs_webhook
+from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.s3 import s3_service
 from app.helpers.subscription_limits import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
 from app.llm.operations import operations
+from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.schemas.responses import DataTableResult, PaperMetadataExtraction
 from app.schemas.user import CurrentUser
 from app.services.zotero_import import (
@@ -54,12 +56,51 @@ from app.services.zotero_import import (
     sync_batch,
 )
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-webhook_router = APIRouter()
+webhook_router = APIRouter(dependencies=[Depends(verify_jobs_webhook)])
+
+
+class TokenUsageEventPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=160)
+    operation_id: str = Field(min_length=1, max_length=128)
+    feature: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=128)
+    reasoning_level: str = Field(pattern="^(standard|deep)$")
+    provider_request_id: Optional[str] = Field(default=None, max_length=160)
+    prompt_tokens: int = Field(ge=0)
+    completion_tokens: int = Field(ge=0)
+    reasoning_tokens: int = Field(default=0, ge=0)
+    cache_hit_tokens: int = Field(default=0, ge=0)
+    cache_miss_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(ge=0)
+    status: str = Field(default="settled", pattern="^settled$")
+
+
+def _settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> None:
+    for event in events:
+        with llm_usage_context(
+            user_id=user_id,
+            feature=event.feature,
+            operation_id=event.operation_id,
+        ):
+            settle_token_usage(
+                model=event.model,
+                reasoning_level=event.reasoning_level,
+                provider_request_id=event.provider_request_id,
+                prompt_tokens=event.prompt_tokens,
+                completion_tokens=event.completion_tokens,
+                reasoning_tokens=event.reasoning_tokens,
+                cache_hit_tokens=event.cache_hit_tokens,
+                cache_miss_tokens=event.cache_miss_tokens,
+                total_tokens=event.total_tokens,
+                idempotency_key=event.idempotency_key,
+            )
 
 
 def _finalize_zotero_import(
@@ -102,6 +143,10 @@ def _finalize_zotero_import(
         update_payload["preview_url"] = result.preview_url
     if result.raw_content:
         update_payload["raw_content"] = result.raw_content
+    if result.parser_markdown_s3_key:
+        update_payload["parser_markdown_s3_key"] = result.parser_markdown_s3_key
+    if result.parser_archive_s3_key:
+        update_payload["parser_archive_s3_key"] = result.parser_archive_s3_key
     if result.page_offset_map:
         update_payload["page_offset_map"] = result.page_offset_map
     if size_in_kb is not None:
@@ -247,11 +292,10 @@ def post_process_paper(
                     db_obj=paper,
                     user=job_user,
                 )
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error(
-                f"Error stamping attempted_metadata_at for paper {paper_id}: {str(e)}",
-                exc_info=True,
+            logger.exception(
+                "Error stamping attempted_metadata_at for paper %s", paper_id
             )
 
         try:
@@ -261,12 +305,9 @@ def post_process_paper(
                 raw_content=raw_content,
             )
             db.commit()
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error(
-                f"Error indexing passages for paper {paper_id}: {str(e)}",
-                exc_info=True,
-            )
+            logger.exception("Error indexing passages for paper %s", paper_id)
 
         doi: Optional[str] = None
         try:
@@ -276,12 +317,9 @@ def post_process_paper(
                     db=db, paper=paper, user=job_user, force=True, agentic=True
                 )
                 doi = str(paper.doi) if paper.doi else None
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error(
-                f"Error hydrating metadata for paper {paper_id}: {str(e)}",
-                exc_info=True,
-            )
+            logger.exception("Error hydrating metadata for paper %s", paper_id)
 
         track_event(
             "doi_resolved",
@@ -322,6 +360,8 @@ class PDFProcessingResult(BaseModel):
     file_url: Optional[str] = None
     preview_url: Optional[str] = None
     preview_object_key: Optional[str] = None
+    parser_markdown_s3_key: Optional[str] = None
+    parser_archive_s3_key: Optional[str] = None
     error: Optional[str] = None
     duration: Optional[float] = None
 
@@ -331,7 +371,9 @@ class PdfProcessingWebhookData(BaseModel):
 
     task_id: str
     status: str
-    result: PDFProcessingResult
+    result: Optional[PDFProcessingResult] = None
+    error: Optional[str] = None
+    usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
 
 
 @webhook_router.post("/paper-processing/{job_id}")
@@ -342,6 +384,9 @@ async def handle_paper_processing_webhook(
     db: Session = Depends(get_db),
 ):
     """Handle webhook from paper processing jobs service."""
+
+    if webhook_data.result is None:
+        raise HTTPException(status_code=422, detail="missing_webhook_result")
 
     # Get the job from your database (without user filtering since this is a webhook)
     job = paper_upload_job_crud.get_by(db=db, task_id=webhook_data.task_id, id=job_id)
@@ -371,6 +416,7 @@ async def handle_paper_processing_webhook(
         is_blocked=bool(user.profile and user.profile.is_blocked),
         is_active=user.status == "active",
     )
+    _settle_jobs_usage(int(user.id), webhook_data.usage_events)
 
     # Serialize concurrent/duplicate deliveries for the same job. Celery retries
     # with acks_late, so a redelivered task can fire a second webhook while the
@@ -446,25 +492,6 @@ async def handle_paper_processing_webhook(
                 )
                 return {"status": "webhook processed - failed due to missing file_url"}
 
-            if not metadata:
-                logger.error(f"No metadata in webhook result for job {job_id}")
-                handle_failed_upload(
-                    db=db, job_id=job_id, job_user=job_user, reason="Missing metadata"
-                )
-                return {"status": "webhook processed - failed due to missing metadata"}
-
-            if not result.raw_content:
-                logger.error(f"No raw_content in webhook result for job {job_id}")
-                handle_failed_upload(
-                    db=db,
-                    job_id=job_id,
-                    job_user=job_user,
-                    reason="Missing raw_content",
-                )
-                return {
-                    "status": "webhook processed - failed due to missing raw_content"
-                }
-
             if not metadata or not metadata.title:
                 logger.error(f"No metadata in webhook result for job {job_id}")
                 handle_failed_upload(
@@ -510,6 +537,8 @@ async def handle_paper_processing_webhook(
                     institutions=metadata.institutions,
                     publish_date=publish_date,
                     raw_content=result.raw_content,
+                    parser_markdown_s3_key=result.parser_markdown_s3_key,
+                    parser_archive_s3_key=result.parser_archive_s3_key,
                     page_offset_map=result.page_offset_map,
                     size_in_kb=size_in_kb,
                 ),
@@ -545,11 +574,8 @@ async def handle_paper_processing_webhook(
                         extract_metadata=metadata,
                         current_user=job_user,
                     )
-                except Exception as e:
-                    logger.error(
-                        f"Error creating annotations for job {job_id}: {str(e)}",
-                        exc_info=True,
-                    )
+                except Exception:
+                    logger.exception("Error creating annotations for job %s", job_id)
                     # Don't fail the whole process for annotation errors
 
             if metadata.summary and paper:
@@ -582,10 +608,9 @@ async def handle_paper_processing_webhook(
                             ),
                             user=job_user,
                         )
-                except Exception as e:
-                    logger.error(
-                        f"Error creating conversation/message for job {job_id}: {str(e)}",
-                        exc_info=True,
+                except Exception:
+                    logger.exception(
+                        "Error creating conversation/message for job %s", job_id
                     )
                     # Don't fail the whole process for conversation/message errors
 
@@ -656,9 +681,7 @@ async def handle_paper_processing_webhook(
             )
 
     except Exception as e:
-        logger.error(
-            f"Error processing webhook for job {job_id}: {str(e)}", exc_info=True
-        )
+        logger.exception("Error processing webhook for job %s", job_id)
 
         # Roll back before cleanup: the failure above may have left the session
         # in a PendingRollbackError state, which would otherwise make every
@@ -679,6 +702,11 @@ async def handle_paper_processing_webhook(
     finally:
         # Always release the advisory lock (and return its connection to the pool).
         job_lock.release()
+        await release_concurrency_by_id(
+            user_id=int(user.id),
+            category="background",
+            operation_id=job_id,
+        )
 
     return {"status": "webhook processed"}
 
@@ -688,8 +716,9 @@ class DataTableProcessingResultWebhookData(BaseModel):
 
     task_id: str
     status: str
-    result: DataTableResult
+    result: Optional[DataTableResult] = None
     error: Optional[str] = None
+    usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
 
 
 @webhook_router.post("/data-table-processing/{job_id}")
@@ -704,10 +733,34 @@ async def handle_data_table_processing_webhook(
         f"Received data table processing webhook for job {job_id} with status {webhook_data.status}"
     )
 
-    result = webhook_data.result
     task_id = webhook_data.task_id
     status = webhook_data.status
     error = webhook_data.error
+    job = data_table_job_crud.get_by_task_id(db=db, task_id=task_id)
+    if not job or not job.user:
+        raise HTTPException(status_code=404, detail="Data table job not found")
+    _settle_jobs_usage(int(job.user.id), webhook_data.usage_events)
+
+    result = webhook_data.result
+    if result is None:
+        data_table_job_crud.update_status(
+            db=db,
+            job_id=uuid.UUID(job_id),
+            status=JobStatus.FAILED,
+            error_message=error or "data_table_processing_failed",
+        )
+        await release_concurrency_by_id(
+            user_id=int(job.user.id),
+            category="background",
+            operation_id=job_id,
+        )
+        return {
+            "status": "data table webhook processed",
+            "job_id": job_id,
+            "task_id": task_id,
+            "success": False,
+            "rows_count": 0,
+        }
 
     try:
         if status == "completed" and result.success:
@@ -742,13 +795,18 @@ async def handle_data_table_processing_webhook(
                 else:
                     paper_titles.append("")
 
-            title = (
-                operations.name_data_table(
-                    paper_titles=paper_titles,
-                    column_labels=result.columns,
+            with llm_usage_context(
+                user_id=int(job.user.id),
+                feature="data_table_naming",
+                operation_id=f"{task_id}:name",
+            ):
+                title = (
+                    operations.name_data_table(
+                        paper_titles=paper_titles,
+                        column_labels=result.columns,
+                    )
+                    or f"Data Table ({', '.join(result.columns)})"
                 )
-                or f"Data Table ({', '.join(result.columns)})"
-            )
 
             # Create the data table result
             table_result = data_table_result_crud.create(
@@ -782,7 +840,6 @@ async def handle_data_table_processing_webhook(
                     )
 
                 # Send email notification to user
-                job = data_table_job_crud.get_by_task_id(db=db, task_id=task_id)
                 if job and job.user and job.project:
                     try:
                         send_data_table_complete_email(
@@ -817,12 +874,15 @@ async def handle_data_table_processing_webhook(
                 error_message=error_message,
             )
 
-    except Exception as e:
-        logger.error(
-            f"Error processing data table webhook for job {job_id}: {str(e)}",
-            exc_info=True,
-        )
+    except Exception:
+        logger.exception("Error processing data table webhook for job %s", job_id)
         raise HTTPException(status_code=500, detail="Error processing webhook")
+    finally:
+        await release_concurrency_by_id(
+            user_id=int(job.user.id),
+            category="background",
+            operation_id=job_id,
+        )
 
     return {
         "status": "data table webhook processed",
@@ -941,12 +1001,8 @@ async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db
     """
     Internal endpoint called by the Celery Beat periodic task to sync new Zotero
     annotations for all users whose items haven't been synced in the past 24 hours.
-    Auth: shared secret via Authorization header (JOBS_INTERNAL_SECRET env var).
+    Authentication is enforced by the router's signed Jobs request dependency.
     """
-    secret = os.getenv("JOBS_INTERNAL_SECRET", "")
-    if secret and request.headers.get("Authorization") != f"Bearer {secret}":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
     threshold_seconds = int(
         request.query_params.get("threshold_seconds", str(24 * 3600))
     )

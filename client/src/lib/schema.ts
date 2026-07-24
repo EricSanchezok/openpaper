@@ -91,6 +91,7 @@ export interface MessageTraceCitation {
 export interface MessageTrace {
     // The live "thinking trace" — status messages shown during streaming.
     status_messages?: string[];
+    reasoning_content?: string;
     tool_calls?: MessageTraceToolCall[];
     citations?: MessageTraceCitation[];
 }
@@ -530,13 +531,9 @@ export interface DataTableResult {
 export interface SubscriptionLimits {
     paper_uploads: number;
     knowledge_base_size: number;
-    chat_credits_weekly: number;
-    audio_overviews_weekly: number;
-    data_tables_weekly: number;
-    discover_searches_weekly: number;
+    token_credits_weekly: number;
     projects: number;
     project_papers: number;
-    model: string[];
 }
 
 export interface SubscriptionUsage {
@@ -544,16 +541,12 @@ export interface SubscriptionUsage {
     paper_uploads_remaining: number;
     knowledge_base_size: number;
     knowledge_base_size_remaining: number;
-    chat_credits_used: number;
-    chat_credits_remaining: number;
-    audio_overviews_used: number;
-    audio_overviews_remaining: number;
+    token_credits_weekly: number;
+    token_credits_used: number;
+    token_credits_remaining: number;
+    token_credits_overage: number;
     projects: number;
     projects_remaining: number;
-    data_tables_used: number;
-    data_tables_remaining: number;
-    discover_searches_used: number;
-    discover_searches_remaining: number;
 }
 
 export interface SubscriptionData {

@@ -28,14 +28,18 @@ cp .env.example jobs/.env
 cp .env.example client/.env.local
 ```
 
-**Must match across server and jobs:** `CELERY_BROKER_URL`, S3/AWS bucket vars, `JOBS_INTERNAL_SECRET` (Zotero auto-sync). Server needs `CELERY_API_URL=http://localhost:8001`; jobs needs `WEBHOOK_BASE_URL=http://localhost:8000`.
+**Must match across server and jobs:** `CELERY_BROKER_URL`, S3/AWS bucket vars,
+`DEEPSEEK_*`, and `JOBS_WEBHOOK_SIGNING_SECRET`. Server needs
+`CELERY_API_URL=http://localhost:8001`; jobs needs
+`WEBHOOK_BASE_URL=http://localhost:8000`.
 
 ### Required for a minimal local stack
 
 | Variable                                                                                 | Where                                                     |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `DATABASE_URL`                                                                           | server                                                    |
-| `GEMINI_API_KEY`, `GOOGLE_API_KEY`                                                       | server, jobs                                              |
+| `DEEPSEEK_API_KEY`                                                                       | server, jobs                                              |
+| `MINERU_API_TOKEN`                                                                       | jobs                                                      |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME` | server + jobs                                             |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                             | server + jobs                                             |
 | `CELERY_API_URL`                                                                         | server                                                    |
@@ -44,17 +48,16 @@ cp .env.example client/.env.local
 | `CLIENT_DOMAIN`                                                                          | server (`http://localhost:3000`)                           |
 | `NEXT_PUBLIC_API_URL`                                                                    | client                                                    |
 
-Optional integrations (Zotero, Stripe, Discover, audio, email, PostHog, admin,
-etc.) are grouped in the root `.env.example`.
+MOSS Voice is required only for audio overviews. Zotero, Stripe, email, PostHog,
+and admin variables are grouped in the root `.env.example`.
 
 OpenPaper discovers remote model tools through MCP:
 
 - `ANYSEARCH_MCP_URL` and optional `ANYSEARCH_API_KEY` provide general search
   and page extraction. Anonymous access works locally with lower quotas.
-- `SCHOLIGHT_MCP_URL` and optional `SCHOLIGHT_ACCESS_KEY` provide ranked paper
-  search. Use a Scholight `sk_live_...` Access Key for stable production quota;
-  an OpenPaper JWT is intentionally not accepted because JWT audiences are
-  product-specific.
+- `SCHOLIGHT_MCP_URL` provides ranked paper search.
+  `SCHOLIGHT_MCP_DELEGATION_JWT_SECRET` signs a fresh 60-second delegation for the
+  current user so Scholight charges that user's own search quota.
 
 **Jobs tip:** set `ZOTERO_SYNC_INTERVAL_SECONDS=60` in `jobs/.env` when testing Celery Beat locally.
 

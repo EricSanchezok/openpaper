@@ -747,11 +747,11 @@ async def delete_pdf(
             logger.info(f"Deleted S3 object: {s3_object_key}")
 
         return JSONResponse(status_code=200, content={"message": "Document deleted"})
-    except Exception as e:
-        logger.error(f"Error deleting document: {str(e)}")
+    except Exception:
+        logger.error("Error deleting document")
         return JSONResponse(
             status_code=500,
-            content={"message": f"Error deleting document: {str(e)}"},
+            content={"message": "Error deleting document"},
         )
 
 

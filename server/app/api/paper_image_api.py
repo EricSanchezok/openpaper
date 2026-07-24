@@ -66,13 +66,13 @@ async def get_paper_images_with_presigned_urls(
         logger.error(f"Paper not found or access denied: {e}")
         return JSONResponse(
             status_code=404,
-            content={"message": str(e)},
+            content={"code": "request_failed"},
         )
     except Exception as e:
         logger.error(f"Error fetching paper images with URLs: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch paper images with URLs: {str(e)}"},
+            content={"message": "Failed to fetch paper images with URLs"},
         )
 
 
@@ -102,7 +102,7 @@ async def get_paper_image_by_id(
         logger.error(f"Error fetching paper image: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch paper image: {str(e)}"},
+            content={"message": "Failed to fetch paper image"},
         )
 
 
@@ -152,5 +152,5 @@ async def get_paper_image_with_presigned_url(
         logger.error(f"Error fetching paper image with URL: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch paper image with URL: {str(e)}"},
+            content={"message": "Failed to fetch paper image with URL"},
         )

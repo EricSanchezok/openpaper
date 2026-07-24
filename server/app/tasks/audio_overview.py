@@ -15,8 +15,10 @@ from app.database.crud.projects.project_crud import project_crud
 from app.database.database import SessionLocal
 from app.database.models import ConversableType, JobStatus
 from app.database.telemetry import track_event
+from app.helpers.ai_limits import release_concurrency_by_id
 from app.llm.operations import operations
 from app.llm.speech import speaker
+from app.llm.token_credits import llm_usage_context
 from app.schemas.responses import AudioOverviewForLLM
 from app.schemas.user import CurrentUser
 
@@ -30,19 +32,6 @@ async def generate_audio_overview(
     project_id: Optional[UUID] = None,
     additional_instructions: Optional[str] = None,
     length: Optional[Literal["short", "medium", "long"]] = "medium",
-    voice: Literal[
-        "alloy",
-        "ash",
-        "ballad",
-        "coral",
-        "echo",
-        "fable",
-        "onyx",
-        "nova",
-        "sage",
-        "shimmer",
-        "verse",
-    ] = "nova",
 ) -> None:
     """
     Generate an audio overview for a paper by creating a narrative summary
@@ -94,13 +83,18 @@ async def generate_audio_overview(
 
             logger.info(f"Generating narrative summary for paper {paper_id}")
 
-            narrative_summary = operations.create_narrative_summary(
-                paper_id=str(paper_id),
-                user=user,
-                length=length,
-                additional_instructions=additional_instructions,
-                db=db,
-            )
+            with llm_usage_context(
+                user_id=int(user.id),
+                feature="audio_overview",
+                operation_id=str(audio_overview_job_id),
+            ):
+                narrative_summary = operations.create_narrative_summary(
+                    paper_id=str(paper_id),
+                    user=user,
+                    length=length,
+                    additional_instructions=additional_instructions,
+                    db=db,
+                )
         elif project_id:
             project = project_crud.get(db, id=str(project_id), user=user)
 
@@ -119,13 +113,20 @@ async def generate_audio_overview(
 
             logger.info(f"Generating narrative summary for project {project_id}")
 
-            narrative_summary = await operations.create_multi_paper_narrative_summary(
-                project_id=str(project_id),
-                length=length,
-                current_user=user,
-                additional_instructions=additional_instructions,
-                db=db,
-            )
+            with llm_usage_context(
+                user_id=int(user.id),
+                feature="audio_overview",
+                operation_id=str(audio_overview_job_id),
+            ):
+                narrative_summary = (
+                    await operations.create_multi_paper_narrative_summary(
+                        project_id=str(project_id),
+                        length=length,
+                        current_user=user,
+                        additional_instructions=additional_instructions,
+                        db=db,
+                    )
+                )
 
         if not narrative_summary or not narrative_summary.summary:
             raise ValueError("Failed to generate narrative summary")
@@ -168,14 +169,15 @@ async def generate_audio_overview(
             current_user=user,
         )
 
-        logger.info(f"Converting summary to speech with voice: {voice}")
+        logger.info("Converting summary to speech with MOSS Voice")
+        if speaker is None:
+            raise RuntimeError("MOSS Voice is not configured")
 
         # Run synchronous TTS in a thread pool to avoid blocking the event loop
         object_key, file_url = await asyncio.to_thread(
             speaker.generate_speech_from_text,
             title=conversable_title,
             text=cleaned_narration,
-            voice=voice,
         )
 
         if not object_key:
@@ -247,7 +249,7 @@ async def generate_audio_overview(
                 job_id=audio_overview_job_id,
                 status=JobStatus.FAILED,
                 current_user=user,
-                status_message=f"Failed: {str(e)[:200]}",
+                status_message="Audio generation failed",
             )
             track_event(
                 "audio_overview_failed",
@@ -266,10 +268,20 @@ async def generate_audio_overview(
             logger.error(f"Failed to update job status to failed: {str(update_error)}")
 
         # Re-raise the original exception
-        raise e
+        raise
 
     finally:
         db.close()
+        await release_concurrency_by_id(
+            user_id=int(user.id),
+            category="audio",
+            operation_id=str(audio_overview_job_id),
+        )
+        await release_concurrency_by_id(
+            user_id=int(user.id),
+            category="background",
+            operation_id=str(audio_overview_job_id),
+        )
 
 
 async def generate_audio_overview_async(
@@ -278,28 +290,13 @@ async def generate_audio_overview_async(
     paper_id: Optional[UUID] = None,
     project_id: Optional[UUID] = None,
     additional_instructions: Optional[str] = None,
-    voice: Literal[
-        "alloy",
-        "ash",
-        "ballad",
-        "coral",
-        "echo",
-        "fable",
-        "onyx",
-        "nova",
-        "sage",
-        "shimmer",
-        "verse",
-    ] = "nova",
     length: Optional[Literal["short", "medium", "long"]] = "medium",
-    **kwargs,
 ) -> None:
     """
     Async wrapper for generate_audio_overview function.
     Useful for background task processing.
 
-    Accepts and ignores extra kwargs (e.g. db) for backward compatibility
-    with callers that still pass a db session.
+    This wrapper keeps FastAPI background-task scheduling explicit and typed.
     """
     return await generate_audio_overview(
         paper_id=paper_id,
@@ -307,6 +304,5 @@ async def generate_audio_overview_async(
         user=user,
         audio_overview_job_id=audio_overview_job_id,
         additional_instructions=additional_instructions,
-        voice=voice,
         length=length,
     )

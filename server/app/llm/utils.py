@@ -5,11 +5,14 @@ import json
 import logging
 import random
 import time
-from typing import Any, Callable, Tuple
+from collections.abc import Awaitable, Callable
+from typing import Any, ParamSpec, Tuple, TypeVar, cast
 
 import openai
 
 logger = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class LLMBlockedError(Exception):
@@ -29,7 +32,9 @@ RETRYABLE_EXCEPTIONS = (
 )
 
 
-def retry_llm_operation(max_retries: int = 3, delay: float = 1.0):
+def retry_llm_operation(
+    max_retries: int = 3, delay: float = 1.0
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to retry LLM operations that may fail due to API errors or validation issues.
 
@@ -38,9 +43,9 @@ def retry_llm_operation(max_retries: int = 3, delay: float = 1.0):
         delay: Base delay between retries in seconds (default: 1.0)
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             last_exception: BaseException | None = None
 
             for attempt in range(max_retries + 1):
@@ -68,15 +73,17 @@ def retry_llm_operation(max_retries: int = 3, delay: float = 1.0):
                     f"Final failure after {max_retries} retries for {func.__name__}: {str(last_exception)}"
                 )
                 raise last_exception
+            raise RuntimeError("Retry loop ended without a result")
 
         # Create async version for async functions
         @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
             last_exception: BaseException | None = None
 
             for attempt in range(max_retries + 1):
                 try:
-                    return await func(*args, **kwargs)
+                    result = func(*args, **kwargs)
+                    return await cast(Awaitable[Any], result)
                 except RETRYABLE_EXCEPTIONS as e:
                     last_exception = e
                     if attempt < max_retries:
@@ -99,10 +106,11 @@ def retry_llm_operation(max_retries: int = 3, delay: float = 1.0):
                     f"Final failure after {max_retries} retries for {func.__name__}: {str(last_exception)}"
                 )
                 raise last_exception
+            raise RuntimeError("Retry loop ended without a result")
 
         # Return appropriate wrapper based on if the function is async or not
         if asyncio.iscoroutinefunction(func):
-            return async_wrapper
+            return cast(Callable[P, R], async_wrapper)
         return wrapper
 
     return decorator

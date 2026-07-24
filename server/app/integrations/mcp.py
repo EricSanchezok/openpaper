@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, TypeVar
+from uuid import uuid4
 
 import httpx
+import jwt
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent as MCPTextContent
+from app.llm.token_credits import current_usage_context
 
 T = TypeVar("T")
 
@@ -63,10 +67,13 @@ class RemoteMCPServer:
     name: str
     url: str
     api_key: str | None = None
+    headers_factory: Callable[[], dict[str, str]] | None = None
     allowed_tools: frozenset[str] | None = None
 
     @property
     def headers(self) -> dict[str, str] | None:
+        if self.headers_factory is not None:
+            return self.headers_factory()
         if not self.api_key:
             return None
         return {"Authorization": f"Bearer {self.api_key}"}
@@ -136,13 +143,38 @@ ANYSEARCH_MCP = RemoteMCPServer(
     allowed_tools=frozenset({"search", "batch_search", "extract", "get_sub_domains"}),
 )
 
+
+def _scholight_delegation_headers() -> dict[str, str]:
+    context = current_usage_context()
+    if context is None:
+        raise MCPToolError("Scholight MCP requires an authenticated user context")
+    secret = os.getenv("SCHOLIGHT_MCP_DELEGATION_JWT_SECRET")
+    if not secret or len(secret.encode()) < 32:
+        raise MCPToolError("Scholight MCP delegation is not configured")
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "iss": "openpaper",
+            "aud": "scholight-mcp",
+            "sub": str(context.user_id),
+            "scope": "search",
+            "iat": now,
+            "exp": now + 60,
+            "jti": str(uuid4()),
+        },
+        secret,
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 SCHOLIGHT_MCP = RemoteMCPServer(
     name="Scholight",
     url=os.getenv(
         "SCHOLIGHT_MCP_URL",
         "https://scholight.sanchezcloud.net/api/mcp",
     ),
-    api_key=os.getenv("SCHOLIGHT_ACCESS_KEY") or None,
+    headers_factory=lambda: _scholight_delegation_headers(),
     allowed_tools=frozenset({"search_papers"}),
 )
 

@@ -148,7 +148,8 @@ The Jobs Service relies on the following external services:
 *   **Redis**: Used as the result backend for Celery to store task results.
 *   **PostgreSQL**: The primary database, managed by the `server` service. The `jobs` service does not directly access the database.
 *   **S3-compatible Object Storage**: Used for storing the uploaded PDFs, preview images, and other assets.
-*   **LLM Service**: An external or internal service for extracting metadata from the PDF content.
+*   **MinerU**: Parses PDFs into canonical Markdown, tables, formulas, and page-aware content.
+*   **DeepSeek**: Extracts metadata and generates structured table content.
 
 ## Setup and Configuration
 
@@ -165,7 +166,9 @@ The following environment variables are required to run the Jobs Service:
 | `CLOUDFLARE_BUCKET_NAME`| The name of the Cloudflare R2 bucket (if used).  | Yes      |
 | `CELERY_BROKER_URL`     | The URL for the Celery message broker (RabbitMQ).   | Yes      |
 | `CELERY_RESULT_BACKEND` | The URL for the Celery result backend (Redis).   | Yes      |
-| `GOOGLE_API_KEY`        | Google AI key used by PDF metadata extraction.   | Yes      |
+| `DEEPSEEK_API_KEY`      | DeepSeek key used for metadata extraction.       | Yes      |
+| `MINERU_API_TOKEN`      | MinerU v4 asynchronous parsing token.             | Yes      |
+| `JOBS_WEBHOOK_SIGNING_SECRET` | HMAC secret shared with the API.          | Yes      |
 
 Copy the repository-level environment catalog before the first run:
 

@@ -661,4 +661,4 @@ async def handle_stripe_webhook(
 
     except Exception as e:
         logger.error(f"Error processing Stripe webhook: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")

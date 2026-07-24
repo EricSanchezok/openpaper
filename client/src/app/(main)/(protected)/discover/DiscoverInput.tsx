@@ -30,7 +30,7 @@ const SORT_OPTIONS: { value: DiscoverSort; label: string }[] = [
 
 const PLACEHOLDERS: Record<SearchMode, string> = {
     scholarly: "Search structured indexed academic databases...",
-    explore: "Search Scholight's ranked academic paper index...",
+    explore: "Explore the web and specialist research sources...",
 }
 
 const YEAR_FILTER_OPTIONS: { value: YearFilter; label: string }[] = [
@@ -41,7 +41,7 @@ const YEAR_FILTER_OPTIONS: { value: YearFilter; label: string }[] = [
 
 const MODE_OPTIONS: { value: SearchMode; label: string; description: string }[] = [
     { value: "scholarly", label: "Scholarly", description: "Structured, indexed academic databases" },
-    { value: "explore", label: "Scholight", description: "SanchezCloud ranked academic paper search" },
+    { value: "explore", label: "Explore", description: "AnySearch and Scholight research sources" },
 ]
 
 interface DiscoverInputProps {
@@ -60,7 +60,7 @@ interface DiscoverInputProps {
     onOpenAccessChange: (value: boolean) => void
     yearFilter: YearFilter
     onYearFilterChange: (filter: YearFilter) => void
-    atSearchLimit?: boolean
+    tokenCreditLimitReached?: boolean
 }
 
 export default function DiscoverInput({
@@ -79,7 +79,7 @@ export default function DiscoverInput({
     onOpenAccessChange,
     yearFilter,
     onYearFilterChange,
-    atSearchLimit = false,
+    tokenCreditLimitReached = false,
 }: DiscoverInputProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -111,7 +111,7 @@ export default function DiscoverInput({
         <div className="w-full max-w-2xl mx-auto space-y-4">
             <h1 className="text-2xl font-semibold text-center">Discover Research</h1>
             <p className="text-sm text-muted-foreground text-center">
-                Enter a research question and we&apos;ll search OpenAlex or Scholight.
+                Enter a research question and we&apos;ll search OpenAlex, AnySearch, or Scholight.
             </p>
             <div className="relative">
                 <Textarea
@@ -309,7 +309,7 @@ export default function DiscoverInput({
                     </div>
 
                     {/* Search button or Upgrade button when at limit */}
-                    {atSearchLimit ? (
+                    {tokenCreditLimitReached ? (
                         <Button
                             asChild
                             size="sm"
@@ -331,9 +331,9 @@ export default function DiscoverInput({
                 </div>
             </div>
 
-            {atSearchLimit && (
+            {tokenCreditLimitReached && (
                 <p className="text-sm text-muted-foreground text-center">
-                    You&apos;ve reached your weekly search limit. Limits reset every Monday.
+                    You&apos;ve used this week&apos;s Token Credits. They reset Monday at 00:00 UTC.
                 </p>
             )}
         </div>

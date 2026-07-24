@@ -1,24 +1,23 @@
+from __future__ import annotations
+
 import logging
-import os
 import time
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional
 
-from app.database.models import Message
+from app.database.models import Message, ReasoningLevel
 from app.database.telemetry import track_event
-from app.llm.provider import (
-    AnthropicProvider,
-    BaseLLMProvider,
+from app.llm.backend import (
+    DeepSeekBackend,
     FileContent,
-    GeminiProvider,
-    LLMProvider,
+    LLMBackend,
     LLMResponse,
     MessageParam,
-    OpenAIProvider,
     StreamChunk,
     ToolCallResult,
 )
 from app.llm.utils import retry_llm_operation
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -29,76 +28,21 @@ class ModelType(Enum):
 
 
 class BaseLLMClient:
-    """Unified LLM client that supports multiple providers"""
+    """Single-provider client with an internal, replaceable model router."""
 
-    def __init__(self, default_provider: LLMProvider = LLMProvider.GEMINI):
-        self.default_provider = default_provider
-        self._providers: Dict[LLMProvider, BaseLLMProvider] = {}
+    def __init__(self) -> None:
+        self.backend: LLMBackend = DeepSeekBackend()
 
-        # Initialize all providers to ensure they are ready for use
-        for provider in LLMProvider:
-            self._initialize_provider(provider)
-
-    def get_chat_model_options(
-        self, exclude: Optional[List[LLMProvider]] = None
-    ) -> Dict[LLMProvider, str]:
-        def _get_display_name(model_name: str) -> str:
-            """Format model name for display"""
-            split_by_dash = model_name.split("-")
-            if len(split_by_dash) > 1:
-                return "-".join([part.lower() for part in split_by_dash[:2]])
-            return model_name.lower()
-
-        excluded = set(exclude or [])
-        return {
-            provider: _get_display_name(
-                self._get_model_for_type(ModelType.DEFAULT, provider)
-            )
-            for provider in self._providers.keys()
-            if provider not in excluded
-        }
-
-    def _initialize_provider(self, provider: LLMProvider) -> None:
-        """Initialize a provider if not already done"""
-        if provider not in self._providers:
-            if provider == LLMProvider.GEMINI:
-                self._providers[provider] = GeminiProvider()
-            elif provider == LLMProvider.OPENAI:
-                self._providers[provider] = OpenAIProvider()
-            elif provider == LLMProvider.CEREBRAS:
-                self._providers[provider] = OpenAIProvider(
-                    api_key=os.getenv("CEREBRAS_API_KEY"),
-                    base_url=os.getenv("CEREBRAS_BASE_URL"),
-                    default_model="gpt-oss-120b",
-                    fast_model="zai-glm-4.7",
-                    supports_pdf_input=False,
-                )
-            elif provider == LLMProvider.ANTHROPIC:
-                self._providers[provider] = AnthropicProvider()
-            else:
-                raise ValueError(f"Unsupported LLM provider: {provider}")
-
-    def _get_provider(self, provider: Optional[LLMProvider] = None) -> BaseLLMProvider:
-        """Get the appropriate provider, initializing if necessary"""
-        target_provider = provider or self.default_provider
-
-        if target_provider not in self._providers:
-            self._initialize_provider(target_provider)
-
-        return self._providers[target_provider]
-
-    def _get_model_for_type(
-        self, model_type: ModelType, provider: Optional[LLMProvider] = None
+    def _model(
+        self,
+        model_type: ModelType,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> str:
-        """Get the appropriate model string for the given type and provider"""
-        provider_instance = self._get_provider(provider)
-
-        if model_type == ModelType.DEFAULT:
-            return provider_instance.get_default_model()
-        elif model_type == ModelType.FAST:
-            return provider_instance.get_fast_model()
-        else:
-            raise ValueError(f"Unsupported model type: {model_type}")
+        if reasoning_level == ReasoningLevel.DEEP:
+            return cast_deepseek(self.backend).get_deep_model()
+        if model_type == ModelType.FAST:
+            return self.backend.get_fast_model()
+        return self.backend.get_default_model()
 
     @retry_llm_operation(max_retries=3, delay=1.0)
     def generate_content(
@@ -106,78 +50,62 @@ class BaseLLMClient:
         contents: Any,
         system_prompt: Optional[str] = None,
         history: Optional[List[Message]] = None,
-        function_declarations: Optional[List[Dict]] = None,
+        function_declarations: Optional[List[Dict[str, Any]]] = None,
         tool_call_results: Optional[List[ToolCallResult]] = None,
         model_type: ModelType = ModelType.DEFAULT,
-        provider: Optional[LLMProvider] = None,
-        enable_thinking: bool = True,
-        schema: Optional[Dict] = None,
-        **kwargs,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+        schema: Optional[Dict[str, Any]] = None,
+        response_model: type[BaseModel] | None = None,
+        **kwargs: Any,
     ) -> LLMResponse:
-        """Generate content using the specified provider. Automatically retries on transient errors.
-
-        Args:
-            schema: Optional JSON schema dict for structured output. When provided,
-                the LLM response will be constrained to match this schema via
-                the provider's native structured output support.
-        """
         start_time = time.time()
-        model = self._get_model_for_type(model_type, provider)
-        target_provider = provider or self.default_provider
-
+        model = self._model(model_type, reasoning_level)
         try:
-            response = self._get_provider(provider).generate_content(
+            if response_model is not None:
+                schema = response_model.model_json_schema()
+            response = self.backend.generate_content(
                 model,
                 contents,
                 system_prompt=system_prompt,
                 function_declarations=function_declarations,
                 tool_call_results=tool_call_results,
                 history=history,
-                enable_thinking=enable_thinking,
                 schema=schema,
                 **kwargs,
             )
-
-            end_time = time.time()
-            duration_ms = (end_time - start_time) * 1000
-
-            # Track the event with model and timing information
+            if response_model is not None:
+                validated = response_model.model_validate_json(response.text)
+                response.text = validated.model_dump_json()
+            duration_ms = (time.time() - start_time) * 1000
             track_event(
                 "llm_generate_content",
                 {
                     "model": model,
-                    "provider": target_provider.value,
+                    "provider": "deepseek",
                     "model_type": model_type.value,
+                    "reasoning_level": reasoning_level.value,
                     "duration_ms": duration_ms,
                     "has_function_declarations": function_declarations is not None,
-                    "enable_thinking": enable_thinking,
                 },
             )
-
             logger.info(
-                f"Generated content using {target_provider.value}/{model} in {duration_ms:.2f}ms"
+                "Generated content using deepseek/%s in %.2fms", model, duration_ms
             )
-
             return response
-        except Exception as e:
-            end_time = time.time()
-            duration_ms = (end_time - start_time) * 1000
-
-            # Track failures too
+        except Exception as exc:
+            duration_ms = (time.time() - start_time) * 1000
             track_event(
                 "llm_generate_content_error",
                 {
                     "model": model,
-                    "provider": target_provider.value,
+                    "provider": "deepseek",
                     "model_type": model_type.value,
+                    "reasoning_level": reasoning_level.value,
                     "duration_ms": duration_ms,
-                    "error": str(e),
+                    "error_type": type(exc).__name__,
                 },
             )
-
-            logger.error(
-                f"Error generating content with {target_provider.value}/{model}: {e}"
-            )
+            logger.exception("DeepSeek generation failed")
             raise
 
     def send_message_stream(
@@ -187,20 +115,33 @@ class BaseLLMClient:
         system_prompt: str,
         file: FileContent | None = None,
         model_type: ModelType = ModelType.DEFAULT,
-        provider: Optional[LLMProvider] = None,
-        **kwargs,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+        **kwargs: Any,
     ) -> Iterator[StreamChunk]:
-        """Send a message and stream the response"""
-        model = self._get_model_for_type(model_type, provider)
-        return self._get_provider(provider).send_message_stream(
+        model = self._model(model_type, reasoning_level)
+        return self.backend.send_message_stream(
             model, message, history, system_prompt, file, **kwargs
         )
 
-    # Convenience properties for backward compatibility
     @property
     def default_model(self) -> str:
-        return self._get_model_for_type(ModelType.DEFAULT)
+        return self.backend.get_default_model()
 
     @property
     def fast_model(self) -> str:
-        return self._get_model_for_type(ModelType.FAST)
+        return self.backend.get_fast_model()
+
+
+def cast_deepseek(backend: LLMBackend) -> DeepSeekBackend:
+    if not isinstance(backend, DeepSeekBackend):
+        raise RuntimeError("Configured LLM backend does not support deep reasoning")
+    return backend
+
+
+__all__ = [
+    "BaseLLMClient",
+    "FileContent",
+    "ModelType",
+    "ReasoningLevel",
+    "StreamChunk",
+]

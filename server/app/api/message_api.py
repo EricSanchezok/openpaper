@@ -16,17 +16,23 @@ from app.database.crud.projects.project_conversation_crud import (
 from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
-from app.database.models import Annotation, ArtifactKind, ConversableType
+from app.database.models import Annotation, ArtifactKind, ConversableType, ReasoningLevel
 from app.database.telemetry import track_event
-from app.llm.base import LLMProvider
+from app.helpers.ai_limits import (
+    AILimitExceeded,
+    acquire_concurrency,
+    enforce_rate_limit,
+    release_concurrency,
+)
 from app.llm.citation_handler import CitationHandler
 from app.llm.operations import operations
+from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.message import EvidenceCollection, ResponseStyle
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -39,6 +45,7 @@ logger.setLevel(logging.INFO)
 message_router = APIRouter()
 
 END_DELIMITER = "END_OF_STREAM"
+MAX_REASONING_TRACE_CHARS = 100_000
 
 
 def _append_status(messages: Optional[List[str]], message: str) -> None:
@@ -55,6 +62,7 @@ async def _stream_chat_chunks(
     evidence_container: dict,
     artifacts: Optional[List] = None,
     status_messages: Optional[List[str]] = None,
+    reasoning_chunks: Optional[List[str]] = None,
 ) -> AsyncGenerator[str, None]:
     """Helper to stream chat chunks and handle common logic."""
     async for chunk in chunk_generator:
@@ -72,6 +80,16 @@ async def _stream_chat_chunks(
                 yield f"{json.dumps({'type': 'artifact', 'content': chunk_content})}{END_DELIMITER}"
             except (TypeError, ValueError) as json_error:
                 logger.warning(f"Failed to serialize artifact: {json_error}")
+            continue
+
+        if chunk_type == "reasoning":
+            if reasoning_chunks is not None and chunk_content:
+                remaining = MAX_REASONING_TRACE_CHARS - sum(
+                    len(part) for part in reasoning_chunks
+                )
+                if remaining > 0:
+                    reasoning_chunks.append(chunk_content[:remaining])
+            yield f"{json.dumps({'type': 'reasoning', 'content': chunk_content})}{END_DELIMITER}"
             continue
 
         if chunk_type == "content":
@@ -104,26 +122,65 @@ async def _stream_chat_chunks(
             yield f"{json.dumps({'type': 'status', 'content': chunk_content})}{END_DELIMITER}"
 
 
-@message_router.get("/models")
-async def get_available_models() -> dict:
+@message_router.get("/capabilities")
+async def get_chat_capabilities() -> dict:
     return {
-        "models": operations.get_chat_model_options(exclude=[LLMProvider.CEREBRAS]),
-        "default": operations.default_provider.value,
+        "reasoning_levels": [
+            {
+                "id": "standard",
+                "label": "Standard",
+                "description": "Fast, balanced reasoning for most questions.",
+            },
+            {
+                "id": "deep",
+                "label": "Deep",
+                "description": "More thorough reasoning for complex questions.",
+            },
+        ],
+        "default_reasoning_level": ReasoningLevel.STANDARD.value,
     }
 
 
 class MultiPaperChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     conversation_id: str
-    user_query: str
-    user_references: Optional[List[str]] = None
-    llm_provider: Optional[LLMProvider] = None
+    user_query: str = Field(min_length=1, max_length=20_000)
+    user_references: Optional[List[str]] = Field(default=None, max_length=50)
+    reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
     project_id: Optional[str] = None
     # @-mention scoping: when any of these are set, the chat's search space is
     # hard-limited to the union of the mentioned papers, the papers in the
     # mentioned projects, and the parent papers of the mentioned highlights.
-    mentioned_paper_ids: Optional[List[str]] = None
-    mentioned_project_ids: Optional[List[str]] = None
-    mentioned_highlight_ids: Optional[List[str]] = None
+    mentioned_paper_ids: Optional[List[str]] = Field(default=None, max_length=50)
+    mentioned_project_ids: Optional[List[str]] = Field(default=None, max_length=20)
+    mentioned_highlight_ids: Optional[List[str]] = Field(default=None, max_length=50)
+
+    @field_validator("conversation_id", "project_id")
+    @classmethod
+    def validate_single_uuid(cls, value: str | None) -> str | None:
+        if value is not None:
+            uuid.UUID(value)
+        return value
+
+    @field_validator(
+        "mentioned_paper_ids",
+        "mentioned_project_ids",
+        "mentioned_highlight_ids",
+    )
+    @classmethod
+    def validate_uuid_list(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None:
+            for item in value:
+                uuid.UUID(item)
+        return value
+
+    @field_validator("user_references")
+    @classmethod
+    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(len(item) > 5_000 for item in value):
+            raise ValueError("Reference text exceeds maximum length")
+        return value
 
 
 def _resolve_mention_scope(
@@ -243,6 +300,7 @@ def _resolve_mention_scope(
 @message_router.post("/chat/everything")
 async def chat_message_multipaper(
     request: MultiPaperChatRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> StreamingResponse:
@@ -252,13 +310,36 @@ async def chat_message_multipaper(
     This searches over the entire corpus of papers and returns a response based on the user's query.
     The response includes both the content and any relevant evidence gathered.
     """
+    if not has_token_credits(db, user=current_user):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "token_quota_exceeded",
+                "message": "Your weekly Token Credits are exhausted.",
+                "retryable": False,
+            },
+        )
+    try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=http_request.client.host if http_request.client else "unknown",
+            feature="chat",
+        )
+        concurrency_lease = await acquire_concurrency(
+            user_id=int(current_user.id),
+            category="interactive",
+        )
+    except AILimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
+
     try:
 
-        async def response_generator():
+        async def run_response_generator():
             try:
                 content_chunks = []
                 artifacts_collected: List[dict] = []
                 status_messages: List[str] = []
+                reasoning_chunks: List[str] = []
                 start_time = datetime.now(timezone.utc)
                 evidence_container = {"evidence": None}
                 evidence_collection: Optional[EvidenceCollection] = None
@@ -316,7 +397,6 @@ async def chat_message_multipaper(
                     conversation_id=request.conversation_id,
                     question=request.user_query,
                     current_user=current_user,
-                    llm_provider=LLMProvider.CEREBRAS,
                     db=db,
                     project_id=request.project_id,
                     restrict_to_paper_ids=scoped_paper_ids,
@@ -375,7 +455,7 @@ async def chat_message_multipaper(
 
                 chat_generator = operations.chat_with_papers(
                     question=request.user_query,
-                    llm_provider=request.llm_provider,
+                    reasoning_level=request.reasoning_level,
                     user_references=request.user_references,
                     evidence_gathered=evidence_collection,
                     conversation_id=request.conversation_id,
@@ -390,6 +470,7 @@ async def chat_message_multipaper(
                     evidence_container=evidence_container,
                     artifacts=artifacts_collected,
                     status_messages=status_messages,
+                    reasoning_chunks=reasoning_chunks,
                 ):
                     yield stream_chunk
 
@@ -406,6 +487,9 @@ async def chat_message_multipaper(
                 if status_messages:
                     assistant_trace = assistant_trace or {}
                     assistant_trace["status_messages"] = status_messages
+                if reasoning_chunks:
+                    assistant_trace = assistant_trace or {}
+                    assistant_trace["reasoning_content"] = "".join(reasoning_chunks)
 
                 # Surface the trajectory live so the just-answered message can show
                 # it immediately (it's also persisted for reload below).
@@ -495,11 +579,7 @@ async def chat_message_multipaper(
                     properties={
                         "has_user_references": bool(request.user_references),
                         "has_evidence": bool(evidence),
-                        "llm_provider": (
-                            request.llm_provider.value
-                            if request.llm_provider
-                            else "default"
-                        ),
+                        "reasoning_level": request.reasoning_level.value,
                         "time_taken": (
                             datetime.now(timezone.utc) - start_time
                         ).total_seconds(),
@@ -526,30 +606,57 @@ async def chat_message_multipaper(
                 )
 
                 logger.error(f"Error in streaming response: {e}", exc_info=True)
-                yield f"{json.dumps({'type': 'error', 'content': str(e)})}{END_DELIMITER}"
+                yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{END_DELIMITER}"
+
+        async def response_generator():
+            try:
+                with llm_usage_context(
+                    user_id=int(current_user.id),
+                    feature="chat_multi_paper",
+                ):
+                    async for event in run_response_generator():
+                        yield event
+            finally:
+                await release_concurrency(concurrency_lease)
 
         return StreamingResponse(response_generator(), media_type="text/event-stream")
 
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error processing chat message: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=404, detail={"code": "chat_scope_not_found"})
+    except Exception:
+        logger.exception("Error processing multi-paper chat message")
+        raise HTTPException(status_code=400, detail={"code": "chat_request_failed"})
 
 
 # Add this new model for the chat request
 class ChatMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     paper_id: str
     conversation_id: str
-    user_query: str
-    user_references: Optional[List[str]] = None
+    user_query: str = Field(min_length=1, max_length=20_000)
+    user_references: Optional[List[str]] = Field(default=None, max_length=50)
     style: Optional[ResponseStyle] = ResponseStyle.NORMAL
-    llm_provider: Optional[LLMProvider] = None
+    reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
+
+    @field_validator("paper_id", "conversation_id")
+    @classmethod
+    def validate_uuid(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+    @field_validator("user_references")
+    @classmethod
+    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(len(item) > 5_000 for item in value):
+            raise ValueError("Reference text exceeds maximum length")
+        return value
 
 
 @message_router.post("/chat/paper")
 async def chat_message_stream(
     request: ChatMessageRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> StreamingResponse:
@@ -561,11 +668,34 @@ async def chat_message_stream(
     - concise: Short and to the point
     - detailed: Comprehensive and thorough
     """
+    if not has_token_credits(db, user=current_user):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "token_quota_exceeded",
+                "message": "Your weekly Token Credits are exhausted.",
+                "retryable": False,
+            },
+        )
+    try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=http_request.client.host if http_request.client else "unknown",
+            feature="chat",
+        )
+        concurrency_lease = await acquire_concurrency(
+            user_id=int(current_user.id),
+            category="interactive",
+        )
+    except AILimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
+
     try:
 
-        async def response_generator():
+        async def run_response_generator():
             try:
                 content_chunks = []
+                reasoning_chunks: List[str] = []
                 start_time = datetime.now(timezone.utc)
                 evidence_container = {"evidence": None}
 
@@ -574,7 +704,7 @@ async def chat_message_stream(
                     conversation_id=request.conversation_id,
                     question=request.user_query,
                     current_user=current_user,
-                    llm_provider=request.llm_provider,
+                    reasoning_level=request.reasoning_level,
                     user_references=request.user_references,
                     response_style=request.style,
                     db=db,
@@ -584,6 +714,7 @@ async def chat_message_stream(
                     chunk_generator=chat_generator,
                     content_chunks=content_chunks,
                     evidence_container=evidence_container,
+                    reasoning_chunks=reasoning_chunks,
                 ):
                     yield chunk
 
@@ -591,6 +722,13 @@ async def chat_message_stream(
 
                 # Save the complete message to the database
                 full_content = "".join(content_chunks)
+                assistant_trace = (
+                    {"reasoning_content": "".join(reasoning_chunks)}
+                    if reasoning_chunks
+                    else None
+                )
+                if assistant_trace:
+                    yield f"{json.dumps({'type': 'trace', 'content': assistant_trace})}{END_DELIMITER}"
 
                 formatted_references = (
                     CitationHandler.convert_references_to_dict(
@@ -620,6 +758,7 @@ async def chat_message_stream(
                         role="assistant",
                         content=full_content,
                         references=evidence if evidence else None,
+                        trace=assistant_trace,
                     ),
                     user=current_user,
                 )
@@ -633,11 +772,7 @@ async def chat_message_stream(
                         ),
                         "has_user_references": bool(request.user_references),
                         "has_evidence": bool(evidence),
-                        "llm_provider": (
-                            request.llm_provider.value
-                            if request.llm_provider
-                            else "default"
-                        ),
+                        "reasoning_level": request.reasoning_level.value,
                         "time_taken": (
                             datetime.now(timezone.utc) - start_time
                         ).total_seconds(),
@@ -663,12 +798,23 @@ async def chat_message_stream(
                 )
 
                 logger.error(f"Error in streaming response: {e}", exc_info=True)
-                yield f"{json.dumps({'type': 'error', 'content': str(e)})}{END_DELIMITER}"
+                yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{END_DELIMITER}"
+
+        async def response_generator():
+            try:
+                with llm_usage_context(
+                    user_id=int(current_user.id),
+                    feature="chat_paper",
+                ):
+                    async for event in run_response_generator():
+                        yield event
+            finally:
+                await release_concurrency(concurrency_lease)
 
         return StreamingResponse(response_generator(), media_type="text/event-stream")
 
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error processing chat message: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=404, detail={"code": "chat_scope_not_found"})
+    except Exception:
+        logger.exception("Error processing paper chat message")
+        raise HTTPException(status_code=400, detail={"code": "chat_request_failed"})

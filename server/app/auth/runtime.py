@@ -147,7 +147,7 @@ async def _require_active_session(
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
+            detail="Invalid or expired session",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
     except DBError as exc:

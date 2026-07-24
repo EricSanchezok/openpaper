@@ -25,18 +25,21 @@ export function MessageTraceViewer({ trace }: MessageTraceViewerProps) {
     const [open, setOpen] = useState(false);
 
     const statusMessages = trace?.status_messages ?? [];
+    const reasoningContent = trace?.reasoning_content?.trim() ?? '';
     const toolCalls = trace?.tool_calls ?? [];
     const citations = trace?.citations ?? [];
 
     if (
         statusMessages.length === 0 &&
+        reasoningContent.length === 0 &&
         toolCalls.length === 0 &&
         citations.length === 0
     ) {
         return null;
     }
 
-    const stepCount = statusMessages.length || toolCalls.length;
+    const stepCount =
+        statusMessages.length || toolCalls.length || (reasoningContent ? 1 : 0);
 
     return (
         <div className="not-prose mb-2">
@@ -54,6 +57,11 @@ export function MessageTraceViewer({ trace }: MessageTraceViewerProps) {
 
             {open && (
                 <div className="mt-2 space-y-3 text-xs">
+                    {reasoningContent && (
+                        <div className="whitespace-pre-wrap border-l-2 border-gray-300 dark:border-gray-600 pl-3 text-muted-foreground">
+                            {reasoningContent}
+                        </div>
+                    )}
                     {/* The live "thinking" the user saw during streaming. */}
                     {statusMessages.length > 0 ? (
                         <ul className="border-l border-gray-300 dark:border-gray-600 space-y-1">

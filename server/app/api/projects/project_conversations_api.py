@@ -63,7 +63,7 @@ async def create_project_conversation(
         logger.error(f"Error creating project conversation: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create project conversation: {str(e)}"},
+            content={"message": "Failed to create project conversation"},
         )
 
 
@@ -99,7 +99,7 @@ async def get_project_conversations(
         logger.error(f"Error fetching project conversations: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch project conversations: {str(e)}"},
+            content={"message": "Failed to fetch project conversations"},
         )
 
 
@@ -149,11 +149,11 @@ async def get_project_conversation(
                 "messages": formatted_messages,
             },
         )
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"message": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error fetching project conversation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch project conversation: {str(e)}"},
+            content={"message": "Failed to fetch project conversation"},
         )

@@ -75,7 +75,7 @@ async def create_project(
         logger.error(f"Error creating project: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create project: {str(e)}"},
+            content={"message": "Failed to create project"},
         )
 
 
@@ -107,7 +107,7 @@ async def get_projects(
         logger.error(f"Error fetching projects: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch projects: {str(e)}"},
+            content={"message": "Failed to fetch projects"},
         )
 
 
@@ -140,7 +140,7 @@ async def get_project(
         logger.error(f"Error fetching project: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch project: {str(e)}"},
+            content={"message": "Failed to fetch project"},
         )
 
 
@@ -175,7 +175,7 @@ async def update_project(
         logger.error(f"Error updating project: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to update project: {str(e)}"},
+            content={"message": "Failed to update project"},
         )
 
 
@@ -207,7 +207,7 @@ async def delete_project(
         logger.error(f"Error deleting project: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to delete project: {str(e)}"},
+            content={"message": "Failed to delete project"},
         )
 
 
@@ -272,7 +272,7 @@ async def change_project_collaborator_role(
         )
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to change collaborator role: {str(e)}"},
+            content={"message": "Failed to change collaborator role"},
         )
 
 
@@ -306,7 +306,7 @@ async def get_project_collaborators(
         )
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch collaborators: {str(e)}"},
+            content={"message": "Failed to fetch collaborators"},
         )
 
 
@@ -346,7 +346,7 @@ async def remove_self_from_project(
         return JSONResponse(
             status_code=400,
             content={
-                "message": f"Failed to remove yourself from the project: {str(e)}"
+                "message": "Failed to remove yourself from the project"
             },
         )
 
@@ -389,5 +389,5 @@ async def remove_project_collaborator(
         )
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to remove collaborator: {str(e)}"},
+            content={"message": "Failed to remove collaborator"},
         )

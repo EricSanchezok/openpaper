@@ -12,14 +12,21 @@ from app.database.crud.projects.project_data_table_crud import (
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import JobStatus
+from app.helpers.ai_limits import (
+    AILimitExceeded,
+    acquire_concurrency,
+    enforce_rate_limit,
+    release_concurrency,
+    release_concurrency_by_id,
+)
 from app.helpers.pdf_jobs import jobs_client
-from app.helpers.subscription_limits import can_user_create_data_table_job
 from app.llm.operations import operations
+from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.responses import DataTableSchema, DocumentMapping
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -32,18 +39,33 @@ projects_data_table_router = APIRouter()
 
 
 class CreateDataTableRequest(BaseModel):
-    project_id: str
-    columns: List[str]
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: uuid.UUID
+    columns: List[str] = Field(min_length=1, max_length=50)
+
+    @field_validator("columns")
+    @classmethod
+    def validate_columns(cls, value: list[str]) -> list[str]:
+        normalized = [column.strip() for column in value]
+        if any(not column or len(column) > 200 for column in normalized):
+            raise ValueError("Columns must contain 1-200 characters")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Columns must be unique")
+        return normalized
 
 
 class ProposeDataTableSchemaRequest(BaseModel):
-    project_id: str
-    prompt: str
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: uuid.UUID
+    prompt: str = Field(min_length=1, max_length=10_000)
 
 
 @projects_data_table_router.post("/propose")
 async def propose_data_table_schema(
     request: ProposeDataTableSchemaRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> JSONResponse:
@@ -60,15 +82,39 @@ async def propose_data_table_schema(
             )
 
         project_papers = project_paper_crud.get_all_papers_by_project_id(
-            db, project_id=uuid.UUID(request.project_id), user=current_user
+            db, project_id=request.project_id, user=current_user
         )
 
         paper_titles = [str(pp.title) for pp in project_papers if pp.title]
 
-        columns = operations.propose_data_table_schema(
-            prompt=prompt,
-            paper_titles=paper_titles,
-        )
+        if not has_token_credits(db, user=current_user):
+            return JSONResponse(
+                status_code=429, content={"code": "token_quota_exceeded"}
+            )
+
+        try:
+            await enforce_rate_limit(
+                user_id=int(current_user.id),
+                ip_address=(
+                    http_request.client.host if http_request.client else "unknown"
+                ),
+                feature="data_table",
+            )
+            lease = await acquire_concurrency(
+                user_id=int(current_user.id), category="interactive"
+            )
+        except AILimitExceeded as exc:
+            return JSONResponse(status_code=429, content={"code": exc.code})
+        try:
+            with llm_usage_context(
+                user_id=int(current_user.id), feature="data_table_proposal"
+            ):
+                columns = operations.propose_data_table_schema(
+                    prompt=prompt,
+                    paper_titles=paper_titles,
+                )
+        finally:
+            await release_concurrency(lease)
 
         if not columns:
             return JSONResponse(
@@ -80,36 +126,48 @@ async def propose_data_table_schema(
             status_code=200,
             content={"columns": columns},
         )
-    except Exception as e:
-        logger.error(f"Error proposing data table schema: {e}")
+    except Exception:
+        logger.exception("Error proposing data table schema")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to propose data table schema: {str(e)}"},
+            content={"code": "data_table_proposal_failed"},
         )
 
 
 @projects_data_table_router.post("")
 async def create_data_table(
     request: CreateDataTableRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> JSONResponse:
     """
     Create a data table extraction job for a project.
     """
+    job = None
+    lease_acquired = False
     try:
 
-        can_create, error_message = can_user_create_data_table_job(db, current_user)
-        if not can_create:
+        if not has_token_credits(db, user=current_user):
             return JSONResponse(
-                status_code=403,
-                content={"message": error_message},
+                status_code=429,
+                content={"code": "token_quota_exceeded"},
             )
+        try:
+            await enforce_rate_limit(
+                user_id=int(current_user.id),
+                ip_address=(
+                    http_request.client.host if http_request.client else "unknown"
+                ),
+                feature="data_table",
+            )
+        except AILimitExceeded as exc:
+            return JSONResponse(status_code=429, content={"code": exc.code})
 
         papers: List[DocumentMapping] = []
 
         project_papers = project_paper_crud.get_all_papers_by_project_id(
-            db, project_id=uuid.UUID(request.project_id), user=current_user
+            db, project_id=request.project_id, user=current_user
         )
 
         for pp in project_papers:
@@ -117,7 +175,7 @@ async def create_data_table(
                 DocumentMapping(
                     id=str(pp.id),
                     title=str(pp.title),
-                    s3_object_key=str(pp.s3_object_key),
+                    raw_content=str(pp.raw_content or ""),
                 )
             )
 
@@ -125,7 +183,7 @@ async def create_data_table(
         job = data_table_job_crud.create(
             db=db,
             obj_in=DataTableJobCreate(
-                project_id=uuid.UUID(request.project_id),
+                project_id=request.project_id,
                 columns=request.columns,
             ),
             user=current_user,
@@ -140,6 +198,21 @@ async def create_data_table(
             )
 
         job_id = str(job.id)
+        try:
+            await acquire_concurrency(
+                user_id=int(current_user.id),
+                category="background",
+                operation_id=job_id,
+            )
+            lease_acquired = True
+        except AILimitExceeded as exc:
+            data_table_job_crud.update_status(
+                db=db,
+                job_id=uuid.UUID(str(job.id)),
+                status=JobStatus.FAILED,
+                error_message=exc.code,
+            )
+            return JSONResponse(status_code=429, content={"code": exc.code})
 
         data_table = DataTableSchema(
             columns=request.columns,
@@ -174,11 +247,17 @@ async def create_data_table(
                 "task_id": task_id,
             },
         )
-    except Exception as e:
-        logger.error(f"Error creating data table job: {e}")
+    except Exception:
+        if lease_acquired and job is not None:
+            await release_concurrency_by_id(
+                user_id=int(current_user.id),
+                category="background",
+                operation_id=str(job.id),
+            )
+        logger.exception("Error creating data table job")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create data table job: {str(e)}"},
+            content={"code": "data_table_creation_failed"},
         )
 
 
@@ -221,6 +300,11 @@ async def list_data_table_jobs(
                             )
                             or job
                         )
+                        await release_concurrency_by_id(
+                            user_id=int(current_user.id),
+                            category="background",
+                            operation_id=str(job.id),
+                        )
                     else:
                         job_age = datetime.now(timezone.utc) - job.created_at
 
@@ -237,6 +321,11 @@ async def list_data_table_jobs(
                                     status=JobStatus.FAILED,
                                 )
                                 or job
+                            )
+                            await release_concurrency_by_id(
+                                user_id=int(current_user.id),
+                                category="background",
+                                operation_id=str(job.id),
                             )
                 except Exception as e:
                     logger.warning(
@@ -264,7 +353,7 @@ async def list_data_table_jobs(
         logger.error(f"Error listing data table jobs: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to list data table jobs: {str(e)}"},
+            content={"message": "Failed to list data table jobs"},
         )
 
 
@@ -314,6 +403,11 @@ async def get_data_table_job_status(
                     )
                     or job
                 )
+                await release_concurrency_by_id(
+                    user_id=int(current_user.id),
+                    category="background",
+                    operation_id=str(job.id),
+                )
             else:
                 # If job has been running for longer than the max runtime,
                 # and Celery has no record of it, assume it's lost
@@ -331,6 +425,11 @@ async def get_data_table_job_status(
                             status=JobStatus.FAILED,
                         )
                         or job
+                    )
+                    await release_concurrency_by_id(
+                        user_id=int(current_user.id),
+                        category="background",
+                        operation_id=str(job.id),
                     )
 
         # Build response with both job status and task status
@@ -361,7 +460,7 @@ async def get_data_table_job_status(
         logger.error(f"Error fetching data table job status: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch data table job status: {str(e)}"},
+            content={"message": "Failed to fetch data table job status"},
         )
 
 
@@ -397,5 +496,5 @@ async def get_data_table_job_results(
         logger.error(f"Error fetching data table job results: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch data table job results: {str(e)}"},
+            content={"message": "Failed to fetch data table job results"},
         )

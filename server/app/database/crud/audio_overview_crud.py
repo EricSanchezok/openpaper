@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -117,30 +117,6 @@ class AudioOverviewJobCRUD(
             .all()
         )
 
-    # Backward compatibility method for paper-specific queries
-    def get_by_paper_and_user(
-        self, db: Session, *, paper_id: UUID, current_user: CurrentUser
-    ) -> Optional[AudioOverviewJob]:
-        """Get audio overview job by paper ID and user (backward compatibility)"""
-        results = self.get_by_conversable_and_user(
-            db=db,
-            conversable_id=paper_id,
-            conversable_type=ConversableType.PAPER,
-            current_user=current_user,
-        )
-        return results[0] if results else None
-
-    def get_by_project_and_user(
-        self, db: Session, *, project_id: UUID, current_user: CurrentUser
-    ) -> Optional[List[AudioOverviewJob]]:
-        """Get audio overview job by project ID and user (backward compatibility)"""
-        return self.get_by_conversable_and_user(
-            db=db,
-            conversable_id=project_id,
-            conversable_type=ConversableType.PROJECT,
-            current_user=current_user,
-        )
-
     def get_user_jobs(
         self,
         db: Session,
@@ -232,12 +208,6 @@ class AudioOverviewJobCRUD(
             "id": str(job.id),
             "conversable_id": str(job.conversable_id),
             "conversable_type": job.conversable_type,
-            # Keep paper_id for backward compatibility
-            "paper_id": (
-                str(job.conversable_id)
-                if job.conversable_type == ConversableType.PAPER
-                else None
-            ),
             "status": job.status,
             "status_message": job.status_message,
             "started_at": job.started_at.isoformat() if job.started_at else None,
@@ -332,29 +302,6 @@ class AudioOverviewCRUD(
             .first()
         )
 
-    # Backward compatibility methods for paper-specific queries
-    def get_by_paper_and_user(
-        self, db: Session, *, paper_id: UUID, current_user: CurrentUser
-    ) -> Optional[List[AudioOverview]]:
-        """Get audio overviews by paper ID and user (backward compatibility)"""
-        return self.get_by_conversable_and_user(
-            db=db,
-            conversable_id=paper_id,
-            conversable_type=ConversableType.PAPER,
-            current_user=current_user,
-        )
-
-    def get_by_project_and_user(
-        self, db: Session, *, project_id: UUID, current_user: CurrentUser
-    ) -> Optional[List[AudioOverview]]:
-        """Get audio overviews by project ID and user (backward compatibility)"""
-        return self.get_by_conversable_and_user(
-            db=db,
-            conversable_id=project_id,
-            conversable_type=ConversableType.PROJECT,
-            current_user=current_user,
-        )
-
     def get_by_id_project_and_user(
         self, db: Session, *, id: UUID, project_id: UUID, current_user: CurrentUser
     ) -> Optional[AudioOverview]:
@@ -370,17 +317,6 @@ class AudioOverviewCRUD(
                 ProjectRole.user_id == current_user.id,
             )
             .first()
-        )
-
-    def get_mrc_by_paper_and_user(
-        self, db: Session, *, paper_id: UUID, current_user: CurrentUser
-    ) -> Optional[AudioOverview]:
-        """Get the most recent audio overview by paper ID and user (backward compatibility)"""
-        return self.get_mrc_by_conversable_and_user(
-            db=db,
-            conversable_id=paper_id,
-            conversable_type=ConversableType.PAPER,
-            current_user=current_user,
         )
 
     def get_user_overviews(
@@ -430,12 +366,6 @@ class AudioOverviewCRUD(
             "id": str(overview.id),
             "conversable_id": str(overview.conversable_id),
             "conversable_type": overview.conversable_type,
-            # Keep paper_id for backward compatibility
-            "paper_id": (
-                str(overview.conversable_id)
-                if overview.conversable_type == ConversableType.PAPER
-                else None
-            ),
             "s3_object_key": overview.s3_object_key,
             "transcript": overview.transcript,
             "created_at": (
@@ -450,35 +380,6 @@ class AudioOverviewCRUD(
                 for citation in overview.citations or []
             ],
         }
-
-    def get_audio_overviews_used_this_week(
-        self,
-        db: Session,
-        *,
-        current_user: CurrentUser,
-        conversable_type: Optional[ConversableType] = None,
-    ) -> int:
-        """
-        Get the number of audio overviews used by the user this week.
-        Optionally filter by conversable type.
-        """
-        start_of_week = datetime.now(timezone.utc) - timedelta(
-            days=datetime.now(timezone.utc).weekday()
-        )
-        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_week = start_of_week + timedelta(days=7)
-
-        query = db.query(AudioOverview).filter(
-            AudioOverview.user_id == current_user.id,
-            AudioOverview.created_at >= start_of_week,
-            AudioOverview.created_at < end_of_week,
-        )
-
-        if conversable_type:
-            query = query.filter(AudioOverview.conversable_type == conversable_type)
-
-        return query.count()
-
 
 # Create single instances to use throughout the application
 audio_overview_job_crud = AudioOverviewJobCRUD(AudioOverviewJob)

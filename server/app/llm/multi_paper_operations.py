@@ -10,7 +10,7 @@ from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
-from app.database.models import Paper
+from app.database.models import Paper, ReasoningLevel
 from app.llm.base import ModelType
 from app.llm.citation_handler import CitationHandler
 from app.llm.evidence_operations import EvidenceOperations
@@ -20,7 +20,7 @@ from app.llm.prompts import (
     ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT,
     GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY,
 )
-from app.llm.provider import LLMProvider, StreamChunk, SupplementaryContent, TextContent
+from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
 from app.llm.utils import retry_llm_operation
 from app.schemas.message import EvidenceCollection
 from app.schemas.responses import AudioOverviewForLLM
@@ -44,7 +44,7 @@ class MultiPaperOperations(EvidenceOperations):
         current_user: CurrentUser,
         all_papers: List[Paper],
         evidence_gathered: EvidenceCollection,
-        llm_provider: Optional[LLMProvider] = None,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Optional[Sequence[str]] = None,
         mentioned_highlights: Optional[List[dict]] = None,
         db: Session = Depends(get_db),
@@ -160,7 +160,7 @@ class MultiPaperOperations(EvidenceOperations):
                     message=message_content,
                     system_prompt=formatted_system_prompt,
                     history=conversation_history,
-                    provider=llm_provider,
+                    reasoning_level=reasoning_level,
                 )
                 while True:
                     chunk = await asyncio.to_thread(get_next_chunk, blocking_iterator)
@@ -190,6 +190,8 @@ class MultiPaperOperations(EvidenceOperations):
                     first_chunk_received = True
 
                 chunk: StreamChunk = item  # type: ignore
+                if chunk.thinking:
+                    yield {"type": "reasoning", "content": chunk.thinking}
                 text = chunk.text
 
                 logger.debug(f"Received chunk: {text}")
@@ -341,7 +343,6 @@ class MultiPaperOperations(EvidenceOperations):
         async for result in self.gather_evidence(
             question=f"{summary_request}",
             current_user=current_user,
-            llm_provider=LLMProvider.CEREBRAS,
             project_id=project_id,
             db=db,
         ):
@@ -389,7 +390,7 @@ class MultiPaperOperations(EvidenceOperations):
         response = self.generate_content(
             contents=message_content,
             model_type=ModelType.DEFAULT,
-            provider=LLMProvider.GEMINI,
+            response_model=AudioOverviewForLLM,
         )
 
         try:

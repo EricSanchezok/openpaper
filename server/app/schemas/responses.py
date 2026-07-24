@@ -109,8 +109,8 @@ The summary should be accessible to readers with basic domain knowledge while ma
 
 class DocumentMapping(BaseModel):
     title: str
-    s3_object_key: str
     id: str
+    raw_content: str
 
 
 class DataTableSchema(BaseModel):
@@ -160,7 +160,7 @@ class ToolCall(BaseModel):
 
     id: Optional[str] = Field(
         default=None,
-        description="Unique identifier for the tool call. Returned by OpenAI, generated for Gemini.",
+        description="Unique identifier returned for the tool call.",
     )
     name: str
     args: Dict[str, Any]
@@ -171,7 +171,7 @@ class ToolCallResult(BaseModel):
 
     id: Optional[str] = Field(
         default=None,
-        description="Unique identifier for the tool call. Required for OpenAI, optional for Gemini.",
+        description="Unique identifier linking the tool result to its call.",
     )
     name: str = Field(description="The name of the tool/function that was called")
     args: Dict[str, Any] = Field(
@@ -193,9 +193,8 @@ class FileContent(BaseModel):
     mime_type: str
     filename: Optional[str] = None
     type: Literal["file"] = "file"
-    # Plain-text equivalent of the file, used by providers that don't accept
-    # native file blocks (e.g. Cerebras via OpenAI-compat). When set, the
-    # provider substitutes this text in place of doing runtime extraction.
+    # Plain-text equivalent consumed by the DeepSeek backend. PDF extraction is
+    # completed by MinerU before model calls.
     text_fallback: Optional[str] = None
 
 

@@ -170,7 +170,7 @@ class EvidenceCollection(BaseModel):
         return self.tool_call_results
 
     def get_evidence_dict(self) -> Dict[str, List[str]]:
-        """Convert to dictionary format for backward compatibility - returns clean content without line numbers"""
+        """Return clean evidence content without line numbers."""
         return {
             paper_id: evidence.get_clean_content()
             for paper_id, evidence in self.evidence.items()

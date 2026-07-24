@@ -181,9 +181,9 @@ def create_checkout_session(
 
         return {"client_secret": session.client_secret}
 
-    except Exception as e:
-        logger.error(f"Error creating checkout session: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Error creating checkout session", exc_info=True)
+        raise HTTPException(status_code=500, detail="internal_error")
 
 
 @router.get("/session-status")
@@ -249,5 +249,5 @@ async def session_status(
             "backend_subscription_found": backend_subscription_found,
             "backend_subscription_status": backend_subscription_status,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="internal_error")

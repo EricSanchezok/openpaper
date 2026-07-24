@@ -179,9 +179,13 @@ jobs:
           OPENPAPER_ALIYUN_DM_ACCESS_KEY_SECRET: fixture
           OPENPAPER_ALIYUN_DM_ACCOUNT_NAME: sender@example.invalid
           OPENPAPER_S3_BUCKET_NAME: fixture-bucket
-          OPENPAPER_GEMINI_API_KEY: fixture
-          OPENPAPER_EXA_API_KEY: fixture
-          OPENPAPER_FIRECRAWL_API_KEY: fixture
+          OPENPAPER_DEEPSEEK_API_KEY: fixture
+          OPENPAPER_MINERU_API_TOKEN: fixture
+          OPENPAPER_MOSS_API_KEY: fixture
+          OPENPAPER_MOSS_VOICE_ID: fixture
+          OPENPAPER_JOBS_WEBHOOK_SIGNING_SECRET: fixture-signing-secret-at-least-thirty-two-bytes
+          OPENPAPER_ANYSEARCH_API_KEY: fixture
+          OPENPAPER_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET: fixture-delegation-secret-at-least-thirty-two-bytes
           OPENPAPER_STRIPE_API_KEY: fixture
           OPENPAPER_STRIPE_WEBHOOK_SECRET: fixture
           OPENPAPER_STRIPE_MONTHLY_PRICE_ID: fixture

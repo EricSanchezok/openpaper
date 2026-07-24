@@ -48,7 +48,9 @@ interface ConversationViewProps {
 	statusMessage: string;
 	error: string | null;
 	isSessionLoading: boolean;
-	chatCreditLimitReached: boolean;
+	tokenCreditLimitReached: boolean;
+	reasoningLevel: "standard" | "deep";
+	onReasoningLevelChange: (level: "standard" | "deep") => void;
 	currentMessage: string;
 	onCurrentMessageChange: (message: string) => void;
 	onSubmit: (e?: FormEvent) => Promise<void>;
@@ -87,7 +89,9 @@ export const ConversationView = ({
 	statusMessage,
 	error,
 	isSessionLoading,
-	chatCreditLimitReached,
+	tokenCreditLimitReached,
+	reasoningLevel,
+	onReasoningLevelChange,
 	currentMessage,
 	onCurrentMessageChange,
 	onSubmit,
@@ -522,15 +526,29 @@ export const ConversationView = ({
 							selection={mentionSelection}
 							onSelectionChange={onMentionSelectionChange}
 							placeholder={isCentered ? "Look for a specific citation. Find a relevant paper. Collate evidence across your library." : "Ask a follow-up"}
-							disabled={isStreaming || (!isPapersLoading && papers.length === 0) || chatCreditLimitReached || !isOwner}
+							disabled={isStreaming || (!isPapersLoading && papers.length === 0) || tokenCreditLimitReached || !isOwner}
 							sendDisabled={!currentMessage.trim()}
 							busy={isStreaming}
 							autoFocus
 							textareaRef={inputMessageRef}
 						/>
-						{chatCreditLimitReached && (
+						<div className="mt-2 flex justify-end">
+							<label className="flex items-center gap-2 text-xs text-muted-foreground">
+								Reasoning
+								<select
+									value={reasoningLevel}
+									onChange={(event) => onReasoningLevelChange(event.target.value as "standard" | "deep")}
+									disabled={isStreaming}
+									className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+								>
+									<option value="standard">Standard</option>
+									<option value="deep">Deep</option>
+								</select>
+							</label>
+						</div>
+						{tokenCreditLimitReached && (
 							<div className="text-center text-sm text-secondary-foreground mt-2">
-								Nice! You have used your chat credits for the week.{" "}
+								You have used this week&apos;s Token Credits.{" "}
 								<Link href="/pricing" className="text-blue-500 hover:underline">
 									Upgrade your plan to use more.
 								</Link>

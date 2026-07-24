@@ -144,7 +144,7 @@ async def get_user_subscription(
 
     except Exception as e:
         logger.error(f"Error getting user subscription: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")
 
 
 @router.get("/usage")
@@ -158,4 +158,4 @@ async def get_user_usage(
         return usage_info
     except Exception as e:
         logger.error(f"Error getting user usage: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal_error")

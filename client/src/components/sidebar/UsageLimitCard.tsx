@@ -9,11 +9,8 @@ import {
     formatFileSize,
     getStorageUsagePercentage,
     getPaperUploadPercentage,
-    getChatCreditUsagePercentage,
-    getAudioOverviewUsagePercentage,
+    getTokenCreditUsagePercentage,
     getProjectUsagePercentage,
-    getDataTableUsagePercentage,
-    getDiscoverSearchUsagePercentage,
 } from "@/hooks/useSubscription";
 
 export const UsageLimitCard = ({
@@ -95,31 +92,11 @@ export const UsageLimitCard = ({
                 />
 
                 <UsageItem
-                    label="Weekly Chat Credits"
-                    used={subscription.usage.chat_credits_used}
-                    total={subscription.limits.chat_credits_weekly}
-                    percentage={getChatCreditUsagePercentage(subscription)}
-                />
-
-                <UsageItem
-                    label="Weekly Audio Overviews"
-                    used={subscription.usage.audio_overviews_used}
-                    total={subscription.limits.audio_overviews_weekly}
-                    percentage={getAudioOverviewUsagePercentage(subscription)}
-                />
-
-                <UsageItem
-                    label="Weekly Data Tables"
-                    used={subscription.usage.data_tables_used}
-                    total={subscription.limits.data_tables_weekly}
-                    percentage={getDataTableUsagePercentage(subscription)}
-                />
-
-                <UsageItem
-                    label="Weekly Discover Searches"
-                    used={subscription.usage.discover_searches_used}
-                    total={subscription.limits.discover_searches_weekly}
-                    percentage={getDiscoverSearchUsagePercentage(subscription)}
+                    label="Weekly Token Credits"
+                    used={subscription.usage.token_credits_used}
+                    total={subscription.limits.token_credits_weekly}
+                    percentage={getTokenCreditUsagePercentage(subscription)}
+                    formatValue={(value) => value.toLocaleString()}
                 />
 
                 <UsageItem

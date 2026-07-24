@@ -13,13 +13,20 @@ from app.database.crud.paper_crud import paper_crud
 from app.database.database import get_db
 from app.database.models import ConversableType, JobStatus, Paper
 from app.database.telemetry import track_event
+from app.helpers.ai_limits import (
+    AILimitExceeded,
+    acquire_concurrency,
+    enforce_rate_limit,
+    release_concurrency,
+)
 from app.helpers.s3 import s3_service
+from app.llm.token_credits import has_token_credits
 from app.schemas.user import CurrentUser
 from app.tasks.audio_overview import generate_audio_overview_async
 from dotenv import load_dotenv
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -31,23 +38,10 @@ paper_audio_router = APIRouter()
 
 
 class AudioOverviewCreateRequest(BaseModel):
-    additional_instructions: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
+    additional_instructions: Optional[str] = Field(default=None, max_length=10_000)
     length: Optional[Literal["short", "medium", "long"]] = "medium"
-    voice: Optional[
-        Literal[
-            "alloy",
-            "ash",
-            "ballad",
-            "coral",
-            "echo",
-            "fable",
-            "onyx",
-            "nova",
-            "sage",
-            "shimmer",
-            "verse",
-        ]
-    ] = None
 
 
 @paper_audio_router.post("/")
@@ -62,6 +56,20 @@ async def create_audio_overview(
     """
     Create audio overview by ID
     """
+    if not has_token_credits(db, user=current_user):
+        return JSONResponse(
+            status_code=429,
+            content={"code": "token_quota_exceeded"},
+        )
+    try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=request.client.host if request.client else "unknown",
+            feature="audio",
+        )
+    except AILimitExceeded as exc:
+        return JSONResponse(status_code=429, content={"code": exc.code})
+
     # Fetch the document from the database
     paper: Paper | None = paper_crud.get(
         db, id=id, user=current_user, update_last_accessed=True
@@ -89,6 +97,30 @@ async def create_audio_overview(
 
     job_id_as_uuid = uuid.UUID(str(audio_overview_job.id))
     logger.info(f"Created audio overview job with ID: {job_id_as_uuid}")
+    try:
+        background_lease = await acquire_concurrency(
+            user_id=int(current_user.id),
+            category="background",
+            operation_id=str(job_id_as_uuid),
+        )
+        try:
+            await acquire_concurrency(
+                user_id=int(current_user.id),
+                category="audio",
+                operation_id=str(job_id_as_uuid),
+            )
+        except Exception:
+            await release_concurrency(background_lease)
+            raise
+    except AILimitExceeded as exc:
+        audio_overview_job_crud.update_status(
+            db,
+            job_id=job_id_as_uuid,
+            status=JobStatus.FAILED,
+            current_user=current_user,
+            status_message=exc.code,
+        )
+        return JSONResponse(status_code=429, content={"code": exc.code})
 
     # Add the audio generation task as a background task
     background_tasks.add_task(
@@ -97,13 +129,12 @@ async def create_audio_overview(
         user=current_user,
         audio_overview_job_id=job_id_as_uuid,
         additional_instructions=audio_request.additional_instructions,
-        voice=audio_request.voice or "nova",
+        length=audio_request.length,
     )
 
     track_event(
         "audio_overview_requested",
         properties={
-            "voice": audio_request.voice or "nova",
             "job_id": str(job_id_as_uuid),
         },
         user_id=str(current_user.id),
@@ -132,9 +163,13 @@ async def get_audio_overview_job_status(
     Get the status of the audio overview job by ID
     """
     # Fetch the audio overview job from the database
-    audio_overview_job = audio_overview_job_crud.get_by_paper_and_user(
-        db, paper_id=uuid.UUID(id), current_user=current_user
+    jobs = audio_overview_job_crud.get_by_conversable_and_user(
+        db,
+        conversable_id=uuid.UUID(id),
+        conversable_type=ConversableType.PAPER,
+        current_user=current_user,
     )
+    audio_overview_job = jobs[0] if jobs else None
 
     if not audio_overview_job:
         return JSONResponse(status_code=404, content={"message": "Job not found"})
@@ -181,8 +216,11 @@ async def get_audio_overviews_by_paper_id(
     Get all audio overviews for a specific paper by ID
     """
     # Fetch the audio overviews from the database
-    audio_overviews = audio_overview_crud.get_by_paper_and_user(
-        db, paper_id=uuid.UUID(id), current_user=current_user
+    audio_overviews = audio_overview_crud.get_by_conversable_and_user(
+        db,
+        conversable_id=uuid.UUID(id),
+        conversable_type=ConversableType.PAPER,
+        current_user=current_user,
     )
 
     if not audio_overviews:
@@ -250,16 +288,23 @@ async def get_mrc_audio_overview_file(
     Get the audio overview file by ID
     """
     # Fetch the audio overview job from the database
-    audio_overview_job = audio_overview_job_crud.get_by_paper_and_user(
-        db, paper_id=uuid.UUID(id), current_user=current_user
+    jobs = audio_overview_job_crud.get_by_conversable_and_user(
+        db,
+        conversable_id=uuid.UUID(id),
+        conversable_type=ConversableType.PAPER,
+        current_user=current_user,
     )
+    audio_overview_job = jobs[0] if jobs else None
 
     if not audio_overview_job:
         return JSONResponse(status_code=404, content={"message": "Job not found"})
 
     # Fetch the audio overview from the database
-    audio_overview = audio_overview_crud.get_mrc_by_paper_and_user(
-        db, paper_id=uuid.UUID(id), current_user=current_user
+    audio_overview = audio_overview_crud.get_mrc_by_conversable_and_user(
+        db,
+        conversable_id=uuid.UUID(id),
+        conversable_type=ConversableType.PAPER,
+        current_user=current_user,
     )
 
     if not audio_overview:

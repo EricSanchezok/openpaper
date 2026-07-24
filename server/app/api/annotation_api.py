@@ -69,7 +69,7 @@ async def create_annotation(
         logger.error(f"Error creating annotation: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to create annotation: {str(e)}"},
+            content={"message": "Failed to create annotation"},
         )
 
 
@@ -92,7 +92,7 @@ async def get_document_annotations(
         logger.error(f"Error fetching annotations: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to fetch annotations: {str(e)}"},
+            content={"message": "Failed to fetch annotations"},
         )
 
 
@@ -130,7 +130,7 @@ async def delete_annotation(
         return JSONResponse(
             status_code=404,
             content={
-                "message": f"Annotation not found or couldn't be deleted: {str(e)}"
+                "code": "annotation_delete_failed"
             },
         )
 
@@ -178,11 +178,11 @@ async def update_annotation(
         )
 
         return JSONResponse(status_code=200, content=annotation.to_dict())
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"message": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:
         logger.error(f"Error updating annotation: {e}")
         return JSONResponse(
             status_code=400,
-            content={"message": f"Failed to update annotation: {str(e)}"},
+            content={"message": "Failed to update annotation"},
         )

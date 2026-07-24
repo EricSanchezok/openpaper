@@ -5,15 +5,16 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, List, Optional
 
+from app.helpers.anysearch_search import search_anysearch
 from app.helpers.openalex_search import search_openalex
 from app.helpers.scholight_search import search_scholight
 from app.llm.base import BaseLLMClient, ModelType
-from app.llm.provider import LLMProvider
+from app.schemas.discover import DISCOVER_SOURCES
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-llm_client = BaseLLMClient(default_provider=LLMProvider.GEMINI)
+llm_client = BaseLLMClient()
 
 DECOMPOSE_PROMPT = """You are a research assistant helping find academic papers. Given a research question, generate 2-5 search subqueries.
 
@@ -40,8 +41,7 @@ def decompose_query(question: str) -> list[str]:
         contents=question,
         system_prompt=DECOMPOSE_PROMPT,
         model_type=ModelType.FAST,
-        enable_thinking=False,
-        schema=DecomposeResponse.model_json_schema(),
+        response_model=DecomposeResponse,
     )
 
     parsed = DecomposeResponse.model_validate(json.loads(response.text))
@@ -73,7 +73,7 @@ async def run_discover_pipeline(
     subqueries = decompose_query(question)
     yield {"type": "subqueries", "content": subqueries}
 
-    # Determine search strategy based on sources
+    # Determine search strategy based on sources.
     use_openalex = sources and "openalex" in sources
     # Calculate start date for date filtering
     start_date = None
@@ -97,14 +97,32 @@ async def run_discover_pipeline(
                     )
                 ]
             else:
-                content = [
-                    result.to_dict()
-                    for result in await search_scholight(
-                        subquery,
-                        num_results=10,
-                        date_from=start_date,
+                selected = sources or []
+                content = []
+                if not selected or "scholight" in selected:
+                    content.extend(
+                        result.to_dict()
+                        for result in await search_scholight(
+                            subquery,
+                            num_results=10,
+                            date_from=start_date,
+                        )
                     )
+                domains = [
+                    domain
+                    for source in selected
+                    if source != "scholight"
+                    for domain in (DISCOVER_SOURCES[source]["domains"] or [])
                 ]
+                if not selected or domains:
+                    content.extend(
+                        result.to_dict()
+                        for result in await search_anysearch(
+                            subquery,
+                            num_results=10,
+                            domains=domains or None,
+                        )
+                    )
 
             yield {
                 "type": "results",

@@ -81,7 +81,7 @@ async def zotero_import(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            detail="internal_error",
         ) from e
     except Exception as e:
         logger.error("Zotero import failed: %s", e, exc_info=True)

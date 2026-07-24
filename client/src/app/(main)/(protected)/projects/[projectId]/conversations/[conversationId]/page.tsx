@@ -1,6 +1,6 @@
 'use client';
 
-import { useSubscription, isChatCreditAtLimit } from '@/hooks/useSubscription';
+import { useSubscription, isTokenCreditAtLimit } from '@/hooks/useSubscription';
 import { fetchFromApi, fetchStreamFromApi } from '@/lib/api';
 import { useState, useEffect, FormEvent, useRef, useCallback, useMemo, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -27,6 +27,7 @@ interface ChatRequestBody {
     conversation_id: string | null;
     project_id?: string;
     mentioned_paper_ids?: string[];
+    reasoning_level: "standard" | "deep";
 }
 
 const chatLoadingMessages = [
@@ -85,13 +86,14 @@ function ProjectConversationPageContent() {
     const [highlightedInfo, setHighlightedInfo] = useState<{ paperId: string; messageIndex: number } | null>(null);
     const [isCentered, setIsCentered] = useState(false);
     const [isSessionLoading, setIsSessionLoading] = useState(true);
+    const [reasoningLevel, setReasoningLevel] = useState<"standard" | "deep">("standard");
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const END_DELIMITER = "END_OF_STREAM";
 
     const { subscription, refetch: refetchSubscription } = useSubscription();
-    const chatCreditLimitReached = isChatCreditAtLimit(subscription);
+    const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
 
     const conversationName = useMemo(
         () => conversations.find((c) => c.id === conversationIdFromUrl)?.title ?? '',
@@ -124,17 +126,17 @@ function ProjectConversationPageContent() {
     }, [openPaperIds]);
 
     useEffect(() => {
-        const CHAT_CREDIT_TOAST_KEY = "chat_credit_limit_toast_shown";
-        if (chatCreditLimitReached && !sessionStorage.getItem(CHAT_CREDIT_TOAST_KEY)) {
-            toast.error("Nice! You've used your chat credits for the week. Upgrade your plan to continue chatting.", {
+        const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
+        if (tokenCreditLimitReached && !sessionStorage.getItem(TOKEN_CREDIT_TOAST_KEY)) {
+            toast.error("You've used this week's Token Credits. Upgrade your plan to continue using AI features.", {
                 action: {
                     label: "Upgrade",
                     onClick: () => window.location.href = "/pricing",
                 },
             });
-            sessionStorage.setItem(CHAT_CREDIT_TOAST_KEY, "true");
+            sessionStorage.setItem(TOKEN_CREDIT_TOAST_KEY, "true");
         }
-    }, [chatCreditLimitReached]);
+    }, [tokenCreditLimitReached]);
 
     const handleCitationClick = useCallback((key: string, messageIndex: number) => {
         setHighlightedInfo((prevHighlight) => {
@@ -318,6 +320,7 @@ function ProjectConversationPageContent() {
             user_query: query,
             conversation_id: conversationId,
             project_id: projectId,
+            reasoning_level: reasoningLevel,
         };
         if (submittedMentions.paperIds.length > 0) {
             requestBody.mentioned_paper_ids = submittedMentions.paperIds;
@@ -509,7 +512,7 @@ function ProjectConversationPageContent() {
             setStatusMessage('');
             refetchSubscription();
         }
-    }, [currentMessage, isStreaming, conversationId, projectId, router, refetchSubscription, mentionSelection, papers, openPaperIds, collapseArtifacts]);
+    }, [currentMessage, isStreaming, conversationId, projectId, router, refetchSubscription, mentionSelection, papers, openPaperIds, collapseArtifacts, reasoningLevel]);
 
     const [error, setError] = useState<string | null>(null);
 
@@ -533,7 +536,9 @@ function ProjectConversationPageContent() {
                     statusMessage={statusMessage}
                     error={error}
                     isSessionLoading={isSessionLoading}
-                    chatCreditLimitReached={chatCreditLimitReached}
+                    tokenCreditLimitReached={tokenCreditLimitReached}
+                    reasoningLevel={reasoningLevel}
+                    onReasoningLevelChange={setReasoningLevel}
                     currentMessage={currentMessage}
                     onCurrentMessageChange={setCurrentMessage}
                     onSubmit={handleSubmit}
