@@ -627,6 +627,14 @@ class Paper(Base):
     # Define the GIN index for full-text search
     __table_args__ = (
         Index("ix_papers_ts_vector", "ts_vector", postgresql_using="gin"),
+        CheckConstraint(
+            "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
+            name="ck_papers_parser_backend",
+        ),
+        CheckConstraint(
+            "parser_quality IS NULL OR parser_quality IN ('full', 'text_only')",
+            name="ck_papers_parser_quality",
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

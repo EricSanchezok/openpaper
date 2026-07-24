@@ -61,6 +61,13 @@ class UpdatePaperFieldsSchema(BaseModel):
     publisher: Optional[str] = None
 
 
+def _serialize_paper_for_client(paper: Paper) -> dict[str, object]:
+    data: dict[str, object] = paper.to_dict()
+    data.pop("parser_backend", None)
+    data.pop("parser_version", None)
+    return data
+
+
 @paper_router.get("/all")
 async def get_paper_ids(
     db: Session = Depends(get_db),
@@ -327,7 +334,10 @@ async def set_paper_status(
         db=db,
     )
 
-    return JSONResponse(content=updated_paper.to_dict(), status_code=200)
+    return JSONResponse(
+        content=_serialize_paper_for_client(updated_paper),
+        status_code=200,
+    )
 
 
 @paper_router.patch("")
@@ -369,7 +379,10 @@ async def update_paper_fields(
         db=db,
     )
 
-    return JSONResponse(content=updated_paper.to_dict(), status_code=200)
+    return JSONResponse(
+        content=_serialize_paper_for_client(updated_paper),
+        status_code=200,
+    )
 
 
 @paper_router.get("/relevant")
@@ -534,7 +547,7 @@ async def get_pdf(
 
     paper = hydrate_paper_metadata(db=db, paper=paper, user=current_user)
 
-    paper_data = paper.to_dict()
+    paper_data = _serialize_paper_for_client(paper)
     paper_data["file_url"] = signed_url
     paper_data["summary_citations"] = [  # type: ignore
         ResponseCitation.model_validate(citation).model_dump()
@@ -662,7 +675,7 @@ async def get_shared_pdf(
     if not paper:
         return JSONResponse(status_code=404, content={"message": "Document not found"})
 
-    paper_data = paper.to_dict()
+    paper_data = _serialize_paper_for_client(paper)
 
     signed_url = s3_service.get_cached_presigned_url_by_owner(
         db,

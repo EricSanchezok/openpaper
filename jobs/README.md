@@ -1,200 +1,92 @@
-# Jobs Service
+# Scholens Jobs
 
-The Jobs Service is a Celery-based asynchronous task processing service that handles heavy-duty, long-running jobs for the Annotated Paper application. The first and primary job is PDF processing, which involves parsing uploaded PDF documents, extracting metadata, and preparing them for use in the main application.
+The Jobs service runs long-lived Scholens workflows outside the API process.
+Celery workers consume RabbitMQ queues, use Redis for task results and resumable
+parser state, and return signed results to the Server webhook API.
 
-## Architecture
+## PDF ingestion
 
-The Jobs Service is designed to be a scalable and robust backend component that offloads intensive processing from the main web server. It communicates with the `server` service via a message broker (Redis) and webhooks.
+The PDF worker follows one explicit pipeline:
 
-### High-Level Flow
+1. Download the original PDF from private S3 storage.
+2. Generate a short-lived S3 URL for MinerU.
+3. Analyze the local PDF with PyMuPDF for preview and deterministic page text.
+4. Submit or resume the MinerU task and poll for its result.
+5. Validate and normalize MinerU's archive into canonical Markdown.
+6. If MinerU has a transient or content failure, accept PyMuPDF text only when
+   it passes the local quality gate.
+7. Store Markdown, preview, and the MinerU archive when available.
+8. Extract metadata with DeepSeek unless the caller supplied authoritative
+   metadata, as Zotero imports do.
+9. Send the result and token usage to Server through an HMAC-signed webhook.
 
-Here's a high-level overview of the PDF processing workflow:
+MinerU is the only high-fidelity parser. PyMuPDF is a deterministic fallback for
+native-text PDFs; it does not attempt OCR, table reconstruction, or formula
+recognition. A fallback result is persisted as `text_only` so the client can
+warn that layout-dependent content may be incomplete.
 
-```
-                               +------------------+
-                               |                  |
-      +----------------------> |   Server (API)   | <-----------------+
-      |                        |                  |                   |
-      |                        +--------+---------+                   |
-      |                                 | 1. Client uploads PDF       |
-      |                                 |                             |
-+-----v-----+                           |                             |
-|           |                           |                             |
-|  Client   | <-------------------------)-----------------------------+
-|           |   Polling for status      |
-+-----------+                           |
-      ^                                 |
-      |                                 |
-      | 6. PDF is ready                 v
-      |                        +--------+---------+
-      |                        |                  |
-      +------------------------+ RabbitMQ (Broker)|
-                               |                  |
-                               +--------+---------+
-                                        | 2. Task is sent to queue
-                                        |
-                                        v
-                               +--------+---------+
-                               |                  | <-----------------+
-+----------------------------> |  Celery Workers  | ----------------->|
-| 5. Webhook notification      | (Jobs Service)   |   Status polling  |
-|    (via Server API)          |                  |                   | 3. LLM extracts
-|                              +--------+---------+                   |    metadata
-|                                       |                             |
-|                                       | 4. PDF downloaded from S3,  |
-|                                       |    assets uploaded to S3.   |
-|                                       |                             |
-|   +----------------+                  v                             |
-|   |                |         +--------+---------+                   |
-+---+  LLM Service   |         |                  |                   |
-    |                | <-----> |       S3         | <-----------------+
-    +----------------+         |                  |
-                               +------------------+
+MinerU task IDs are checkpointed in Redis under the job ID. A redelivered
+Celery task resumes polling or downloading instead of creating another provider
+task.
+
+## Code layout
+
+```text
+src/
+├── pdf/
+│   ├── models.py    # Parse results and classified errors
+│   ├── mineru.py    # MinerU lifecycle, archive security, normalization
+│   ├── local.py     # PyMuPDF analysis and fallback
+│   ├── state.py     # Redis task checkpoint and submit lock
+│   └── pipeline.py  # Parser selection, S3 artifacts, metadata
+├── tasks.py         # Thin Celery task adapters
+├── llm_client.py    # DeepSeek jobs client
+├── s3_service.py
+└── webhook_signing.py
 ```
 
-Within the Jobs Service, the PDF processing task is broken down into several subtasks that run concurrently. Each subtask is responsible for a specific aspect of the PDF processing, such as extracting text, generating preview images, and calling an LLM service for metadata extraction.
+Parser-specific tests mirror this structure under `tests/pdf/`.
 
+## Configuration
 
-```
-+-------------------------------------------------------------------------------------------------+
-|                                                                                                 |
-|  Incoming Request with PDF Content                                                              |
-|  (paper_content: str)                                                                           |
-|                                                                                                 |
-+-------------------------------------------------------------------------------------------------+
-      |
-      |
-      v
-+-------------------------------------------------------------------------------------------------+
-|                                                                                                 |
-|  Orchestrate end-to-end metadata extraction                                                     |
-|                                                                                                 |
-+-------------------------------------------------------------------------------------------------+
-      |
-      |
-      v
-+-------------------------------------------------------------------------------------------------+
-|                                                                                                 |
-|  Cache the paper content to optimize performance                                                |
-|  (Caches the PDF content for 3600 seconds)                                                      |
-|                                                                                                 |
-+-------------------------------------------------------------------------------------------------+
-      |
-      |
-      v
-+-------------------------------------------------------------------------------------------------+
-|                                                                                                 |
-|  Fan-out Subtasks                                                                               |
-|  (All subtasks run concurrently using the same cache_key)                                       |
-|                                                                                                 |
-+-------+-----------------------------------------------------------------------------------------+
-        |
-        |
-+-------+-----------------------------------------------------------------------------------------+
-|                                                                                                 |
-|   +--------------------------+   +---------------------------+   +---------------------------+  |
-|   | Get Title, Authors,      |   | Find Institutions and     |   | Generate Summary and      |  |
-|   | and Abstract             |   | Keywords                  |   | Find Citations            |  |
-|   +--------------------------+   +---------------------------+   +---------------------------+  |
-|                                                                                                 |
-|   +--------------------------+   +---------------------------+   +---------------------------+
-|   | Create Starter Questions |   | Identify Key Highlights   |   | Extract Images and        |
-|   | for Discussion           |   | and Takeaways             |   | Generate Captions         |
-|   +--------------------------+   +---------------------------+   +---------------------------+
-|                                                                                                 |
-+-------+-----------------------------------------------------------------------------------------+
-        |
-        |
-        v
-+-------+-----------------------------------------------------------------------------------------+
-|                                                                                                 |
-|  Rejoin Results                                                                                 |
-|  (Results from all subtasks are gathered)                                                       |
-|                                                                                                 |
-|                                                                                                 |
-+-------------------------------------------------------------------------------------------------+
-      |
-      |
-      v
-+-------------------------------------------------------------------------------------------------+
-|                                                                                                 |
-|  Final Result                                                                                   |
-|  (PaperMetadataExtraction object)                                                               |
-|                                                                                                 |
-+-------------------------------------------------------------------------------------------------+
+The repository-level [`.env.example`](../.env.example) is the only environment
+variable catalog. Copy the values needed by Jobs into `jobs/.env`; never commit
+that file.
 
-```
+Production requires:
 
+- RabbitMQ through `CELERY_BROKER_URL`
+- Redis through `CELERY_RESULT_BACKEND` and optionally `PDF_PARSE_REDIS_URL`
+- S3 credentials and bucket names
+- `MINERU_API_TOKEN`
+- `DEEPSEEK_API_KEY`
+- `JOBS_WEBHOOK_SIGNING_SECRET`
 
-1.  **PDF Upload**: A client uploads a PDF file to the `server` via the web application.
-2.  **Task Queuing**: The `server` creates a new paper record in the database with a `processing` status, then dispatches a task to the Celery message broker (Redis) with the PDF data and a webhook URL.
-3.  **Task Consumption**: A Celery worker from the `jobs` service picks up the task from the queue.
-4.  **PDF Processing**: The worker processes the PDF:
-    *   It extracts the full text content.
-    *   It extracts all images from the PDF.
-    *   For each extracted image, it generates a caption using an LLM service.
-    *   It generates a preview image of the first page.
-    *   It calls an LLM service to extract metadata like title, authors, abstract, and keywords.
-5.  **S3 Storage**: The original PDF is downloaded from S3. The generated preview image, the extracted text, and all extracted images and their captions are uploaded to an S3 bucket.
-6.  **Webhook Notification**: Once processing is complete, the `jobs` service sends a webhook notification to the `server` with the results, including the S3 URLs and the extracted metadata.
-7.  **Database Update**: The `server` receives the webhook, updates the paper record in the database with the new information, and marks the status as `complete`. The paper is now available to the client.
-8.  **Status Polling**: The client can poll the `server` for status updates, and the `server` can query the `jobs` service for real-time task progress information.
+Development may omit `MINERU_API_TOKEN`; PDF ingestion then runs explicitly in
+local `text_only` mode. Production fails fast when the token or parser Redis
+configuration is absent.
 
-### System Dependencies
+## Local commands
 
-The Jobs Service relies on the following external services:
-
-*   **RabbitMQ**: Used as the message broker for Celery to queue and distribute tasks.
-*   **Redis**: Used as the result backend for Celery to store task results.
-*   **PostgreSQL**: The primary database, managed by the `server` service. The `jobs` service does not directly access the database.
-*   **S3-compatible Object Storage**: Used for storing the uploaded PDFs, preview images, and other assets.
-*   **MinerU**: Parses PDFs into canonical Markdown, tables, formulas, and page-aware content.
-*   **DeepSeek**: Extracts metadata and generates structured table content.
-
-## Setup and Configuration
-
-### Environment Variables
-
-The following environment variables are required to run the Jobs Service:
-
-| Variable                | Description                                      | Required |
-| ----------------------- | ------------------------------------------------ | -------- |
-| `AWS_ACCESS_KEY_ID`     | AWS access key for S3.                           | Yes      |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key for S3.                           | Yes      |
-| `AWS_REGION`            | The AWS region for the S3 bucket.                | No       |
-| `S3_BUCKET_NAME`        | The name of the S3 bucket for file storage.      | Yes      |
-| `CLOUDFLARE_BUCKET_NAME`| Canonical asset hostname without `https://`; use the S3 regional hostname. Presigned URLs keep their provider host. | Yes |
-| `CELERY_BROKER_URL`     | The URL for the Celery message broker (RabbitMQ).   | Yes      |
-| `CELERY_RESULT_BACKEND` | The URL for the Celery result backend (Redis).   | Yes      |
-| `DEEPSEEK_API_KEY`      | DeepSeek key used for metadata extraction.       | Yes      |
-| `MINERU_API_TOKEN`      | MinerU v4 asynchronous parsing token.             | Yes      |
-| `JOBS_WEBHOOK_SIGNING_SECRET` | HMAC secret shared with the API.          | Yes      |
-
-Copy the repository-level environment catalog before the first run:
+Install and verify:
 
 ```bash
-cp ../.env.example .env
+uv sync
+uv run ruff check src tests
+uv run mypy src/pdf src/schemas.py src/tasks.py
+uv run pytest -q
 ```
 
-### Running Locally
+Start the local stack:
 
-Run the command below to install dependencies, start job service Docker containers, worker and API:
 ```bash
 uv run start
 ```
 
-Optionally, start Flower to monitor Celery jobs:
+Run an opt-in real MinerU check with a temporary, externally reachable PDF URL:
+
 ```bash
-./scripts/start_flower.sh
+uv run python scripts/smoke_mineru.py "https://example.com/test-paper.pdf"
 ```
-Access the Flower dashboard at `http://localhost:5555`.
 
-## Future Development
-
-The Jobs Service is designed to be extensible. In the future, we plan to add more asynchronous tasks, such as:
-
-*   **Bulk imports**: Processing large batches of papers at once.
-*   **Scheduled tasks**: Periodically fetching new papers from sources like arXiv.
-*   **Data enrichment**: Running additional analysis on papers after they've been uploaded.
-
-By separating these tasks into a dedicated service, we can ensure the main application remains responsive and scalable as we add more features.
+The smoke test uses real provider quota and is intentionally excluded from CI.

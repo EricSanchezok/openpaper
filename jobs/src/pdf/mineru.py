@@ -69,9 +69,9 @@ class MinerUConfig:
                 )
             return None
 
-        base_url = os.getenv(
-            "MINERU_API_BASE_URL", "https://mineru.net/api/v4"
-        ).rstrip("/")
+        base_url = os.getenv("MINERU_API_BASE_URL", "https://mineru.net/api/v4").rstrip(
+            "/"
+        )
         if environment == "production" and urlsplit(base_url).scheme != "https":
             raise ParserConfigurationError(
                 "MINERU_API_BASE_URL must use HTTPS in production"
@@ -92,12 +92,15 @@ class MinerUConfig:
             raise ParserConfigurationError(
                 "MinerU numeric configuration is invalid"
             ) from exc
-        if min(
-            poll_seconds,
-            task_timeout_seconds,
-            request_timeout_seconds,
-            max_archive_bytes,
-        ) <= 0:
+        if (
+            min(
+                poll_seconds,
+                task_timeout_seconds,
+                request_timeout_seconds,
+                max_archive_bytes,
+            )
+            <= 0
+        ):
             raise ParserConfigurationError(
                 "MinerU timeouts and size limits must be positive"
             )
@@ -162,9 +165,7 @@ def canonical_markdown(
 ) -> tuple[str, dict[int, list[int]]]:
     indexed = list(enumerate(content_list))
     try:
-        indexed.sort(
-            key=lambda item: (int(item[1].get("page_idx", 0) or 0), item[0])
-        )
+        indexed.sort(key=lambda item: (int(item[1].get("page_idx", 0) or 0), item[0]))
     except (AttributeError, TypeError, ValueError) as exc:
         raise ParserContentError("MinerU content list contains invalid blocks") from exc
 
@@ -247,7 +248,9 @@ class MinerUClient:
     @classmethod
     def _classify_response(cls, response: httpx.Response, phase: str) -> None:
         if response.status_code in {401, 403}:
-            raise ParserConfigurationError(f"MinerU authorization failed during {phase}")
+            raise ParserConfigurationError(
+                f"MinerU authorization failed during {phase}"
+            )
         if response.status_code == 429 or response.status_code >= 500:
             raise ParserTransientError(
                 f"MinerU is temporarily unavailable during {phase}",
@@ -440,9 +443,7 @@ class MinerUClient:
             or parsed.username is not None
             or parsed.password is not None
         ):
-            raise ParserSecurityError(
-                "MinerU archive URL must be a public HTTPS URL"
-            )
+            raise ParserSecurityError("MinerU archive URL must be a public HTTPS URL")
         try:
             addresses = socket.getaddrinfo(
                 parsed.hostname,
@@ -488,9 +489,7 @@ class MinerUClient:
                             retry_after=self._retry_after(response),
                         )
                     if response.status_code >= 400:
-                        raise ParserTransientError(
-                            "MinerU archive URL is unavailable"
-                        )
+                        raise ParserTransientError("MinerU archive URL is unavailable")
 
                     content_length = response.headers.get("content-length")
                     if content_length is not None:
@@ -516,9 +515,7 @@ class MinerUClient:
                         chunks.append(chunk)
                     return b"".join(chunks)
             except httpx.TransportError as exc:
-                raise ParserTransientError(
-                    "MinerU archive download failed"
-                ) from exc
+                raise ParserTransientError("MinerU archive download failed") from exc
         raise ParserSecurityError("MinerU archive redirect handling failed")
 
     async def download_archive(
@@ -540,8 +537,7 @@ class MinerUClient:
                         api_client,
                         task_id,
                         deadline=time.monotonic()
-                        + self.config.request_timeout_seconds
-                        * MAX_NETWORK_ATTEMPTS,
+                        + self.config.request_timeout_seconds * MAX_NETWORK_ATTEMPTS,
                     )
                     if str(refreshed.get("state", "")).lower() == "done":
                         refreshed_url = refreshed.get("full_zip_url")
@@ -551,9 +547,7 @@ class MinerUClient:
 
     def read_archive(self, archive_bytes: bytes) -> ParsedDocument:
         if len(archive_bytes) > self.config.max_archive_bytes:
-            raise ParserSecurityError(
-                "MinerU archive exceeds configured size limit"
-            )
+            raise ParserSecurityError("MinerU archive exceeds configured size limit")
 
         markdown_found = False
         content_list: list[dict] | None = None
@@ -568,7 +562,11 @@ class MinerUClient:
                 for info in entries:
                     path = PurePosixPath(info.filename)
                     file_type = (info.external_attr >> 16) & 0o170000
-                    if path.is_absolute() or ".." in path.parts or file_type == 0o120000:
+                    if (
+                        path.is_absolute()
+                        or ".." in path.parts
+                        or file_type == 0o120000
+                    ):
                         raise ParserSecurityError("Unsafe path in MinerU archive")
                     if info.is_dir():
                         continue
@@ -598,7 +596,9 @@ class MinerUClient:
                             )
                         content_list = parsed
         except zipfile.BadZipFile as exc:
-            raise ParserContentError("MinerU result is not a valid ZIP archive") from exc
+            raise ParserContentError(
+                "MinerU result is not a valid ZIP archive"
+            ) from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ParserContentError("MinerU result contains invalid JSON") from exc
 

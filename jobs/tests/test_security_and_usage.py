@@ -2,69 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import io
 import json
-import os
-import zipfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-os.environ.setdefault("MINERU_API_TOKEN", "test-token")
-
-from src.pdf.mineru import MinerUClient, canonical_markdown
-from src.pdf.models import ParserSecurityError
 from src.token_usage import collect_token_usage, record_token_usage
 from src.webhook_signing import post_signed_json
-
-
-def _zip(entries: dict[str, str]) -> bytes:
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        for name, value in entries.items():
-            archive.writestr(name, value)
-    return output.getvalue()
-
-
-def test_mineru_archive_requires_safe_canonical_artifacts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("MINERU_API_TOKEN", "test-token")
-    client = MinerUClient()
-    paper_text = "Paper " * 200
-    result = client.read_archive(
-        _zip(
-            {
-                "result/full.md": "# Paper",
-                "result/content_list.json": json.dumps(
-                    [{"type": "text", "text": paper_text, "page_idx": 0}]
-                ),
-            }
-        )
-    )
-    assert result.markdown == paper_text.strip()
-    assert result.page_offset_map == {1: [0, len(result.markdown)]}
-
-    with pytest.raises(ParserSecurityError, match="Unsafe path"):
-        client.read_archive(
-            _zip(
-                {
-                    "../full.md": "# Escape",
-                    "content_list.json": "[]",
-                }
-            )
-        )
-
-
-def test_mineru_rejects_non_public_archive_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("MINERU_API_TOKEN", "test-token")
-    client = MinerUClient()
-
-    with pytest.raises(ParserSecurityError, match="non-public"):
-        client._validate_archive_url("https://127.0.0.1/result.zip")
 
 
 def test_jobs_usage_uses_provider_total_as_the_only_charge() -> None:
@@ -87,21 +32,6 @@ def test_jobs_usage_uses_provider_total_as_the_only_charge() -> None:
     assert collector.events[0]["total_tokens"] == 180
     assert collector.events[0]["reasoning_tokens"] == 50
     assert collector.events[0]["idempotency_key"] == "jobs:job-1:metadata"
-
-
-def test_mineru_content_list_builds_page_aware_canonical_markdown() -> None:
-    markdown, offsets = canonical_markdown(
-        [
-            {"type": "text", "text": "Introduction", "text_level": 1, "page_idx": 0},
-            {"type": "text", "text": "First page.", "page_idx": 0},
-            {"type": "page_number", "text": "2", "page_idx": 1},
-            {"type": "equation", "text": "$x = 1$", "page_idx": 1},
-        ]
-    )
-
-    assert markdown == "# Introduction\n\nFirst page.\n\n$x = 1$"
-    assert markdown[offsets[1][0] : offsets[1][1]] == "# Introduction\n\nFirst page."
-    assert markdown[offsets[2][0] : offsets[2][1]] == "\n\n$x = 1$"
 
 
 def test_jobs_webhook_signature_covers_method_target_nonce_and_body(

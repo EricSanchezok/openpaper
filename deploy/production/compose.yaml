@@ -27,6 +27,7 @@ x-storage-environment: &storage-environment
 
 x-jobs-environment: &jobs-environment
   <<: [*broker-environment, *storage-environment]
+  ENVIRONMENT: production
   DEEPSEEK_API_KEY: ${SCHOLENS_DEEPSEEK_API_KEY:?SCHOLENS_DEEPSEEK_API_KEY is required}
   DEEPSEEK_BASE_URL: ${SCHOLENS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
   DEEPSEEK_STANDARD_MODEL: ${SCHOLENS_DEEPSEEK_STANDARD_MODEL:-deepseek-v4-flash}

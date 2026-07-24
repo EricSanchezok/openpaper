@@ -87,9 +87,7 @@ def analyze_pdf(pdf_bytes: bytes) -> LocalPDFAnalysis:
         raise ParserContentError("PDF could not be opened locally") from exc
 
     markdown, page_offset_map = _canonical_page_text(pages)
-    page_character_counts = [
-        _non_whitespace_length(text) for _, text in pages
-    ]
+    page_character_counts = [_non_whitespace_length(text) for _, text in pages]
     return LocalPDFAnalysis(
         markdown=markdown,
         page_offset_map=page_offset_map,

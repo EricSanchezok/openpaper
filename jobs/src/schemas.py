@@ -4,7 +4,7 @@ Pydantic schemas for PDF processing.
 
 from enum import Enum
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ResponseCitation(BaseModel):
@@ -214,6 +214,8 @@ The summary should be accessible to readers with basic domain knowledge while ma
 
 class PDFProcessingResult(BaseModel):
     """Result of PDF processing"""
+
+    model_config = ConfigDict(extra="forbid")
 
     success: bool
     job_id: str

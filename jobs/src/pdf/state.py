@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from typing import Awaitable, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -18,9 +19,7 @@ SUBMIT_LOCK_POLL_SECONDS = 0.25
 
 
 def parser_state_redis_url() -> str:
-    configured = os.getenv("PDF_PARSE_REDIS_URL") or os.getenv(
-        "CELERY_RESULT_BACKEND"
-    )
+    configured = os.getenv("PDF_PARSE_REDIS_URL") or os.getenv("CELERY_RESULT_BACKEND")
     if not configured:
         if os.getenv("ENVIRONMENT", "development").lower() == "production":
             raise ParserConfigurationError(
@@ -33,8 +32,13 @@ def parser_state_redis_url() -> str:
 
 
 class ParserStateStore:
-    def __init__(self, redis_url: str | None = None) -> None:
-        self._redis = Redis.from_url(
+    def __init__(
+        self,
+        redis_url: str | None = None,
+        *,
+        redis_client: Redis | None = None,
+    ) -> None:
+        self._redis = redis_client or Redis.from_url(
             redis_url or parser_state_redis_url(),
             decode_responses=True,
         )
@@ -100,9 +104,12 @@ class ParserStateStore:
         return 0
         """
         try:
-            await self._redis.eval(script, 1, self._lock_key(job_id), token)
+            await cast(
+                Awaitable[object],
+                self._redis.eval(script, 1, self._lock_key(job_id), token),
+            )
         except RedisError as exc:
             raise ParserTransientError("Could not release MinerU submit lock") from exc
 
     async def close(self) -> None:
-        await self._redis.aclose()
+        await cast(Awaitable[None], self._redis.aclose())

@@ -184,27 +184,29 @@ def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     assert "ON scholens.papers" in baseline
     assert "ON scholens.paper_passages" in baseline
 
-    revisions = {
-        match.group(1): path
-        for path in versions
-        if (
-            match := re.search(
-                r'^revision: str = "([^"]+)"',
-                path.read_text(encoding="utf-8"),
-                re.MULTILINE,
-            )
-        )
-    }
-    assert len(revisions) == len(versions)
+    previous_revision = re.search(
+        r'^revision: str = "([^"]+)"',
+        baseline,
+        re.MULTILINE,
+    )
+    assert previous_revision is not None
+    expected_down_revision = previous_revision.group(1)
     for migration in versions[1:]:
         source = migration.read_text(encoding="utf-8")
+        revision = re.search(
+            r'^revision: str = "([^"]+)"',
+            source,
+            re.MULTILINE,
+        )
         down_revision = re.search(
             r'^down_revision: Union\[str, None\] = "([^"]+)"',
             source,
             re.MULTILINE,
         )
+        assert revision is not None
         assert down_revision is not None
-        assert down_revision.group(1) in revisions
+        assert down_revision.group(1) == expected_down_revision
+        expected_down_revision = revision.group(1)
 
 
 def test_caddy_contract_hides_internal_health_and_routes_same_origin_api() -> None:
