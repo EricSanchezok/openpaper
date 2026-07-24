@@ -1,4 +1,4 @@
-"""Deterministic PDF preview generation.
+"""Deterministic local PDF utilities.
 
 Body parsing is intentionally handled only by MinerU.
 """

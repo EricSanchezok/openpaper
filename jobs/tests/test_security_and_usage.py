@@ -13,8 +13,8 @@ import pytest
 
 os.environ.setdefault("MINERU_API_TOKEN", "test-token")
 
-from src.mineru_client import MinerUClient
-from src.pdf_processor import canonical_markdown
+from src.pdf.mineru import MinerUClient
+from src.pdf.pipeline import canonical_markdown
 from src.token_usage import collect_token_usage, record_token_usage
 from src.webhook_signing import post_signed_json
 

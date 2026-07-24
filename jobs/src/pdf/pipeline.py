@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from src.llm_client import llm_client
-from src.mineru_client import mineru_client
-from src.parser import generate_pdf_preview
+from src.pdf.local import generate_pdf_preview
+from src.pdf.mineru import mineru_client
 from src.s3_service import s3_service
 from src.schemas import PDFProcessingResult, PaperMetadataExtraction
 from src.utils import time_it

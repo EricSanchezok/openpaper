@@ -15,7 +15,7 @@ import requests
 
 from src.schemas import DataTableSchema
 from src.data_table_processor import construct_data_table
-from src.pdf_processor import process_pdf_file
+from src.pdf.pipeline import process_pdf_file
 from src.celery_app import celery_app, ZOTERO_SYNC_INTERVAL_SECONDS
 from src.s3_service import s3_service
 from src.token_usage import collect_token_usage
