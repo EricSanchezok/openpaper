@@ -11,6 +11,7 @@ import requests
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.models import AuthUser, Paper
 from app.schemas.user import CurrentUser
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from sqlalchemy.orm import Session
 
@@ -36,6 +37,10 @@ class S3Service:
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             region_name=AWS_REGION,
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "virtual"},
+            ),
         )
         self.bucket_name = S3_BUCKET_NAME
         self.cloudflare_bucket_name = CLOUDFLARE_BUCKET_NAME

@@ -8,6 +8,7 @@ import uuid
 from typing import Tuple
 
 import boto3  # type: ignore
+from botocore.config import Config  # type: ignore
 from botocore.exceptions import ClientError  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,10 @@ class S3Service:
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             region_name=AWS_REGION,
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "virtual"},
+            ),
         )
         self.bucket_name = S3_BUCKET_NAME
         self.cloudflare_bucket_name = CLOUDFLARE_BUCKET_NAME
