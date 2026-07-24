@@ -12,7 +12,7 @@ from app.database.crud.message_crud import message_crud
 from app.database.database import get_db
 from app.database.models import ConversableType, Conversation
 from app.database.telemetry import track_event
-from app.llm.operations import operations
+from app.llm.conversation_operations import conversation_operations
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends
@@ -35,7 +35,7 @@ async def rename_conversation(
 ) -> JSONResponse:
     """Rename a conversation based on its chat history"""
     try:
-        new_name = operations.rename_conversation(
+        new_name = conversation_operations.rename_conversation(
             db=db, conversation_id=conversation_id, user=current_user
         )
         if new_name:
@@ -65,7 +65,9 @@ async def get_everything_conversations(
             user=current_user,
         )
         conversations = sorted(
-            conversations, key=lambda x: x.updated_at, reverse=True  # type: ignore
+            conversations,
+            key=lambda x: x.updated_at,
+            reverse=True,  # type: ignore
         )
         result = [
             {
@@ -322,7 +324,5 @@ async def delete_conversation(
         logger.error(f"Error deleting conversation: {e}")
         return JSONResponse(
             status_code=404,
-            content={
-                "code": "conversation_delete_failed"
-            },
+            content={"code": "conversation_delete_failed"},
         )

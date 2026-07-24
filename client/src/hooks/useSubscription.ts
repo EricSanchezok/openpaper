@@ -110,7 +110,7 @@ export const getProjectPaperHardLimit = (subscription: SubscriptionData | null):
     return subscription?.limits.project_papers ?? null;
 };
 
-export const getProjectPaperUsagePercentage = (subscription: SubscriptionData | null, paperCount: number): number => {
+const getProjectPaperUsagePercentage = (subscription: SubscriptionData | null, paperCount: number): number => {
     if (!subscription) return 0;
     const total = subscription.limits.project_papers;
     if (total === 0) return 0;
@@ -124,16 +124,3 @@ export const isProjectPaperNearLimit = (subscription: SubscriptionData | null, p
 export const isProjectPaperAtLimit = (subscription: SubscriptionData | null, paperCount: number): boolean => {
     return getProjectPaperUsagePercentage(subscription, paperCount) >= 100;
 };
-
-// Calculate next Monday at 12 AM UTC for credit reset
-export const nextMonday = (() => {
-    const now = new Date();
-    const currentDayUTC = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    const daysUntilMonday = currentDayUTC === 0 ? 1 : (8 - currentDayUTC) % 7; // Days until next Monday
-    const nextMondayUTC = new Date(now.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
-
-    // Set to start of day in UTC (00:00:00 UTC)
-    nextMondayUTC.setUTCHours(0, 0, 0, 0);
-
-    return nextMondayUTC;
-})();

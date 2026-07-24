@@ -381,6 +381,7 @@ class AudioOverviewCRUD(
             ],
         }
 
+
 # Create single instances to use throughout the application
 audio_overview_job_crud = AudioOverviewJobCRUD(AudioOverviewJob)
 audio_overview_crud = AudioOverviewCRUD(AudioOverview)

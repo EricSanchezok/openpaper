@@ -116,12 +116,12 @@ async def discover_search(
                 yield f"{json.dumps(chunk)}{END_DELIMITER}"
 
         except Exception as e:
-            logger.error(f"Error in discover pipeline: {e}", exc_info=True)
+            logger.exception("Error in discover pipeline")
             track_event(
                 "discover_search_error",
                 properties={
                     "question": request.question,
-                    "error": str(e),
+                    "error_type": type(e).__name__,
                 },
                 user_id=str(current_user.id),
                 db=db,

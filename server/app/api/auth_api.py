@@ -52,7 +52,9 @@ async def block_user(
 ) -> dict[str, object]:
     target_user = user_repository.get(db, id=request.user_id)
     if target_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user_repository.set_blocked(db, user_id=request.user_id, blocked=request.blocked)
     action = "blocked" if request.blocked else "unblocked"
@@ -154,6 +156,4 @@ async def zotero_disconnect(
         return ZoteroDisconnectResponse(
             success=False, message="No Zotero account connected"
         )
-    return ZoteroDisconnectResponse(
-        success=True, message="Zotero account disconnected"
-    )
+    return ZoteroDisconnectResponse(success=True, message="Zotero account disconnected")

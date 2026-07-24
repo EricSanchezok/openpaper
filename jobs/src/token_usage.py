@@ -38,9 +38,10 @@ def record_token_usage(
     idempotency_suffix: str,
 ) -> None:
     collector = _collector.get()
-    if collector is None or usage is None:
+    if collector is None:
         return
 
+    status = "unknown" if usage is None else "settled"
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
     total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
@@ -49,9 +50,7 @@ def record_token_usage(
 
     collector.events.append(
         {
-            "idempotency_key": (
-                f"jobs:{collector.operation_id}:{idempotency_suffix}"
-            ),
+            "idempotency_key": (f"jobs:{collector.operation_id}:{idempotency_suffix}"),
             "operation_id": collector.operation_id,
             "feature": feature,
             "model": model,
@@ -62,11 +61,9 @@ def record_token_usage(
             "reasoning_tokens": int(
                 getattr(completion_details, "reasoning_tokens", 0) or 0
             ),
-            "cache_hit_tokens": int(
-                getattr(prompt_details, "cached_tokens", 0) or 0
-            ),
+            "cache_hit_tokens": int(getattr(prompt_details, "cached_tokens", 0) or 0),
             "cache_miss_tokens": 0,
             "total_tokens": total_tokens,
-            "status": "settled",
+            "status": status,
         }
     )

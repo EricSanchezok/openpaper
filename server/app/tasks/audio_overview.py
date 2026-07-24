@@ -16,7 +16,8 @@ from app.database.database import SessionLocal
 from app.database.models import ConversableType, JobStatus
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import release_concurrency_by_id
-from app.llm.operations import operations
+from app.llm.multi_paper_operations import multi_paper_operations
+from app.llm.paper_operations import paper_operations
 from app.llm.speech import speaker
 from app.llm.token_credits import llm_usage_context
 from app.schemas.responses import AudioOverviewForLLM
@@ -48,7 +49,6 @@ async def generate_audio_overview(
     db = SessionLocal()
 
     try:
-
         # Update job status to running
         audio_overview_job_crud.update_status(
             db,
@@ -88,7 +88,7 @@ async def generate_audio_overview(
                 feature="audio_overview",
                 operation_id=str(audio_overview_job_id),
             ):
-                narrative_summary = operations.create_narrative_summary(
+                narrative_summary = paper_operations.create_narrative_summary(
                     paper_id=str(paper_id),
                     user=user,
                     length=length,
@@ -119,7 +119,7 @@ async def generate_audio_overview(
                 operation_id=str(audio_overview_job_id),
             ):
                 narrative_summary = (
-                    await operations.create_multi_paper_narrative_summary(
+                    await multi_paper_operations.create_multi_paper_narrative_summary(
                         project_id=str(project_id),
                         length=length,
                         current_user=user,

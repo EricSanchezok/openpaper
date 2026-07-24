@@ -31,7 +31,10 @@ class TestComputeMaxNewImports(unittest.TestCase):
     @patch.object(zotero_import_module, "can_user_upload_paper")
     def test_basic_plan_at_limit(self, mock_can, mock_remaining):
         """Basic user with 10 papers → blocked, 0 slots."""
-        mock_can.return_value = (False, "You have reached your paper upload limit (10 papers)")
+        mock_can.return_value = (
+            False,
+            "You have reached your paper upload limit (10 papers)",
+        )
         mock_remaining.return_value = 0
 
         result, err = _compute_max_new_imports(MagicMock(), self._make_user(), limit=50)

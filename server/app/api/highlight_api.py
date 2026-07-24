@@ -137,9 +137,7 @@ async def delete_highlight(
         logger.error(f"Error deleting highlight: {e}")
         return JSONResponse(
             status_code=404,
-            content={
-                "code": "highlight_delete_failed"
-            },
+            content={"code": "highlight_delete_failed"},
         )
 
 
@@ -182,7 +180,6 @@ async def update_highlight(
 
         return JSONResponse(status_code=200, content=highlight.to_dict())
     except ValueError as e:
-
         logger.error(f"Highlight not found or invalid data: {e}")
         return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:

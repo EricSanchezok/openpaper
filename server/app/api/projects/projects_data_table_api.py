@@ -20,7 +20,7 @@ from app.helpers.ai_limits import (
     release_concurrency_by_id,
 )
 from app.helpers.pdf_jobs import jobs_client
-from app.llm.operations import operations
+from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.responses import DataTableSchema, DocumentMapping
 from app.schemas.user import CurrentUser
@@ -46,7 +46,7 @@ class CreateDataTableRequest(BaseModel):
 
     @field_validator("columns")
     @classmethod
-    def validate_columns(cls, value: list[str]) -> list[str]:
+    def validate_columns(_cls, value: list[str]) -> list[str]:
         normalized = [column.strip() for column in value]
         if any(not column or len(column) > 200 for column in normalized):
             raise ValueError("Columns must contain 1-200 characters")
@@ -109,7 +109,7 @@ async def propose_data_table_schema(
             with llm_usage_context(
                 user_id=int(current_user.id), feature="data_table_proposal"
             ):
-                columns = operations.propose_data_table_schema(
+                columns = data_table_operations.propose_data_table_schema(
                     prompt=prompt,
                     paper_titles=paper_titles,
                 )
@@ -147,7 +147,6 @@ async def create_data_table(
     job = None
     lease_acquired = False
     try:
-
         if not has_token_credits(db, user=current_user):
             return JSONResponse(
                 status_code=429,

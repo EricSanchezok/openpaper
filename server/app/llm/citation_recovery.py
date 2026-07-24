@@ -25,7 +25,7 @@ from app.integrations.mcp import (
     call_remote_tool_sync,
     discover_function_declarations_sync,
 )
-from app.llm.base import BaseLLMClient, ModelType
+from app.llm.base import BaseLLMClient
 from app.schemas.citation import CitationStep
 from app.schemas.responses import TextContent, ToolCallResult
 from app.schemas.user import CurrentUser
@@ -203,7 +203,6 @@ class MetadataRecoveryAgent(BaseLLMClient):
                     contents=[TextContent(text=user_msg)],
                     function_declarations=function_declarations,
                     tool_call_results=tool_call_results or None,
-                    model_type=ModelType.DEFAULT,
                 )
             except Exception:
                 logger.exception("Citation web loop LLM call failed")
@@ -318,7 +317,6 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 ),
                 contents=[TextContent(text=prompt)],
                 schema=CITATION_EXTRACTION_SCHEMA,
-                model_type=ModelType.DEFAULT,
             )
             parsed_findings = json.loads(resp.text)
             if not isinstance(parsed_findings, dict):

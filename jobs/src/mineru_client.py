@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import io
 import json
 import os
+import socket
 import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -36,6 +39,54 @@ class MinerUClient:
             os.getenv("MINERU_MAX_ARCHIVE_BYTES", str(256 * 1024 * 1024))
         )
         self.headers = {"Authorization": f"Bearer {token}"}
+
+    @staticmethod
+    def _validate_archive_url(url: str) -> None:
+        parsed = urlsplit(url)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("MinerU archive URL must be a public HTTPS URL")
+        try:
+            addresses = socket.getaddrinfo(
+                parsed.hostname,
+                parsed.port or 443,
+                type=socket.SOCK_STREAM,
+            )
+        except OSError as exc:
+            raise ValueError("MinerU archive host could not be resolved") from exc
+        if not addresses or any(
+            not ipaddress.ip_address(address[4][0]).is_global for address in addresses
+        ):
+            raise ValueError("MinerU archive URL resolved to a non-public address")
+
+    async def _download_archive(self, url: str) -> bytes:
+        self._validate_archive_url(url)
+        chunks: list[bytes] = []
+        size = 0
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(60),
+            follow_redirects=False,
+        ) as client:
+            async with client.stream("GET", url) as response:
+                if 300 <= response.status_code < 400:
+                    raise ValueError("MinerU archive download redirected")
+                response.raise_for_status()
+                content_length = response.headers.get("content-length")
+                if (
+                    content_length is not None
+                    and int(content_length) > self.max_archive_bytes
+                ):
+                    raise ValueError("MinerU archive exceeds configured size limit")
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > self.max_archive_bytes:
+                        raise ValueError("MinerU archive exceeds configured size limit")
+                    chunks.append(chunk)
+        return b"".join(chunks)
 
     async def parse_url(self, source_url: str, *, data_id: str) -> MinerUResult:
         async with httpx.AsyncClient(
@@ -84,10 +135,7 @@ class MinerUClient:
             if not archive_url:
                 raise TimeoutError(f"MinerU task {task_id} timed out")
 
-            archive_response = await client.get(archive_url)
-            archive_response.raise_for_status()
-            archive_bytes = archive_response.content
-
+        archive_bytes = await self._download_archive(archive_url)
         return self._read_archive(archive_bytes)
 
     def _read_archive(self, archive_bytes: bytes) -> MinerUResult:

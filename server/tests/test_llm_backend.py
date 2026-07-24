@@ -8,14 +8,16 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.message_api import ChatMessageRequest, MultiPaperChatRequest
+from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
 from app.llm.backend import DeepSeekBackend
 from app.llm.backend import LLMResponse
+from app.llm.speech import MossSpeaker
 from app.llm.token_credits import utc_week_start
 from pydantic import BaseModel
 
 
-def _provider(monkeypatch: pytest.MonkeyPatch) -> DeepSeekBackend:
+def _backend(monkeypatch: pytest.MonkeyPatch) -> DeepSeekBackend:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
     monkeypatch.setenv("DEEPSEEK_STANDARD_MODEL", "standard-model")
     monkeypatch.setenv("DEEPSEEK_DEEP_MODEL", "deep-model")
@@ -26,15 +28,14 @@ def _provider(monkeypatch: pytest.MonkeyPatch) -> DeepSeekBackend:
 def test_deepseek_routes_only_standard_and_deep_models(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    provider = _provider(monkeypatch)
+    backend = _backend(monkeypatch)
 
-    assert provider.get_default_model() == "standard-model"
-    assert provider.get_fast_model() == "standard-model"
-    assert provider.get_deep_model() == "deep-model"
-    assert provider._thinking_body("standard-model") == {
+    assert backend._model(ReasoningLevel.STANDARD) == "standard-model"
+    assert backend._model(ReasoningLevel.DEEP) == "deep-model"
+    assert backend._thinking_body(ReasoningLevel.STANDARD) == {
         "thinking": {"type": "disabled"}
     }
-    assert provider._thinking_body("deep-model") == {
+    assert backend._thinking_body(ReasoningLevel.DEEP) == {
         "thinking": {"type": "enabled"},
         "reasoning_effort": "max",
     }
@@ -43,7 +44,7 @@ def test_deepseek_routes_only_standard_and_deep_models(
 def test_provider_settles_total_tokens_without_double_counting_reasoning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    provider = _provider(monkeypatch)
+    backend = _backend(monkeypatch)
     usage = SimpleNamespace(
         prompt_tokens=100,
         completion_tokens=80,
@@ -54,7 +55,12 @@ def test_provider_settles_total_tokens_without_double_counting_reasoning(
     )
 
     with patch("app.llm.backend.settle_token_usage") as settle:
-        provider._settle(model="deep-model", response_id="request-1", usage=usage)
+        backend._settle(
+            model="deep-model",
+            reasoning_level=ReasoningLevel.DEEP,
+            response_id="request-1",
+            usage=usage,
+        )
 
     settle.assert_called_once_with(
         model="deep-model",
@@ -73,8 +79,8 @@ def test_provider_settles_total_tokens_without_double_counting_reasoning(
 def test_stream_replays_reasoning_and_settles_final_usage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    provider = _provider(monkeypatch)
-    provider.client.chat.completions.create.return_value = iter(
+    backend = _backend(monkeypatch)
+    backend._client.chat.completions.create.return_value = iter(
         [
             SimpleNamespace(
                 id="request-2",
@@ -101,18 +107,48 @@ def test_stream_replays_reasoning_and_settles_final_usage(
         ]
     )
 
-    with patch.object(provider, "_settle") as settle:
+    with patch.object(backend, "_settle") as settle:
         chunks = list(
-            provider.send_message_stream(
-                "deep-model",
+            backend.send_message_stream(
                 "question",
                 [],
                 "system",
+                reasoning_level=ReasoningLevel.DEEP,
             )
         )
 
     assert chunks[0].thinking == "checking evidence"
     settle.assert_called_once()
+
+
+def test_stream_records_unknown_usage_when_final_usage_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = _backend(monkeypatch)
+    backend._client.chat.completions.create.return_value = iter(
+        [
+            SimpleNamespace(
+                id="request-3",
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content="answer", reasoning_content=None),
+                        finish_reason="stop",
+                    )
+                ],
+            )
+        ]
+    )
+
+    with patch.object(backend, "_settle") as settle:
+        list(backend.send_message_stream("question", [], "system"))
+
+    settle.assert_called_once_with(
+        model="standard-model",
+        reasoning_level=ReasoningLevel.STANDARD,
+        response_id="request-3",
+        usage=None,
+    )
 
 
 def test_chat_requests_reject_legacy_provider_fields() -> None:
@@ -133,6 +169,17 @@ def test_chat_requests_reject_legacy_provider_fields() -> None:
         )
 
 
+def test_moss_rejects_non_public_audio_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MOSS_API_KEY", "test-key")
+    monkeypatch.setenv("MOSS_VOICE_ID", "test-voice")
+    speaker = MossSpeaker()
+
+    with pytest.raises(ValueError, match="non-public"):
+        speaker._validate_audio_url("https://127.0.0.1/audio.mp3")
+
+
 def test_token_week_starts_monday_utc() -> None:
     assert utc_week_start(datetime(2026, 7, 26, 23, 59, tzinfo=UTC)).isoformat() == (
         "2026-07-20"
@@ -147,15 +194,14 @@ def test_structured_response_is_pydantic_validated_and_retried() -> None:
         answer: str
 
     backend = MagicMock()
-    backend.get_default_model.return_value = "standard-model"
     backend.generate_content.side_effect = [
-        LLMResponse(text='{"wrong":"shape"}', model="standard-model"),
-        LLMResponse(text='{"answer":"grounded"}', model="standard-model"),
+        LLMResponse(text='{"wrong":"shape"}'),
+        LLMResponse(text='{"answer":"grounded"}'),
     ]
     client = BaseLLMClient.__new__(BaseLLMClient)
     client.backend = backend
 
-    with patch("app.llm.utils.time.sleep"):
+    with patch("app.llm.base.time.sleep"):
         response = client.generate_content("question", response_model=Result)
 
     assert response.text == '{"answer":"grounded"}'

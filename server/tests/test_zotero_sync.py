@@ -34,10 +34,14 @@ class TestZoteroAnnotationPayload(unittest.TestCase):
 
     def test_normalize_payload_item_legacy_data_only_without_key(self) -> None:
         self.assertIsNone(
-            _normalize_payload_item({"annotationText": "legacy", "annotationType": "highlight"})
+            _normalize_payload_item(
+                {"annotationText": "legacy", "annotationType": "highlight"}
+            )
         )
 
-    def test_page_from_annotation_prefers_pdf_page_index_over_printed_label(self) -> None:
+    def test_page_from_annotation_prefers_pdf_page_index_over_printed_label(
+        self,
+    ) -> None:
         data = {
             "annotationPageLabel": "583",
             "annotationPosition": json.dumps({"pageIndex": 0, "rects": [[0, 0, 1, 1]]}),
@@ -87,13 +91,18 @@ class TestZoteroSyncItem(unittest.TestCase):
             }
         ]
 
-        with patch.object(
-            zotero_import_module, "_get_page_dims_for_paper", return_value={0: (612.0, 792.0)}
-        ), patch.object(
-            zotero_import_module,
-            "_try_backfill_or_apply_annotation",
-            return_value=True,
-        ) as mock_apply:
+        with (
+            patch.object(
+                zotero_import_module,
+                "_get_page_dims_for_paper",
+                return_value={0: (612.0, 792.0)},
+            ),
+            patch.object(
+                zotero_import_module,
+                "_try_backfill_or_apply_annotation",
+                return_value=True,
+            ) as mock_apply,
+        ):
             result = _sync_item(
                 MagicMock(),
                 client=self.client,
@@ -118,7 +127,10 @@ class TestZoteroSyncItem(unittest.TestCase):
         mock_highlight_crud.get_zotero_annotation_keys_for_paper.return_value = {"ANN1"}
         self.client.get_children.return_value = []
         self.client.get_annotations_for_attachment.return_value = [
-            {"key": "ANN1", "data": {"annotationType": "highlight", "annotationText": "hello"}}
+            {
+                "key": "ANN1",
+                "data": {"annotationType": "highlight", "annotationText": "hello"},
+            }
         ]
 
         with patch.object(

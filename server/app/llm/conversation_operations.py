@@ -6,7 +6,7 @@ from app.database.crud.conversation_crud import ConversationUpdate, conversation
 from app.database.crud.message_crud import message_crud
 from app.database.database import get_db
 from app.database.models import Conversation
-from app.llm.base import BaseLLMClient, ModelType
+from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
     NAME_DATA_TABLE_SYSTEM_PROMPT,
     NAME_DATA_TABLE_USER_MESSAGE,
@@ -58,7 +58,7 @@ class ConversationOperations(BaseLLMClient):
             logger.warning(
                 f"Conversation with ID {conversation_id} has no messages. Cannot rename."
             )
-            return
+            return None
 
         # Format the chat history for the LLM, restrict to the last 4 messages
         formatted_chat_history = "\n".join(
@@ -77,7 +77,6 @@ class ConversationOperations(BaseLLMClient):
         response = self.generate_content(
             contents=message_content,
             system_prompt=RENAME_CONVERSATION_SYSTEM_PROMPT,
-            model_type=ModelType.FAST,
         )
 
         if response and response.text:
@@ -132,7 +131,6 @@ class DataTableOperations(BaseLLMClient):
         response = self.generate_content(
             contents=message_content,
             system_prompt=NAME_DATA_TABLE_SYSTEM_PROMPT,
-            model_type=ModelType.FAST,
         )
 
         if response and response.text:
@@ -170,7 +168,6 @@ class DataTableOperations(BaseLLMClient):
         response = self.generate_content(
             contents=message_content,
             system_prompt=PROPOSE_DATA_TABLE_SCHEMA_SYSTEM_PROMPT,
-            model_type=ModelType.FAST,
             response_model=DataTableSchemaProposal,
         )
 
@@ -187,3 +184,7 @@ class DataTableOperations(BaseLLMClient):
 
         logger.error("Failed to propose a schema for the data table.")
         return None
+
+
+conversation_operations = ConversationOperations()
+data_table_operations = DataTableOperations()

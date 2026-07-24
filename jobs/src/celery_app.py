@@ -1,11 +1,12 @@
 """
 Celery application configuration and setup.
 """
+
 import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from celery import Celery # type: ignore
+from celery import Celery  # type: ignore
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -14,10 +15,7 @@ BACKEND_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 
 # Create Celery instance
 celery_app = Celery(
-    "openpaper_tasks",
-    broker=BROKER_URL,
-    backend=BACKEND_URL,
-    include=["src.tasks"]
+    "openpaper_tasks", broker=BROKER_URL, backend=BACKEND_URL, include=["src.tasks"]
 )
 
 # Celery configuration
@@ -53,7 +51,7 @@ celery_app.conf.update(
 
 celery_app.autodiscover_tasks()
 
-ZOTERO_SYNC_INTERVAL_SECONDS = (24 * 60 * 60)  # Default to 24 hours
+ZOTERO_SYNC_INTERVAL_SECONDS = 24 * 60 * 60  # Default to 24 hours
 
 celery_app.conf.beat_schedule = {
     "periodic-zotero-sync": {

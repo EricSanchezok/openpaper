@@ -1,5 +1,4 @@
 from app.auth.dependencies import get_required_user
-from app.llm.operations import Operations
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends
@@ -9,8 +8,6 @@ load_dotenv()
 
 # Create API router with prefix
 router = APIRouter()
-
-llm_operations = Operations()
 
 
 @router.get("/me", response_model=CurrentUser)

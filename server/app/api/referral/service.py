@@ -130,9 +130,7 @@ def attribute_referral(
 
     if referee.created_at is None or referee.created_at < datetime.now(  # type: ignore[operator]
         timezone.utc
-    ) - timedelta(
-        seconds=REFEREE_FRESHNESS_SECONDS
-    ):
+    ) - timedelta(seconds=REFEREE_FRESHNESS_SECONDS):
         raise ReferralAttributionError(
             "Referral codes can only be applied to brand-new accounts"
         )

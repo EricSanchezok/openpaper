@@ -1,9 +1,15 @@
 import asyncio
 import logging
-from typing import Callable, List, Tuple, Optional
+from typing import Callable
 
-from src.schemas import DataTableRow, DataTableSchema, DataTableResult, DataTableCellValue, DocumentMapping
 from src.llm_client import llm_client
+from src.schemas import (
+    DataTableCellValue,
+    DataTableResult,
+    DataTableRow,
+    DataTableSchema,
+    DocumentMapping,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -14,10 +20,10 @@ DEFAULT_BATCH_SIZE = 5
 
 async def _process_single_paper(
     paper: DocumentMapping,
-    columns: List[str],
+    columns: list[str],
     status_callback: Callable[[str], None],
     semaphore: asyncio.Semaphore,
-) -> Tuple[DataTableRow, Optional[str]]:
+) -> tuple[DataTableRow, str | None]:
     """
     Process a single paper extraction with semaphore-controlled concurrency.
 
@@ -41,14 +47,16 @@ async def _process_single_paper(
             status_callback(f"extract for {paper.title} completed")
             return paper_col_values, None
 
-        except Exception as e:
-            logger.error(f"Error processing paper {paper_id} ({paper.title}): {str(e)}", exc_info=True)
-            status_callback(f"extract for {paper.title} failed: {str(e)}")
+        except Exception:
+            logger.exception("Failed to extract paper %s (%s)", paper_id, paper.title)
+            status_callback(f"extract for {paper.title} failed")
 
             # Return row with empty values to maintain paper ordering
             empty_row = DataTableRow(
                 paper_id=paper_id,
-                values={col: DataTableCellValue(value="", citations=[]) for col in columns}
+                values={
+                    col: DataTableCellValue(value="", citations=[]) for col in columns
+                },
             )
             return empty_row, str(paper_id)
 
@@ -57,7 +65,7 @@ async def construct_data_table(
     data_table_schema: DataTableSchema,
     status_callback: Callable[[str], None],
     batch_size: int = DEFAULT_BATCH_SIZE,
-) -> Tuple[DataTableResult, str]:
+) -> DataTableResult:
     """
     Construct a data table based on the provided schema.
 
@@ -69,8 +77,7 @@ async def construct_data_table(
         batch_size: Maximum number of papers to process concurrently (default: 5)
 
     Returns:
-        DataTableResult: Resulting data table
-        str: Error message if any
+        The completed table, including row-level failure identifiers.
     """
     semaphore = asyncio.Semaphore(batch_size)
 
@@ -89,21 +96,17 @@ async def construct_data_table(
     results = await asyncio.gather(*tasks)
 
     # Separate rows and failures while maintaining order
-    rows: List[DataTableRow] = []
-    row_failures: List[str] = []
+    rows: list[DataTableRow] = []
+    row_failures: list[str] = []
 
     for row, failure_id in results:
         rows.append(row)
         if failure_id is not None:
             row_failures.append(failure_id)
 
-    error_msg = ""
-    if row_failures:
-        error_msg = f"Failed to process {len(row_failures)} paper(s)"
-
     return DataTableResult(
         success=True,
-        columns=[col for col in data_table_schema.columns],
+        columns=list(data_table_schema.columns),
         rows=rows,
         row_failures=row_failures,
-    ), error_msg
+    )

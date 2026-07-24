@@ -127,7 +127,12 @@ export function SidePanelContent({
     const { subscription, refetch: refetchSubscription } = useSubscription();
     const [reasoningLevel, setReasoningLevel] = useState<'standard' | 'deep'>('standard');
     const [reasoningCapabilities, setReasoningCapabilities] = useState<ReasoningCapability[]>([]);
-    const [nextMonday, setNextMonday] = useState(new Date());
+    const nextMonday = new Date();
+    const daysUntilMonday = nextMonday.getUTCDay() === 0
+        ? 1
+        : 8 - nextMonday.getUTCDay();
+    nextMonday.setUTCDate(nextMonday.getUTCDate() + daysUntilMonday);
+    nextMonday.setUTCHours(0, 0, 0, 0);
     const [pendingStarterQuestion, setPendingStarterQuestion] = useState<string | null>(null);
     const [pageNumberConversationHistory, setPageNumberConversationHistory] = useState(1);
     const [displayedText, setDisplayedText] = useState('');
@@ -767,12 +772,6 @@ export function SidePanelContent({
             </div>
         ));
     }, [messages, user, handleCitationClick, handleCitationClickFromSummary, matchesCurrentCitation]);
-
-    useEffect(() => {
-        const date = new Date();
-        date.setDate(date.getDate() + (1 + 7 - date.getDay()) % 7);
-        setNextMonday(date);
-    }, []);
 
     const heightClass = isMobile ? "h-[calc(100vh-128px)]" : "h-[calc(100vh-64px)]";
 

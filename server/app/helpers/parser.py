@@ -129,7 +129,11 @@ def _validate_public_http_url(url: str) -> None:
     parsed = urlsplit(url)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError("Only HTTP(S) PDF URLs are supported")
-    if not parsed.hostname or parsed.username is not None or parsed.password is not None:
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         raise ValueError("Invalid PDF URL")
 
     try:

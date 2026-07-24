@@ -27,7 +27,9 @@ class TestAutoImportWindow(unittest.IsolatedAsyncioTestCase):
     @patch.object(zotero_import_module, "list_library")
     @patch.object(zotero_import_module, "zotero_import_crud")
     @patch.object(zotero_import_module, "zotero_crud")
-    @patch.object(zotero_import_module, "can_user_upload_paper", return_value=(True, None))
+    @patch.object(
+        zotero_import_module, "can_user_upload_paper", return_value=(True, None)
+    )
     @patch.object(
         zotero_import_module, "get_remaining_paper_upload_slots", return_value=10
     )

@@ -9,7 +9,6 @@ based on their subscription plan.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Optional
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_crud import project_crud
@@ -29,7 +28,7 @@ PROJECTS_KEY = "projects"
 PROJECT_PAPERS_KEY = "project_papers"
 
 # Define subscription plan limits
-SUBSCRIPTION_LIMITS = {
+SUBSCRIPTION_LIMITS: dict[SubscriptionPlan, dict[str, int]] = {
     SubscriptionPlan.BASIC: {
         PAPER_UPLOAD_KEY: 10,
         KB_SIZE_KEY: 200 * 1024,  # 200 MB in KB
@@ -44,6 +43,10 @@ SUBSCRIPTION_LIMITS = {
         PROJECTS_KEY: 100,
         PROJECT_PAPERS_KEY: 120,
     },
+}
+PLAN_LABELS = {
+    SubscriptionPlan.BASIC: "Basic",
+    SubscriptionPlan.RESEARCHER: "Researcher",
 }
 
 
@@ -72,7 +75,7 @@ def get_user_subscription_plan(db: Session, user: CurrentUser) -> SubscriptionPl
     return SubscriptionPlan.BASIC
 
 
-def get_plan_limits(plan: SubscriptionPlan) -> Dict:
+def get_plan_limits(plan: SubscriptionPlan) -> dict[str, int]:
     """Get the limits for a specific subscription plan."""
     return SUBSCRIPTION_LIMITS.get(plan, SUBSCRIPTION_LIMITS[SubscriptionPlan.BASIC])
 
@@ -98,22 +101,18 @@ def get_user_knowledge_base_size(db: Session, user: CurrentUser) -> int:
     return paper_crud.get_size_of_knowledge_base(db, user=user)
 
 
-def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, Optional[str]]:
+def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, str | None]:
     """
     Check if a user can upload a new paper based on their subscription limits.
 
     Returns:
-        tuple: (can_upload: bool, error_message: Optional[str])
+        Whether the action is allowed and an optional user-facing reason.
     """
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
 
     current_paper_count = paper_crud.get_total_paper_count(db=db, user=user)
     paper_limit = limits[PAPER_UPLOAD_KEY]
-
-    # Handle unlimited plans
-    if paper_limit == float("inf"):
-        return True, None
 
     # If the user has reached their paper upload limit
     if current_paper_count >= paper_limit:
@@ -128,13 +127,9 @@ def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, Optiona
             },
             db=db,
         )
-        plan_name = {
-            SubscriptionPlan.BASIC: "Basic",
-            SubscriptionPlan.RESEARCHER: "Researcher",
-        }.get(plan, "Basic")
         return (
             False,
-            f"You have reached your paper upload limit ({int(paper_limit)} papers) for the {plan_name} plan. Please upgrade your subscription to upload more papers, or delete existing papers to free up space.",
+            f"You have reached your paper upload limit ({paper_limit} papers) for the {PLAN_LABELS[plan]} plan. Please upgrade your subscription to upload more papers, or delete existing papers to free up space.",
         )
 
     return True, None
@@ -142,7 +137,7 @@ def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, Optiona
 
 def can_user_add_papers_to_project(
     db: Session, user: CurrentUser, project_id: uuid.UUID, paper_count: int = 1
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Check if `paper_count` more papers can be added to a project.
 
@@ -151,15 +146,11 @@ def can_user_add_papers_to_project(
     follows whoever is adding, not the project owner.
 
     Returns:
-        tuple: (can_add: bool, error_message: Optional[str])
+        Whether the action is allowed and an optional user-facing reason.
     """
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
     project_paper_limit = limits[PROJECT_PAPERS_KEY]
-
-    # Handle unlimited plans
-    if project_paper_limit == float("inf"):
-        return True, None
 
     current_project_paper_count = project_paper_crud.get_paper_count_by_project_id(
         db, project_id=project_id, user=user
@@ -178,26 +169,20 @@ def can_user_add_papers_to_project(
             },
             db=db,
         )
-        plan_name = {
-            SubscriptionPlan.BASIC: "Basic",
-            SubscriptionPlan.RESEARCHER: "Researcher",
-        }.get(plan, "Basic")
         return (
             False,
-            f"This project has reached its limit of {int(project_paper_limit)} papers for the {plan_name} plan. Please upgrade your subscription or remove papers from this project to add more.",
+            f"This project has reached its limit of {project_paper_limit} papers for the {PLAN_LABELS[plan]} plan. Please upgrade your subscription or remove papers from this project to add more.",
         )
 
     return True, None
 
 
-def can_user_create_project(
-    db: Session, user: CurrentUser
-) -> tuple[bool, Optional[str]]:
+def can_user_create_project(db: Session, user: CurrentUser) -> tuple[bool, str | None]:
     """
     Check if a user can create a new project based on their subscription limits.
 
     Returns:
-        tuple: (can_create: bool, error_message: Optional[str])
+        Whether the action is allowed and an optional user-facing reason.
     """
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
@@ -206,10 +191,6 @@ def can_user_create_project(
         project_crud.get_all_projects_by_user_with_metadata(db=db, user=user)
     )
     project_limit = limits[PROJECTS_KEY]
-
-    # Handle unlimited plans
-    if project_limit == float("inf"):
-        return True, None
 
     # If the user has reached their project limit
     if current_project_count >= project_limit:
@@ -224,13 +205,9 @@ def can_user_create_project(
             },
             db=db,
         )
-        plan_name = {
-            SubscriptionPlan.BASIC: "Basic",
-            SubscriptionPlan.RESEARCHER: "Researcher",
-        }.get(plan, "Basic")
         return (
             False,
-            f"You have reached your project limit ({int(project_limit)} projects) for the {plan_name} plan. Please upgrade your subscription to create more projects.",
+            f"You have reached your project limit ({project_limit} projects) for the {PLAN_LABELS[plan]} plan. Please upgrade your subscription to create more projects.",
         )
 
     return True, None
@@ -238,22 +215,18 @@ def can_user_create_project(
 
 def can_user_access_knowledge_base(
     db: Session, user: CurrentUser
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Check if a user can access their knowledge base based on their subscription limits.
 
     Returns:
-        tuple: (can_access: bool, error_message: Optional[str])
+        Whether the action is allowed and an optional user-facing reason.
     """
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
 
     current_size_mb = get_user_knowledge_base_size(db, user)
     kb_limit = limits[KB_SIZE_KEY]
-
-    # Handle unlimited plans
-    if kb_limit == float("inf"):
-        return True, None
 
     # If the user has exceeded their knowledge base size limit
     if current_size_mb >= kb_limit:
@@ -268,13 +241,9 @@ def can_user_access_knowledge_base(
             },
             db=db,
         )
-        plan_name = {
-            SubscriptionPlan.BASIC: "Basic",
-            SubscriptionPlan.RESEARCHER: "Researcher",
-        }.get(plan, "Basic")
         return (
             False,
-            f"You have reached your knowledge base size limit ({int(kb_limit)} MB) for the {plan_name} plan. Please upgrade your subscription to access more data.",
+            f"You have reached your knowledge base size limit ({kb_limit} KB) for the {PLAN_LABELS[plan]} plan. Please upgrade your subscription to access more data.",
         )
 
     return True, None
@@ -285,7 +254,7 @@ def can_user_auto_sync_zotero(db: Session, user: CurrentUser) -> bool:
     return get_user_subscription_plan(db, user) == SubscriptionPlan.RESEARCHER
 
 
-def get_user_usage_info(db: Session, user: CurrentUser) -> Dict:
+def get_user_usage_info(db: Session, user: CurrentUser) -> dict[str, object]:
     """Return resource limits plus the current Monday-based Token Credit window."""
     from app.llm.token_credits import token_quota_status
 
@@ -308,9 +277,7 @@ def get_user_usage_info(db: Session, user: CurrentUser) -> Dict:
         "limits": {**limits},
         "usage": {
             "paper_uploads": current_paper_count,
-            "paper_uploads_remaining": max(
-                0, int(paper_limit) - current_paper_count
-            ),
+            "paper_uploads_remaining": max(0, int(paper_limit) - current_paper_count),
             "knowledge_base_size": total_size,
             "knowledge_base_size_remaining": max(
                 0, int(total_size_allowed) - total_size
@@ -320,8 +287,6 @@ def get_user_usage_info(db: Session, user: CurrentUser) -> Dict:
             "token_credits_remaining": token_remaining,
             "token_credits_overage": token_overage,
             "projects": current_project_count,
-            "projects_remaining": max(
-                0, int(project_limit) - current_project_count
-            ),
+            "projects_remaining": max(0, int(project_limit) - current_project_count),
         },
     }

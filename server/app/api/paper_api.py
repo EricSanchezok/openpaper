@@ -93,7 +93,10 @@ async def get_paper_ids(
             "size_in_kb": paper.size_in_kb,
             "publish_date": (str(paper.publish_date) if paper.publish_date else None),
             "file_url": file_urls.get(str(paper.id)),
-            "tags": [{"id": str(tag.id), "name": tag.name, "color": tag.color} for tag in paper.tags],  # type: ignore
+            "tags": [
+                {"id": str(tag.id), "name": tag.name, "color": tag.color}
+                for tag in paper.tags
+            ],  # type: ignore
         }
         for paper in papers
     ]
@@ -539,7 +542,8 @@ async def get_pdf(
     )
 
     paper_data["tags"] = [  # type: ignore
-        {"id": str(t.id), "name": t.name, "color": t.color} for t in paper.tags  # type: ignore
+        {"id": str(t.id), "name": t.name, "color": t.color}
+        for t in paper.tags  # type: ignore
     ]
 
     # Flag whether this paper originated from a Zotero import (surfaced as a

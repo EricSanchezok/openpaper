@@ -183,7 +183,11 @@ async def process_pdf_file(
         )
     except UnprocessablePDFError as exc:
         logger.warning("PDF processing skipped for %s: %s", job_id, exc)
-        return PDFProcessingResult(success=False, error=str(exc), job_id=job_id)
+        return PDFProcessingResult(
+            success=False,
+            error="pdf_content_insufficient",
+            job_id=job_id,
+        )
     except Exception:
         logger.error("PDF processing failed for %s", job_id, exc_info=True)
         return PDFProcessingResult(

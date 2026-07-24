@@ -82,7 +82,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         conversation_id: UUID,
         current_user: CurrentUser,
         page: int = 1,
-        page_size: int = 10
+        page_size: int = 10,
     ) -> list[Message]:
         """
         Get messages for a conversation:
@@ -113,7 +113,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         project_id: UUID,
         current_user: CurrentUser,
         page: int = 1,
-        page_size: int = 10
+        page_size: int = 10,
     ) -> list[Message]:
         """
         Get messages for a project conversation:
@@ -168,7 +168,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         conversation_id: UUID,
         share_paper_id: str,
         page: int = 1,
-        page_size: int = 10
+        page_size: int = 10,
     ) -> list[Message]:
         """
         Get messages for a shared conversation:
@@ -233,7 +233,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         *,
         conversation_id: UUID,
         current_user: CurrentUser,
-        gap: int = 10
+        gap: int = 10,
     ) -> None:
         """
         Resequence all messages in a conversation with specified gaps
@@ -245,6 +245,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         for i, message in enumerate(messages):
             message.sequence = (i + 1) * gap  # type: ignore
         db.commit()
+
 
 # Create a single instance to use throughout the application
 message_crud = MessageCRUD(Message)

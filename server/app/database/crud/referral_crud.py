@@ -91,9 +91,7 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         """
         return db.query(self.model).filter(self.model.id == referral_id).first()
 
-    def get_by_referee(
-        self, db: Session, referee_user_id: int
-    ) -> Optional[Referral]:
+    def get_by_referee(self, db: Session, referee_user_id: int) -> Optional[Referral]:
         return (
             db.query(self.model)
             .filter(self.model.referee_user_id == referee_user_id)
@@ -196,9 +194,7 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         db.refresh(referral)
         return referral
 
-    def get_summary_for_referrer(
-        self, db: Session, referrer_user_id: int
-    ) -> dict:
+    def get_summary_for_referrer(self, db: Session, referrer_user_id: int) -> dict:
         rows = (
             db.query(
                 self.model.status,

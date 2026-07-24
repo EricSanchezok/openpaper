@@ -85,4 +85,5 @@ class DiscoverSearchCRUD:
             )
             return None
 
+
 discover_search_crud = DiscoverSearchCRUD()

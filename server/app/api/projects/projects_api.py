@@ -345,9 +345,7 @@ async def remove_self_from_project(
         logger.error(f"Error removing self from project {project_id}: {e}")
         return JSONResponse(
             status_code=400,
-            content={
-                "message": "Failed to remove yourself from the project"
-            },
+            content={"message": "Failed to remove yourself from the project"},
         )
 
 

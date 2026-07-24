@@ -1,6 +1,5 @@
 """Discovery pipeline: decompose research questions into subqueries and search."""
 
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any, AsyncGenerator, List, Optional
@@ -8,7 +7,7 @@ from typing import Any, AsyncGenerator, List, Optional
 from app.helpers.anysearch_search import search_anysearch
 from app.helpers.openalex_search import search_openalex
 from app.helpers.scholight_search import search_scholight
-from app.llm.base import BaseLLMClient, ModelType
+from app.llm.base import BaseLLMClient
 from app.schemas.discover import DISCOVER_SOURCES
 from pydantic import BaseModel, Field
 
@@ -40,12 +39,10 @@ def decompose_query(question: str) -> list[str]:
     response = llm_client.generate_content(
         contents=question,
         system_prompt=DECOMPOSE_PROMPT,
-        model_type=ModelType.FAST,
         response_model=DecomposeResponse,
     )
 
-    parsed = DecomposeResponse.model_validate(json.loads(response.text))
-    return parsed.subqueries
+    return DecomposeResponse.model_validate_json(response.text).subqueries
 
 
 async def run_discover_pipeline(

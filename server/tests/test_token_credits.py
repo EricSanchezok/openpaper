@@ -61,3 +61,28 @@ def test_token_settlement_is_idempotent_when_event_key_already_exists() -> None:
     assert db.execute.call_count == 1
     db.rollback.assert_called_once()
     db.commit.assert_not_called()
+
+
+def test_unknown_usage_is_audited_without_incrementing_weekly_total() -> None:
+    db = MagicMock()
+    inserted_result = MagicMock()
+    inserted_result.scalar_one_or_none.return_value = uuid.uuid4()
+    db.execute.return_value = inserted_result
+
+    with (
+        patch("app.llm.token_credits.SessionLocal", return_value=db),
+        llm_usage_context(user_id=42, feature="chat", operation_id="chat-1"),
+    ):
+        recorded = settle_token_usage(
+            model="standard-model",
+            reasoning_level="standard",
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            provider_request_id="request-missing-usage",
+            status="unknown",
+        )
+
+    assert recorded is True
+    assert db.execute.call_count == 1
+    db.commit.assert_called_once()

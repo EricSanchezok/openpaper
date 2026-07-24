@@ -1,13 +1,14 @@
 """
 S3 service for file uploads and management.
 """
+
 import logging
 import os
 import uuid
 from typing import Tuple
 
-import boto3 # type: ignore
-from botocore.exceptions import ClientError # type: ignore
+import boto3  # type: ignore
+from botocore.exceptions import ClientError  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,10 @@ class S3Service:
         """
         try:
             logger.info(f"Downloading file from S3 with key: {object_key}")
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
-            return response['Body'].read()
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name, Key=object_key
+            )
+            return response["Body"].read()
         except ClientError as e:
             logger.error(f"Error downloading file from S3: {e}")
             raise
@@ -107,8 +110,12 @@ class S3Service:
             # Use a UUID prefix to avoid naming conflicts
             object_key = f"{UPLOAD_DIR}/{uuid.uuid4()}-{original_filename}"
 
-            logger.info(f"Uploading file {original_filename} to S3 with key {object_key}")
-            logger.info(f"bucket_name: {self.bucket_name}, cloudflare_bucket_name: {self.cloudflare_bucket_name}")
+            logger.info(
+                f"Uploading file {original_filename} to S3 with key {object_key}"
+            )
+            logger.info(
+                f"bucket_name: {self.bucket_name}, cloudflare_bucket_name: {self.cloudflare_bucket_name}"
+            )
 
             # Upload to S3
             with open(file_path, "rb") as file_obj:

@@ -16,7 +16,12 @@ from app.database.crud.projects.project_conversation_crud import (
 from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
-from app.database.models import Annotation, ArtifactKind, ConversableType, ReasoningLevel
+from app.database.models import (
+    Annotation,
+    ArtifactKind,
+    ConversableType,
+    ReasoningLevel,
+)
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -25,7 +30,9 @@ from app.helpers.ai_limits import (
     release_concurrency,
 )
 from app.llm.citation_handler import CitationHandler
-from app.llm.operations import operations
+from app.llm.conversation_operations import conversation_operations
+from app.llm.multi_paper_operations import multi_paper_operations
+from app.llm.paper_operations import paper_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.message import EvidenceCollection, ResponseStyle
 from app.schemas.user import CurrentUser
@@ -158,7 +165,7 @@ class MultiPaperChatRequest(BaseModel):
 
     @field_validator("conversation_id", "project_id")
     @classmethod
-    def validate_single_uuid(cls, value: str | None) -> str | None:
+    def validate_single_uuid(_cls, value: str | None) -> str | None:
         if value is not None:
             uuid.UUID(value)
         return value
@@ -169,7 +176,7 @@ class MultiPaperChatRequest(BaseModel):
         "mentioned_highlight_ids",
     )
     @classmethod
-    def validate_uuid_list(cls, value: list[str] | None) -> list[str] | None:
+    def validate_uuid_list(_cls, value: list[str] | None) -> list[str] | None:
         if value is not None:
             for item in value:
                 uuid.UUID(item)
@@ -177,7 +184,7 @@ class MultiPaperChatRequest(BaseModel):
 
     @field_validator("user_references")
     @classmethod
-    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
+    def validate_reference_lengths(_cls, value: list[str] | None) -> list[str] | None:
         if value is not None and any(len(item) > 5_000 for item in value):
             raise ValueError("Reference text exceeds maximum length")
         return value
@@ -393,7 +400,7 @@ async def chat_message_multipaper(
                     mentioned_highlights,
                 ) = _resolve_mention_scope(db, current_user, request)
 
-                async for chunk in operations.gather_evidence(
+                async for chunk in multi_paper_operations.gather_evidence(
                     conversation_id=request.conversation_id,
                     question=request.user_query,
                     current_user=current_user,
@@ -408,9 +415,9 @@ async def chat_message_multipaper(
 
                         if chunk_type == "evidence_gathered":
                             # Use the EvidenceCollection directly (preserves is_compacted and citation_index)
-                            assert isinstance(
-                                chunk_content, EvidenceCollection
-                            ), "Chunk content must be an EvidenceCollection"
+                            assert isinstance(chunk_content, EvidenceCollection), (
+                                "Chunk content must be an EvidenceCollection"
+                            )
                             evidence_collection = chunk_content
                         elif chunk_type == "status":
                             _append_status(status_messages, chunk_content)
@@ -453,7 +460,7 @@ async def chat_message_multipaper(
                         paper for paper in all_papers if str(paper.id) in allowed_ids
                     ]
 
-                chat_generator = operations.chat_with_papers(
+                chat_generator = multi_paper_operations.chat_with_papers(
                     question=request.user_query,
                     reasoning_level=request.reasoning_level,
                     user_references=request.user_references,
@@ -544,7 +551,7 @@ async def chat_message_multipaper(
                     )
 
                 # Rename the conversation based on the chat history
-                operations.rename_conversation(
+                conversation_operations.rename_conversation(
                     db=db, conversation_id=request.conversation_id, user=current_user
                 )
 
@@ -592,12 +599,11 @@ async def chat_message_multipaper(
                 )
 
             except Exception as e:
-
                 # Track error event
                 track_event(
                     "everything_chat_message_error",
                     properties={
-                        "error": str(e),
+                        "error_type": type(e).__name__,
                         "type": "everything",
                         "conversation_id": str(request.conversation_id),
                     },
@@ -605,7 +611,7 @@ async def chat_message_multipaper(
                     db=db,
                 )
 
-                logger.error(f"Error in streaming response: {e}", exc_info=True)
+                logger.exception("Error in multi-paper streaming response")
                 yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{END_DELIMITER}"
 
         async def response_generator():
@@ -641,13 +647,13 @@ class ChatMessageRequest(BaseModel):
 
     @field_validator("paper_id", "conversation_id")
     @classmethod
-    def validate_uuid(cls, value: str) -> str:
+    def validate_uuid(_cls, value: str) -> str:
         uuid.UUID(value)
         return value
 
     @field_validator("user_references")
     @classmethod
-    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
+    def validate_reference_lengths(_cls, value: list[str] | None) -> list[str] | None:
         if value is not None and any(len(item) > 5_000 for item in value):
             raise ValueError("Reference text exceeds maximum length")
         return value
@@ -699,7 +705,7 @@ async def chat_message_stream(
                 start_time = datetime.now(timezone.utc)
                 evidence_container = {"evidence": None}
 
-                chat_generator = operations.chat_with_paper(
+                chat_generator = paper_operations.chat_with_paper(
                     paper_id=request.paper_id,
                     conversation_id=request.conversation_id,
                     question=request.user_query,
@@ -784,12 +790,11 @@ async def chat_message_stream(
                 )
 
             except Exception as e:
-
                 # Track error event
                 track_event(
                     "chat_message_error",
                     properties={
-                        "error": str(e),
+                        "error_type": type(e).__name__,
                         "paper_id": str(request.paper_id),
                         "conversation_id": str(request.conversation_id),
                     },
@@ -797,7 +802,7 @@ async def chat_message_stream(
                     db=db,
                 )
 
-                logger.error(f"Error in streaming response: {e}", exc_info=True)
+                logger.exception("Error in paper streaming response")
                 yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{END_DELIMITER}"
 
         async def response_generator():

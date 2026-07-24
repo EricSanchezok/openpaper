@@ -4,10 +4,12 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Union, cast
+from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Any, Iterator, Sequence, cast
 
 import openai
-from app.database.models import Message
+from app.database.models import Message, ReasoningLevel
 from app.llm.token_credits import settle_token_usage
 from app.schemas.responses import (
     FileContent,
@@ -21,76 +23,48 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True)
 class LLMResponse:
-    def __init__(
-        self,
-        text: str,
-        model: str,
-        provider: str = "deepseek",
-        thinking: Optional[str] = None,
-        tool_calls: Optional[List[ToolCall]] = None,
-    ):
-        self.text = text
-        self.model = model
-        self.provider = provider
-        self.thinking = thinking
-        self.tool_calls = tool_calls or []
+    text: str
+    thinking: str | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
 class StreamChunk:
-    def __init__(
-        self,
-        text: str,
-        model: str,
-        provider: str = "deepseek",
-        is_done: bool = False,
-        thinking: str | None = None,
-    ):
-        self.text = text
-        self.model = model
-        self.provider = provider
-        self.is_done = is_done
-        self.thinking = thinking
+    text: str
+    is_done: bool = False
+    thinking: str | None = None
 
 
-MessageContent = Union[TextContent, FileContent, SupplementaryContent]
-MessageParam = Union[str, Sequence[MessageContent]]
+MessageContent = TextContent | FileContent | SupplementaryContent
+MessageParam = str | Sequence[MessageContent]
 
 
 class LLMBackend(ABC):
-    @property
-    @abstractmethod
-    def client(self) -> Any: ...
-
     @abstractmethod
     def generate_content(
         self,
-        model: str,
-        contents: Union[str, MessageParam],
-        system_prompt: Optional[str] = None,
-        history: Optional[List[Message]] = None,
-        function_declarations: Optional[List[Dict[str, Any]]] = None,
-        tool_call_results: Optional[List[ToolCallResult]] = None,
-        schema: Optional[Dict[str, Any]] = None,
+        contents: MessageParam,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+        system_prompt: str | None = None,
+        history: list[Message] | None = None,
+        function_declarations: list[dict[str, Any]] | None = None,
+        tool_call_results: list[ToolCallResult] | None = None,
+        schema: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse: ...
 
     @abstractmethod
     def send_message_stream(
         self,
-        model: str,
         message: MessageParam,
-        history: List[Message],
+        history: list[Message],
         system_prompt: str,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         file: FileContent | None = None,
         **kwargs: Any,
     ) -> Iterator[StreamChunk]: ...
-
-    @abstractmethod
-    def get_default_model(self) -> str: ...
-
-    @abstractmethod
-    def get_fast_model(self) -> str: ...
 
 
 def _usage_value(usage: Any, name: str) -> int:
@@ -116,36 +90,47 @@ class DeepSeekBackend(LLMBackend):
             timeout=float(os.getenv("DEEPSEEK_REQUEST_TIMEOUT_SECONDS", "120")),
             max_retries=int(os.getenv("DEEPSEEK_MAX_RETRIES", "2")),
         )
-        self._default_model = os.getenv(
-            "DEEPSEEK_STANDARD_MODEL", "deepseek-v4-flash"
-        )
+        self._default_model = os.getenv("DEEPSEEK_STANDARD_MODEL", "deepseek-v4-flash")
         self._deep_model = os.getenv("DEEPSEEK_DEEP_MODEL", "deepseek-v4-pro")
-        self._max_output_tokens = int(
-            os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "8192")
-        )
+        self._max_output_tokens = int(os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "8192"))
 
-    @property
-    def client(self) -> openai.OpenAI:
-        return self._client
+    def _model(self, reasoning_level: ReasoningLevel) -> str:
+        if reasoning_level == ReasoningLevel.DEEP:
+            return self._deep_model
+        return self._default_model
 
-    def _reasoning_level(self, model: str) -> str:
-        return "deep" if model == self._deep_model else "standard"
-
-    def _thinking_body(self, model: str) -> dict[str, Any]:
-        if self._reasoning_level(model) == "deep":
+    def _thinking_body(self, reasoning_level: ReasoningLevel) -> dict[str, Any]:
+        if reasoning_level == ReasoningLevel.DEEP:
             return {
                 "thinking": {"type": "enabled"},
                 "reasoning_effort": "max",
             }
         return {"thinking": {"type": "disabled"}}
 
-    def _settle(self, *, model: str, response_id: str | None, usage: Any) -> None:
+    def _settle(
+        self,
+        *,
+        model: str,
+        reasoning_level: ReasoningLevel,
+        response_id: str | None,
+        usage: Any,
+    ) -> None:
         if usage is None:
             logger.warning("deepseek_response_missing_usage", extra={"model": model})
+            settle_token_usage(
+                model=model,
+                reasoning_level=reasoning_level.value,
+                provider_request_id=response_id,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                idempotency_key=(f"deepseek:{response_id}" if response_id else None),
+                status="unknown",
+            )
             return
         settle_token_usage(
             model=model,
-            reasoning_level=self._reasoning_level(model),
+            reasoning_level=reasoning_level.value,
             provider_request_id=response_id,
             prompt_tokens=_usage_value(usage, "prompt_tokens"),
             completion_tokens=_usage_value(usage, "completion_tokens"),
@@ -153,22 +138,21 @@ class DeepSeekBackend(LLMBackend):
             cache_hit_tokens=_usage_value(usage, "prompt_cache_hit_tokens"),
             cache_miss_tokens=_usage_value(usage, "prompt_cache_miss_tokens"),
             total_tokens=_usage_value(usage, "total_tokens"),
-            idempotency_key=(
-                f"deepseek:{response_id}" if response_id else None
-            ),
+            idempotency_key=(f"deepseek:{response_id}" if response_id else None),
         )
 
     def generate_content(
         self,
-        model: str,
-        contents: Union[str, MessageParam],
-        system_prompt: Optional[str] = None,
-        history: Optional[List[Message]] = None,
-        function_declarations: Optional[List[Dict[str, Any]]] = None,
-        tool_call_results: Optional[List[ToolCallResult]] = None,
-        schema: Optional[Dict[str, Any]] = None,
+        contents: MessageParam,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+        system_prompt: str | None = None,
+        history: list[Message] | None = None,
+        function_declarations: list[dict[str, Any]] | None = None,
+        tool_call_results: list[ToolCallResult] | None = None,
+        schema: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
+        model = self._model(reasoning_level)
         prompt = system_prompt or ""
         if schema:
             prompt = (
@@ -188,10 +172,10 @@ class DeepSeekBackend(LLMBackend):
                 self._cast_tool_declaration(item) for item in function_declarations
             ]
         kwargs.setdefault("max_tokens", self._max_output_tokens)
-        response = self.client.chat.completions.create(
+        response = self._client.chat.completions.create(
             model=model,
             messages=messages,
-            extra_body=self._thinking_body(model),
+            extra_body=self._thinking_body(reasoning_level),
             **kwargs,
         )
         if not response.choices:
@@ -209,25 +193,26 @@ class DeepSeekBackend(LLMBackend):
         thinking = getattr(message, "reasoning_content", None)
         self._settle(
             model=model,
+            reasoning_level=reasoning_level,
             response_id=getattr(response, "id", None),
             usage=response.usage,
         )
         return LLMResponse(
             text=message.content or "",
-            model=model,
             thinking=thinking if isinstance(thinking, str) else None,
             tool_calls=tool_calls,
         )
 
     def send_message_stream(
         self,
-        model: str,
         message: MessageParam,
-        history: List[Message],
+        history: list[Message],
         system_prompt: str,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         file: FileContent | None = None,
         **kwargs: Any,
     ) -> Iterator[StreamChunk]:
+        model = self._model(reasoning_level)
         messages = self._prepare_messages(
             history=history,
             new_message=message,
@@ -235,32 +220,45 @@ class DeepSeekBackend(LLMBackend):
             file=file,
         )
         kwargs.setdefault("max_tokens", self._max_output_tokens)
-        stream = self.client.chat.completions.create(
+        stream = self._client.chat.completions.create(
             model=model,
             messages=messages,
             stream=True,
             stream_options={"include_usage": True},
-            extra_body=self._thinking_body(model),
+            extra_body=self._thinking_body(reasoning_level),
             **kwargs,
         )
         response_id: str | None = None
-        for chunk in stream:
-            response_id = getattr(chunk, "id", response_id)
-            if chunk.usage is not None:
+        usage_received = False
+        try:
+            for chunk in stream:
+                response_id = getattr(chunk, "id", response_id)
+                if chunk.usage is not None:
+                    usage_received = True
+                    self._settle(
+                        model=model,
+                        reasoning_level=reasoning_level,
+                        response_id=response_id,
+                        usage=chunk.usage,
+                    )
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                text = choice.delta.content or ""
+                thinking = getattr(choice.delta, "reasoning_content", None)
+                if text or thinking or choice.finish_reason is not None:
+                    yield StreamChunk(
+                        text=text,
+                        is_done=choice.finish_reason is not None,
+                        thinking=thinking if isinstance(thinking, str) else None,
+                    )
+        finally:
+            if not usage_received:
                 self._settle(
-                    model=model, response_id=response_id, usage=chunk.usage
-                )
-            if not chunk.choices:
-                continue
-            choice = chunk.choices[0]
-            text = choice.delta.content or ""
-            thinking = getattr(choice.delta, "reasoning_content", None)
-            if text or thinking or choice.finish_reason is not None:
-                yield StreamChunk(
-                    text=text,
                     model=model,
-                    is_done=choice.finish_reason is not None,
-                    thinking=thinking if isinstance(thinking, str) else None,
+                    reasoning_level=reasoning_level,
+                    response_id=response_id,
+                    usage=None,
                 )
 
     def _convert_message_content(self, content: MessageParam) -> Any:
@@ -296,11 +294,11 @@ class DeepSeekBackend(LLMBackend):
 
     def _prepare_messages(
         self,
-        history: List[Message],
+        history: list[Message],
         new_message: MessageParam,
         system_prompt: str = "",
         file: FileContent | None = None,
-        tool_call_results: Optional[List[ToolCallResult]] = None,
+        tool_call_results: list[ToolCallResult] | None = None,
     ) -> list[ChatCompletionMessageParam]:
         messages: list[dict[str, Any]] = []
         if system_prompt:
@@ -325,9 +323,7 @@ class DeepSeekBackend(LLMBackend):
                         },
                     }
                 )
-            messages.append(
-                {"role": "assistant", "content": None, "tool_calls": calls}
-            )
+            messages.append({"role": "assistant", "content": None, "tool_calls": calls})
             for index, result in enumerate(tool_call_results):
                 value = result.result
                 content = (
@@ -348,7 +344,7 @@ class DeepSeekBackend(LLMBackend):
         return cast(list[ChatCompletionMessageParam], messages)
 
     def _cast_tool_declaration(
-        self, declaration: Dict[str, Any]
+        self, declaration: dict[str, Any]
     ) -> ChatCompletionToolParam:
         return {
             "type": "function",
@@ -359,14 +355,11 @@ class DeepSeekBackend(LLMBackend):
             },
         }
 
-    def get_default_model(self) -> str:
-        return self._default_model
 
-    def get_fast_model(self) -> str:
-        return self._default_model
-
-    def get_deep_model(self) -> str:
-        return self._deep_model
+@lru_cache(maxsize=1)
+def get_llm_backend() -> LLMBackend:
+    """Return the process-wide backend and its reusable HTTP connection pool."""
+    return DeepSeekBackend()
 
 
 __all__ = [
@@ -379,4 +372,5 @@ __all__ = [
     "SupplementaryContent",
     "TextContent",
     "ToolCallResult",
+    "get_llm_backend",
 ]

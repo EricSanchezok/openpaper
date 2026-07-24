@@ -44,9 +44,7 @@ class CRUDZoteroImport:
             .scalar()
         )
 
-    def get_auto_import_since(
-        self, db: Session, *, user_id: int
-    ) -> Optional[datetime]:
+    def get_auto_import_since(self, db: Session, *, user_id: int) -> Optional[datetime]:
         return (
             db.query(func.max(ZoteroImportedItem.created_at))
             .filter(

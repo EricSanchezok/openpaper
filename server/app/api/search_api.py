@@ -101,7 +101,6 @@ async def get_search_stats(
     Returns counts of papers, highlights, and annotations.
     """
     try:
-
         # Count total items in user's knowledge base
         total_papers = db.query(Paper).filter(Paper.user_id == current_user.id).count()
         total_highlights = (

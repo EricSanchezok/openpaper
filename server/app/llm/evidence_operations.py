@@ -12,9 +12,8 @@ from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
-from app.llm.base import BaseLLMClient, ModelType
+from app.llm.base import BaseLLMClient
 from app.llm.citation_agent import find_citation_function, run_find_citation
-from app.llm.json_parser import JSONParser
 from app.llm.prompts import (
     EVIDENCE_COMPACTION_PROMPT,
     EVIDENCE_GATHERING_MESSAGE,
@@ -36,7 +35,6 @@ from app.llm.tools.file_tools import (
     view_file_function,
 )
 from app.llm.tools.meta_tools import stop_function
-from app.llm.utils import retry_llm_operation
 from app.schemas.citation import CitationResult
 from app.schemas.message import (
     EvidenceCollection,
@@ -102,7 +100,6 @@ def _summarize_citation(result: CitationResult) -> str:
 class EvidenceOperations(BaseLLMClient):
     """Operations related to evidence gathering and compaction from multiple papers."""
 
-    @retry_llm_operation(max_retries=3, delay=1.0)
     async def gather_evidence(
         self,
         question: str,
@@ -239,7 +236,6 @@ class EvidenceOperations(BaseLLMClient):
                 system_prompt=evidence_gathering_prompt,
                 history=conversation_history,
                 contents=message_content,
-                model_type=ModelType.FAST,
                 function_declarations=function_declarations,
                 tool_call_results=tool_call_results,
             )
@@ -457,10 +453,10 @@ class EvidenceOperations(BaseLLMClient):
                             db=db,
                         )
             except Exception as e:
-                logger.warning(f"Fallback search failed: {e}")
+                logger.exception("Fallback search failed")
                 track_event(
                     "fallback_search_error",
-                    {"error": str(e)},
+                    {"error_type": type(e).__name__},
                     user_id=str(current_user.id),
                     db=db,
                 )
@@ -519,17 +515,13 @@ class EvidenceOperations(BaseLLMClient):
         llm_response = self.generate_content(
             system_prompt="You are a research assistant that summarizes tool call results while preserving key information.",
             contents=message_content,
-            model_type=ModelType.DEFAULT,
             response_model=ToolResultCompactionResponse,
         )
 
         try:
             if llm_response and llm_response.text:
-                compaction_response = JSONParser.validate_and_extract_json(
+                compaction_response = ToolResultCompactionResponse.model_validate_json(
                     llm_response.text
-                )
-                compaction_response = ToolResultCompactionResponse.model_validate(
-                    compaction_response
                 )
 
                 evidence_collection.apply_compacted_results(
@@ -650,7 +642,6 @@ class EvidenceOperations(BaseLLMClient):
         llm_response = self.generate_content(
             system_prompt="You are a research assistant that summarizes evidence snippets from research papers.",
             contents=message_content,
-            model_type=ModelType.FAST,
             response_model=EvidenceSummaryResponse,
         )
 
@@ -658,9 +649,8 @@ class EvidenceOperations(BaseLLMClient):
 
         try:
             if llm_response and llm_response.text:
-                response_json = JSONParser.validate_and_extract_json(llm_response.text)
-                compaction_response = EvidenceSummaryResponse.model_validate(
-                    response_json
+                compaction_response = EvidenceSummaryResponse.model_validate_json(
+                    llm_response.text
                 )
 
                 for paper_summary in compaction_response.papers:
@@ -724,7 +714,6 @@ class EvidenceOperations(BaseLLMClient):
                 "matching the schema."
             ),
             contents=message_content,
-            model_type=ModelType.FAST,
             schema=KEYWORD_EXTRACTION_SCHEMA,
         )
 

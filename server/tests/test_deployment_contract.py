@@ -96,6 +96,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         "DEEPSEEK_API_KEY",
         "MINERU_API_TOKEN",
         "MOSS_API_KEY",
+        "MOSS_MAX_AUDIO_BYTES",
         "JOBS_WEBHOOK_SIGNING_SECRET",
         "NEXT_PUBLIC_API_URL",
     ):
@@ -111,9 +112,11 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "OPENPAPER_DEEPSEEK_API_KEY=" in runtime
     assert "OPENPAPER_MINERU_API_TOKEN=" in runtime
     assert "OPENPAPER_MOSS_API_KEY=" in runtime
+    assert "OPENPAPER_MOSS_MAX_AUDIO_BYTES=" in runtime
     assert "OPENPAPER_JOBS_WEBHOOK_SIGNING_SECRET=" in runtime
     assert "ANYSEARCH_MCP_URL:" in compose
     assert "SCHOLIGHT_MCP_URL:" in compose
+    assert "MOSS_MAX_AUDIO_BYTES:" in compose
     for legacy_variable in (
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",

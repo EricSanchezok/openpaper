@@ -9,7 +9,7 @@ import os
 from typing import Any, Callable, TypeVar
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from src.prompts import EXTRACT_COLS_INSTRUCTION, EXTRACT_METADATA_PROMPT_TEMPLATE
 from src.schemas import DataTableCellValue, DataTableRow, PaperMetadataExtraction
@@ -29,20 +29,22 @@ class DeepSeekExtractionClient:
             raise ValueError("DEEPSEEK_API_KEY environment variable is not set")
 
         self.model = os.getenv("DEEPSEEK_STANDARD_MODEL", "deepseek-v4-flash")
-        self.max_output_tokens = int(
-            os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "8192")
+        self.max_output_tokens = int(os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "8192"))
+        self.max_input_chars = int(os.getenv("DEEPSEEK_MAX_INPUT_CHARS", "300000"))
+        self.structured_retries = int(os.getenv("DEEPSEEK_STRUCTURED_RETRIES", "2"))
+        self._api_key = api_key
+        self._base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        self._timeout_seconds = float(
+            os.getenv("DEEPSEEK_REQUEST_TIMEOUT_SECONDS", "120")
         )
-        self.max_input_chars = int(
-            os.getenv("DEEPSEEK_MAX_INPUT_CHARS", "300000")
-        )
-        self.structured_retries = int(
-            os.getenv("DEEPSEEK_STRUCTURED_RETRIES", "2")
-        )
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-            timeout=float(os.getenv("DEEPSEEK_REQUEST_TIMEOUT_SECONDS", "120")),
-            max_retries=int(os.getenv("DEEPSEEK_MAX_RETRIES", "2")),
+        self._max_retries = int(os.getenv("DEEPSEEK_MAX_RETRIES", "2"))
+
+    def _new_client(self) -> AsyncOpenAI:
+        return AsyncOpenAI(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            timeout=self._timeout_seconds,
+            max_retries=self._max_retries,
         )
 
     async def _generate_structured(
@@ -64,16 +66,17 @@ class DeepSeekExtractionClient:
             },
             {
                 "role": "user",
-                "content": (
-                    f"{prompt}\n\nJSON Schema:\n{schema_json}"
-                )[: self.max_input_chars],
+                "content": (f"{prompt}\n\nJSON Schema:\n{schema_json}")[
+                    : self.max_input_chars
+                ],
             },
         ]
 
         last_error: Exception | None = None
-        for attempt in range(self.structured_retries + 1):
-            try:
-                response = await self.client.chat.completions.create(
+        client = self._new_client()
+        try:
+            for attempt in range(self.structured_retries + 1):
+                response = await client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     response_format={"type": "json_object"},
@@ -88,12 +91,15 @@ class DeepSeekExtractionClient:
                     idempotency_suffix=f"{idempotency_suffix}:attempt:{attempt}",
                 )
                 content = response.choices[0].message.content or ""
-                return schema.model_validate_json(content)
-            except Exception as exc:
-                last_error = exc
-                if attempt >= self.structured_retries:
-                    break
-                await asyncio.sleep(2**attempt)
+                try:
+                    return schema.model_validate_json(content)
+                except ValidationError as exc:
+                    last_error = exc
+                    if attempt >= self.structured_retries:
+                        break
+                    await asyncio.sleep(2**attempt)
+        finally:
+            await client.close()
 
         raise ValueError(
             f"DeepSeek returned invalid structured output for {schema.__name__}"
@@ -109,8 +115,7 @@ class DeepSeekExtractionClient:
             status_callback("Extracting paper metadata")
 
         prompt = (
-            f"{EXTRACT_METADATA_PROMPT_TEMPLATE}\n\n"
-            f"Paper content:\n{paper_content}"
+            f"{EXTRACT_METADATA_PROMPT_TEMPLATE}\n\nPaper content:\n{paper_content}"
         )
         async with time_it("Extracting paper metadata from DeepSeek", job_id=job_id):
             result = await self._generate_structured(
@@ -144,9 +149,7 @@ class DeepSeekExtractionClient:
             __config__=ConfigDict(extra="forbid"),
             **field_definitions,
         )
-        cols = "\n".join(
-            f'- {alias}: "{column}"' for alias, column in aliases.items()
-        )
+        cols = "\n".join(f'- {alias}: "{column}"' for alias, column in aliases.items())
         prompt = (
             EXTRACT_COLS_INSTRUCTION.format(
                 cols_str=cols,
@@ -163,8 +166,7 @@ class DeepSeekExtractionClient:
         return DataTableRow(
             paper_id=paper_id,
             values={
-                column: getattr(values, alias)
-                for alias, column in aliases.items()
+                column: getattr(values, alias) for alias, column in aliases.items()
             },
         )
 

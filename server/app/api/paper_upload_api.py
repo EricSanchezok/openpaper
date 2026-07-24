@@ -279,8 +279,7 @@ async def upload_pdf(
     max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     declared_size = request.headers.get("content-length")
     if declared_size and (
-        not declared_size.isdigit()
-        or int(declared_size) > max_bytes + 1024 * 1024
+        not declared_size.isdigit() or int(declared_size) > max_bytes + 1024 * 1024
     ):
         return JSONResponse(
             status_code=413,

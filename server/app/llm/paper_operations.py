@@ -6,9 +6,8 @@ from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
 from app.database.database import get_db
 from app.database.models import Paper, ReasoningLevel
-from app.llm.base import BaseLLMClient, ModelType
+from app.llm.base import BaseLLMClient
 from app.llm.citation_handler import CitationHandler
-from app.llm.json_parser import JSONParser
 from app.llm.prompts import (
     ANSWER_PAPER_QUESTION_SYSTEM_PROMPT,
     ANSWER_PAPER_QUESTION_USER_MESSAGE,
@@ -18,7 +17,6 @@ from app.llm.prompts import (
     NORMAL_MODE_INSTRUCTIONS,
 )
 from app.llm.backend import SupplementaryContent, TextContent
-from app.llm.utils import retry_llm_operation
 from app.schemas.message import ResponseStyle
 from app.schemas.responses import AudioOverviewForLLM
 from app.schemas.user import CurrentUser
@@ -31,7 +29,6 @@ logger = logging.getLogger(__name__)
 class PaperOperations(BaseLLMClient):
     """Operations related to paper analysis and chat functionality"""
 
-    @retry_llm_operation(max_retries=3, delay=1.0)
     def create_narrative_summary(
         self,
         paper_id: str,
@@ -64,7 +61,7 @@ class PaperOperations(BaseLLMClient):
             schema=audio_overview_schema,
         )
 
-        message_content = [
+        message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
                 label="paper",
                 content=str(paper.raw_content or ""),
@@ -78,18 +75,7 @@ class PaperOperations(BaseLLMClient):
             response_model=AudioOverviewForLLM,
         )
 
-        try:
-            if response and response.text:
-                # Parse the response text as JSON
-                response_json = JSONParser.validate_and_extract_json(response.text)
-                # Validate against the AudioOverview schema
-                audio_overview = AudioOverviewForLLM.model_validate(response_json)
-                return audio_overview
-            else:
-                raise ValueError("Empty response from LLM.")
-        except ValueError as e:
-            logger.error(f"Error parsing LLM response: {e}", exc_info=True)
-            raise ValueError(f"Invalid response from LLM: {str(e)}")
+        return AudioOverviewForLLM.model_validate_json(response.text)
 
     async def chat_with_paper(
         self,
@@ -100,9 +86,8 @@ class PaperOperations(BaseLLMClient):
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Optional[Sequence[str]] = None,
         response_style: Optional[str] = "normal",
-        model_type: ModelType = ModelType.DEFAULT,
         db: Session = Depends(get_db),
-    ) -> AsyncGenerator[Union[str, dict], None]:
+    ) -> AsyncGenerator[Union[str, dict[str, object]], None]:
         """
         Chat with the paper using the specified model
         """
@@ -113,7 +98,7 @@ class PaperOperations(BaseLLMClient):
             else None
         )
 
-        paper: Paper = paper_crud.get(db, id=paper_id, user=current_user)
+        paper: Paper | None = paper_crud.get(db, id=paper_id, user=current_user)
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found.")
@@ -148,7 +133,7 @@ class PaperOperations(BaseLLMClient):
         START_DELIMITER = "---EVIDENCE---"
         END_DELIMITER = "---END-EVIDENCE---"
 
-        message_content = [
+        message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
                 label="paper",
                 content=str(paper.raw_content or ""),
@@ -161,7 +146,6 @@ class PaperOperations(BaseLLMClient):
             message=message_content,
             system_prompt=formatted_system_prompt,
             history=conversation_history,
-            model_type=model_type,
             reasoning_level=reasoning_level,
         ):
             if chunk.thinking:
@@ -232,3 +216,6 @@ class PaperOperations(BaseLLMClient):
 
         if text_buffer:
             yield {"type": "content", "content": text_buffer}
+
+
+paper_operations = PaperOperations()

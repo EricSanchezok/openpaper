@@ -3,7 +3,16 @@ import json
 import logging
 import uuid
 from contextlib import suppress
-from typing import AsyncGenerator, List, Literal, Optional, Sequence, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Union,
+)
 
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
@@ -11,17 +20,14 @@ from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import Paper, ReasoningLevel
-from app.llm.base import ModelType
 from app.llm.citation_handler import CitationHandler
 from app.llm.evidence_operations import EvidenceOperations
-from app.llm.json_parser import JSONParser
 from app.llm.prompts import (
     ANSWER_EVIDENCE_BASED_QUESTION_MESSAGE,
     ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT,
     GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
-from app.llm.utils import retry_llm_operation
 from app.schemas.message import EvidenceCollection
 from app.schemas.responses import AudioOverviewForLLM
 from app.schemas.user import CurrentUser
@@ -46,9 +52,9 @@ class MultiPaperOperations(EvidenceOperations):
         evidence_gathered: EvidenceCollection,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Optional[Sequence[str]] = None,
-        mentioned_highlights: Optional[List[dict]] = None,
+        mentioned_highlights: Optional[List[dict[str, Any]]] = None,
         db: Session = Depends(get_db),
-    ) -> AsyncGenerator[Union[str, dict], None]:
+    ) -> AsyncGenerator[Union[str, dict[str, Any]], None]:
         """
         Chat with everything in the user's knowledge base using the specified model
         """
@@ -86,7 +92,7 @@ class MultiPaperOperations(EvidenceOperations):
         END_DELIMITER = "---END-EVIDENCE---"
 
         # Build multipart message: supplementary evidence + user question
-        message_content = [
+        message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
                 content=json.dumps(evidence_gathered.get_evidence_dict(), indent=2),
                 label="collected_evidence",
@@ -134,9 +140,9 @@ class MultiPaperOperations(EvidenceOperations):
             for payload in artifact_payloads:
                 yield {"type": "artifact", "content": payload}
 
-        queue = asyncio.Queue()
+        queue: asyncio.Queue[StreamChunk | dict[str, str] | None] = asyncio.Queue()
 
-        async def pinger():
+        async def pinger() -> None:
             """Yields a status message every 5 seconds to keep the connection alive."""
             with suppress(asyncio.CancelledError):
                 while True:
@@ -145,15 +151,16 @@ class MultiPaperOperations(EvidenceOperations):
                     )
                     await asyncio.sleep(5)
 
-        async def stream_reader():
+        async def stream_reader() -> None:
             """Reads from the LLM stream and puts chunks into the queue."""
-            _sentinel = object()
 
-            def get_next_chunk(iterator):
+            def get_next_chunk(
+                iterator: Iterator[StreamChunk],
+            ) -> StreamChunk | None:
                 try:
                     return next(iterator)
                 except StopIteration:
-                    return _sentinel
+                    return None
 
             try:
                 blocking_iterator = self.send_message_stream(
@@ -164,7 +171,7 @@ class MultiPaperOperations(EvidenceOperations):
                 )
                 while True:
                     chunk = await asyncio.to_thread(get_next_chunk, blocking_iterator)
-                    if chunk is _sentinel:
+                    if chunk is None:
                         break
                     await queue.put(chunk)
             finally:
@@ -181,7 +188,7 @@ class MultiPaperOperations(EvidenceOperations):
                 if item is None:  # Stream is done
                     break
 
-                if isinstance(item, dict) and item.get("type") == "status":
+                if isinstance(item, dict):
                     yield item
                     continue
 
@@ -189,7 +196,7 @@ class MultiPaperOperations(EvidenceOperations):
                     pinger_task.cancel()
                     first_chunk_received = True
 
-                chunk: StreamChunk = item  # type: ignore
+                chunk = item
                 if chunk.thinking:
                     yield {"type": "reasoning", "content": chunk.thinking}
                 text = chunk.text
@@ -312,7 +319,6 @@ class MultiPaperOperations(EvidenceOperations):
         if text_buffer:
             yield {"type": "content", "content": text_buffer}
 
-    @retry_llm_operation(max_retries=3, delay=1.0)
     async def create_multi_paper_narrative_summary(
         self,
         current_user: CurrentUser,
@@ -347,8 +353,10 @@ class MultiPaperOperations(EvidenceOperations):
             db=db,
         ):
             if result.get("type") == "evidence_gathered":
-                evidence_collection = result.get("content")
-                break
+                content = result.get("content")
+                if isinstance(content, EvidenceCollection):
+                    evidence_collection = content
+                    break
 
         if evidence_collection is None:
             evidence_collection = EvidenceCollection()
@@ -389,17 +397,10 @@ class MultiPaperOperations(EvidenceOperations):
 
         response = self.generate_content(
             contents=message_content,
-            model_type=ModelType.DEFAULT,
             response_model=AudioOverviewForLLM,
         )
 
-        try:
-            if response and response.text:
-                response_json = JSONParser.validate_and_extract_json(response.text)
-                audio_overview = AudioOverviewForLLM.model_validate(response_json)
-                return audio_overview
-            else:
-                raise ValueError("Empty response from LLM.")
-        except ValueError as e:
-            logger.error(f"Error parsing LLM response: {e}", exc_info=True)
-            raise ValueError(f"Invalid response from LLM: {str(e)}")
+        return AudioOverviewForLLM.model_validate_json(response.text)
+
+
+multi_paper_operations = MultiPaperOperations()

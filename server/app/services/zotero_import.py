@@ -998,7 +998,7 @@ async def _import_one_paper(
         return {
             "status": "error",
             "zotero_item_key": item_key,
-            "error": str(e),
+            "error": "zotero_import_failed",
         }
     finally:
         db.close()
@@ -1248,10 +1248,13 @@ async def import_batch(
         api_key=str(connection.api_key),
     )
 
-    candidates, deferred_links, skipped_already_imported, errors = (
-        await _discover_candidates_by_keys(
-            db, client=client, user=user, item_keys=item_keys
-        )
+    (
+        candidates,
+        deferred_links,
+        skipped_already_imported,
+        errors,
+    ) = await _discover_candidates_by_keys(
+        db, client=client, user=user, item_keys=item_keys
     )
 
     imported: List[Dict[str, Any]] = []
@@ -1287,7 +1290,7 @@ async def import_batch(
                 errors.append(
                     {
                         "zotero_item_key": item_key,
-                        "error": str(raw),
+                        "error": "zotero_import_failed",
                     }
                 )
                 continue
@@ -1520,7 +1523,10 @@ async def sync_batch(
                 exc_info=True,
             )
             errors.append(
-                {"zotero_item_key": str(import_row.zotero_item_key), "error": str(e)}
+                {
+                    "zotero_item_key": str(import_row.zotero_item_key),
+                    "error": "zotero_sync_failed",
+                }
             )
 
     unique_paper_ids = {r["paper_id"] for r in synced if r.get("paper_id")}

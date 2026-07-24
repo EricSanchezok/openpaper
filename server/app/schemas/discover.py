@@ -79,7 +79,9 @@ class DiscoverSearchRequest(BaseModel):
 
     @field_validator("sources")
     @classmethod
-    def validate_sources(cls, value: list[str] | None) -> list[str] | None:
-        if value is not None and any(source not in DISCOVER_SOURCES for source in value):
+    def validate_sources(_cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(
+            source not in DISCOVER_SOURCES for source in value
+        ):
             raise ValueError("Unknown Discover source")
         return value

@@ -56,6 +56,16 @@ def test_mineru_archive_requires_safe_canonical_artifacts(
         )
 
 
+def test_mineru_rejects_non_public_archive_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MINERU_API_TOKEN", "test-token")
+    client = MinerUClient()
+
+    with pytest.raises(ValueError, match="non-public"):
+        client._validate_archive_url("https://127.0.0.1/result.zip")
+
+
 def test_jobs_usage_uses_provider_total_as_the_only_charge() -> None:
     usage = SimpleNamespace(
         prompt_tokens=100,
@@ -126,6 +136,7 @@ def test_jobs_webhook_signature_covers_method_target_nonce_and_body(
             hashlib.sha256(expected_body).hexdigest(),
         )
     ).encode()
-    assert headers["X-Jobs-Signature"] == hmac.new(
-        b"s" * 32, canonical, hashlib.sha256
-    ).hexdigest()
+    assert (
+        headers["X-Jobs-Signature"]
+        == hmac.new(b"s" * 32, canonical, hashlib.sha256).hexdigest()
+    )

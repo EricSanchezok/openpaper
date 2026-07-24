@@ -143,7 +143,9 @@ async def handle_stripe_webhook(
                         customer_email = stripe_customer.email
 
                         if customer_email:
-                            user = user_repository.get_by_email(db=db, email=customer_email)
+                            user = user_repository.get_by_email(
+                                db=db, email=customer_email
+                            )
 
                             if user:
                                 user_id = user.id

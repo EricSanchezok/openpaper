@@ -167,12 +167,16 @@ class ProjectRoleInvitationCRUD(
                     send_project_invite_email(
                         to_email=email,
                         project_title=project.title,
-                        from_name=str(inviting_user.display_name or inviting_user.email),
+                        from_name=str(
+                            inviting_user.display_name or inviting_user.email
+                        ),
                     )
                 else:
                     send_general_invite_email(
                         to_email=email,
-                        from_name=str(inviting_user.display_name or inviting_user.email),
+                        from_name=str(
+                            inviting_user.display_name or inviting_user.email
+                        ),
                     )
 
             return invitation

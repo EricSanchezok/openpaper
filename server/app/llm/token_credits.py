@@ -9,6 +9,7 @@ from typing import Iterator
 
 from app.database.database import SessionLocal
 from app.database.models import TokenUsageEvent, TokenWeeklyUsage
+from app.schemas.user import CurrentUser
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -62,10 +63,13 @@ def settle_token_usage(
     cache_hit_tokens: int = 0,
     cache_miss_tokens: int = 0,
     idempotency_key: str | None = None,
+    status: str = "settled",
 ) -> bool:
     """Persist one provider-reported usage event and increment its weekly total once."""
     context = current_usage_context()
-    if context is None or total_tokens <= 0:
+    if status not in {"settled", "unknown"}:
+        raise ValueError("Unsupported token usage status")
+    if context is None or (status == "settled" and total_tokens <= 0):
         return False
 
     week_start = utc_week_start()
@@ -91,7 +95,7 @@ def settle_token_usage(
                 cache_hit_tokens=max(0, cache_hit_tokens),
                 cache_miss_tokens=max(0, cache_miss_tokens),
                 total_tokens=total_tokens,
-                status="settled",
+                status=status,
             )
             .on_conflict_do_nothing(index_elements=["idempotency_key"])
             .returning(TokenUsageEvent.id)
@@ -100,6 +104,10 @@ def settle_token_usage(
         if inserted is None:
             db.rollback()
             return False
+
+        if status == "unknown":
+            db.commit()
+            return True
 
         weekly_stmt = (
             insert(TokenWeeklyUsage)
@@ -138,7 +146,7 @@ def get_token_usage(db: Session, *, user_id: int) -> int:
     return int(value or 0)
 
 
-def token_quota_status(db: Session, *, user: object) -> tuple[int, int, int, int]:
+def token_quota_status(db: Session, *, user: CurrentUser) -> tuple[int, int, int, int]:
     """Return (limit, used, remaining, overage) for the user's current plan."""
     from app.helpers.subscription_limits import (
         TOKEN_CREDITS_KEY,
@@ -146,13 +154,13 @@ def token_quota_status(db: Session, *, user: object) -> tuple[int, int, int, int
         get_user_subscription_plan,
     )
 
-    plan = get_user_subscription_plan(db, user)  # type: ignore[arg-type]
+    plan = get_user_subscription_plan(db, user)
     limit = int(get_plan_limits(plan)[TOKEN_CREDITS_KEY])
-    used = get_token_usage(db, user_id=int(getattr(user, "id")))
+    used = get_token_usage(db, user_id=user.id)
     return limit, used, max(0, limit - used), max(0, used - limit)
 
 
-def has_token_credits(db: Session, *, user: object) -> bool:
+def has_token_credits(db: Session, *, user: CurrentUser) -> bool:
     limit, used, _, _ = token_quota_status(db, user=user)
     return used < limit
 

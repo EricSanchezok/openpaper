@@ -37,9 +37,7 @@ def post_signed_json(
     parsed = urlsplit(url)
     target = parsed.path + (f"?{parsed.query}" if parsed.query else "")
     body_hash = hashlib.sha256(body).hexdigest()
-    canonical = "\n".join(
-        (timestamp, nonce, "POST", target, body_hash)
-    ).encode()
+    canonical = "\n".join((timestamp, nonce, "POST", target, body_hash)).encode()
     signature = hmac.new(_secret(), canonical, hashlib.sha256).hexdigest()
     return requests.post(
         url,

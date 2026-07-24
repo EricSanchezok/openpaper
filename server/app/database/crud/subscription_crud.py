@@ -47,9 +47,7 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
         if not subscription or not subscription.current_period_end:
             return False
         # User is active if `current_period_end` is in the future
-        return subscription.current_period_end > datetime.now(
-            tz=timezone.utc
-        )  # type: ignore
+        return subscription.current_period_end > datetime.now(tz=timezone.utc)  # type: ignore
 
     def get_by_user_id(self, db: Session, user_id: int) -> Optional[Subscription]:
         """Get subscription by user_id"""

@@ -2,6 +2,7 @@
 FastAPI application for the Celery PDF processing service.
 Provides endpoints for submitting tasks and checking status.
 """
+
 import logging
 from typing import Any, Dict, Optional
 

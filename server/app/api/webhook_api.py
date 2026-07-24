@@ -46,7 +46,7 @@ from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.s3 import s3_service
 from app.helpers.subscription_limits import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
-from app.llm.operations import operations
+from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.schemas.responses import DataTableResult, PaperMetadataExtraction
 from app.schemas.user import CurrentUser
@@ -79,7 +79,7 @@ class TokenUsageEventPayload(BaseModel):
     cache_hit_tokens: int = Field(default=0, ge=0)
     cache_miss_tokens: int = Field(default=0, ge=0)
     total_tokens: int = Field(ge=0)
-    status: str = Field(default="settled", pattern="^settled$")
+    status: str = Field(default="settled", pattern="^(settled|unknown)$")
 
 
 def _settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> None:
@@ -100,6 +100,7 @@ def _settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> No
                 cache_miss_tokens=event.cache_miss_tokens,
                 total_tokens=event.total_tokens,
                 idempotency_key=event.idempotency_key,
+                status=event.status,
             )
 
 
@@ -801,7 +802,7 @@ async def handle_data_table_processing_webhook(
                 operation_id=f"{task_id}:name",
             ):
                 title = (
-                    operations.name_data_table(
+                    data_table_operations.name_data_table(
                         paper_titles=paper_titles,
                         column_labels=result.columns,
                     )
@@ -1073,9 +1074,9 @@ async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db
                     f"Auto-import of new papers failed for user {user_id}: {e}",
                     exc_info=True,
                 )
-        except Exception as e:
-            logger.error(f"Auto-sync failed for user {user_id}: {e}", exc_info=True)
-            results.append({"user_id": str(user_id), "error": str(e)})
+        except Exception:
+            logger.exception("Auto-sync failed for user %s", user_id)
+            results.append({"user_id": str(user_id), "error": "zotero_sync_failed"})
 
     synced_users = len([r for r in results if "error" not in r])
     logger.info(

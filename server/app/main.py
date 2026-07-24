@@ -112,17 +112,18 @@ def readyz(db: Session = Depends(get_db)) -> dict[str, str]:
     db.execute(text("SELECT 1"))
     return {"status": "ready"}
 
+
 setup_admin(app)  # Setup admin interface
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     log_config = uvicorn.config.LOGGING_CONFIG  # type: ignore
-    log_config["formatters"]["access"][
-        "fmt"
-    ] = "%(asctime)s - %(levelname)s - %(message)s"
-    log_config["formatters"]["default"][
-        "fmt"
-    ] = "%(asctime)s - %(levelname)s - %(message)s"
+    log_config["formatters"]["access"]["fmt"] = (
+        "%(asctime)s - %(levelname)s - %(message)s"
+    )
+    log_config["formatters"]["default"]["fmt"] = (
+        "%(asctime)s - %(levelname)s - %(message)s"
+    )
     # Set higher log level to see more details
     uvicorn.run(
         "app.main:app",

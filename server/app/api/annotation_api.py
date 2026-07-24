@@ -129,9 +129,7 @@ async def delete_annotation(
         logger.error(f"Error deleting annotation: {e}")
         return JSONResponse(
             status_code=404,
-            content={
-                "code": "annotation_delete_failed"
-            },
+            content={"code": "annotation_delete_failed"},
         )
 
 
