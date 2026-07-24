@@ -22,7 +22,7 @@ DEFAULT_PERMISSIONS: Dict[str, str] = {
     "library_access": "1",
     "notes_access": "1",
     "write_access": "0",
-    "name": "Open Paper",
+    "name": "Scholens",
     "all_groups": "read",
 }
 

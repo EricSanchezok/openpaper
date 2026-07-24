@@ -46,8 +46,8 @@ class AuthUserAdmin(ModelView, model=AuthUser):
 
 
 class UserProfileAdmin(ModelView, model=UserProfile):
-    name = "OpenPaper User Profile"
-    name_plural = "OpenPaper User Profiles"
+    name = "Scholens User Profile"
+    name_plural = "Scholens User Profiles"
     column_list = [
         UserProfile.user_id,
         UserProfile.locale,

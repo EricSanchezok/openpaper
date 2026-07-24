@@ -14,7 +14,7 @@ export default function DataTablePage() {
     const router = useRouter();
     const tableId = params.tableId as string;
     // Citation clicks open papers in the shared workspace reader panel.
-    const { projectId, papers, openPaper, setCrumb } = useProjectWorkspace();
+    const { projectId, papers, openDocument, setCrumb } = useProjectWorkspace();
 
     const [dataTableResult, setDataTableResult] = useState<DataTableResult | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -48,7 +48,7 @@ export default function DataTablePage() {
     const handleCitationClick = (paperId: string, searchTerm: string) => {
         const paper = papers.find(p => p.id === paperId);
         if (paper) {
-            openPaper(paper, searchTerm);
+            openDocument(paper, searchTerm);
         }
     };
 

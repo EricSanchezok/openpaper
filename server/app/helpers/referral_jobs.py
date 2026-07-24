@@ -29,7 +29,7 @@ def schedule_referral_settlement(
     celery_broker_url = get_celery_broker_url(celery_broker_url)
 
     try:
-        celery_app = Celery("openpaper_tasks", broker=celery_broker_url)
+        celery_app = Celery("scholens_tasks", broker=celery_broker_url)
         celery_app.conf.update(
             broker_connection_retry_on_startup=True,
             broker_connection_retry=True,

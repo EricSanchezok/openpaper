@@ -590,7 +590,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             )
 
         db.execute(
-            text("DELETE FROM openpaper.paper_passages WHERE paper_id = :paper_id"),
+            text("DELETE FROM scholens.paper_passages WHERE paper_id = :paper_id"),
             {"paper_id": paper_id},
         )
 
@@ -603,7 +603,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             db.execute(
                 text(
                     """
-                    INSERT INTO openpaper.paper_passages
+                    INSERT INTO scholens.paper_passages
                         (paper_id, start_line, end_line, content)
                     VALUES (:paper_id, :start_line, :end_line, :content)
                 """
@@ -648,8 +648,8 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
         sql = f"""
             SELECT pp.paper_id::text, pp.start_line, pp.content
-            FROM openpaper.paper_passages pp
-            JOIN openpaper.papers p ON p.id = pp.paper_id
+            FROM scholens.paper_passages pp
+            JOIN scholens.papers p ON p.id = pp.paper_id
             WHERE pp.ts_vector @@ ({fts_query_clause})
               AND p.user_id = :user_id
         """

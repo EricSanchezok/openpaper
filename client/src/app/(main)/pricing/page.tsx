@@ -650,7 +650,7 @@ export default function PricingPage() {
             {/* Support Section */}
             <div className="text-center space-y-6 pt-12 border-t border-slate-200 dark:border-slate-700">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Open Paper is a product of{" "}
+                    Scholens is a product of{" "}
                     <a
                         href="https://khoj.dev"
                         target="_blank"
@@ -685,8 +685,8 @@ export default function PricingPage() {
                         <div className="mt-4">
                             <p className="text-sm text-slate-600 dark:text-slate-400">
                                 You can email us at{" "}
-                                <a href="mailto:saba@openpaper.ai" className="text-slate-900 dark:text-slate-100 underline underline-offset-2">
-                                    saba@openpaper.ai
+                                <a href="mailto:support@sanchezcloud.net" className="text-slate-900 dark:text-slate-100 underline underline-offset-2">
+                                    support@sanchezcloud.net
                                 </a>
                             </p>
                         </div>

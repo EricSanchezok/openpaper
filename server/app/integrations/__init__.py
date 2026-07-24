@@ -1,1 +1,1 @@
-"""External service integrations used by OpenPaper."""
+"""External service integrations used by Scholens."""

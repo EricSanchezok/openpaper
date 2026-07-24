@@ -1,13 +1,13 @@
 \set ON_ERROR_STOP on
 
--- SanchezCloud database privilege bootstrap for OpenPaper.
+-- SanchezCloud database privilege bootstrap for Scholens.
 -- Required existing LOGIN roles:
 --   auth_migrator_role       owns only auth.*
---   product_migrator_role    owns only openpaper.*
---   app_role                 runs the OpenPaper API
+--   product_migrator_role    owns only scholens.*
+--   app_role                 runs the Scholens API
 --
 -- Run as the database owner before cloud-auth migration, after cloud-auth
--- migration, and after OpenPaper migration. Re-running is safe.
+-- migration, and after Scholens migration. Re-running is safe.
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'app_role') \gexec
 SELECT format(
@@ -32,17 +32,17 @@ SELECT format(
 ) \gexec
 SELECT format('ALTER SCHEMA auth OWNER TO %I', :'auth_migrator_role') \gexec
 SELECT format(
-  'CREATE SCHEMA IF NOT EXISTS openpaper AUTHORIZATION %I',
+  'CREATE SCHEMA IF NOT EXISTS scholens AUTHORIZATION %I',
   :'product_migrator_role'
 ) \gexec
-SELECT format('ALTER SCHEMA openpaper OWNER TO %I', :'product_migrator_role') \gexec
+SELECT format('ALTER SCHEMA scholens OWNER TO %I', :'product_migrator_role') \gexec
 
 REVOKE CREATE ON SCHEMA auth FROM PUBLIC;
-REVOKE CREATE ON SCHEMA openpaper FROM PUBLIC;
+REVOKE CREATE ON SCHEMA scholens FROM PUBLIC;
 GRANT USAGE ON SCHEMA auth TO :"app_role", :"product_migrator_role";
-GRANT USAGE ON SCHEMA openpaper TO :"app_role";
+GRANT USAGE ON SCHEMA scholens TO :"app_role";
 GRANT USAGE, CREATE ON SCHEMA auth TO :"auth_migrator_role";
-GRANT USAGE, CREATE ON SCHEMA openpaper TO :"product_migrator_role";
+GRANT USAGE, CREATE ON SCHEMA scholens TO :"product_migrator_role";
 
 -- These grants become available after the independent cloud-auth baseline.
 SELECT format(
@@ -74,7 +74,7 @@ WHERE sequence_schema = 'auth'
   AND sequence_name IN ('users_id_seq', 'refresh_tokens_id_seq')
 ORDER BY sequence_name \gexec
 
--- These grants become available after the OpenPaper baseline.
+-- These grants become available after the Scholens baseline.
 SELECT format(
   'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I.%I TO %I',
   schemaname,
@@ -82,7 +82,7 @@ SELECT format(
   :'app_role'
 )
 FROM pg_tables
-WHERE schemaname = 'openpaper'
+WHERE schemaname = 'scholens'
   AND tablename <> 'schema_migrations'
 ORDER BY tablename \gexec
 
@@ -93,12 +93,12 @@ SELECT format(
   :'app_role'
 )
 FROM information_schema.sequences
-WHERE sequence_schema = 'openpaper'
+WHERE sequence_schema = 'scholens'
 ORDER BY sequence_name \gexec
 
-ALTER DEFAULT PRIVILEGES FOR ROLE :"product_migrator_role" IN SCHEMA openpaper
+ALTER DEFAULT PRIVILEGES FOR ROLE :"product_migrator_role" IN SCHEMA scholens
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_role";
-ALTER DEFAULT PRIVILEGES FOR ROLE :"product_migrator_role" IN SCHEMA openpaper
+ALTER DEFAULT PRIVILEGES FOR ROLE :"product_migrator_role" IN SCHEMA scholens
   GRANT USAGE, SELECT ON SEQUENCES TO :"app_role";
 
 SELECT format(
@@ -107,13 +107,13 @@ SELECT format(
 )
 WHERE to_regclass('auth.schema_migrations') IS NOT NULL \gexec
 SELECT format(
-  'REVOKE ALL ON TABLE openpaper.schema_migrations FROM %I',
+  'REVOKE ALL ON TABLE scholens.schema_migrations FROM %I',
   :'app_role'
 )
-WHERE to_regclass('openpaper.schema_migrations') IS NOT NULL \gexec
+WHERE to_regclass('scholens.schema_migrations') IS NOT NULL \gexec
 
 REVOKE CREATE ON SCHEMA auth FROM :"app_role", :"product_migrator_role";
-REVOKE CREATE ON SCHEMA openpaper FROM :"app_role", :"auth_migrator_role";
+REVOKE CREATE ON SCHEMA scholens FROM :"app_role", :"auth_migrator_role";
 SELECT format('REVOKE CREATE ON DATABASE %I FROM %I', current_database(), :'app_role') \gexec
 SELECT format(
   'REVOKE CREATE ON DATABASE %I FROM %I',

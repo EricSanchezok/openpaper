@@ -1,5 +1,5 @@
 """
-Benchmark runner for OpenPaper single-paper QA eval.
+Benchmark runner for Scholens single-paper QA eval.
 
 Scaffolds a test user, syncs benchmark papers into the local DB,
 runs each eval question through the chat_with_paper pipeline,
@@ -1733,7 +1733,7 @@ def parse_provider(name: str) -> Optional[LLMProvider]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run OpenPaper single-paper QA benchmark",
+        description="Run Scholens single-paper QA benchmark",
     )
     parser.add_argument(
         "--dataset",

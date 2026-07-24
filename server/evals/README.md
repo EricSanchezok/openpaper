@@ -1,6 +1,6 @@
-# OpenPaper Eval Suite
+# Scholens Eval Suite
 
-Measures how well the OpenPaper chat-with-paper pipeline answers questions about research papers, compared against a baseline of sending the raw PDF directly to an LLM.
+Measures how well the Scholens chat-with-paper pipeline answers questions about research papers, compared against a baseline of sending the raw PDF directly to an LLM.
 
 For the full write-up of the benchmark design, methods, and results, see the **ResearchQA paper** on [arXiv (2607.11074)](https://arxiv.org/abs/2607.11074) or the [blog version](https://openpaper.ai/blog/benchmark) (also kept locally as [`paper.md`](paper.md)). The dataset is published on HuggingFace at [`khoj-ai/ResearchQA`](https://huggingface.co/datasets/khoj-ai/ResearchQA).
 
@@ -34,7 +34,7 @@ uv run python -m evals.generate_dataset [OPTIONS]
 
 ### 3. `run_benchmark.py` -- Run and grade
 
-Runs each question through either the full OpenPaper harness or a baseline (raw PDF + LLM), then grades with citation metrics and an LLM-as-judge.
+Runs each question through either the full Scholens harness or a baseline (raw PDF + LLM), then grades with citation metrics and an LLM-as-judge.
 
 ```bash
 cd server

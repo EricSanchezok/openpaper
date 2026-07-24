@@ -19,12 +19,6 @@ const nextConfig = {
                 port: '',
                 pathname: '/**',
             },
-            {
-                protocol: 'https' as const,
-                hostname: 'openpaper.ai',
-                port: '',
-                pathname: '/**',
-            },
         ],
     },
 }

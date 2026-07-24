@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: openpaper-ci-${{ github.ref }}
+  group: scholens-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       run:
         working-directory: server
     steps:
-      - name: Check out OpenPaper
+      - name: Check out Scholens
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -64,7 +64,7 @@ jobs:
       run:
         working-directory: client
     steps:
-      - name: Check out OpenPaper
+      - name: Check out Scholens
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -92,7 +92,7 @@ jobs:
       run:
         working-directory: jobs
     steps:
-      - name: Check out OpenPaper
+      - name: Check out Scholens
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -129,7 +129,7 @@ jobs:
           --health-retries 12
           --health-start-period 5s
     steps:
-      - name: Check out OpenPaper
+      - name: Check out Scholens
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -164,34 +164,34 @@ jobs:
           shellcheck deploy/production/release.sh deploy/production/smoke.sh deploy/production/wait-ssm.sh
       - name: Validate production Compose
         env:
-          OPENPAPER_API_IMAGE: registry.example/openpaper/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          OPENPAPER_CLIENT_IMAGE: registry.example/openpaper/client@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-          OPENPAPER_JOBS_IMAGE: registry.example/openpaper/jobs@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-          OPENPAPER_DOMAIN: openpaper.example.invalid
-          OPENPAPER_AWS_REGION: us-east-1
-          OPENPAPER_APP_DATABASE_URL: postgresql://app:password@postgres.example.invalid/sanchezcloud
-          OPENPAPER_MIGRATION_DATABASE_URL: postgresql://migrator:password@postgres.example.invalid/sanchezcloud
-          OPENPAPER_AUTH_JWT_SECRET: fixture-secret-at-least-thirty-two-bytes
-          OPENPAPER_ADMIN_SESSION_SECRET: fixture-admin-session-secret-at-least-thirty-two-bytes
-          OPENPAPER_RABBITMQ_PASSWORD: fixture-rabbit-password
-          OPENPAPER_REDIS_PASSWORD: fixture-redis-password
-          OPENPAPER_ALIYUN_DM_ACCESS_KEY_ID: fixture
-          OPENPAPER_ALIYUN_DM_ACCESS_KEY_SECRET: fixture
-          OPENPAPER_ALIYUN_DM_ACCOUNT_NAME: sender@example.invalid
-          OPENPAPER_S3_BUCKET_NAME: fixture-bucket
-          OPENPAPER_DEEPSEEK_API_KEY: fixture
-          OPENPAPER_MINERU_API_TOKEN: fixture
-          OPENPAPER_MOSS_API_KEY: fixture
-          OPENPAPER_MOSS_VOICE_ID: fixture
-          OPENPAPER_JOBS_WEBHOOK_SIGNING_SECRET: fixture-signing-secret-at-least-thirty-two-bytes
-          OPENPAPER_ANYSEARCH_API_KEY: fixture
-          OPENPAPER_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET: fixture-delegation-secret-at-least-thirty-two-bytes
-          OPENPAPER_STRIPE_API_KEY: fixture
-          OPENPAPER_STRIPE_WEBHOOK_SECRET: fixture
-          OPENPAPER_STRIPE_MONTHLY_PRICE_ID: fixture
-          OPENPAPER_STRIPE_YEARLY_PRICE_ID: fixture
-          OPENPAPER_ZOTERO_CLIENT_KEY: fixture
-          OPENPAPER_ZOTERO_CLIENT_SECRET: fixture
+          SCHOLENS_API_IMAGE: registry.example/scholens/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          SCHOLENS_CLIENT_IMAGE: registry.example/scholens/client@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          SCHOLENS_JOBS_IMAGE: registry.example/scholens/jobs@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          SCHOLENS_DOMAIN: scholens.example.invalid
+          SCHOLENS_AWS_REGION: us-east-1
+          SCHOLENS_APP_DATABASE_URL: postgresql://app:password@postgres.example.invalid/sanchezcloud
+          SCHOLENS_MIGRATION_DATABASE_URL: postgresql://migrator:password@postgres.example.invalid/sanchezcloud
+          SCHOLENS_AUTH_JWT_SECRET: fixture-secret-at-least-thirty-two-bytes
+          SCHOLENS_ADMIN_SESSION_SECRET: fixture-admin-session-secret-at-least-thirty-two-bytes
+          SCHOLENS_RABBITMQ_PASSWORD: fixture-rabbit-password
+          SCHOLENS_REDIS_PASSWORD: fixture-redis-password
+          SCHOLENS_ALIYUN_DM_ACCESS_KEY_ID: fixture
+          SCHOLENS_ALIYUN_DM_ACCESS_KEY_SECRET: fixture
+          SCHOLENS_ALIYUN_DM_ACCOUNT_NAME: sender@example.invalid
+          SCHOLENS_S3_BUCKET_NAME: fixture-bucket
+          SCHOLENS_DEEPSEEK_API_KEY: fixture
+          SCHOLENS_MINERU_API_TOKEN: fixture
+          SCHOLENS_MOSS_API_KEY: fixture
+          SCHOLENS_MOSS_VOICE_ID: fixture
+          SCHOLENS_JOBS_WEBHOOK_SIGNING_SECRET: fixture-signing-secret-at-least-thirty-two-bytes
+          SCHOLENS_ANYSEARCH_API_KEY: fixture
+          SCHOLENS_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET: fixture-delegation-secret-at-least-thirty-two-bytes
+          SCHOLENS_STRIPE_API_KEY: fixture
+          SCHOLENS_STRIPE_WEBHOOK_SECRET: fixture
+          SCHOLENS_STRIPE_MONTHLY_PRICE_ID: fixture
+          SCHOLENS_STRIPE_YEARLY_PRICE_ID: fixture
+          SCHOLENS_ZOTERO_CLIENT_KEY: fixture
+          SCHOLENS_ZOTERO_CLIENT_SECRET: fixture
         run: docker compose -f deploy/production/compose.yaml config --quiet
       - name: Build API image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -200,7 +200,7 @@ jobs:
           file: server/Dockerfile
           push: false
           load: true
-          tags: openpaper-api:ci
+          tags: scholens-api:ci
           secrets: |
             github_token=${{ secrets.CLOUD_AUTH_READ_TOKEN }}
       - name: Build jobs image
@@ -224,14 +224,14 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d sanchezcloud -v ON_ERROR_STOP=1 -c \
             "CREATE ROLE auth_migrator LOGIN PASSWORD '$AUTH_MIGRATOR_PASSWORD';
-             CREATE ROLE openpaper_migrator LOGIN PASSWORD '$MIGRATOR_PASSWORD';
-             CREATE ROLE openpaper_app LOGIN PASSWORD '$APP_PASSWORD';"
+             CREATE ROLE scholens_migrator LOGIN PASSWORD '$MIGRATOR_PASSWORD';
+             CREATE ROLE scholens_app LOGIN PASSWORD '$APP_PASSWORD';"
 
-          for phase in before after-auth after-openpaper; do
+          for phase in before after-auth after-scholens; do
             psql -h 127.0.0.1 -U postgres -d sanchezcloud \
-              -v app_role=openpaper_app \
+              -v app_role=scholens_app \
               -v auth_migrator_role=auth_migrator \
-              -v product_migrator_role=openpaper_migrator \
+              -v product_migrator_role=scholens_migrator \
               -f deploy/production/bootstrap-db.sql
 
             if [[ $phase == before ]]; then
@@ -242,25 +242,25 @@ jobs:
             elif [[ $phase == after-auth ]]; then
               for _ in 1 2; do
                 docker run --rm --network host \
-                  -e DATABASE_URL="postgresql+psycopg2://openpaper_migrator:${MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
-                  openpaper-api:ci python -m app.scripts.migrate_product
+                  -e DATABASE_URL="postgresql+psycopg2://scholens_migrator:${MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
+                  scholens-api:ci python -m app.scripts.migrate_product
               done
             fi
           done
 
           psql -h 127.0.0.1 -U postgres -d sanchezcloud -tAc \
             "SELECT to_regclass('auth.schema_migrations') IS NOT NULL
-                 AND to_regclass('openpaper.schema_migrations') IS NOT NULL
+                 AND to_regclass('scholens.schema_migrations') IS NOT NULL
                  AND to_regclass('auth.users') IS NOT NULL
                  AND to_regclass('auth.refresh_tokens') IS NOT NULL
                  AND NOT has_table_privilege(
-                   'openpaper_app', 'auth.users', 'DELETE'
+                   'scholens_app', 'auth.users', 'DELETE'
                  )
                  AND NOT has_table_privilege(
-                   'openpaper_app', 'auth.refresh_tokens', 'DELETE'
+                   'scholens_app', 'auth.refresh_tokens', 'DELETE'
                  )
-                 AND to_regclass('openpaper.papers') IS NOT NULL
-                 AND to_regclass('openpaper.user_profiles') IS NOT NULL
+                 AND to_regclass('scholens.papers') IS NOT NULL
+                 AND to_regclass('scholens.user_profiles') IS NOT NULL
                  AND EXISTS (
                    SELECT 1
                    FROM pg_trigger
@@ -275,18 +275,18 @@ jobs:
                    SELECT 1 FROM pg_tables WHERE schemaname = 'public'
                  )
                  AND NOT has_database_privilege('auth_migrator', current_database(), 'CREATE')
-                 AND NOT has_database_privilege('openpaper_migrator', current_database(), 'CREATE')
-                 AND NOT has_database_privilege('openpaper_app', current_database(), 'CREATE')" \
+                 AND NOT has_database_privilege('scholens_migrator', current_database(), 'CREATE')
+                 AND NOT has_database_privilege('scholens_app', current_database(), 'CREATE')" \
             | grep -qx t
 
-          PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U openpaper_app -d sanchezcloud \
+          PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U scholens_app -d sanchezcloud \
             -v ON_ERROR_STOP=1 -c \
             "BEGIN;
              INSERT INTO auth.users (email, password_hash)
                VALUES ('ci@example.invalid', 'fixture') RETURNING id;
-             INSERT INTO openpaper.user_profiles (user_id)
+             INSERT INTO scholens.user_profiles (user_id)
                VALUES (currval('auth.users_id_seq'));
-             INSERT INTO openpaper.papers
+             INSERT INTO scholens.papers
                (id, status, file_url, title, raw_content, user_id)
                VALUES (
                  '00000000-0000-0000-0000-000000000001',
@@ -296,7 +296,7 @@ jobs:
                  'retrieval augmented generation',
                  currval('auth.users_id_seq')
                );
-             INSERT INTO openpaper.paper_passages
+             INSERT INTO scholens.paper_passages
                (paper_id, start_line, end_line, content)
                VALUES (
                  '00000000-0000-0000-0000-000000000001',
@@ -305,30 +305,30 @@ jobs:
                  'retrieval augmented generation'
                );
              SELECT 1 / (
-               (SELECT ts_vector IS NOT NULL FROM openpaper.papers
+               (SELECT ts_vector IS NOT NULL FROM scholens.papers
                 WHERE id = '00000000-0000-0000-0000-000000000001')::int
                *
-               (SELECT ts_vector IS NOT NULL FROM openpaper.paper_passages
+               (SELECT ts_vector IS NOT NULL FROM scholens.paper_passages
                 WHERE paper_id = '00000000-0000-0000-0000-000000000001')::int
              );
              ROLLBACK;"
 
-          if PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U openpaper_app -d sanchezcloud \
+          if PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U scholens_app -d sanchezcloud \
             -v ON_ERROR_STOP=1 -c "CREATE TABLE public.app_must_not_create (id integer)"; then
-            printf 'openpaper_app unexpectedly has DDL privileges\n' >&2
+            printf 'scholens_app unexpectedly has DDL privileges\n' >&2
             exit 1
           fi
 
-          if PGPASSWORD="$MIGRATOR_PASSWORD" psql -h 127.0.0.1 -U openpaper_migrator \
+          if PGPASSWORD="$MIGRATOR_PASSWORD" psql -h 127.0.0.1 -U scholens_migrator \
             -d sanchezcloud -v ON_ERROR_STOP=1 \
             -c "CREATE TABLE auth.product_migrator_must_not_create (id integer)"; then
-            printf 'openpaper_migrator unexpectedly has auth DDL privileges\n' >&2
+            printf 'scholens_migrator unexpectedly has auth DDL privileges\n' >&2
             exit 1
           fi
 
           if PGPASSWORD="$AUTH_MIGRATOR_PASSWORD" psql -h 127.0.0.1 -U auth_migrator \
             -d sanchezcloud -v ON_ERROR_STOP=1 \
-            -c "CREATE TABLE openpaper.auth_migrator_must_not_create (id integer)"; then
-            printf 'auth_migrator unexpectedly has OpenPaper DDL privileges\n' >&2
+            -c "CREATE TABLE scholens.auth_migrator_must_not_create (id integer)"; then
+            printf 'auth_migrator unexpectedly has Scholens DDL privileges\n' >&2
             exit 1
           fi

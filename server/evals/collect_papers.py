@@ -1,5 +1,5 @@
 """
-Benchmark paper collection script for OpenPaper QA eval.
+Benchmark paper collection script for Scholens QA eval.
 
 Queries OpenAlex for open-access papers across diverse disciplines,
 downloads PDFs, validates them, uploads to a dedicated S3 bucket,
@@ -111,7 +111,7 @@ DOMAIN_QUERIES: dict[str, list[str]] = {
 
 PDF_DOWNLOAD_HEADERS = {
     "User-Agent": (
-        "OpenPaper-BenchmarkCollector/1.0 "
+        "Scholens-BenchmarkCollector/1.0 "
         "(https://openpaper.ai; mailto:saba@openpaper.ai) "
         "research-benchmark-collection"
     ),
@@ -607,7 +607,7 @@ def collect_papers(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Collect benchmark papers for OpenPaper QA eval",
+        description="Collect benchmark papers for Scholens QA eval",
     )
     parser.add_argument(
         "--manifest",

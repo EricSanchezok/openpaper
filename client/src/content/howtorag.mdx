@@ -1,6 +1,6 @@
 export const metadata = {
     title: "Building Elite Retrieval Systems for Research",
-    description: "State of the art retrieval systems are crucial for navigating the ever-growing body of research literature. Here's how we built one for Open Paper.",
+    description: "State of the art retrieval systems are crucial for navigating the ever-growing body of research literature. Here's how we built one for Scholens.",
     date: "03-27-2026",
     image: "https://assets.khoj.dev/blue_ethereal_orbs.png",
 }
@@ -11,7 +11,7 @@ Maintaining an embeddings layer can be fairly costly - the inference itself for 
 
 I noticed sometime last year that coding assistants were starting to move towards more greedy implementations. Rather than using expensive, pre-computed embeddings on the data itself, LLMs have been sufficiently trained to leverage search tools (like [grep](https://man7.org/linux/man-pages/man1/grep.1.html)) to look for semantically similar words or expressions in the corpus. This is surprisingly robust.
 
-When it comes to knowledge bases in Open Paper, sizes can get fairly large. Currently, we support up to 500 papers and 3GB. State of the art models can ingest up to [1M tokens](https://web.archive.org/web/20260104042758/https://ai.google.dev/gemini-api/docs/long-context). But 500 papers, assuming they each have about 15 pages and 6000 words, would total around 3M+ tokens. Models currently still can't hold _that_ much context in their attentions, so some context engineering for efficiently packaging information for consumption is necessary. Plus, we know that just because a model _can_ take in 1M tokens, it doesn't necessarily [mean it should](https://arxiv.org/pdf/2404.06654). Models will still perform better when provided targeted information.
+When it comes to knowledge bases in Scholens, sizes can get fairly large. Currently, we support up to 500 papers and 3GB. State of the art models can ingest up to [1M tokens](https://web.archive.org/web/20260104042758/https://ai.google.dev/gemini-api/docs/long-context). But 500 papers, assuming they each have about 15 pages and 6000 words, would total around 3M+ tokens. Models currently still can't hold _that_ much context in their attentions, so some context engineering for efficiently packaging information for consumption is necessary. Plus, we know that just because a model _can_ take in 1M tokens, it doesn't necessarily [mean it should](https://arxiv.org/pdf/2404.06654). Models will still perform better when provided targeted information.
 
 To manage this effectively, we store an index of all your papers in a Postgres DB. On initial upload, we extract all the associated text, the authors, the abstract, and the institutions.
 
@@ -29,7 +29,7 @@ In a perfect world, our models would `read_file` their way through the whole kno
 Both of the search functions return line numbers in their results, so they can be used in conjunction with `view_file`, which allows the model to specify a range for its search. The model is given a few iterations for retrieving evidence for answering its question, before it has to finalize and respond.
 
 The same internal DeepSeek backend now handles tool orchestration and final
-answers. OpenPaper exposes only standard and deep reasoning levels; model names
+answers. Scholens exposes only standard and deep reasoning levels; model names
 and provider credentials remain server-side so the backend can evolve without
 changing the client API.
 

@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
     ]);
 
-    if (!loading && !user && error === "OpenPaper access is suspended") {
+    if (!loading && !user && error === "Scholens access is suspended") {
         return (
             <AuthContext.Provider value={value}>
                 <div className="flex h-screen items-center justify-center p-4">
@@ -209,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         </div>
                         <h1 className="text-2xl font-bold">Account suspended</h1>
                         <p className="text-muted-foreground">
-                            OpenPaper access for this account is suspended. Contact support if you
+                            Scholens access for this account is suspended. Contact support if you
                             believe this is an error.
                         </p>
                         <button className="rounded-md border px-4 py-2" onClick={() => void logout()}>

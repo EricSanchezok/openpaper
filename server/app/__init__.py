@@ -1,1 +1,1 @@
-"""OpenPaper API package."""
+"""Scholens API package."""

@@ -1,5 +1,5 @@
 """
-Celery tasks for Open Paper jobs
+Celery tasks for Scholens jobs
 """
 
 import asyncio

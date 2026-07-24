@@ -361,7 +361,7 @@ function FinderPageContent() {
                         {" "}feature for finding research papers.
                     </p>
                     <a
-                        href="mailto:saba@openpaper.ai"
+                        href="mailto:support@sanchezcloud.net"
                         className="inline-flex items-center gap-1.5 text-sm font-medium hover:underline"
                     >
                         <Mail className="h-3.5 w-3.5" />
@@ -711,7 +711,7 @@ function FinderPageContent() {
                         </CardContent>
                         <CardFooter className="flex justify-end items-center gap-2">
                             <Button asChild variant="outline" size="sm">
-                                <Link href="https://github.com/khoj-ai/openpaper/issues">Report Issue</Link>
+                                <Link href="https://github.com/EricSanchezok/openpaper/issues">Report Issue</Link>
                             </Button>
                             <Button
                                 onClick={() => setError(null)}

@@ -64,7 +64,7 @@ export function MilestoneReferralToast({
                     return;
                 }
 
-                toast("Loving Open Paper? Share it.", {
+                toast("Loving Scholens? Share it.", {
                     // Stable id: in dev StrictMode or any double-mount, sonner
                     // collapses duplicates with the same id into one toast.
                     id: "referral-milestone-toast",

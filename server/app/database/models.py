@@ -47,7 +47,7 @@ from sqlalchemy.sql import func
 
 
 class Base(DeclarativeBase):
-    metadata = MetaData(schema="openpaper")
+    metadata = MetaData(schema="scholens")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

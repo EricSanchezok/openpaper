@@ -1,4 +1,4 @@
-# OpenPaper API process configuration.
+# Scholens API process configuration.
 import os
 
 # Bind address and port

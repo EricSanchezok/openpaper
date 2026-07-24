@@ -171,7 +171,7 @@ function SubscribedPageContent() {
 
                 <p className="text-sm text-muted-foreground mt-8">
                     If you believe this is an error, please{' '}
-                    <a href="mailto:saba@openpaper.ai" className="text-primary hover:underline">
+                    <a href="mailto:support@sanchezcloud.net" className="text-primary hover:underline">
                         contact support
                     </a>{' '}
                     with your payment confirmation.
@@ -227,7 +227,7 @@ function SubscribedPageContent() {
 
                 <p className="text-sm text-muted-foreground mt-8">
                     Having trouble?{' '}
-                    <a href="mailto:saba@openpaper.ai" className="text-primary hover:underline">
+                    <a href="mailto:support@sanchezcloud.net" className="text-primary hover:underline">
                         Contact support
                     </a>{' '}
                     for assistance.
@@ -254,7 +254,7 @@ function SubscribedPageContent() {
                 </div>
 
                 <h2 className="text-2xl font-bold text-foreground mb-2">
-                    Welcome to Open Paper - Researcher!
+                    Welcome to Scholens - Researcher!
                 </h2>
                 <p className="text-muted-foreground mb-8 max-w-xl">
                     Your subscription is now active{sessionStatus?.customer_email ? ` for ${sessionStatus.customer_email}` : ''}. Here&apos;s what you can do now:

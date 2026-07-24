@@ -1,8 +1,8 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
     ?? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
 
-const REFRESH_LOCK = "openpaper-auth-refresh";
-const CHANNEL_NAME = "openpaper-auth";
+const REFRESH_LOCK = "scholens-auth-refresh";
+const CHANNEL_NAME = "scholens-auth";
 
 export interface TokenResponse {
     access_token: string;

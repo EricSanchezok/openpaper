@@ -1,4 +1,4 @@
-"""Scholight MCP integration for OpenPaper's Discover result cards."""
+"""Scholight MCP integration for Scholens's Discover result cards."""
 
 from __future__ import annotations
 

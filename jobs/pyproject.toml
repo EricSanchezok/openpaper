@@ -6,10 +6,10 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [project]
-name = "open-paper-jobs"
+name = "scholens-jobs"
 version = "0.1.0"
 requires-python = ">= 3.12"
-description = "An Application to Run Jobs for the Open Paper project"
+description = "An Application to Run Jobs for the Scholens project"
 readme = "README.md"
 dependencies = [
     "celery[auth,librabbitmq,msgpack,redis]>=5.6.2",

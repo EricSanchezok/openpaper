@@ -9,9 +9,9 @@ from app.database.models import Base
 from cloud_auth import AUTH_SCHEMA_VERSION
 from sqlalchemy import Connection, engine_from_config, pool, text
 
-OPENPAPER_SCHEMA = "openpaper"
+SCHOLENS_SCHEMA = "scholens"
 MIGRATION_TABLE = "schema_migrations"
-MIGRATION_LOCK = "openpaper-migrations"
+MIGRATION_LOCK = "scholens-migrations"
 
 config = context.config
 if config.config_file_name is not None:
@@ -44,7 +44,7 @@ def include_object(
     if schema == "auth":
         return False
     return not (
-        type_ == "table" and name == MIGRATION_TABLE and schema == OPENPAPER_SCHEMA
+        type_ == "table" and name == MIGRATION_TABLE and schema == SCHOLENS_SCHEMA
     )
 
 
@@ -54,7 +54,7 @@ def _configure(**kwargs: Any) -> None:
         include_schemas=True,
         include_object=include_object,
         version_table=MIGRATION_TABLE,
-        version_table_schema=OPENPAPER_SCHEMA,
+        version_table_schema=SCHOLENS_SCHEMA,
         compare_type=True,
         **kwargs,
     )
@@ -66,11 +66,11 @@ def _validate_migration_boundary(connection: Connection) -> None:
             "SELECT pg_get_userbyid(nspowner) = current_user "
             "FROM pg_namespace WHERE nspname = :schema"
         ),
-        {"schema": OPENPAPER_SCHEMA},
+        {"schema": SCHOLENS_SCHEMA},
     ).scalar_one_or_none()
     if owns_schema is not True:
         raise RuntimeError(
-            "OpenPaper schema is missing or not owned by the product migration role"
+            "Scholens schema is missing or not owned by the product migration role"
         )
 
     auth_ledger = connection.execute(
@@ -78,7 +78,7 @@ def _validate_migration_boundary(connection: Connection) -> None:
     ).scalar_one()
     if auth_ledger is None:
         raise RuntimeError(
-            "cloud-auth schema must be migrated independently before OpenPaper"
+            "cloud-auth schema must be migrated independently before Scholens"
         )
 
     auth_version = connection.execute(

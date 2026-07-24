@@ -20,12 +20,12 @@ export function AppHeader() {
             <Separator orientation="vertical" className="mr-2 h-4" />
             <Link href="/" className="flex flex-1 items-center gap-2 hover:opacity-80 transition-opacity">
                 <Image
-                    src="/openpaper.svg"
+                    src="/scholens.svg"
                     width={24}
                     height={24}
-                    alt="Open Paper Logo"
+                    alt="Scholens Logo"
                 />
-                <span className="text-sm font-semibold">Open Paper</span>
+                <span className="text-sm font-semibold">Scholens</span>
             </Link>
         </header>
     );

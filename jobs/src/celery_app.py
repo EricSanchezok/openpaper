@@ -15,7 +15,7 @@ BACKEND_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 
 # Create Celery instance
 celery_app = Celery(
-    "openpaper_tasks", broker=BROKER_URL, backend=BACKEND_URL, include=["src.tasks"]
+    "scholens_tasks", broker=BROKER_URL, backend=BACKEND_URL, include=["src.tasks"]
 )
 
 # Celery configuration

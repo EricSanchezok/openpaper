@@ -5,7 +5,7 @@ export const metadata = {
     image: "/benchmark/pipeline.png",
 }
 
-> 📄 **Read the full paper on [arXiv →](https://arxiv.org/abs/2607.11074)** · Dataset on [HuggingFace](https://huggingface.co/datasets/khoj-ai/ResearchQA) · Evaluation harness on [GitHub](https://github.com/khoj-ai/openpaper/tree/92cd89c85dbabb9bff8baa281e0678472ccb2ab4/server/evals).
+> 📄 **Read the full paper on [arXiv →](https://arxiv.org/abs/2607.11074)** · Dataset on [HuggingFace](https://huggingface.co/datasets/khoj-ai/ResearchQA) · Evaluation harness on [GitHub](https://github.com/EricSanchezok/openpaper/tree/92cd89c85dbabb9bff8baa281e0678472ccb2ab4/server/evals).
 
 ## Abstract
 
@@ -42,7 +42,7 @@ Scoring uses **AND across sections, OR within each section's alternatives**: a m
 
 ### Benchmark harness
 
-The harness routes each question through Open Paper's full chat-with-paper pipeline — retrieval over the indexed paper, the citation contract that requires the model to anchor each claim to a quoted passage, and the structured-output parser that extracts citations from the model's response.
+The harness routes each question through Scholens's full chat-with-paper pipeline — retrieval over the indexed paper, the citation contract that requires the model to anchor each claim to a quoted passage, and the structured-output parser that extracts citations from the model's response.
 
 ### Metrics
 
@@ -62,7 +62,7 @@ The citation matcher decides whether a model's quoted citation appears in the pa
 
 ## Results
 
-We ran the benchmark end-to-end through the Open Paper chat-with-paper harness against eight LLMs in two configurations each — a more intelligent model and a faster model: `gemini-3.1-pro-preview` / `gemini-3-flash-preview`, `gpt-5.4` / `gpt-4.1`, `claude-opus-4-7` / `claude-haiku-4-5`, and the Cerebras-hosted `gpt-oss-120b` / `zai-glm-4.7`. Each system answered the same 100-row evenly-spaced sample of the dataset, graded by the deterministic citation metrics and the LLM evaluator described in *Methods*.
+We ran the benchmark end-to-end through the Scholens chat-with-paper harness against eight LLMs in two configurations each — a more intelligent model and a faster model: `gemini-3.1-pro-preview` / `gemini-3-flash-preview`, `gpt-5.4` / `gpt-4.1`, `claude-opus-4-7` / `claude-haiku-4-5`, and the Cerebras-hosted `gpt-oss-120b` / `zai-glm-4.7`. Each system answered the same 100-row evenly-spaced sample of the dataset, graded by the deterministic citation metrics and the LLM evaluator described in *Methods*.
 
 | Model                    | Cite. Prec | Sect. Cov | Cite. Acc | Refusal | Factual | Compl. | Lat. (s) |
 |--------------------------|-----------:|----------:|----------:|--------:|--------:|-------:|---------:|
@@ -75,7 +75,7 @@ We ran the benchmark end-to-end through the Open Paper chat-with-paper harness a
 | gemini-3-flash-preview   |     0.491  |     0.913 |     0.835 |   0.652 |   4.990 |  4.940 |     14.8 |
 | gpt-oss-120b             |     0.660  |     0.636 |     0.700 |   0.478 |   4.745 |  4.571 |  **2.9** |
 
-*Table 1: Aggregate performance of all evaluated models across the OpenPaper benchmark. Models are sorted by a composite of citation-grounding and answer-quality scores. Best scores in each column are bolded.*
+*Table 1: Aggregate performance of all evaluated models across the Scholens benchmark. Models are sorted by a composite of citation-grounding and answer-quality scores. Best scores in each column are bolded.*
 
 **The citation-grounding metrics discriminate; the evaluator metrics largely saturate.** The largest cross-provider spread sits in `refusal_correctness` (0.478–0.870, a 39-point gap on a 0–1 scale) and `section_coverage` (0.636–0.955, a 32-point gap). `citation_precision` (0.491–0.776, a 28-point gap) and `citation_accuracy` (0.700–0.845, a 14-point gap) follow. The LLM evaluator, by contrast, separates the field by far less: `factual_accuracy` (4.745–5.000, a 0.255-point gap on a 1–5 scale) and `completeness` (4.571–4.980, a 0.409-point gap). We read this as "current-generation models are uniformly correct on the kinds of factual claims the dataset asks about, but they vary substantially in *which evidence they choose to cite and whether that evidence is verifiable* " — exactly the distinction the citation metrics were designed to expose.
 
@@ -117,4 +117,4 @@ The full paper details these in depth; the headline caveats are:
 
 - **Paper:** [arXiv:2607.11074 →](https://arxiv.org/abs/2607.11074)
 - **Dataset:** [`khoj-ai/ResearchQA` on HuggingFace](https://huggingface.co/datasets/khoj-ai/ResearchQA)
-- **Evaluation harness & evaluator prompt:** [Open Paper repository, `server/evals/`](https://github.com/khoj-ai/openpaper/tree/92cd89c85dbabb9bff8baa281e0678472ccb2ab4/server/evals)
+- **Evaluation harness & evaluator prompt:** [Scholens repository, `server/evals/`](https://github.com/EricSanchezok/openpaper/tree/92cd89c85dbabb9bff8baa281e0678472ccb2ab4/server/evals)

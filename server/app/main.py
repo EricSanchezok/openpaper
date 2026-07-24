@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = FastAPI(
-    title="Open Paper",
+    title="Scholens",
     description="A web application for uploading and annotating papers.",
     version="1.0.0",
     lifespan=auth_lifespan,

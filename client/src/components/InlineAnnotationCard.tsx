@@ -365,7 +365,7 @@ export function InlineAnnotationCard({
                     >
                         {visibleThread.map((ann) => {
                             const isAssistant = ann.role === "assistant";
-                            const annName = isAssistant ? "Open Paper" : displayName;
+                            const annName = isAssistant ? "Scholens" : displayName;
                             return (
                             <div key={ann.id} className="flex flex-col gap-2">
                                 <div className="flex items-center gap-3">

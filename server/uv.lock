@@ -1430,91 +1430,6 @@ wheels = [
 ]
 
 [[package]]
-name = "open-paper"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "boto3" },
-    { name = "celery" },
-    { name = "cloud-auth", extra = ["aliyun", "fastapi"] },
-    { name = "fastapi" },
-    { name = "gunicorn" },
-    { name = "itsdangerous" },
-    { name = "mcp" },
-    { name = "openai" },
-    { name = "posthog" },
-    { name = "psycopg2-binary" },
-    { name = "pydantic", extra = ["email"] },
-    { name = "pydantic-settings" },
-    { name = "pyjwt" },
-    { name = "pypdf" },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "redis" },
-    { name = "requests" },
-    { name = "requests-oauthlib" },
-    { name = "resend" },
-    { name = "sqladmin", extra = ["full"] },
-    { name = "sqlalchemy" },
-    { name = "stripe" },
-    { name = "types-boto3" },
-    { name = "types-psycopg2" },
-    { name = "types-requests" },
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.15.1" },
-    { name = "boto3", specifier = ">=1.37.33" },
-    { name = "celery", specifier = ">=5.5.3" },
-    { name = "cloud-auth", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/cloud-auth.git?rev=9e82bb25f38a33aaa309933bfb0affb6d47c1df2" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "gunicorn", specifier = ">=23.0.0" },
-    { name = "itsdangerous", specifier = ">=2.2.0" },
-    { name = "mcp", specifier = ">=1.26,<2" },
-    { name = "openai", specifier = ">=1.82.0" },
-    { name = "posthog", specifier = ">=4.2.0" },
-    { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.10" },
-    { name = "pydantic-settings", specifier = ">=2.8.1" },
-    { name = "pyjwt", specifier = ">=2.10" },
-    { name = "pypdf", specifier = ">=6.13.3" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "python-multipart", specifier = ">=0.0.31" },
-    { name = "redis", specifier = ">=5.2" },
-    { name = "requests", specifier = ">=2.33.0" },
-    { name = "requests-oauthlib", specifier = ">=2.0.0" },
-    { name = "resend", specifier = ">=2.10.0" },
-    { name = "sqladmin", extras = ["full"], specifier = ">=0.25.1" },
-    { name = "sqlalchemy", specifier = ">=2.0.39" },
-    { name = "stripe", specifier = ">=12.3.0" },
-    { name = "types-boto3", specifier = ">=1.37.33" },
-    { name = "types-psycopg2", specifier = ">=2.9.21.20250318" },
-    { name = "types-requests", specifier = ">=2.32.0.20250306" },
-    { name = "uvicorn", specifier = ">=0.34" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.14" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "ruff", specifier = ">=0.5" },
-]
-
-[[package]]
 name = "openai"
 version = "1.82.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2184,6 +2099,91 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/ec/aa1a215e5c126fe5decbee2e107468f51d9ce190b9763cb649f76bb45938/s3transfer-0.11.4.tar.gz", hash = "sha256:559f161658e1cf0a911f45940552c696735f5c74e64362e515f333ebed87d679", size = 148419, upload-time = "2025-03-04T20:29:15.012Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/86/62/8d3fc3ec6640161a5649b2cddbbf2b9fa39c92541225b33f117c37c5a2eb/s3transfer-0.11.4-py3-none-any.whl", hash = "sha256:ac265fa68318763a03bf2dc4f39d5cbd6a9e178d81cc9483ad27da33637e320d", size = 84412, upload-time = "2025-03-04T20:29:13.433Z" },
+]
+
+[[package]]
+name = "scholens"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "boto3" },
+    { name = "celery" },
+    { name = "cloud-auth", extra = ["aliyun", "fastapi"] },
+    { name = "fastapi" },
+    { name = "gunicorn" },
+    { name = "itsdangerous" },
+    { name = "mcp" },
+    { name = "openai" },
+    { name = "posthog" },
+    { name = "psycopg2-binary" },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "pyjwt" },
+    { name = "pypdf" },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "redis" },
+    { name = "requests" },
+    { name = "requests-oauthlib" },
+    { name = "resend" },
+    { name = "sqladmin", extra = ["full"] },
+    { name = "sqlalchemy" },
+    { name = "stripe" },
+    { name = "types-boto3" },
+    { name = "types-psycopg2" },
+    { name = "types-requests" },
+    { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pyyaml" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.15.1" },
+    { name = "boto3", specifier = ">=1.37.33" },
+    { name = "celery", specifier = ">=5.5.3" },
+    { name = "cloud-auth", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/cloud-auth.git?rev=9e82bb25f38a33aaa309933bfb0affb6d47c1df2" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "gunicorn", specifier = ">=23.0.0" },
+    { name = "itsdangerous", specifier = ">=2.2.0" },
+    { name = "mcp", specifier = ">=1.26,<2" },
+    { name = "openai", specifier = ">=1.82.0" },
+    { name = "posthog", specifier = ">=4.2.0" },
+    { name = "psycopg2-binary", specifier = ">=2.9.10" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.10" },
+    { name = "pydantic-settings", specifier = ">=2.8.1" },
+    { name = "pyjwt", specifier = ">=2.10" },
+    { name = "pypdf", specifier = ">=6.13.3" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "python-multipart", specifier = ">=0.0.31" },
+    { name = "redis", specifier = ">=5.2" },
+    { name = "requests", specifier = ">=2.33.0" },
+    { name = "requests-oauthlib", specifier = ">=2.0.0" },
+    { name = "resend", specifier = ">=2.10.0" },
+    { name = "sqladmin", extras = ["full"], specifier = ">=0.25.1" },
+    { name = "sqlalchemy", specifier = ">=2.0.39" },
+    { name = "stripe", specifier = ">=12.3.0" },
+    { name = "types-boto3", specifier = ">=1.37.33" },
+    { name = "types-psycopg2", specifier = ">=2.9.21.20250318" },
+    { name = "types-requests", specifier = ">=2.32.0.20250306" },
+    { name = "uvicorn", specifier = ">=0.34" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.14" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "ruff", specifier = ">=0.5" },
 ]
 
 [[package]]

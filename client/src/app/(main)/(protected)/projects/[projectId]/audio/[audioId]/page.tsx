@@ -15,7 +15,7 @@ export default function ProjectAudioOverviewPage() {
     const params = useParams();
     const router = useRouter();
     const audioId = params.audioId as string;
-    const { projectId, papers, openPaper, setCrumb } = useProjectWorkspace();
+    const { projectId, papers, openDocument, setCrumb } = useProjectWorkspace();
 
     const [overview, setOverview] = useState<AudioOverview | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -79,7 +79,7 @@ export default function ProjectAudioOverviewPage() {
                 <RichAudioOverview
                     audioOverview={overview}
                     papers={papers}
-                    onOpenPaperExternal={openPaper}
+                    onOpenDocumentExternal={openDocument}
                 />
             </div>
         </div>

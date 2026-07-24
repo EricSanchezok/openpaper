@@ -62,8 +62,8 @@ async def enforce_rate_limit(
     ip_limit = int(os.getenv("AI_RATE_PER_IP", "120"))
     window = int(time.time()) // window_seconds
     keys = (
-        (f"openpaper:rate:user:{user_id}:{feature}:{window}", user_limit),
-        (f"openpaper:rate:ip:{ip_address}:{feature}:{window}", ip_limit),
+        (f"scholens:rate:user:{user_id}:{feature}:{window}", user_limit),
+        (f"scholens:rate:ip:{ip_address}:{feature}:{window}", ip_limit),
     )
     try:
         async with client.pipeline(transaction=True) as pipe:
@@ -94,7 +94,7 @@ async def acquire_concurrency(
 ) -> AIConcurrencyLease:
     client = _redis_client()
     member = operation_id or uuid.uuid4().hex
-    key = f"openpaper:concurrency:{category}:{user_id}"
+    key = f"scholens:concurrency:{category}:{user_id}"
     if client is None:
         if os.getenv("ENVIRONMENT") == "production":
             raise RuntimeError("AI_LIMIT_REDIS_URL is required in production")
@@ -141,7 +141,7 @@ async def release_concurrency_by_id(
 ) -> None:
     await release_concurrency(
         AIConcurrencyLease(
-            key=f"openpaper:concurrency:{category}:{user_id}",
+            key=f"scholens:concurrency:{category}:{user_id}",
             member=operation_id,
         )
     )

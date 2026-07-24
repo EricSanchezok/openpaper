@@ -21,13 +21,13 @@ interface RichAudioOverviewProps {
     papers?: PaperItem[];
     // When provided, citation clicks open in the caller's reader (e.g. the
     // project workspace panel) instead of this view's private PDF split.
-    onOpenPaperExternal?: (paper: PaperItem, searchText: string | null) => void;
+    onOpenDocumentExternal?: (paper: PaperItem, searchText: string | null) => void;
 }
 
 export const RichAudioOverview = ({
     audioOverview,
     papers,
-    onOpenPaperExternal,
+    onOpenDocumentExternal,
 }: RichAudioOverviewProps) => {
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState<string | null>(null);
@@ -46,8 +46,8 @@ export const RichAudioOverview = ({
         // If citation has paper_id, try to open the specific paper's PDF
         if (citation.paper_id && papers) {
             const paper = papers.find(p => p.id === citation.paper_id);
-            if (paper && onOpenPaperExternal) {
-                onOpenPaperExternal(paper, citation.text);
+            if (paper && onOpenDocumentExternal) {
+                onOpenDocumentExternal(paper, citation.text);
                 setActiveCitationKey(key);
                 setTimeout(() => setActiveCitationKey(null), 3000);
                 return;

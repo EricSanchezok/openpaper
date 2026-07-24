@@ -1,5 +1,5 @@
 """
-Eval dataset generation script for OpenPaper QA benchmark.
+Eval dataset generation script for Scholens QA benchmark.
 
 Reads the benchmark manifest (from collect_papers.py), downloads each paper's
 PDF from S3, sends it to an LLM, and generates eval dataset rows with questions,

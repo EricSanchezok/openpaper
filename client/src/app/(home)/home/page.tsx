@@ -1,5 +1,5 @@
-import OpenPaperLanding from "@/components/OpenPaperLanding";
+import ScholensLanding from "@/components/ScholensLanding";
 
 export default function HomePage() {
-  return <OpenPaperLanding />;
+  return <ScholensLanding />;
 }

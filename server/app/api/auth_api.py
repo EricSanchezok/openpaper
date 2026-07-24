@@ -59,7 +59,7 @@ async def block_user(
     user_repository.set_blocked(db, user_id=request.user_id, blocked=request.blocked)
     action = "blocked" if request.blocked else "unblocked"
     logger.info(
-        "OpenPaper user %s %s by %s", target_user.email, action, admin_user.email
+        "Scholens user %s %s by %s", target_user.email, action, admin_user.email
     )
     return {"success": True, "message": f"User {action} successfully"}
 

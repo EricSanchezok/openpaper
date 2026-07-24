@@ -26,8 +26,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 logger = logging.getLogger(__name__)
-OPENPAPER_AUTH_CLIENT_ID = "openpaper"
-_DEVELOPMENT_JWT_SECRET = "development-only-openpaper-auth-secret"
+SCHOLENS_AUTH_CLIENT_ID = "scholens"
+_DEVELOPMENT_JWT_SECRET = "development-only-scholens-auth-secret"
 
 
 class AuthRuntimeSettings(BaseSettings):
@@ -49,7 +49,7 @@ class AuthRuntimeSettings(BaseSettings):
     aliyun_dm_access_key_id: str = ""
     aliyun_dm_access_key_secret: str = ""
     aliyun_dm_account_name: str = ""
-    aliyun_dm_from_alias: str = "OpenPaper"
+    aliyun_dm_from_alias: str = "Scholens"
     aliyun_dm_reply_to_address: bool = True
     public_web_url: str = "http://localhost:3000"
 
@@ -59,7 +59,7 @@ settings = AuthRuntimeSettings()
 
 def build_auth_config(runtime_settings: AuthRuntimeSettings) -> AuthConfig:
     return AuthConfig(
-        client_id=OPENPAPER_AUTH_CLIENT_ID,
+        client_id=SCHOLENS_AUTH_CLIENT_ID,
         jwt_secret=runtime_settings.jwt_secret,
         jwt_access_token_ttl_minutes=runtime_settings.jwt_access_token_ttl_minutes,
         jwt_refresh_token_ttl_days=runtime_settings.jwt_refresh_token_ttl_days,
@@ -75,7 +75,7 @@ auth_config = build_auth_config(settings)
 
 def build_refresh_cookie_config(*, environment: str) -> RefreshCookieConfig:
     return RefreshCookieConfig(
-        name="openpaper_refresh",
+        name="scholens_refresh",
         max_age_seconds=settings.jwt_refresh_token_ttl_days * 24 * 60 * 60,
         secure=environment.lower() == "production",
         samesite="strict",
@@ -112,7 +112,7 @@ def build_auth_email_sender(
         verification_url=f"{public_web_url}/login?mode=verify",
         password_reset_url=f"{public_web_url}/login?mode=reset",
         from_alias=runtime_settings.aliyun_dm_from_alias,
-        brand="OpenPaper",
+        brand="Scholens",
         reply_to_address=runtime_settings.aliyun_dm_reply_to_address,
     )
 

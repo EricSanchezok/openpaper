@@ -3,10 +3,10 @@ set -euo pipefail
 
 readonly CONTRACT_VERSION=1
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-COMPOSE_FILE=${OPENPAPER_COMPOSE_FILE:-"${SCRIPT_DIR}/compose.yaml"}
-SMOKE_SCRIPT=${OPENPAPER_SMOKE_SCRIPT:-"${SCRIPT_DIR}/smoke.sh"}
-RUNTIME_ENV=${OPENPAPER_RUNTIME_ENV:-/etc/openpaper/runtime.env}
-STATE_DIR=${OPENPAPER_STATE_DIR:-/var/lib/openpaper}
+COMPOSE_FILE=${SCHOLENS_COMPOSE_FILE:-"${SCRIPT_DIR}/compose.yaml"}
+SMOKE_SCRIPT=${SCHOLENS_SMOKE_SCRIPT:-"${SCRIPT_DIR}/smoke.sh"}
+RUNTIME_ENV=${SCHOLENS_RUNTIME_ENV:-/etc/scholens/runtime.env}
+STATE_DIR=${SCHOLENS_STATE_DIR:-/var/lib/scholens}
 CURRENT_ENV="${STATE_DIR}/current.env"
 PREVIOUS_ENV="${STATE_DIR}/previous.env"
 TRANSITION_ENV="${STATE_DIR}/transition.env"
@@ -93,7 +93,7 @@ compose() {
 acquire_lock() {
   mkdir -p "${STATE_DIR}" "${FAILED_DIR}"
   exec 9>"${LOCK_FILE}"
-  flock -n 9 || fail "another OpenPaper release operation is running"
+  flock -n 9 || fail "another Scholens release operation is running"
 }
 
 ensure_no_transition() {
@@ -107,8 +107,8 @@ write_transition() {
   local temporary="${TRANSITION_ENV}.tmp"
   umask 077
   {
-    printf 'OPENPAPER_TRANSITION_OPERATION=%s\n' "${operation}"
-    printf 'OPENPAPER_TRANSITION_TARGET=%s\n' "${target}"
+    printf 'SCHOLENS_TRANSITION_OPERATION=%s\n' "${operation}"
+    printf 'SCHOLENS_TRANSITION_TARGET=%s\n' "${target}"
   } >"${temporary}"
   mv "${temporary}" "${TRANSITION_ENV}"
 }
@@ -123,12 +123,12 @@ write_manifest() {
   local temporary="${destination}.tmp"
   umask 077
   {
-    printf 'OPENPAPER_RELEASE_CONTRACT_VERSION=%s\n' "${CONTRACT_VERSION}"
-    printf 'OPENPAPER_PACKAGE_SHA=%s\n' "${package_digest}"
-    printf 'OPENPAPER_RELEASE_SHA=%s\n' "${release_sha}"
-    printf 'OPENPAPER_API_IMAGE=%s\n' "${api_image}"
-    printf 'OPENPAPER_CLIENT_IMAGE=%s\n' "${client_image}"
-    printf 'OPENPAPER_JOBS_IMAGE=%s\n' "${jobs_image}"
+    printf 'SCHOLENS_RELEASE_CONTRACT_VERSION=%s\n' "${CONTRACT_VERSION}"
+    printf 'SCHOLENS_PACKAGE_SHA=%s\n' "${package_digest}"
+    printf 'SCHOLENS_RELEASE_SHA=%s\n' "${release_sha}"
+    printf 'SCHOLENS_API_IMAGE=%s\n' "${api_image}"
+    printf 'SCHOLENS_CLIENT_IMAGE=%s\n' "${client_image}"
+    printf 'SCHOLENS_JOBS_IMAGE=%s\n' "${jobs_image}"
   } >"${temporary}"
   mv "${temporary}" "${destination}"
 }
@@ -136,18 +136,18 @@ write_manifest() {
 validate_manifest() {
   local manifest=$1
   [[ -f ${manifest} && ! -L ${manifest} ]] || fail "release manifest missing: ${manifest}"
-  [[ $(read_value "${manifest}" OPENPAPER_RELEASE_CONTRACT_VERSION) == "${CONTRACT_VERSION}" ]] || \
+  [[ $(read_value "${manifest}" SCHOLENS_RELEASE_CONTRACT_VERSION) == "${CONTRACT_VERSION}" ]] || \
     fail "unsupported release contract in ${manifest}"
-  validate_release_sha "$(read_value "${manifest}" OPENPAPER_RELEASE_SHA)"
-  validate_digest_reference "$(read_value "${manifest}" OPENPAPER_API_IMAGE)"
-  validate_digest_reference "$(read_value "${manifest}" OPENPAPER_CLIENT_IMAGE)"
-  validate_digest_reference "$(read_value "${manifest}" OPENPAPER_JOBS_IMAGE)"
+  validate_release_sha "$(read_value "${manifest}" SCHOLENS_RELEASE_SHA)"
+  validate_digest_reference "$(read_value "${manifest}" SCHOLENS_API_IMAGE)"
+  validate_digest_reference "$(read_value "${manifest}" SCHOLENS_CLIENT_IMAGE)"
+  validate_digest_reference "$(read_value "${manifest}" SCHOLENS_JOBS_IMAGE)"
 }
 
 login_registry() {
   local region registry
-  region=$(read_value "${RUNTIME_ENV}" OPENPAPER_AWS_REGION)
-  registry=$(read_value "${RUNTIME_ENV}" OPENPAPER_ECR_REGISTRY)
+  region=$(read_value "${RUNTIME_ENV}" SCHOLENS_AWS_REGION)
+  registry=$(read_value "${RUNTIME_ENV}" SCHOLENS_ECR_REGISTRY)
   aws ecr get-login-password --region "${region}" | \
     docker login --username AWS --password-stdin "${registry}"
 }
@@ -165,9 +165,9 @@ activate_release() {
 
 run_smoke() {
   local manifest=$1
-  OPENPAPER_RELEASE_ENV="${manifest}" \
-    OPENPAPER_RUNTIME_ENV="${RUNTIME_ENV}" \
-    OPENPAPER_COMPOSE_FILE="${COMPOSE_FILE}" \
+  SCHOLENS_RELEASE_ENV="${manifest}" \
+    SCHOLENS_RUNTIME_ENV="${RUNTIME_ENV}" \
+    SCHOLENS_COMPOSE_FILE="${COMPOSE_FILE}" \
     "${SMOKE_SCRIPT}"
 }
 
@@ -237,7 +237,7 @@ deploy() {
   fi
   mv "${candidate}" "${CURRENT_ENV}"
   rm -f "${TRANSITION_ENV}"
-  printf 'OpenPaper release %s activated\n' "${release_sha}"
+  printf 'Scholens release %s activated\n' "${release_sha}"
 }
 
 rollback() {
@@ -261,7 +261,7 @@ rollback() {
   mv "${PREVIOUS_ENV}" "${CURRENT_ENV}"
   mv "${old_current}" "${PREVIOUS_ENV}"
   rm -f "${TRANSITION_ENV}"
-  printf 'OpenPaper rollback activated\n'
+  printf 'Scholens rollback activated\n'
 }
 
 status() {

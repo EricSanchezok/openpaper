@@ -22,7 +22,7 @@ class UsageContext:
 
 
 _usage_context: ContextVar[UsageContext | None] = ContextVar(
-    "openpaper_llm_usage_context", default=None
+    "scholens_llm_usage_context", default=None
 )
 
 

@@ -1,6 +1,6 @@
 # Server
 
-This server manages the backend for the Open Paper project, which allows users to upload, chat with, annotate, and manage research papers in one place.
+This server manages the backend for the Scholens project, which allows users to upload, chat with, annotate, and manage research papers in one place.
 
 ## Prerequisites
 - Python 3.12 or higher
@@ -25,7 +25,7 @@ cp ../.env.example .env
 ```
 
 At minimum, point `DATABASE_URL` at a `sanchezcloud` database with migrated
-`auth` and `openpaper` schemas, then replace the placeholder provider keys for
+`auth` and `scholens` schemas, then replace the placeholder provider keys for
 the features you want to exercise. See [`../DEVELOPMENT.md`](../DEVELOPMENT.md)
 for the shared-local-account and AWS RDS distinction.
 

@@ -48,8 +48,8 @@ function SectionHeading({ label, count, children }: { label: string; count?: num
 }
 
 function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => void }) {
-    const { project, projectId, openPaper, openPaperIds, activePaperId, refetchPapers } = useProjectWorkspace();
-    const isOpen = openPaperIds.includes(paper.id);
+    const { project, projectId, openDocument, openDocumentIds, activePaperId, refetchPapers } = useProjectWorkspace();
+    const isOpen = openDocumentIds.includes(paper.id);
     const isActive = activePaperId === paper.id;
     const isViewer = project?.role === ProjectRole.Viewer;
 
@@ -75,7 +75,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
                     : "hover:bg-accent",
             )}
             onClick={() => {
-                openPaper(paper);
+                openDocument(paper);
                 onNavigate?.();
             }}
         >

@@ -31,7 +31,7 @@ export default function ProjectPage() {
         conversations,
         isConversationsLoading,
         openAddPapers,
-        openPaperIds,
+        openDocumentIds,
     } = useProjectWorkspace();
 
     const [error, setError] = useState<string | null>(null);
@@ -59,12 +59,12 @@ export default function ProjectPage() {
     // Chat scope mirrors the reader tabs: papers open in the reader join the
     // @-mention scope; closing a tab removes them. Diffing against the previous
     // tab set preserves mentions the user typed by hand.
-    const prevOpenPaperIdsRef = useRef<string[]>([]);
+    const prevOpenDocumentIdsRef = useRef<string[]>([]);
     useEffect(() => {
-        const prev = prevOpenPaperIdsRef.current;
-        const added = openPaperIds.filter((id) => !prev.includes(id));
-        const removed = prev.filter((id) => !openPaperIds.includes(id));
-        prevOpenPaperIdsRef.current = openPaperIds;
+        const prev = prevOpenDocumentIdsRef.current;
+        const added = openDocumentIds.filter((id) => !prev.includes(id));
+        const removed = prev.filter((id) => !openDocumentIds.includes(id));
+        prevOpenDocumentIdsRef.current = openDocumentIds;
         if (added.length === 0 && removed.length === 0) return;
         setMentionSelection((sel) => ({
             ...sel,
@@ -73,7 +73,7 @@ export default function ProjectPage() {
                 ...added.filter((id) => !sel.paperIds.includes(id)),
             ],
         }));
-    }, [openPaperIds]);
+    }, [openDocumentIds]);
 
     const handleNewQuery = async () => {
         if (!newQuery.trim()) return;

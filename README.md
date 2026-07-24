@@ -1,16 +1,14 @@
-# ![Open Paper](https://raw.githubusercontent.com/sabaimran/openpaper/refs/heads/master/client/src/app/openpaper.svg) Open Paper
+# ![Scholens](./client/src/app/scholens.svg) Scholens
 
 **The fastest way to annotate and deeply understand research papers.**
 
-Open Paper is a workspace for reading research. Upload your papers, highlight and annotate them, take notes, and ask questions — with an AI assistant that grounds every answer in verifiable citations you can click to jump straight to the source.
+Scholens is a workspace for reading research. Upload your papers, highlight and annotate them, take notes, and ask questions — with an AI assistant that grounds every answer in verifiable citations you can click to jump straight to the source.
 
-Try it at **[openpaper.ai](https://openpaper.ai)**.
+![Scholens](./demo.gif)
 
-![The Open Paper](./demo.gif)
+## Why Scholens?
 
-## Why Open Paper?
-
-Reading papers means constant context switching: looking up unfamiliar terms, chasing references, re-finding that one result you highlighted three papers ago. Open Paper brings all of that into one place, so you can stay in the flow of actually reading.
+Reading papers means constant context switching: looking up unfamiliar terms, chasing references, re-finding that one result you highlighted three papers ago. Scholens brings all of that into one place, so you can stay in the flow of actually reading.
 
 ## Features
 
@@ -53,7 +51,7 @@ Generate audio overviews of your papers for when reading isn't an option.
 
 ## Self-hosting
 
-Open Paper is open source, and you can run the full stack yourself. Fair warning: it's built primarily as a hosted service and isn't optimized for self-hosting, so expect some assembly (Postgres, S3-compatible storage, LLM API keys, background workers). The setup in [DEVELOPMENT.md](./DEVELOPMENT.md) is the best starting point.
+Scholens is open source, and you can run the full stack yourself. Fair warning: it's built primarily as a hosted service and isn't optimized for self-hosting, so expect some assembly (Postgres, S3-compatible storage, LLM API keys, background workers). The setup in [DEVELOPMENT.md](./DEVELOPMENT.md) is the best starting point.
 
 For the hardened AWS/EC2 deployment that shares SanchezCloud accounts with Scholight, see
 [`deploy/production/README.md`](./deploy/production/README.md).
@@ -67,8 +65,10 @@ Contributions are welcome! To get a local development environment running:
 - **[client/README.md](./client/README.md)** — the Next.js web app.
 - **[jobs/README.md](./jobs/README.md)** — the Celery worker for async processing (PDF parsing, Zotero sync, audio).
 
-Found a bug or have a feature idea? [Open an issue](https://github.com/khoj-ai/openpaper/issues).
+Scholens is derived from the AGPL-licensed
+[Open Paper](https://github.com/khoj-ai/openpaper) project. Upstream copyright
+and license notices remain in the repository.
 
 ## License
 
-Open Paper is licensed under the [AGPL-3.0](./LICENSE).
+Scholens is licensed under the [AGPL-3.0](./LICENSE).

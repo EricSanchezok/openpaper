@@ -18,9 +18,12 @@ Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js + Yarn, PostgreSQL, 
 
 ## Environment files
 
-OpenPaper follows the same “one documented environment catalog” convention as
+Scholens follows the same “one documented environment catalog” convention as
 Scholight. The canonical template is [`.env.example`](./.env.example). Copy it
 into each service; unused variables are ignored:
+
+S3、MinerU、MOSS Voice 和 DeepSeek 的账号申请步骤见
+[`docs/setup/external-services.zh-CN.md`](./docs/setup/external-services.zh-CN.md)。
 
 ```bash
 cp .env.example server/.env
@@ -51,7 +54,7 @@ cp .env.example client/.env.local
 MOSS Voice is required only for audio overviews. Zotero, Stripe, email, PostHog,
 and admin variables are grouped in the root `.env.example`.
 
-OpenPaper discovers remote model tools through MCP:
+Scholens discovers remote model tools through MCP:
 
 - `ANYSEARCH_MCP_URL` and optional `ANYSEARCH_API_KEY` provide general search
   and page extraction. Anonymous access works locally with lower quotas.
@@ -63,16 +66,16 @@ OpenPaper discovers remote model tools through MCP:
 
 ### Which account database is used?
 
-`cloud-auth` is embedded in the OpenPaper API; it is not a separate service.
-Unless `AUTH_DATABASE_URL` is explicitly set, both cloud-auth and OpenPaper use
+`cloud-auth` is embedded in the Scholens API; it is not a separate service.
+Unless `AUTH_DATABASE_URL` is explicitly set, both cloud-auth and Scholens use
 `DATABASE_URL`.
 
 - To share local accounts with Scholight, point `DATABASE_URL` at the same local
   `sanchezcloud` database containing the `auth` schema.
-- To use AWS RDS, use the dedicated least-privilege OpenPaper roles and TLS
+- To use AWS RDS, use the dedicated least-privilege Scholens roles and TLS
   settings documented in
   [`deploy/production/runtime.env.example`](./deploy/production/runtime.env.example).
-- OpenPaper and Scholight deliberately use different JWT secrets and
+- Scholens and Scholight deliberately use different JWT secrets and
   `client_id` values even though they share `auth.users`.
 - Both products may use the same Aliyun DirectMail account, while keeping their
   sender alias and action URLs product-specific.
@@ -80,14 +83,16 @@ Unless `AUTH_DATABASE_URL` is explicitly set, both cloud-auth and OpenPaper use
 ## First-time setup
 
 ```bash
-git clone git@github.com:khoj-ai/openpaper.git && cd openpaper
+git clone <your-scholens-fork-url> scholens && cd scholens
 
 # Server
 cp .env.example server/.env
 cd server && uv sync
-# Provision auth/openpaper schemas with separate owners. Apply cloud-auth from
-# its own repository first, then apply only OpenPaper's migration:
+# Provision auth/scholens schemas with separate owners. Apply cloud-auth from
+# its own repository first, then apply only Scholens's migration:
 uv run --env-file .env --project ../../cloud-auth cloud-auth migrate
+psql postgresql://postgres:postgres@127.0.0.1:5432/sanchezcloud \
+  -c 'CREATE SCHEMA IF NOT EXISTS scholens'
 uv run python -m app.scripts.migrate_product
 
 # Jobs
@@ -108,7 +113,7 @@ Use separate terminals, in this order:
 | #   | Directory | Command                                                                                  |
 | --- | --------- | ---------------------------------------------------------------------------------------- |
 | 1   | `jobs/`   | `uv run start` — Docker RabbitMQ/Redis, Celery worker, Celery Beat (Zotero sync), jobs API |
-| 2   | `server/` | `uv run start` — loads `.env`, applies OpenPaper migrations, starts API                  |
+| 2   | `server/` | `uv run start` — loads `.env`, applies Scholens migrations, starts API                  |
 | 3   | `client/` | `corepack yarn dev`                                                                      |
 
 Check: [localhost:8000/docs](http://localhost:8000/docs), [localhost:3000](http://localhost:3000), worker log shows `celery@... ready`.

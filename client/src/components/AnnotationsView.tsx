@@ -408,7 +408,7 @@ export function AnnotationsView({
 													)}
 												</div>
 												<span className="text-sm font-medium text-foreground">
-                                                    {isAI ? 'Open Paper' : user?.display_name || 'User'}
+                                                    {isAI ? 'Scholens' : user?.display_name || 'User'}
 												</span>
 												<span className="text-xs text-muted-foreground">
 													{formatAnnotationDate(annotation.created_at)}

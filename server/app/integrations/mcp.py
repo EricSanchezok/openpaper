@@ -154,7 +154,7 @@ def _scholight_delegation_headers() -> dict[str, str]:
     now = int(time.time())
     token = jwt.encode(
         {
-            "iss": "openpaper",
+            "iss": "scholens",
             "aud": "scholight-mcp",
             "sub": str(context.user_id),
             "scope": "search",

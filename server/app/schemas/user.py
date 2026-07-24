@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class CurrentUser(BaseModel):
-    """Authenticated cloud-auth identity enriched with OpenPaper product state."""
+    """Authenticated cloud-auth identity enriched with Scholens product state."""
 
     model_config = ConfigDict(from_attributes=True)
 

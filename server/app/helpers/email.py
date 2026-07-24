@@ -15,8 +15,18 @@ RESEND_MAIN_AUDIENCE_ID = os.getenv("RESEND_MAIN_AUDIENCE_ID")
 resend.api_key = RESEND_API_KEY
 
 CLIENT_DOMAIN = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
-
-REPLY_TO_DEFAULT_EMAIL = "saba@openpaper.ai"
+BRAND_NAME = "Scholens"
+DEFAULT_FROM_ADDRESS = os.getenv("RESEND_FROM_ADDRESS", "no-reply@example.invalid")
+REPLY_TO_DEFAULT_EMAIL = os.getenv(
+    "RESEND_REPLY_TO_ADDRESS", "no-reply@example.invalid"
+)
+PROFILE_NOTIFICATION_EMAIL = os.getenv(
+    "PROFILE_NOTIFICATION_EMAIL", REPLY_TO_DEFAULT_EMAIL
+)
+SOURCE_REPOSITORY_URL = os.getenv(
+    "SOURCE_REPOSITORY_URL", "https://github.com/khoj-ai/openpaper"
+)
+DEFAULT_FROM = f"{BRAND_NAME} <{DEFAULT_FROM_ADDRESS}>"
 
 
 def load_email_template(template_name: str) -> str:
@@ -27,7 +37,15 @@ def load_email_template(template_name: str) -> str:
 
     try:
         with open(template_path, "r", encoding="utf-8") as file:
-            return file.read()
+            return (
+                file.read()
+                .replace("{{client_domain}}", CLIENT_DOMAIN.rstrip("/"))
+                .replace(
+                    "{{brand_logo_url}}",
+                    f"{CLIENT_DOMAIN.rstrip('/')}/scholens.svg",
+                )
+                .replace("{{source_repository_url}}", SOURCE_REPOSITORY_URL)
+            )
     except FileNotFoundError:
         raise FileNotFoundError(
             f"Template {template_name} not found at {template_path}"
@@ -76,9 +94,9 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
         fname = split_name[0] if split_name else ""
         formatted_name = f", {fname}" if fname else ""
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <onboarding@openpaper.ai>",
+            "from": DEFAULT_FROM,
             "to": [email],
-            "subject": "Welcome to Open Paper!",
+            "subject": "Welcome to Scholens!",
             "html": load_email_template("onboarding.html").replace(
                 "{{user_name}}", formatted_name
             ),
@@ -91,12 +109,12 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
         two_days_from_now = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <onboarding@openpaper.ai>",
+            "from": DEFAULT_FROM,
             "to": [email],
             "subject": "How Researchers are Using AI to Read Papers",
             "html": load_email_template("some_tips.html"),
             "scheduled_at": two_days_from_now,
-            "reply_to": "saba@openpaper.ai",
+            "reply_to": REPLY_TO_DEFAULT_EMAIL,
         }
 
         second_email = resend.Emails.send(payload)  # type: ignore
@@ -108,9 +126,9 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
         formatted_name = f" {fname}" if fname else ""
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <onboarding@openpaper.ai>",
+            "from": DEFAULT_FROM,
             "to": [email],
-            "subject": "Design Principles by Open Paper",
+            "subject": "Design Principles by Scholens",
             "html": load_email_template("design_principles.html").replace(
                 "{{user_name}}", formatted_name
             ),
@@ -142,13 +160,13 @@ def notify_converted_billing_interval(
         new_interval (str): The new billing interval (e.g., "yearly").
     """
     try:
-        subject = f"{new_interval.zfill(1).capitalize()} Cycle Activated - Open Paper"
+        subject = f"{new_interval.zfill(1).capitalize()} Cycle Activated - Scholens"
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <support@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [email],
             "subject": subject,
-            "text": f"Hello {name},\n\nYour cycle has been successfully changed to {new_interval}. Thank you for your continued support for open research!\n\nOpen Paper Team",
+            "text": f"Hello {name},\n\nYour cycle has been successfully changed to {new_interval}. Thank you for your continued support for open research!\n\nScholens Team",
         }
 
         resend.Emails.send(payload)  # type: ignore
@@ -169,11 +187,11 @@ def notify_billing_issue(email: str, issue: str, name: Union[str, None] = None) 
     try:
         manage_url = f"{CLIENT_DOMAIN}/pricing"
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <support@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [email],
-            "subject": "Open Paper - Fulfillment Issue Detected",
-            "text": f"Hello {name},\n\nWe have detected an issue with your account. {issue}.\n\nVisit {manage_url} for assistance.\n\n- Open Paper",
+            "subject": "Scholens - Fulfillment Issue Detected",
+            "text": f"Hello {name},\n\nWe have detected an issue with your account. {issue}.\n\nVisit {manage_url} for assistance.\n\n- Scholens",
         }
 
         resend.Emails.send(payload)  # type: ignore
@@ -188,11 +206,10 @@ def send_subscription_welcome_email(
     """Send a welcome email to a new subscriber."""
     try:
         payload = resend.Emails.SendParams = {  # type: ignore
-            # Keep the email "from" Saba for a more personal touch.
-            "from": f"Saba <{REPLY_TO_DEFAULT_EMAIL}>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [email],
-            "subject": "You're all set - Open Paper",
+            "subject": "You're all set - Scholens",
             "html": load_email_template("subscription_welcome.html"),
         }
 
@@ -232,10 +249,10 @@ def send_profile_email(
         )
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <support@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
-            "to": "saba@openpaper.ai",
-            "subject": "OP Onboarding",
+            "to": PROFILE_NOTIFICATION_EMAIL,
+            "subject": "Scholens onboarding",
             "html": html_content,
         }
 
@@ -260,8 +277,8 @@ def send_general_invite_email(
         bool: True if email was sent successfully, False otherwise
     """
     try:
-        signup_link = "https://openpaper.ai/login"
-        subject = f"{from_name} invited you to join Open Paper"
+        signup_link = f"{CLIENT_DOMAIN.rstrip('/')}/login"
+        subject = f"{from_name} invited you to join Scholens"
         html_content = (
             load_email_template("general_invite.html")
             .replace("{{from_name}}", from_name)
@@ -269,7 +286,7 @@ def send_general_invite_email(
         )
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <noreply@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "to": to_email,
             "subject": subject,
             "html": html_content,
@@ -310,7 +327,7 @@ def send_project_invite_email(
         )
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <noreply@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "to": to_email,
             "subject": subject,
             "html": html_content,
@@ -341,14 +358,14 @@ def send_confirmation_cancellation_email(
     try:
         user_name_str = f", {name}" if name else ""
 
-        subject = f"Sorry to see you go{user_name_str} - Open Paper"
+        subject = f"Sorry to see you go{user_name_str} - Scholens"
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <support@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": to_email,
             "subject": subject,
-            "text": f"Hello{user_name_str},\n\nThis email is to confirm that your subscription has been successfully cancelled. We're sorry to see you go!\n\nIf you have any feedback or if there's anything we can do to improve your experience, please let us know. You can reply to this email - I check every reply.\n\nThank you for being a part of Open Paper.\n\nHappy researching!\n- Saba (Founder, Open Paper)",
+            "text": f"Hello{user_name_str},\n\nThis email is to confirm that your subscription has been successfully cancelled. We're sorry to see you go!\n\nIf you have any feedback or if there's anything we can do to improve your experience, please reply to this email.\n\nThank you for being a part of Scholens.\n\nHappy researching!\n- Scholens Team",
         }
 
         resend.Emails.send(payload)  # type: ignore
@@ -365,7 +382,7 @@ def send_referral_threshold_alert(
     pending_plus_available_cents: int,
 ) -> None:
     """Email admin when a single referrer's earnings cross the review threshold."""
-    admin_email = os.getenv("REFERRAL_REVIEW_EMAIL", "saba@khoj.dev")
+    admin_email = os.getenv("REFERRAL_REVIEW_EMAIL", PROFILE_NOTIFICATION_EMAIL)
     html = f"""
     <div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
         <h2 style="color:#d35400;">Referral Review Threshold Crossed</h2>
@@ -381,8 +398,8 @@ def send_referral_threshold_alert(
             to_email=admin_email,
             subject=f"[Referral Review] {referrer_email} crossed ${pending_plus_available_cents / 100:.0f}",
             html_content=html,
-            from_name="Open Paper Alerts",
-            from_address="noreply@updates.openpaper.ai",
+            from_name="Scholens Alerts",
+            from_address=DEFAULT_FROM_ADDRESS,
         )
     except Exception as e:
         logger.error(f"Failed to send referral threshold alert: {e}", exc_info=True)
@@ -405,14 +422,14 @@ def send_referral_converted_email(
             f"Hi,\n\n"
             f"Great news — {referee_email} just upgraded to Researcher using your "
             f"referral link. You've earned a ${dollars:.2f} credit toward your "
-            f"Open Paper subscription.\n\n"
+            f"Scholens subscription.\n\n"
             f"Your credit will clear our 30-day hold on {available_str}, at which "
             f"point it'll be ready to apply against your next invoice.\n\n"
             f"Thanks for spreading the word!\n\n"
-            f"- Saba (Founder, Open Paper)"
+            f"- Scholens Team"
         )
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": f"Saba <{REPLY_TO_DEFAULT_EMAIL}>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [to_email],
             "subject": f"Someone you referred just upgraded - ${dollars:.0f} credit pending",
@@ -435,16 +452,16 @@ def send_referral_credit_available_email(
         text = (
             f"Hi,\n\n"
             f"Your ${dollars:.2f} referral credit has cleared the 30-day hold "
-            f"and is now ready to apply against your Open Paper subscription. "
+            f"and is now ready to apply against your Scholens subscription. "
             f"It'll come off your next invoice automatically — nothing else for "
             f"you to do.\n\n"
             f"If you haven't yet, you can keep sharing your link from the "
-            f"account menu inside Open Paper. Give $6, get $6.\n\n"
+            f"account menu inside Scholens. Give $6, get $6.\n\n"
             f"Thanks again!\n\n"
-            f"- Saba (Founder, Open Paper)"
+            f"- Scholens Team"
         )
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": f"Saba <{REPLY_TO_DEFAULT_EMAIL}>",
+            "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [to_email],
             "subject": f"Your ${dollars:.0f} referral credit is ready",
@@ -498,7 +515,7 @@ def send_data_table_complete_email(
         )
 
         payload = resend.Emails.SendParams = {  # type: ignore
-            "from": "Open Paper <noreply@updates.openpaper.ai>",
+            "from": DEFAULT_FROM,
             "to": to_email,
             "subject": subject,
             "html": html_content,
@@ -521,8 +538,8 @@ def send_email(
     subject: str,
     html_content: str,
     text_content: str = "",
-    from_name: str = "Open Paper",
-    from_address: str = "noreply@updates.openpaper.ai",
+    from_name: str = "Scholens",
+    from_address: str = DEFAULT_FROM_ADDRESS,
 ) -> bool:
     """
     Send a generic email using Resend.

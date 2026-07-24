@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'fs'
 import { join } from 'path'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = 'https://openpaper.ai' // Replace with your actual domain
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     // Static pages
     const staticPages = [

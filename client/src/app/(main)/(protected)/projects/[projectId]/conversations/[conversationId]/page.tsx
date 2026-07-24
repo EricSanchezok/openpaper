@@ -53,8 +53,8 @@ function ProjectConversationPageContent() {
         papers: projectPapers,
         isPapersLoading,
         conversations,
-        openPaper,
-        openPaperIds,
+        openDocument,
+        openDocumentIds,
         refreshPaperUrl,
         setCrumb,
         collapseArtifacts,
@@ -109,12 +109,12 @@ function ProjectConversationPageContent() {
     // Chat scope mirrors the reader tabs: papers open in the reader join the
     // @-mention scope; closing a tab removes them. Diffing against the previous
     // tab set preserves mentions the user typed by hand.
-    const prevOpenPaperIdsRef = useRef<string[]>([]);
+    const prevOpenDocumentIdsRef = useRef<string[]>([]);
     useEffect(() => {
-        const prev = prevOpenPaperIdsRef.current;
-        const added = openPaperIds.filter((id) => !prev.includes(id));
-        const removed = prev.filter((id) => !openPaperIds.includes(id));
-        prevOpenPaperIdsRef.current = openPaperIds;
+        const prev = prevOpenDocumentIdsRef.current;
+        const added = openDocumentIds.filter((id) => !prev.includes(id));
+        const removed = prev.filter((id) => !openDocumentIds.includes(id));
+        prevOpenDocumentIdsRef.current = openDocumentIds;
         if (added.length === 0 && removed.length === 0) return;
         setMentionSelection((sel) => ({
             ...sel,
@@ -123,7 +123,7 @@ function ProjectConversationPageContent() {
                 ...added.filter((id) => !sel.paperIds.includes(id)),
             ],
         }));
-    }, [openPaperIds]);
+    }, [openDocumentIds]);
 
     useEffect(() => {
         const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
@@ -304,7 +304,7 @@ function ProjectConversationPageContent() {
         setMessages(prev => [...prev, userMessage]);
         // Reset to the reader-tab scope (not empty): papers open in the reader
         // stay in scope until their tabs close; hand-typed mentions are one-shot.
-        setMentionSelection({ ...EMPTY_MENTION_SELECTION, paperIds: [...openPaperIds] });
+        setMentionSelection({ ...EMPTY_MENTION_SELECTION, paperIds: [...openDocumentIds] });
 
         if (!message) {
             setCurrentMessage('');
@@ -512,7 +512,7 @@ function ProjectConversationPageContent() {
             setStatusMessage('');
             refetchSubscription();
         }
-    }, [currentMessage, isStreaming, conversationId, projectId, router, refetchSubscription, mentionSelection, papers, openPaperIds, collapseArtifacts, reasoningLevel]);
+    }, [currentMessage, isStreaming, conversationId, projectId, router, refetchSubscription, mentionSelection, papers, openDocumentIds, collapseArtifacts, reasoningLevel]);
 
     const [error, setError] = useState<string | null>(null);
 
@@ -552,7 +552,7 @@ function ProjectConversationPageContent() {
                     setHighlightedInfo={setHighlightedInfo}
                     authLoading={authLoading}
                     onRefreshPaperUrl={refreshPaperUrl}
-                    onOpenPaperExternal={openPaper}
+                    onOpenDocumentExternal={openDocument}
                     mentionSelection={mentionSelection}
                     onMentionSelectionChange={setMentionSelection}
                     mentionPapersOnly

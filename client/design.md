@@ -1,6 +1,6 @@
 # Client Design Guide
 
-This document defines how the Open Paper client is built. It is **prescriptive**: where
+This document defines how the Scholens client is built. It is **prescriptive**: where
 the codebase is consistent, this codifies the pattern; where it is inconsistent, this picks
 the convention and the rest should converge over time. When in doubt, follow this doc; if a
 rule here is wrong, change the doc in the same PR that breaks it.
@@ -235,7 +235,7 @@ The visual identity is **blue-forward, with a neutral slate base**. Color carrie
 use it intentionally.
 
 - **Brand color: Tailwind `blue-500`** (with `blue-600` for hover/active and `blue-400` in
-  dark mode). It is by far the most-used accent in the app and signals "Open Paper" /
+  dark mode). It is by far the most-used accent in the app and signals "Scholens" /
   primary-interactive / on-brand emphasis. Reach for the blue scale for branded affordances,
   links, focus accents, and hero/marketing emphasis.
   - Light surfaces: `bg-blue-50` / `bg-blue-100`, text `text-blue-600` / `text-blue-700`.
@@ -247,7 +247,7 @@ use it intentionally.
 - **Typography: Geist** (`Geist` sans, `Geist_Mono` for code/mono), loaded via
   `next/font/google` and exposed as `--font-geist-sans` / `--font-geist-mono`. Don't
   introduce new font families.
-- **Logo / mark:** `public/openpaper.svg` (wordmark), `public/icon.svg` / `src/app/icon.svg`
+- **Logo / mark:** `public/scholens.svg` (wordmark), `public/icon.svg` / `src/app/icon.svg`
   (favicon/app icon), with variants under `public/logos/`. Use these assets; don't recreate
   the mark inline.
 
@@ -328,7 +328,7 @@ spinner is `Loader2` + `animate-spin`; `animate-pulse` for skeleton shimmer; `an
 - **Auth state** comes from `useAuth()` (`AuthProvider` in `lib/auth.tsx`). Email/password
   registration, verification, login, refresh, and password reset use the shared cloud-auth
   endpoints under `/api/auth`. The access token stays in memory; the product-scoped refresh
-  token is stored in the host-only `openpaper_refresh` Secure HttpOnly cookie and rotated under
+  token is stored in the host-only `scholens_refresh` Secure HttpOnly cookie and rotated under
   a browser lock. `lib/api.ts` attaches the Bearer token and retries one 401 after rotation.
   The product-enriched identity is loaded from `/api/me`.
 

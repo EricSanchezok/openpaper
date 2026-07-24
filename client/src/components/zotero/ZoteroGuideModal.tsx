@@ -68,7 +68,7 @@ export function ZoteroGuideModal({
 						<div>
 							<p className="font-medium">Click &quot;Connect Zotero&quot; below</p>
 							<p className="text-muted-foreground mt-0.5">
-								You&apos;ll be redirected to Zotero to authorize Open Paper, then brought back to this page. Open Paper only reads your library — it never changes anything in Zotero.
+								You&apos;ll be redirected to Zotero to authorize Scholens, then brought back to this page. Scholens only reads your library — it never changes anything in Zotero.
 							</p>
 						</div>
 					</li>

@@ -1,4 +1,4 @@
-"""openpaper baseline
+"""scholens baseline
 
 Revision ID: 59636e6aa2f2
 Revises:
@@ -38,7 +38,7 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.PrimaryKeyConstraint("nonce"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "token_weekly_usage",
@@ -59,7 +59,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id", "week_start"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "token_usage_events",
@@ -105,13 +105,13 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "idempotency_key", name="uq_token_usage_idempotency_key"
         ),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_token_usage_user_week",
         "token_usage_events",
         ["user_id", "week_start"],
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "audio_overview_jobs",
@@ -141,7 +141,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "audio_overviews",
@@ -171,7 +171,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "conversations",
@@ -201,7 +201,7 @@ def upgrade() -> None:
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "discover_searches",
@@ -224,7 +224,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "onboarding",
@@ -254,7 +254,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "paper_tags",
@@ -276,7 +276,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "paper_upload_jobs",
@@ -300,7 +300,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "project",
@@ -325,7 +325,7 @@ def upgrade() -> None:
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "referral_codes",
@@ -347,14 +347,14 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_referral_codes_code"),
+        op.f("ix_scholens_referral_codes_code"),
         "referral_codes",
         ["code"],
         unique=True,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "referrals",
@@ -394,21 +394,21 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("referee_user_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_referrals_referrer_user_id"),
+        op.f("ix_scholens_referrals_referrer_user_id"),
         "referrals",
         ["referrer_user_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_referrals_status"),
+        op.f("ix_scholens_referrals_status"),
         "referrals",
         ["status"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "subscriptions",
@@ -439,7 +439,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "user_profiles",
@@ -472,7 +472,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "zotero_connections",
@@ -495,7 +495,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "zotero_oauth_pending",
@@ -518,14 +518,14 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_zotero_oauth_pending_oauth_token"),
+        op.f("ix_scholens_zotero_oauth_pending_oauth_token"),
         "zotero_oauth_pending",
         ["oauth_token"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "data_table_extraction_jobs",
@@ -551,11 +551,11 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["openpaper.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "messages",
@@ -581,14 +581,14 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["conversation_id"], ["openpaper.conversations.id"], ondelete="CASCADE"
+            ["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "papers",
@@ -650,31 +650,31 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["parent_paper_id"], ["openpaper.papers.id"], ondelete="SET NULL"
+            ["parent_paper_id"], ["scholens.papers.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
-            ["upload_job_id"], ["openpaper.paper_upload_jobs.id"], ondelete="SET NULL"
+            ["upload_job_id"], ["scholens.paper_upload_jobs.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_papers_share_id"),
+        op.f("ix_scholens_papers_share_id"),
         "papers",
         ["share_id"],
         unique=True,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_papers_ts_vector",
         "papers",
         ["ts_vector"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
         postgresql_using="gin",
     )
     op.create_table(
@@ -695,13 +695,13 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["audio_overview_id"], ["openpaper.audio_overviews.id"], ondelete="CASCADE"
+            ["audio_overview_id"], ["scholens.audio_overviews.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["openpaper.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "project_role",
@@ -722,21 +722,21 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["openpaper.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_project_role_project_id_user_id",
         "project_role",
         ["project_id", "user_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "project_role_invitations",
@@ -769,10 +769,10 @@ def upgrade() -> None:
             ["auth.users.id"],
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["openpaper.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "artifacts",
@@ -796,32 +796,32 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["message_id"], ["openpaper.messages.id"], ondelete="CASCADE"
+            ["message_id"], ["scholens.messages.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_artifacts_message_id",
         "artifacts",
         ["message_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_artifacts_scope",
         "artifacts",
         ["scope_type", "scope_id", "kind", "created_at"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_artifacts_user_id"),
+        op.f("ix_scholens_artifacts_user_id"),
         "artifacts",
         ["user_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "data_table_extraction_results",
@@ -844,11 +844,11 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["job_id"], ["openpaper.data_table_extraction_jobs.id"], ondelete="CASCADE"
+            ["job_id"], ["scholens.data_table_extraction_jobs.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("job_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "highlights",
@@ -877,21 +877,21 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "uq_highlight_paper_zotero_annotation_key",
         "highlights",
         ["paper_id", "zotero_annotation_key"],
         unique=True,
-        schema="openpaper",
+        schema="scholens",
         postgresql_where=sa.text("zotero_annotation_key IS NOT NULL"),
     )
     op.create_table(
@@ -921,10 +921,10 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "paper_notes",
@@ -945,7 +945,7 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
@@ -953,7 +953,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("paper_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "paper_passages",
@@ -976,25 +976,25 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("paper_id", "start_line"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_paper_passages_paper_id"),
+        op.f("ix_scholens_paper_passages_paper_id"),
         "paper_passages",
         ["paper_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_paper_passages_ts_vector",
         "paper_passages",
         ["ts_vector"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
         postgresql_using="gin",
     )
     op.create_table(
@@ -1014,13 +1014,13 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
-            ["tag_id"], ["openpaper.paper_tags.id"], ondelete="CASCADE"
+            ["tag_id"], ["scholens.paper_tags.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("paper_id", "tag_id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "project_paper",
@@ -1040,27 +1040,27 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="RESTRICT"
+            ["paper_id"], ["scholens.papers.id"], ondelete="RESTRICT"
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["openpaper.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_project_paper_paper_id"),
+        op.f("ix_scholens_project_paper_paper_id"),
         "project_paper",
         ["paper_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
-        op.f("ix_openpaper_project_paper_project_id"),
+        op.f("ix_scholens_project_paper_project_id"),
         "project_paper",
         ["project_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "zotero_imported_items",
@@ -1093,17 +1093,17 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="SET NULL"
+            ["paper_id"], ["scholens.papers.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
-            ["upload_job_id"], ["openpaper.paper_upload_jobs.id"], ondelete="SET NULL"
+            ["upload_job_id"], ["scholens.paper_upload_jobs.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "user_id", "zotero_item_key", name="uq_zotero_import_user_item"
         ),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "annotations",
@@ -1127,17 +1127,17 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ["highlight_id"],
-            ["openpaper.highlights.id"],
+            ["scholens.highlights.id"],
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["auth.users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_table(
         "data_table_rows",
@@ -1159,32 +1159,32 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ["data_table_id"],
-            ["openpaper.data_table_extraction_results.id"],
+            ["scholens.data_table_extraction_results.id"],
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["openpaper.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_data_table_rows_data_table_id",
         "data_table_rows",
         ["data_table_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.create_index(
         "ix_data_table_rows_paper_id",
         "data_table_rows",
         ["paper_id"],
         unique=False,
-        schema="openpaper",
+        schema="scholens",
     )
     op.execute(
         """
-        CREATE FUNCTION openpaper.paper_content_trigger() RETURNS trigger AS $$
+        CREATE FUNCTION scholens.paper_content_trigger() RETURNS trigger AS $$
         BEGIN
             NEW.ts_vector :=
                 setweight(
@@ -1203,14 +1203,14 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TRIGGER tsvectorupdate
-            BEFORE INSERT OR UPDATE ON openpaper.papers
+            BEFORE INSERT OR UPDATE ON scholens.papers
             FOR EACH ROW
-            EXECUTE FUNCTION openpaper.paper_content_trigger()
+            EXECUTE FUNCTION scholens.paper_content_trigger()
         """
     )
     op.execute(
         """
-        CREATE FUNCTION openpaper.paper_passages_tsvector_trigger()
+        CREATE FUNCTION scholens.paper_passages_tsvector_trigger()
         RETURNS trigger AS $$
         BEGIN
             NEW.ts_vector :=
@@ -1223,9 +1223,9 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TRIGGER paper_passages_tsvectorupdate
-            BEFORE INSERT OR UPDATE ON openpaper.paper_passages
+            BEFORE INSERT OR UPDATE ON scholens.paper_passages
             FOR EACH ROW
-            EXECUTE FUNCTION openpaper.paper_passages_tsvector_trigger()
+            EXECUTE FUNCTION scholens.paper_passages_tsvector_trigger()
         """
     )
     # ### end Alembic commands ###
@@ -1237,123 +1237,123 @@ def downgrade() -> None:
     op.drop_index(
         "ix_token_usage_user_week",
         table_name="token_usage_events",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("token_usage_events", schema="openpaper")
-    op.drop_table("token_weekly_usage", schema="openpaper")
-    op.drop_table("jobs_webhook_nonces", schema="openpaper")
+    op.drop_table("token_usage_events", schema="scholens")
+    op.drop_table("token_weekly_usage", schema="scholens")
+    op.drop_table("jobs_webhook_nonces", schema="scholens")
     op.execute(
         "DROP TRIGGER IF EXISTS paper_passages_tsvectorupdate "
-        "ON openpaper.paper_passages"
+        "ON scholens.paper_passages"
     )
-    op.execute("DROP FUNCTION IF EXISTS openpaper.paper_passages_tsvector_trigger()")
-    op.execute("DROP TRIGGER IF EXISTS tsvectorupdate ON openpaper.papers")
-    op.execute("DROP FUNCTION IF EXISTS openpaper.paper_content_trigger()")
+    op.execute("DROP FUNCTION IF EXISTS scholens.paper_passages_tsvector_trigger()")
+    op.execute("DROP TRIGGER IF EXISTS tsvectorupdate ON scholens.papers")
+    op.execute("DROP FUNCTION IF EXISTS scholens.paper_content_trigger()")
     op.drop_index(
-        "ix_data_table_rows_paper_id", table_name="data_table_rows", schema="openpaper"
+        "ix_data_table_rows_paper_id", table_name="data_table_rows", schema="scholens"
     )
     op.drop_index(
         "ix_data_table_rows_data_table_id",
         table_name="data_table_rows",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("data_table_rows", schema="openpaper")
-    op.drop_table("annotations", schema="openpaper")
-    op.drop_table("zotero_imported_items", schema="openpaper")
+    op.drop_table("data_table_rows", schema="scholens")
+    op.drop_table("annotations", schema="scholens")
+    op.drop_table("zotero_imported_items", schema="scholens")
     op.drop_index(
-        op.f("ix_openpaper_project_paper_project_id"),
+        op.f("ix_scholens_project_paper_project_id"),
         table_name="project_paper",
-        schema="openpaper",
+        schema="scholens",
     )
     op.drop_index(
-        op.f("ix_openpaper_project_paper_paper_id"),
+        op.f("ix_scholens_project_paper_paper_id"),
         table_name="project_paper",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("project_paper", schema="openpaper")
-    op.drop_table("paper_tag_association", schema="openpaper")
+    op.drop_table("project_paper", schema="scholens")
+    op.drop_table("paper_tag_association", schema="scholens")
     op.drop_index(
         "ix_paper_passages_ts_vector",
         table_name="paper_passages",
-        schema="openpaper",
+        schema="scholens",
         postgresql_using="gin",
     )
     op.drop_index(
-        op.f("ix_openpaper_paper_passages_paper_id"),
+        op.f("ix_scholens_paper_passages_paper_id"),
         table_name="paper_passages",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("paper_passages", schema="openpaper")
-    op.drop_table("paper_notes", schema="openpaper")
-    op.drop_table("paper_images", schema="openpaper")
+    op.drop_table("paper_passages", schema="scholens")
+    op.drop_table("paper_notes", schema="scholens")
+    op.drop_table("paper_images", schema="scholens")
     op.drop_index(
         "uq_highlight_paper_zotero_annotation_key",
         table_name="highlights",
-        schema="openpaper",
+        schema="scholens",
         postgresql_where=sa.text("zotero_annotation_key IS NOT NULL"),
     )
-    op.drop_table("highlights", schema="openpaper")
-    op.drop_table("data_table_extraction_results", schema="openpaper")
+    op.drop_table("highlights", schema="scholens")
+    op.drop_table("data_table_extraction_results", schema="scholens")
     op.drop_index(
-        op.f("ix_openpaper_artifacts_user_id"),
+        op.f("ix_scholens_artifacts_user_id"),
         table_name="artifacts",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_index("ix_artifacts_scope", table_name="artifacts", schema="openpaper")
-    op.drop_index("ix_artifacts_message_id", table_name="artifacts", schema="openpaper")
-    op.drop_table("artifacts", schema="openpaper")
-    op.drop_table("project_role_invitations", schema="openpaper")
+    op.drop_index("ix_artifacts_scope", table_name="artifacts", schema="scholens")
+    op.drop_index("ix_artifacts_message_id", table_name="artifacts", schema="scholens")
+    op.drop_table("artifacts", schema="scholens")
+    op.drop_table("project_role_invitations", schema="scholens")
     op.drop_index(
         "ix_project_role_project_id_user_id",
         table_name="project_role",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("project_role", schema="openpaper")
-    op.drop_table("project_audio_overview", schema="openpaper")
+    op.drop_table("project_role", schema="scholens")
+    op.drop_table("project_audio_overview", schema="scholens")
     op.drop_index(
         "ix_papers_ts_vector",
         table_name="papers",
-        schema="openpaper",
+        schema="scholens",
         postgresql_using="gin",
     )
     op.drop_index(
-        op.f("ix_openpaper_papers_share_id"), table_name="papers", schema="openpaper"
+        op.f("ix_scholens_papers_share_id"), table_name="papers", schema="scholens"
     )
-    op.drop_table("papers", schema="openpaper")
-    op.drop_table("messages", schema="openpaper")
-    op.drop_table("data_table_extraction_jobs", schema="openpaper")
+    op.drop_table("papers", schema="scholens")
+    op.drop_table("messages", schema="scholens")
+    op.drop_table("data_table_extraction_jobs", schema="scholens")
     op.drop_index(
-        op.f("ix_openpaper_zotero_oauth_pending_oauth_token"),
+        op.f("ix_scholens_zotero_oauth_pending_oauth_token"),
         table_name="zotero_oauth_pending",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("zotero_oauth_pending", schema="openpaper")
-    op.drop_table("zotero_connections", schema="openpaper")
-    op.drop_table("user_profiles", schema="openpaper")
-    op.drop_table("subscriptions", schema="openpaper")
+    op.drop_table("zotero_oauth_pending", schema="scholens")
+    op.drop_table("zotero_connections", schema="scholens")
+    op.drop_table("user_profiles", schema="scholens")
+    op.drop_table("subscriptions", schema="scholens")
     op.drop_index(
-        op.f("ix_openpaper_referrals_status"),
+        op.f("ix_scholens_referrals_status"),
         table_name="referrals",
-        schema="openpaper",
+        schema="scholens",
     )
     op.drop_index(
-        op.f("ix_openpaper_referrals_referrer_user_id"),
+        op.f("ix_scholens_referrals_referrer_user_id"),
         table_name="referrals",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("referrals", schema="openpaper")
+    op.drop_table("referrals", schema="scholens")
     op.drop_index(
-        op.f("ix_openpaper_referral_codes_code"),
+        op.f("ix_scholens_referral_codes_code"),
         table_name="referral_codes",
-        schema="openpaper",
+        schema="scholens",
     )
-    op.drop_table("referral_codes", schema="openpaper")
-    op.drop_table("project", schema="openpaper")
-    op.drop_table("paper_upload_jobs", schema="openpaper")
-    op.drop_table("paper_tags", schema="openpaper")
-    op.drop_table("onboarding", schema="openpaper")
-    op.drop_table("discover_searches", schema="openpaper")
-    op.drop_table("conversations", schema="openpaper")
-    op.drop_table("audio_overviews", schema="openpaper")
-    op.drop_table("audio_overview_jobs", schema="openpaper")
+    op.drop_table("referral_codes", schema="scholens")
+    op.drop_table("project", schema="scholens")
+    op.drop_table("paper_upload_jobs", schema="scholens")
+    op.drop_table("paper_tags", schema="scholens")
+    op.drop_table("onboarding", schema="scholens")
+    op.drop_table("discover_searches", schema="scholens")
+    op.drop_table("conversations", schema="scholens")
+    op.drop_table("audio_overviews", schema="scholens")
+    op.drop_table("audio_overview_jobs", schema="scholens")
     # ### end Alembic commands ###

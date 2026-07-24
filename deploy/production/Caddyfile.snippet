@@ -1,4 +1,4 @@
-{$OPENPAPER_DOMAIN} {
+{$SCHOLENS_DOMAIN} {
 	log {
 		output stdout
 		format json
@@ -9,10 +9,10 @@
 	respond @internal_health 404
 
 	handle /api/* {
-		reverse_proxy openpaper-api:8000
+		reverse_proxy scholens-api:8000
 	}
 
 	handle {
-		reverse_proxy openpaper-client:3000
+		reverse_proxy scholens-client:3000
 	}
 }

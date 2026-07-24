@@ -352,7 +352,7 @@ export function ZoteroIntegrationCard() {
 							)}
 						{!zoteroLoading && !zoteroStatus?.connected && (
 							<p className="text-sm text-muted-foreground">
-								Link your Zotero library to Open Paper.
+								Link your Zotero library to Scholens.
 							</p>
 						)}
 						{!zoteroLoading && (
@@ -440,14 +440,14 @@ export function ZoteroIntegrationCard() {
 					) : (
 						<div className="space-y-3">
 							<p className="text-sm text-muted-foreground">
-								Open Paper pulls journal articles, conference papers, and preprints
+								Scholens pulls journal articles, conference papers, and preprints
 								(with PDF attachments) from your Zotero library so you can read and
 								annotate them here.
 							</p>
 							<p className="text-sm text-muted-foreground">
 								It&apos;s a{" "}
 								<span className="font-medium text-foreground">one-way sync</span>:
-								Open Paper only reads from Zotero to bring papers in — it never edits
+								Scholens only reads from Zotero to bring papers in — it never edits
 								or deletes anything in your Zotero library.
 							</p>
 							<Button

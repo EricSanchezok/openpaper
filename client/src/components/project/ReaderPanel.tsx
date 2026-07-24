@@ -12,7 +12,7 @@ import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvid
 export function ReaderPanel() {
     const {
         papers,
-        openPaperIds,
+        openDocumentIds,
         activePaperId,
         readerSearchTerm,
         rightPanel,
@@ -22,10 +22,10 @@ export function ReaderPanel() {
         refreshPaperUrl,
     } = useProjectWorkspace();
 
-    const openPapers = openPaperIds
+    const openDocuments = openDocumentIds
         .map((id) => papers.find((p) => p.id === id))
         .filter((p) => p !== undefined);
-    const activePaper = openPapers.find((p) => p.id === activePaperId) ?? null;
+    const activePaper = openDocuments.find((p) => p.id === activePaperId) ?? null;
 
     // file URLs are loaded lazily; fetch one for the active paper when missing.
     useEffect(() => {
@@ -34,7 +34,7 @@ export function ReaderPanel() {
         }
     }, [activePaper, refreshPaperUrl]);
 
-    if (openPapers.length === 0) {
+    if (openDocuments.length === 0) {
         return null;
     }
 
@@ -51,7 +51,7 @@ export function ReaderPanel() {
             {/* Tabs of open papers */}
             <div className="flex shrink-0 items-center gap-1 border-b bg-muted/30 px-2 py-1.5">
                 <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-                    {openPapers.map((paper) => {
+                    {openDocuments.map((paper) => {
                         const isActive = paper.id === activePaperId;
                         return (
                             <div

@@ -163,7 +163,7 @@ const formSchema = z.object({
 	referralSourceOther: z.string().optional(),
 });
 
-export function OPOnboarding() {
+export function ScholensOnboarding() {
 	const router = useRouter();
 	const [isLoading, setIsLoading] = React.useState(false);
 	const { user } = useAuth();
@@ -209,7 +209,7 @@ export function OPOnboarding() {
 				body: JSON.stringify(payload),
 			});
 
-			toast.success("Profile complete! Welcome to Open Paper.");
+			toast.success("Profile complete! Welcome to Scholens.");
 			const returnTo = localStorage.getItem('returnTo') || '/';
 			localStorage.removeItem('returnTo');
 			router.push(returnTo);
@@ -520,7 +520,7 @@ export function OPOnboarding() {
 					name="referralSource"
 					render={({ field }) => (
 						<FormItem>
-							<FormLabel>How did you hear about Open Paper?</FormLabel>
+							<FormLabel>How did you hear about Scholens?</FormLabel>
 							<Select onValueChange={field.onChange} defaultValue={field.value}>
 								<FormControl>
 									<SelectTrigger>

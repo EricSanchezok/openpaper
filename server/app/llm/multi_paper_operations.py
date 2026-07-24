@@ -275,7 +275,7 @@ class MultiPaperOperations(EvidenceOperations):
                 logger.error(f"Stream reader task failed with exception: {exc}")
                 yield {
                     "type": "error",
-                    "content": "Sorry, an error occurred while working on this response. Please try again or contact support (saba@openpaper.ai) if the issue persists.",
+                    "content": "Sorry, an error occurred while working on this response. Please try again.",
                 }
                 return
 

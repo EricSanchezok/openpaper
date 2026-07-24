@@ -77,14 +77,14 @@ export function ReferralDialog({
     }, []);
 
     const shareText = info
-        ? `I've been using Open Paper to read research papers with AI — give it a try. ${info.share_url}`
+        ? `I've been using Scholens to read research papers with AI — give it a try. ${info.share_url}`
         : "";
     const twitterHref = info
         ? `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`
         : "#";
     const emailHref = info
         ? `mailto:?subject=${encodeURIComponent(
-              "You should try Open Paper",
+              "You should try Scholens",
           )}&body=${encodeURIComponent(shareText)}`
         : "#";
 

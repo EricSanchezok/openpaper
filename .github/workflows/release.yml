@@ -19,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: openpaper-production-release
+  group: scholens-production-release
   cancel-in-progress: false
 
 jobs:
@@ -204,17 +204,17 @@ jobs:
           JOBS_IMAGE: ${{ needs.publish-jobs.outputs.image }}
         run: |
           {
-            echo 'OPENPAPER_RELEASE_CONTRACT_VERSION=1'
-            echo "OPENPAPER_PACKAGE_SHA=${PACKAGE_SHA}"
-            echo "OPENPAPER_RELEASE_SHA=${RELEASE_SHA}"
-            echo "OPENPAPER_API_IMAGE=${API_IMAGE}"
-            echo "OPENPAPER_CLIENT_IMAGE=${CLIENT_IMAGE}"
-            echo "OPENPAPER_JOBS_IMAGE=${JOBS_IMAGE}"
+            echo 'SCHOLENS_RELEASE_CONTRACT_VERSION=1'
+            echo "SCHOLENS_PACKAGE_SHA=${PACKAGE_SHA}"
+            echo "SCHOLENS_RELEASE_SHA=${RELEASE_SHA}"
+            echo "SCHOLENS_API_IMAGE=${API_IMAGE}"
+            echo "SCHOLENS_CLIENT_IMAGE=${CLIENT_IMAGE}"
+            echo "SCHOLENS_JOBS_IMAGE=${JOBS_IMAGE}"
           } > release.env
       - name: Upload release manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: openpaper-release-${{ needs.prepare.outputs.release_sha }}
+          name: scholens-release-${{ needs.prepare.outputs.release_sha }}
           path: release.env
           if-no-files-found: error
           retention-days: 30
@@ -244,7 +244,7 @@ jobs:
           CLIENT_IMAGE: ${{ needs.release-manifest.outputs.client_image }}
           JOBS_IMAGE: ${{ needs.release-manifest.outputs.jobs_image }}
         run: |
-          command=$(printf 'sudo /opt/openpaper/release.sh deploy --contract-version 1 --package-sha %q --release-sha %q --api-image %q --client-image %q --jobs-image %q' \
+          command=$(printf 'sudo /opt/scholens/release.sh deploy --contract-version 1 --package-sha %q --release-sha %q --api-image %q --client-image %q --jobs-image %q' \
             "$PACKAGE_SHA" "$RELEASE_SHA" "$API_IMAGE" "$CLIENT_IMAGE" "$JOBS_IMAGE")
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
@@ -274,6 +274,6 @@ jobs:
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --parameters 'commands=["sudo /opt/openpaper/release.sh rollback"]' \
+            --parameters 'commands=["sudo /opt/scholens/release.sh rollback"]' \
             --query 'Command.CommandId' --output text)
           bash deploy/production/wait-ssm.sh "$command_id" "$INSTANCE_ID"

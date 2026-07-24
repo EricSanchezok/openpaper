@@ -1,1 +1,1 @@
-"""Test package for Open Paper server."""
+"""Test package for Scholens server."""

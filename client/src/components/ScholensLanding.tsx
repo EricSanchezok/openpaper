@@ -52,7 +52,7 @@ const logos = [
     { src: "/logos/nhs_logo.svg", alt: "National Health Service", width: 60, height: 40 },
 ];
 
-export default function OpenPaperLanding() {
+export default function ScholensLanding() {
     const isMobile = useIsMobile();
     const { darkMode } = useIsDarkMode();
     const mobileAndDark = isMobile && darkMode;
@@ -66,13 +66,13 @@ export default function OpenPaperLanding() {
             <header className="px-4 lg:px-6 h-16 flex items-center justify-between border-b border-border/40 bg-background/80 backdrop-blur-sm sticky top-0 z-50">
                 <Link href="/" className="flex items-center justify-center">
                     <Image
-                        src="/openpaper.svg"
+                        src="/scholens.svg"
                         width={32}
                         height={32}
-                        alt="Open Paper Logo"
+                        alt="Scholens Logo"
                         className="mr-2"
                     />
-                    <span className="text-xl font-bold text-primary">Open Paper</span>
+                    <span className="text-xl font-bold text-primary">Scholens</span>
                 </Link>
 
                 {/* Desktop Navigation */}
@@ -273,7 +273,7 @@ export default function OpenPaperLanding() {
 
                         <div className="mt-12 text-center">
                             <p className="text-sm text-muted-foreground italic">
-                                Join thousands of researchers accelerating their work with Open Paper
+                                Join thousands of researchers accelerating their work with Scholens
                             </p>
                         </div>
                     </div>
@@ -285,10 +285,10 @@ export default function OpenPaperLanding() {
                     <div className="container px-4 md:px-6 max-w-6xl mx-auto">
                         <div className="text-center mb-12">
                             <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl mb-4">
-                                See Open Paper in Action
+                                See Scholens in Action
                             </h2>
                             <p className="text-muted-foreground md:text-lg max-w-2xl mx-auto">
-                                Watch how Open Paper transforms your research workflow with AI-powered insights and annotations.
+                                Watch how Scholens transforms your research workflow with AI-powered insights and annotations.
                             </p>
                         </div>
                         <div className="w-full max-w-4xl mx-auto">
@@ -315,7 +315,7 @@ export default function OpenPaperLanding() {
                                 Common Research <span className="text-primary">Challenges</span>
                             </h2>
                             <p className="mt-4 text-muted-foreground md:text-lg max-w-2xl mx-auto">
-                                We built Open Paper to solve the practical problems researchers face every day.
+                                We built Scholens to solve the practical problems researchers face every day.
                             </p>
                         </div>
                         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -377,7 +377,7 @@ export default function OpenPaperLanding() {
                                 Powerful Features in <span className="text-primary">Action</span>
                             </h2>
                             <p className="mt-4 text-muted-foreground md:text-lg max-w-2xl mx-auto">
-                                See how Open Paper transforms your research workflow with these key capabilities.
+                                See how Scholens transforms your research workflow with these key capabilities.
                             </p>
                         </div>
 
@@ -601,7 +601,7 @@ export default function OpenPaperLanding() {
                                         size="sm"
                                         asChild
                                     >
-                                        <a href="https://github.com/khoj-ai/openpaper" target="_blank" rel="noopener noreferrer">
+                                        <a href="https://github.com/EricSanchezok/openpaper" target="_blank" rel="noopener noreferrer">
                                             <GithubIcon className="w-4 h-4 mr-2" />
                                             View on GitHub
                                         </a>
@@ -645,7 +645,7 @@ export default function OpenPaperLanding() {
                                         size="sm"
                                         asChild
                                     >
-                                        <a href="https://github.com/khoj-ai/openpaper" target="_blank" rel="noopener noreferrer">
+                                        <a href="https://github.com/EricSanchezok/openpaper" target="_blank" rel="noopener noreferrer">
                                             Join Community
                                         </a>
                                     </Button>
@@ -664,7 +664,7 @@ export default function OpenPaperLanding() {
                                     Ready to <span className="text-primary">Supercharge</span> Your Research?
                                 </h2>
                                 <p className="mx-auto max-w-[600px] text-muted-foreground md:text-xl">
-                                    Join researchers who trust Open Paper for reliable, cited, and transparent research analysis.
+                                    Join researchers who trust Scholens for reliable, cited, and transparent research analysis.
                                     Start your free trial today.
                                 </p>
                             </div>
@@ -706,7 +706,7 @@ export default function OpenPaperLanding() {
                 <p className="text-xs text-muted-foreground text-center sm:text-left">
                     Made with ❤️ in{" "}
                     <a
-                        href="https://github.com/khoj-ai/openpaper"
+                        href="https://github.com/EricSanchezok/openpaper"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="underline hover:text-foreground transition-colors"
@@ -730,7 +730,7 @@ export default function OpenPaperLanding() {
                     <Link href="/tos" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">
                         Terms of Service
                     </Link>
-                    <Link href="https://github.com/khoj-ai/openpaper" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">
+                    <Link href="https://github.com/EricSanchezok/openpaper" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">
                         GitHub
                     </Link>
                     <Link href="/blog" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">

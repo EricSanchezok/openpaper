@@ -14,7 +14,7 @@ def _cloud_user() -> UserRecord:
     return UserRecord(
         id=42,
         email="reader@example.com",
-        password_hash="not-used-by-openpaper",
+        password_hash="not-used-by-scholens",
         display_name="Reader",
         status="active",
         email_verified=True,
@@ -22,14 +22,14 @@ def _cloud_user() -> UserRecord:
 
 
 def test_every_orm_table_has_an_explicit_owner_schema() -> None:
-    assert Base.metadata.schema == "openpaper"
+    assert Base.metadata.schema == "scholens"
     assert AuthUser.__table__.schema == "auth"
     assert "deleted_at" not in AuthUser.__table__.columns
     assert {
         table.schema
         for table in Base.metadata.tables.values()
         if table is not AuthUser.__table__
-    } == {"openpaper"}
+    } == {"scholens"}
 
 
 @pytest.mark.asyncio
@@ -39,7 +39,7 @@ async def test_optional_auth_returns_none_without_token() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cloud_identity_is_enriched_with_openpaper_profile() -> None:
+async def test_cloud_identity_is_enriched_with_scholens_profile() -> None:
     profile = SimpleNamespace(
         locale="zh-CN",
         is_admin=True,
@@ -75,13 +75,13 @@ async def test_product_block_does_not_modify_shared_account() -> None:
             await dependencies.get_current_user(_cloud_user(), MagicMock())
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "OpenPaper access is suspended"
+    assert exc_info.value.detail == "Scholens access is suspended"
 
 
-def test_refresh_cookie_is_scoped_to_openpaper_auth_routes() -> None:
+def test_refresh_cookie_is_scoped_to_scholens_auth_routes() -> None:
     config = runtime.build_refresh_cookie_config(environment="development")
 
-    assert config.name == "openpaper_refresh"
+    assert config.name == "scholens_refresh"
     assert config.path == "/api/auth"
     assert config.max_age_seconds == 7 * 24 * 60 * 60
     assert config.secure is False
@@ -94,7 +94,7 @@ def test_refresh_cookie_is_secure_in_production() -> None:
     assert config.secure is True
 
 
-def test_auth_config_uses_openpaper_lockout_settings() -> None:
+def test_auth_config_uses_scholens_lockout_settings() -> None:
     runtime_settings = runtime.AuthRuntimeSettings(
         _env_file=None,
         jwt_secret="x" * 32,
@@ -104,12 +104,12 @@ def test_auth_config_uses_openpaper_lockout_settings() -> None:
 
     config = runtime.build_auth_config(runtime_settings)
 
-    assert config.client_id == "openpaper"
+    assert config.client_id == "scholens"
     assert config.account_lockout_threshold == 7
     assert config.account_lockout_duration_minutes == 45
 
 
-def test_auth_email_sender_uses_openpaper_action_urls(
+def test_auth_email_sender_uses_scholens_action_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime_settings = runtime.AuthRuntimeSettings(
@@ -117,7 +117,7 @@ def test_auth_email_sender_uses_openpaper_action_urls(
         aliyun_dm_access_key_id="key-id",
         aliyun_dm_access_key_secret="key-secret",
         aliyun_dm_account_name="sender@example.com",
-        public_web_url="https://openpaper.example/",
+        public_web_url="https://scholens.example/",
     )
     factory = MagicMock(return_value=MagicMock())
     monkeypatch.setattr(runtime, "AliyunDirectMailSender", factory)
@@ -125,17 +125,17 @@ def test_auth_email_sender_uses_openpaper_action_urls(
     runtime.build_auth_email_sender(runtime_settings)
 
     assert factory.call_args.kwargs["verification_url"] == (
-        "https://openpaper.example/login?mode=verify"
+        "https://scholens.example/login?mode=verify"
     )
     assert factory.call_args.kwargs["password_reset_url"] == (
-        "https://openpaper.example/login?mode=reset"
+        "https://scholens.example/login?mode=reset"
     )
-    assert factory.call_args.kwargs["brand"] == "OpenPaper"
+    assert factory.call_args.kwargs["brand"] == "Scholens"
     assert factory.call_args.kwargs["reply_to_address"] is True
 
 
 @pytest.mark.asyncio
-async def test_access_token_requires_active_openpaper_session() -> None:
+async def test_access_token_requires_active_scholens_session() -> None:
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="access")
     with (
         patch.object(
@@ -187,8 +187,8 @@ async def test_admin_login_uses_cloud_auth_and_product_role() -> None:
 
     assert result is True
     assert request.session == {
-        "openpaper_admin_user_id": 42,
-        "openpaper_admin_session_id": 23,
+        "scholens_admin_user_id": 42,
+        "scholens_admin_session_id": 23,
     }
     login.assert_awaited_once_with(
         "reader@example.com",

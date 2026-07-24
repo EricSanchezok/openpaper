@@ -81,7 +81,7 @@ def test_scholight_delegation_identifies_current_user(
         "d" * 32,
         algorithms=["HS256"],
         audience="scholight-mcp",
-        issuer="openpaper",
+        issuer="scholens",
     )
     assert (claims["sub"], claims["scope"]) == ("42", "search")
 

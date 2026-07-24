@@ -19,8 +19,8 @@ def test_only_public_application_edges_join_shared_network() -> None:
     compose = load_compose()
     services = compose["services"]
 
-    assert services["client"]["networks"] == {"edge": {"aliases": ["openpaper-client"]}}
-    assert services["api"]["networks"]["edge"] == {"aliases": ["openpaper-api"]}
+    assert services["client"]["networks"] == {"edge": {"aliases": ["scholens-client"]}}
+    assert services["api"]["networks"]["edge"] == {"aliases": ["scholens-api"]}
     for service in ("jobs-api", "worker", "beat", "rabbitmq", "redis", "migrate"):
         assert "edge" not in services[service]["networks"]
     assert compose["networks"]["internal"]["internal"] is True
@@ -32,9 +32,9 @@ def test_release_images_are_required_and_runtime_containers_are_non_root() -> No
     compose_text = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
     compose = load_compose()
     for variable in (
-        "OPENPAPER_API_IMAGE",
-        "OPENPAPER_CLIENT_IMAGE",
-        "OPENPAPER_JOBS_IMAGE",
+        "SCHOLENS_API_IMAGE",
+        "SCHOLENS_CLIENT_IMAGE",
+        "SCHOLENS_JOBS_IMAGE",
     ):
         assert f"${{{variable}:?" in compose_text
 
@@ -51,14 +51,14 @@ def test_release_images_are_required_and_runtime_containers_are_non_root() -> No
         )
 
 
-def test_database_contract_shares_auth_and_isolates_openpaper() -> None:
+def test_database_contract_shares_auth_and_isolates_scholens() -> None:
     runtime = (PRODUCTION / "runtime.env.example").read_text(encoding="utf-8")
     bootstrap = (PRODUCTION / "bootstrap-db.sql").read_text(encoding="utf-8")
 
     assert runtime.count("/sanchezcloud?") == 2
     assert "search_path" not in runtime
     assert "CREATE SCHEMA IF NOT EXISTS auth" in bootstrap
-    assert "CREATE SCHEMA IF NOT EXISTS openpaper" in bootstrap
+    assert "CREATE SCHEMA IF NOT EXISTS scholens" in bootstrap
     assert "GRANT CREATE ON DATABASE" not in bootstrap
     assert "auth_migrator_role" in bootstrap
     assert "product_migrator_role" in bootstrap
@@ -103,17 +103,17 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         assert f"{variable}=" in catalog
 
     assert not (ROOT / "server" / ".env.example").exists()
-    assert "OPENPAPER_AUTH_ACCOUNT_LOCKOUT_THRESHOLD=" in runtime
-    assert "OPENPAPER_ALIYUN_DM_REPLY_TO_ADDRESS=" in runtime
+    assert "SCHOLENS_AUTH_ACCOUNT_LOCKOUT_THRESHOLD=" in runtime
+    assert "SCHOLENS_ALIYUN_DM_REPLY_TO_ADDRESS=" in runtime
     assert "AUTH_ACCOUNT_LOCKOUT_THRESHOLD:" in compose
     assert "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS:" in compose
-    assert "OPENPAPER_ANYSEARCH_API_KEY=" in runtime
-    assert "OPENPAPER_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET=" in runtime
-    assert "OPENPAPER_DEEPSEEK_API_KEY=" in runtime
-    assert "OPENPAPER_MINERU_API_TOKEN=" in runtime
-    assert "OPENPAPER_MOSS_API_KEY=" in runtime
-    assert "OPENPAPER_MOSS_MAX_AUDIO_BYTES=" in runtime
-    assert "OPENPAPER_JOBS_WEBHOOK_SIGNING_SECRET=" in runtime
+    assert "SCHOLENS_ANYSEARCH_API_KEY=" in runtime
+    assert "SCHOLENS_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET=" in runtime
+    assert "SCHOLENS_DEEPSEEK_API_KEY=" in runtime
+    assert "SCHOLENS_MINERU_API_TOKEN=" in runtime
+    assert "SCHOLENS_MOSS_API_KEY=" in runtime
+    assert "SCHOLENS_MOSS_MAX_AUDIO_BYTES=" in runtime
+    assert "SCHOLENS_JOBS_WEBHOOK_SIGNING_SECRET=" in runtime
     assert "ANYSEARCH_MCP_URL:" in compose
     assert "SCHOLIGHT_MCP_URL:" in compose
     assert "MOSS_MAX_AUDIO_BYTES:" in compose
@@ -137,30 +137,30 @@ def test_single_baseline_preserves_non_orm_search_triggers() -> None:
     assert len(versions) == 1
     baseline = versions[0].read_text(encoding="utf-8")
     assert "down_revision: Union[str, None] = None" in baseline
-    assert "openpaper.paper_content_trigger" in baseline
-    assert "openpaper.paper_passages_tsvector_trigger" in baseline
-    assert "ON openpaper.papers" in baseline
-    assert "ON openpaper.paper_passages" in baseline
+    assert "scholens.paper_content_trigger" in baseline
+    assert "scholens.paper_passages_tsvector_trigger" in baseline
+    assert "ON scholens.papers" in baseline
+    assert "ON scholens.paper_passages" in baseline
 
 
 def test_caddy_contract_hides_internal_health_and_routes_same_origin_api() -> None:
     caddy = (PRODUCTION / "Caddyfile.snippet").read_text(encoding="utf-8")
 
-    assert "{$OPENPAPER_DOMAIN}" in caddy
+    assert "{$SCHOLENS_DOMAIN}" in caddy
     assert "respond @internal_health 404" in caddy
-    assert "reverse_proxy openpaper-api:8000" in caddy
-    assert "reverse_proxy openpaper-client:3000" in caddy
+    assert "reverse_proxy scholens-api:8000" in caddy
+    assert "reverse_proxy scholens-client:3000" in caddy
 
 
 def test_ci_builds_images_and_runs_independent_migrations_twice() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
-    assert "tags: openpaper-api:ci" in workflow
+    assert "tags: scholens-api:ci" in workflow
     assert "for _ in 1 2; do" in workflow
     assert "cloud-auth migrate" in workflow
     assert "python -m app.scripts.migrate_product" in workflow
     assert "CREATE TABLE auth.product_migrator_must_not_create" in workflow
-    assert "CREATE TABLE openpaper.auth_migrator_must_not_create" in workflow
+    assert "CREATE TABLE scholens.auth_migrator_must_not_create" in workflow
 
 
 def test_external_actions_are_pinned_to_full_commit_shas() -> None:

@@ -9,7 +9,6 @@ import { AuthProvider } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider, ThemeProvider } from "@/lib/providers";
 import { SidebarController } from "@/components/utils/SidebarAutoCollapse";
-import Script from "next/script";
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
@@ -22,29 +21,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "Open Paper",
+	metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+	title: "Scholens",
 	description: "The fastest way to annotate and deeply understand research papers.",
 	icons: {
 		icon: "/icon.svg"
 	},
 	openGraph: {
-		title: "Open Paper",
+		title: "Scholens",
 		description: "The fastest way to annotate and deeply understand research papers.",
-		images: [
-			{
-				url: "https://assets.khoj.dev/openpaper/hero_open_paper2.png",
-				width: 1280,
-				height: 640,
-				alt: "Open Paper",
-			}
-		],
 		type: "website",
 	},
 	twitter: {
-		card: "summary_large_image",
-		title: "Open Paper",
+		card: "summary",
+		title: "Scholens",
 		description: "The fastest way to annotate and deeply understand your research papers.",
-		images: ["https://assets.khoj.dev/openpaper/hero_open_paper2.png"],
 	},
 };
 
@@ -71,19 +62,6 @@ export default function RootLayout({
     `,
 					}}
 				/>
-				<script defer data-domain="openpaper.ai" src="https://plausible.io/js/script.js"></script>
-				<Script
-					async
-					src="https://www.googletagmanager.com/gtag/js?id=AW-17815378235"
-				/>
-				<Script id="google-analytics">
-					{`
-						window.dataLayer = window.dataLayer || [];
-						function gtag(){dataLayer.push(arguments);}
-						gtag('js', new Date());
-						gtag('config', 'AW-17815378235');
-					`}
-				</Script>
 			</head>
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} antialiased`}

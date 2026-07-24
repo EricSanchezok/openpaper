@@ -59,7 +59,7 @@ export function AnnotationHoverCard({
                                 )}
                             </div>
                             <span className="text-xs font-medium text-foreground">
-                                {isAI ? "Open Paper" : user?.display_name || "User"}
+                                {isAI ? "Scholens" : user?.display_name || "User"}
                             </span>
                             <span className="text-[11px] text-muted-foreground">
                                 {formatAnnotationDate(ann.created_at)}

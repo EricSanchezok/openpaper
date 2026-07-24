@@ -26,16 +26,16 @@ type Mode = "signin" | "register" | "verify" | "forgot" | "reset";
 
 const COPY: Record<Mode, { title: string; description: string }> = {
     signin: {
-        title: "Sign in to OpenPaper",
+        title: "Sign in to Scholens",
         description: "Access your papers, projects, and annotations.",
     },
     register: {
-        title: "Create your OpenPaper account",
-        description: "One identity for OpenPaper and the SanchezCloud ecosystem.",
+        title: "Create your Scholens account",
+        description: "One identity for Scholens and the SanchezCloud ecosystem.",
     },
     verify: {
         title: "Verify your email",
-        description: "Confirm the email address for your OpenPaper account.",
+        description: "Confirm the email address for your Scholens account.",
     },
     forgot: {
         title: "Reset your password",

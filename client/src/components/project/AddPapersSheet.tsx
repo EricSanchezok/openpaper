@@ -206,7 +206,7 @@ export function AddPapersSheet() {
                                     <p>You&apos;ve reached the maximum of {paperHardLimit} papers. Remove papers to add more.</p>
                                 ) : (
                                     <p>
-                                        {remainingPaperSlots} slot{remainingPaperSlots === 1 ? "" : "s"} left. Large paper counts may impact response quality — for higher limits, contact <a href="mailto:saba@openpaper.ai" className="font-medium underline">saba@openpaper.ai</a>
+                                        {remainingPaperSlots} slot{remainingPaperSlots === 1 ? "" : "s"} left. Large paper counts may impact response quality — for higher limits, contact <a href="mailto:support@sanchezcloud.net" className="font-medium underline">support@sanchezcloud.net</a>
                                     </p>
                                 )}
                             </div>

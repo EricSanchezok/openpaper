@@ -13,14 +13,14 @@ FROM ${PYTHON_IMAGE} AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 1000 openpaper
+    && useradd --create-home --uid 1000 scholens
 
 WORKDIR /app
 COPY --from=builder /app/.venv/ /app/.venv/
 COPY --from=builder /app/src/ /app/src/
 
 ENV PATH=/app/.venv/bin:$PATH
-USER openpaper
+USER scholens
 EXPOSE 8001
 
 CMD ["python", "-m", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    """Apply only OpenPaper-owned migrations.
+    """Apply only Scholens-owned migrations.
 
     The independently managed cloud-auth migration must run first.
     """
@@ -21,7 +21,7 @@ def main() -> None:
         "script_location", str(repository_root / "migrations")
     )
     command.upgrade(alembic_config, "head")
-    logger.info("OpenPaper migrations are current")
+    logger.info("Scholens migrations are current")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 
 class UserRepository:
-    """Read shared identities and manage OpenPaper-only profile state."""
+    """Read shared identities and manage Scholens-only profile state."""
 
     def get(self, db: Session, *, id: int) -> AuthUser | None:
         return (

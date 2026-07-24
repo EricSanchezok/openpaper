@@ -488,7 +488,7 @@ export function ProjectCollaborators({ projectId, currentUserIsAdmin, setHasColl
 					<DialogHeader>
 						<DialogTitle>Invite Collaborators</DialogTitle>
 						<DialogDescription>
-							Add collaborators to your project. They will be notified by email.<br />If they do not have an Open Paper account, they will first receive an invitation to create one.
+							Add collaborators to your project. They will be notified by email.<br />If they do not have an Scholens account, they will first receive an invitation to create one.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-2">

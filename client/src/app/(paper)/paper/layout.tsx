@@ -27,29 +27,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "Open Paper",
+	metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+	title: "Scholens",
 	description: "The fastest way to annotate and deeply understand research papers.",
 	icons: {
 		icon: "/icon.svg"
 	},
 	openGraph: {
-		title: "Open Paper",
+		title: "Scholens",
 		description: "The fastest way to annotate and deeply understand research papers.",
-		images: [
-			{
-				url: "https://assets.khoj.dev/openpaper/hero_open_paper2.png",
-				width: 1280,
-				height: 640,
-				alt: "Open Paper",
-			}
-		],
 		type: "website",
 	},
 	twitter: {
-		card: "summary_large_image",
-		title: "Open Paper",
+		card: "summary",
+		title: "Scholens",
 		description: "The fastest way to annotate and deeply understand your research papers.",
-		images: ["https://assets.khoj.dev/openpaper/hero_open_paper2.png"],
 	},
 };
 
@@ -76,7 +68,6 @@ export default function RootLayout({
     `,
 					}}
 				/>
-				<script defer data-domain="openpaper.ai" src="https://plausible.io/js/script.js"></script>
 			</head>
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -92,12 +83,12 @@ export default function RootLayout({
 										<Separator orientation="vertical" className="mr-2 h-4" />
 										<Link href="/" className="flex flex-1 items-center gap-2 hover:opacity-80 transition-opacity">
 											<Image
-												src="/openpaper.svg"
+												src="/scholens.svg"
 												width={24}
 												height={24}
-												alt="Open Paper Logo"
+												alt="Scholens Logo"
 											/>
-											<span className="text-sm font-semibold">Open Paper</span>
+											<span className="text-sm font-semibold">Scholens</span>
 										</Link>
 									{/* Desktop buttons */}
 								<div className="hidden md:flex items-center gap-2">

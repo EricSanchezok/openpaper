@@ -66,7 +66,7 @@ interface ConversationViewProps {
 	onRefreshPaperUrl?: (paperId: string) => Promise<string | null>;
 	// When provided, papers open in the caller's reader (e.g. the project
 	// workspace panel) instead of this view's private side-by-side PDF split.
-	onOpenPaperExternal?: (paper: PaperItem, searchText: string | null) => void;
+	onOpenDocumentExternal?: (paper: PaperItem, searchText: string | null) => void;
 	// @-mention scoping (optional). When onMentionSelectionChange is provided,
 	// the input gains a Google-Docs-style "@" dropdown for scoping the chat to
 	// specific papers/projects.
@@ -105,7 +105,7 @@ export const ConversationView = ({
 	setHighlightedInfo,
 	authLoading,
 	onRefreshPaperUrl,
-	onOpenPaperExternal,
+	onOpenDocumentExternal,
 	projects = [],
 	mentionSelection = EMPTY_MENTION_SELECTION,
 	onMentionSelectionChange,
@@ -162,9 +162,9 @@ export const ConversationView = ({
 
 	// Open a paper in the PDF panel. file_url is loaded lazily, so it may be
 	// absent on the paper — fetch a fresh one on demand when that's the case.
-	const openPaperPdf = useCallback(async (paper: PaperItem, searchText: string | null) => {
-		if (onOpenPaperExternal) {
-			onOpenPaperExternal(paper, searchText);
+	const openDocumentPdf = useCallback(async (paper: PaperItem, searchText: string | null) => {
+		if (onOpenDocumentExternal) {
+			onOpenDocumentExternal(paper, searchText);
 			return;
 		}
 		setActivePaperId(paper.id);
@@ -185,7 +185,7 @@ export const ConversationView = ({
 				setPdfUrl(freshUrl);
 			}
 		}
-	}, [onRefreshPaperUrl, onOpenPaperExternal]);
+	}, [onRefreshPaperUrl, onOpenDocumentExternal]);
 
 	const handleCitationClick = (key: string, messageIndex: number) => {
 		originalHandleCitationClick(key, messageIndex);
@@ -204,7 +204,7 @@ export const ConversationView = ({
 			(searchText.startsWith("'") && searchText.endsWith("'"))) {
 			searchText = searchText.substring(1, searchText.length - 1);
 		}
-		openPaperPdf(paper, searchText);
+		openDocumentPdf(paper, searchText);
 	};
 
 	const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
@@ -340,7 +340,7 @@ export const ConversationView = ({
 								}
 								onHighlightClear={() => setHighlightedInfo(null)}
 								onPaperClick={(paper) => {
-									openPaperPdf(paper, null);
+									openDocumentPdf(paper, null);
 								}}
 							/>
 						)}
@@ -362,7 +362,7 @@ export const ConversationView = ({
 
 	return (
 		<div className="flex flex-row w-full h-full">
-			<div className={`flex flex-col h-full transition-all duration-500 ease-in-out ${isMobile ? (isPdfVisible ? 'hidden' : 'w-full') : onOpenPaperExternal ? 'w-full max-w-3xl mx-auto' : (isPdfVisible ? 'w-1/3' : 'w-full md:w-1/2 mx-auto')}`}>
+			<div className={`flex flex-col h-full transition-all duration-500 ease-in-out ${isMobile ? (isPdfVisible ? 'hidden' : 'w-full') : onOpenDocumentExternal ? 'w-full max-w-3xl mx-auto' : (isPdfVisible ? 'w-1/3' : 'w-full md:w-1/2 mx-auto')}`}>
 				<div
 					className={`${isCentered ? "flex-0" : "flex-1"} w-full overflow-y-auto transition-all duration-300 ease-in-out`}
 					ref={messagesContainerRef}

@@ -1,6 +1,6 @@
-Open Paper - Verification Code
+Scholens - Verification Code
 
-Enter this verification code to sign in to your Open Paper account:
+Enter this verification code to sign in to your Scholens account:
 
 {{verification_code}}
 

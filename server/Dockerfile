@@ -34,7 +34,7 @@ FROM ${PYTHON_IMAGE} AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 1000 openpaper
+    && useradd --create-home --uid 1000 scholens
 
 WORKDIR /app
 COPY --from=builder /app/.venv/ /app/.venv/
@@ -46,7 +46,7 @@ ENV PATH=/app/.venv/bin:$PATH \
     ENVIRONMENT=production \
     PORT=8000
 
-USER openpaper
+USER scholens
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
