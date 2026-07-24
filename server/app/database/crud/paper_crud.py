@@ -48,6 +48,10 @@ class PaperBase(BaseModel):
     raw_content: Optional[str] = None
     parser_markdown_s3_key: Optional[str] = None
     parser_archive_s3_key: Optional[str] = None
+    parser_backend: Optional[str] = None
+    parser_quality: Optional[str] = None
+    parser_version: Optional[str] = None
+    parser_warning_code: Optional[str] = None
     upload_job_id: Optional[str] = None
     preview_url: Optional[str] = None
     size_in_kb: Optional[int] = None

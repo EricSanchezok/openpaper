@@ -646,6 +646,10 @@ class Paper(Base):
     raw_content = Column(Text, nullable=True)
     parser_markdown_s3_key = Column(String, nullable=True)
     parser_archive_s3_key = Column(String, nullable=True)
+    parser_backend = Column(String, nullable=True)
+    parser_quality = Column(String, nullable=True)
+    parser_version = Column(String, nullable=True)
+    parser_warning_code = Column(String, nullable=True)
     ts_vector = Column(TSVECTOR, nullable=True)
     page_offset_map = Column(
         JSONB, nullable=True

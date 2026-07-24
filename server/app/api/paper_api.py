@@ -91,6 +91,8 @@ async def get_paper_ids(
             "status": paper.status,
             "preview_url": paper.preview_url,
             "size_in_kb": paper.size_in_kb,
+            "parser_quality": paper.parser_quality,
+            "parser_warning_code": paper.parser_warning_code,
             "publish_date": (str(paper.publish_date) if paper.publish_date else None),
             "file_url": file_urls.get(str(paper.id)),
             "tags": [
@@ -133,6 +135,8 @@ async def get_active_paper_ids(
             "status": paper.status,
             "preview_url": paper.preview_url,
             "size_in_kb": paper.size_in_kb,
+            "parser_quality": paper.parser_quality,
+            "parser_warning_code": paper.parser_warning_code,
             "publish_date": (str(paper.publish_date) if paper.publish_date else None),
         }
         for paper in papers

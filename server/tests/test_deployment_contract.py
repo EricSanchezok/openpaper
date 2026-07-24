@@ -173,16 +173,38 @@ def test_environment_catalog_covers_code_and_compose_references() -> None:
     assert compose_variables - generated_release_variables <= runtime_variables
 
 
-def test_single_baseline_preserves_non_orm_search_triggers() -> None:
+def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     versions = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))
 
-    assert len(versions) == 1
+    assert len(versions) >= 1
     baseline = versions[0].read_text(encoding="utf-8")
     assert "down_revision: Union[str, None] = None" in baseline
     assert "scholens.paper_content_trigger" in baseline
     assert "scholens.paper_passages_tsvector_trigger" in baseline
     assert "ON scholens.papers" in baseline
     assert "ON scholens.paper_passages" in baseline
+
+    revisions = {
+        match.group(1): path
+        for path in versions
+        if (
+            match := re.search(
+                r'^revision: str = "([^"]+)"',
+                path.read_text(encoding="utf-8"),
+                re.MULTILINE,
+            )
+        )
+    }
+    assert len(revisions) == len(versions)
+    for migration in versions[1:]:
+        source = migration.read_text(encoding="utf-8")
+        down_revision = re.search(
+            r'^down_revision: Union\[str, None\] = "([^"]+)"',
+            source,
+            re.MULTILINE,
+        )
+        assert down_revision is not None
+        assert down_revision.group(1) in revisions
 
 
 def test_caddy_contract_hides_internal_health_and_routes_same_origin_api() -> None:

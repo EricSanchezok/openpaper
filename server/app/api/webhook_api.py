@@ -48,7 +48,12 @@ from app.helpers.subscription_limits import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import llm_usage_context, settle_token_usage
-from app.schemas.responses import DataTableResult, PaperMetadataExtraction
+from app.schemas.jobs import (
+    PDFProcessingResult,
+    PdfProcessingWebhookData,
+    TokenUsageEventPayload,
+)
+from app.schemas.responses import DataTableResult
 from app.schemas.user import CurrentUser
 from app.services.zotero_import import (
     apply_zotero_annotations,
@@ -56,30 +61,12 @@ from app.services.zotero_import import (
     sync_batch,
 )
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 webhook_router = APIRouter(dependencies=[Depends(verify_jobs_webhook)])
-
-
-class TokenUsageEventPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    idempotency_key: str = Field(min_length=1, max_length=160)
-    operation_id: str = Field(min_length=1, max_length=128)
-    feature: str = Field(min_length=1, max_length=64)
-    model: str = Field(min_length=1, max_length=128)
-    reasoning_level: str = Field(pattern="^(standard|deep)$")
-    provider_request_id: Optional[str] = Field(default=None, max_length=160)
-    prompt_tokens: int = Field(ge=0)
-    completion_tokens: int = Field(ge=0)
-    reasoning_tokens: int = Field(default=0, ge=0)
-    cache_hit_tokens: int = Field(default=0, ge=0)
-    cache_miss_tokens: int = Field(default=0, ge=0)
-    total_tokens: int = Field(ge=0)
-    status: str = Field(default="settled", pattern="^(settled|unknown)$")
 
 
 def _settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> None:
@@ -148,6 +135,10 @@ def _finalize_zotero_import(
         update_payload["parser_markdown_s3_key"] = result.parser_markdown_s3_key
     if result.parser_archive_s3_key:
         update_payload["parser_archive_s3_key"] = result.parser_archive_s3_key
+    update_payload["parser_backend"] = result.parser_backend
+    update_payload["parser_quality"] = result.parser_quality
+    update_payload["parser_version"] = result.parser_version
+    update_payload["parser_warning_code"] = result.parser_warning_code
     if result.page_offset_map:
         update_payload["page_offset_map"] = result.page_offset_map
     if size_in_kb is not None:
@@ -332,51 +323,6 @@ def post_process_paper(
         db.close()
 
 
-class PDFImage(BaseModel):
-    """
-    Schema for an image extracted from a PDF.
-    """
-
-    page_number: int
-    image_index: int
-    s3_object_key: str
-    image_url: str
-    width: int
-    height: int
-    format: str
-    size_bytes: int
-    placeholder_id: str
-    caption: Optional[str] = None
-
-
-class PDFProcessingResult(BaseModel):
-    """Result of PDF processing"""
-
-    success: bool
-    job_id: str
-    raw_content: Optional[str] = None
-    page_offset_map: Optional[dict[int, list[int]]] = None
-    metadata: Optional[PaperMetadataExtraction] = None
-    s3_object_key: Optional[str] = None
-    file_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    preview_object_key: Optional[str] = None
-    parser_markdown_s3_key: Optional[str] = None
-    parser_archive_s3_key: Optional[str] = None
-    error: Optional[str] = None
-    duration: Optional[float] = None
-
-
-class PdfProcessingWebhookData(BaseModel):
-    """Schema for webhook data from PDF processing service"""
-
-    task_id: str
-    status: str
-    result: Optional[PDFProcessingResult] = None
-    error: Optional[str] = None
-    usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
-
-
 @webhook_router.post("/paper-processing/{job_id}")
 async def handle_paper_processing_webhook(
     job_id: str,
@@ -385,9 +331,6 @@ async def handle_paper_processing_webhook(
     db: Session = Depends(get_db),
 ):
     """Handle webhook from paper processing jobs service."""
-
-    if webhook_data.result is None:
-        raise HTTPException(status_code=422, detail="missing_webhook_result")
 
     # Get the job from your database (without user filtering since this is a webhook)
     job = paper_upload_job_crud.get_by(db=db, task_id=webhook_data.task_id, id=job_id)
@@ -540,6 +483,10 @@ async def handle_paper_processing_webhook(
                     raw_content=result.raw_content,
                     parser_markdown_s3_key=result.parser_markdown_s3_key,
                     parser_archive_s3_key=result.parser_archive_s3_key,
+                    parser_backend=result.parser_backend,
+                    parser_quality=result.parser_quality,
+                    parser_version=result.parser_version,
+                    parser_warning_code=result.parser_warning_code,
                     page_offset_map=result.page_offset_map,
                     size_in_kb=size_in_kb,
                 ),

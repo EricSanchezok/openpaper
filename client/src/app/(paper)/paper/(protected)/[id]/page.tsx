@@ -8,7 +8,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 
 import {
+    AlertTriangle,
     AudioLines,
+    Book,
+    Box,
     Highlighter,
     Lightbulb,
     MessageCircle,
@@ -33,7 +36,20 @@ import ReportSkeleton from '@/components/ReportSkeleton';
 
 import { SidePanelContent } from '@/components/SidePanelContent';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Book, Box } from 'lucide-react';
+
+function TextOnlyParsingNotice() {
+    return (
+        <div
+            role="status"
+            className="absolute left-1/2 top-3 z-30 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow-sm dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+                This paper was indexed in text-only mode. Equations, tables, and layout may be incomplete.
+            </span>
+        </div>
+    );
+}
 
 const OverviewTool = {
     name: "Overview",
@@ -608,7 +624,8 @@ export default function PaperView() {
 
     if (isMobile) {
         return (
-            <div className="flex flex-col w-full h-[calc(100vh-64px)]">
+            <div className="relative flex flex-col w-full h-[calc(100vh-64px)]">
+                {paperData.parser_quality === 'text_only' && <TextOnlyParsingNotice />}
                 <div className="flex-grow overflow-auto min-h-0">
                     {mobileView === 'reader' ? (
                         <div className="w-full h-full">
@@ -698,7 +715,8 @@ export default function PaperView() {
     }
 
     return (
-        <div className="flex flex-row w-full h-[calc(100vh-64px)]">
+        <div className="relative flex flex-row w-full h-[calc(100vh-64px)]">
+            {paperData.parser_quality === 'text_only' && <TextOnlyParsingNotice />}
             <div className="w-full h-full flex items-center justify-center gap-0">
                 {/* PDF Viewer Section */}
                 <div

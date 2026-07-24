@@ -141,6 +141,8 @@ async def get_upload_status(
         "has_file_url": bool(paper.file_url) if paper else False,
         "has_metadata": bool(paper.abstract) if paper else False,
         "paper_id": str(paper.id) if paper else None,
+        "parser_quality": paper.parser_quality if paper else None,
+        "parser_warning_code": paper.parser_warning_code if paper else None,
     }
 
     # Add Celery task information if available

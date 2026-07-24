@@ -28,6 +28,8 @@ export interface PaperData {
     doi?: string;
     publisher?: string;
     zotero_synced?: boolean;
+    parser_quality?: 'full' | 'text_only' | null;
+    parser_warning_code?: string | null;
 }
 
 export interface SharedPaper {
@@ -365,6 +367,8 @@ export interface PaperUploadJobStatusResponse extends JobStatusResponse {
     has_file_url: boolean;
     has_metadata: boolean;
     celery_progress_message: string | null;
+    parser_quality: 'full' | 'text_only' | null;
+    parser_warning_code: string | null;
 }
 
 export interface PaperTag {
@@ -391,6 +395,8 @@ export interface PaperItem {
     journal?: string
     doi?: string
     publisher?: string
+    parser_quality?: 'full' | 'text_only' | null
+    parser_warning_code?: string | null
 }
 
 export interface CreditUsage {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchFromApi } from "@/lib/api";
 import { PaperUploadJobStatusResponse, JobStatus, MinimalJob } from "@/lib/schema";
-import { CheckCircle2, ChevronDown, XCircle, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, XCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
@@ -103,6 +103,9 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 	// Calculate counts for summary
 	const completedCount = jobs.filter(j => j.status === 'completed').length;
 	const failedCount = jobs.filter(j => j.status === 'failed').length;
+	const degradedCount = jobs.filter(
+		j => j.status === 'completed' && j.details?.parser_quality === 'text_only'
+	).length;
 	const inProgressCount = jobs.filter(j => j.status === 'pending' || j.status === 'running').length;
 	const totalCount = jobs.length;
 
@@ -113,13 +116,14 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 
 	const allDone = inProgressCount === 0;
 	const hasFailures = failedCount > 0;
+	const hasDegraded = degradedCount > 0;
 
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full min-w-0 mb-4">
 			<CollapsibleTrigger className="w-full">
 				<div className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
 					allDone
-						? hasFailures
+						? hasFailures || hasDegraded
 							? 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800'
 							: 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800'
 						: 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800'
@@ -128,6 +132,8 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 						{allDone ? (
 							hasFailures ? (
 								<XCircle className="w-5 h-5 text-amber-500" />
+							) : hasDegraded ? (
+								<AlertTriangle className="w-5 h-5 text-amber-500" />
 							) : (
 								<CheckCircle2 className="w-5 h-5 text-green-500" />
 							)
@@ -138,6 +144,8 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 							{allDone
 								? hasFailures
 									? `Uploads complete with ${failedCount} error${failedCount > 1 ? 's' : ''}`
+									: hasDegraded
+										? `${degradedCount} paper${degradedCount > 1 ? 's were' : ' was'} indexed in text-only mode`
 									: `${totalCount} paper${totalCount > 1 ? 's' : ''} uploaded`
 								: `Uploading papers`
 							}
@@ -180,6 +188,17 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 												</div>
 											);
 										case 'completed':
+											if (job.details?.parser_quality === 'text_only') {
+												return (
+													<div
+														className="flex items-center gap-2 text-amber-600 dark:text-amber-400"
+														title="Equations, tables, and layout may be incomplete."
+													>
+														<AlertTriangle className="w-4 h-4" />
+														<span className="text-xs">Text only</span>
+													</div>
+												);
+											}
 											return (
 												<div className="flex items-center gap-2 text-green-500">
 													<CheckCircle2 className="w-4 h-4" />
