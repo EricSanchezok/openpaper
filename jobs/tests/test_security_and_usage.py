@@ -13,8 +13,8 @@ import pytest
 
 os.environ.setdefault("MINERU_API_TOKEN", "test-token")
 
-from src.pdf.mineru import MinerUClient
-from src.pdf.pipeline import canonical_markdown
+from src.pdf.mineru import MinerUClient, canonical_markdown
+from src.pdf.models import ParserSecurityError
 from src.token_usage import collect_token_usage, record_token_usage
 from src.webhook_signing import post_signed_json
 
@@ -32,21 +32,22 @@ def test_mineru_archive_requires_safe_canonical_artifacts(
 ) -> None:
     monkeypatch.setenv("MINERU_API_TOKEN", "test-token")
     client = MinerUClient()
-    result = client._read_archive(
+    paper_text = "Paper " * 200
+    result = client.read_archive(
         _zip(
             {
                 "result/full.md": "# Paper",
                 "result/content_list.json": json.dumps(
-                    [{"type": "text", "text": "Paper", "page_idx": 0}]
+                    [{"type": "text", "text": paper_text, "page_idx": 0}]
                 ),
             }
         )
     )
-    assert result.markdown == "# Paper"
-    assert result.content_list[0]["page_idx"] == 0
+    assert result.markdown == paper_text.strip()
+    assert result.page_offset_map == {1: [0, len(result.markdown)]}
 
-    with pytest.raises(ValueError, match="Unsafe path"):
-        client._read_archive(
+    with pytest.raises(ParserSecurityError, match="Unsafe path"):
+        client.read_archive(
             _zip(
                 {
                     "../full.md": "# Escape",
@@ -62,7 +63,7 @@ def test_mineru_rejects_non_public_archive_url(
     monkeypatch.setenv("MINERU_API_TOKEN", "test-token")
     client = MinerUClient()
 
-    with pytest.raises(ValueError, match="non-public"):
+    with pytest.raises(ParserSecurityError, match="non-public"):
         client._validate_archive_url("https://127.0.0.1/result.zip")
 
 

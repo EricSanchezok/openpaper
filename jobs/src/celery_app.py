@@ -7,8 +7,10 @@ from datetime import timedelta
 
 from dotenv import load_dotenv
 from celery import Celery  # type: ignore
+from src.pdf import validate_pdf_runtime_configuration
 
 load_dotenv()  # Load environment variables from .env file
+validate_pdf_runtime_configuration()
 
 BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@localhost:5672//")
 BACKEND_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")

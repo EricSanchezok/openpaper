@@ -3,8 +3,8 @@ Pydantic schemas for PDF processing.
 """
 
 from enum import Enum
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field, model_validator
 
 
 class ResponseCitation(BaseModel):
@@ -226,8 +226,27 @@ class PDFProcessingResult(BaseModel):
     preview_object_key: Optional[str] = None
     parser_markdown_s3_key: Optional[str] = None
     parser_archive_s3_key: Optional[str] = None
+    parser_backend: Optional[Literal["mineru", "pymupdf"]] = None
+    parser_quality: Optional[Literal["full", "text_only"]] = None
+    parser_version: Optional[str] = None
+    parser_warning_code: Optional[str] = None
     error: Optional[str] = None
     duration: Optional[float] = None  # Duration in seconds
+
+    @model_validator(mode="after")
+    def validate_result_state(self) -> "PDFProcessingResult":
+        if self.success:
+            if (
+                not self.raw_content
+                or not self.page_offset_map
+                or self.parser_backend is None
+                or self.parser_quality is None
+                or not self.parser_version
+            ):
+                raise ValueError("successful PDF result is incomplete")
+        elif not self.error:
+            raise ValueError("failed PDF result requires an error code")
+        return self
 
 
 class DocumentMapping(BaseModel):

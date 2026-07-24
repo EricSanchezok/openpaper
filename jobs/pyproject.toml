@@ -25,6 +25,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "python-dotenv>=1.2.2",
     "psutil>=5.9.0",
+    "redis>=5.2.0",
     "types-psutil>=7.0.0.20250601",
     "httpx>=0.28.0",
     "openai>=2.0.0",
