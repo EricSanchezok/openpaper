@@ -64,9 +64,10 @@ S3_BUCKET_NAME=scholens-dev-<aws-account-id>-<region>
 CLOUDFLARE_BUCKET_NAME=scholens-dev-<aws-account-id>-<region>.s3.<region>.amazonaws.com
 ```
 
-`CLOUDFLARE_BUCKET_NAME` 在现有代码中实际表示文件访问主机名，本地直接填写
-S3 区域主机名即可；生产环境接入 CDN 后再填写 CDN 域名。生产部署不要创建长期
-Access Key；为 EC2/ECS 工作负载绑定 IAM Role。
+`CLOUDFLARE_BUCKET_NAME` 在现有代码中实际表示 canonical 文件访问主机名，
+不包含 `https://`。AWS 环境直接填写 S3 区域主机名；临时下载链接始终保留
+boto3 生成的签名主机，不能直接替换成 CDN 域名。生产部署不要创建长期 Access
+Key；为 EC2/ECS 工作负载绑定 IAM Role。
 
 官方资料：[创建 Bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html)、[S3 IAM 策略示例](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security_iam_id-based-policy-examples.html)、[Access Key 管理](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html)。
 

@@ -31,6 +31,16 @@ cp .env.example jobs/.env
 cp .env.example client/.env.local
 ```
 
+The root file is a committed catalog, not a runtime file. Each process reads
+the private file in its own working directory:
+
+| Runtime file        | Owned configuration                               |
+| ------------------- | ------------------------------------------------- |
+| `server/.env`       | Database, cloud-auth, MOSS, API integrations      |
+| `jobs/.env`         | MinerU, background processing, webhook delivery   |
+| Both Python files   | S3, DeepSeek, broker URLs, webhook signing secret |
+| `client/.env.local` | `NEXT_PUBLIC_*` browser configuration only        |
+
 **Must match across server and jobs:** `CELERY_BROKER_URL`, S3/AWS bucket vars,
 `DEEPSEEK_*`, and `JOBS_WEBHOOK_SIGNING_SECRET`. Server needs
 `CELERY_API_URL=http://localhost:8001`; jobs needs

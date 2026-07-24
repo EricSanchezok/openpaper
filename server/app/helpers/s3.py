@@ -180,34 +180,11 @@ class S3Service:
             str: Presigned URL or None if error
         """
         try:
-            url = self.s3_client.generate_presigned_url(
+            return self.s3_client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self.bucket_name, "Key": object_key},
                 ExpiresIn=expiration,
             )
-
-            # Rewrite the raw S3 host to the public Cloudflare CDN host
-            if url.startswith(f"https://{self.bucket_name}.s3.amazonaws.com/"):
-                url = url.replace(
-                    f"https://{self.bucket_name}.s3.amazonaws.com/",
-                    f"https://{self.cloudflare_bucket_name}/",
-                )
-            elif url.startswith(
-                f"https://{self.bucket_name}.s3.us-east-1.amazonaws.com/"
-            ):
-                url = url.replace(
-                    f"https://{self.bucket_name}.s3.us-east-1.amazonaws.com/",
-                    f"https://{self.cloudflare_bucket_name}/",
-                )
-            elif url.startswith(
-                f"https://{self.bucket_name}.s3.{AWS_REGION}.amazonaws.com/"
-            ):
-                url = url.replace(
-                    f"https://{self.bucket_name}.s3.{AWS_REGION}.amazonaws.com/",
-                    f"https://{self.cloudflare_bucket_name}/",
-                )
-
-            return url
         except ClientError as e:
             logger.error(f"Error generating presigned URL: {e}")
             return None

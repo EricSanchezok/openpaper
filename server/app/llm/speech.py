@@ -28,6 +28,19 @@ def clean_markdown_for_speech(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
+def detect_audio_format(audio: bytes) -> tuple[str, str]:
+    """Return a safe file suffix and MIME type from the audio signature."""
+    if len(audio) >= 12 and audio.startswith(b"RIFF") and audio[8:12] == b"WAVE":
+        return ".wav", "audio/wav"
+    if audio.startswith(b"ID3") or (
+        len(audio) >= 2
+        and audio[0] == 0xFF
+        and audio[1] & 0xE0 == 0xE0
+    ):
+        return ".mp3", "audio/mpeg"
+    raise ValueError("MOSS returned an unsupported audio format")
+
+
 def _find_value(payload: Any, keys: set[str]) -> str | None:
     if isinstance(payload, dict):
         for key, value in payload.items():
@@ -165,17 +178,18 @@ class MossSpeaker:
         audio_bytes = self._download_audio(audio_url)
         if not audio_bytes:
             raise ValueError("MOSS returned empty audio")
+        suffix, content_type = detect_audio_format(audio_bytes)
 
         safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title or "audio")[:120]
         temp_path: str | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as output:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as output:
                 output.write(audio_bytes)
                 temp_path = output.name
             return s3_service.upload_any_file(
                 file_path=temp_path,
-                original_filename=f"{safe_title}.mp3",
-                content_type="audio/mpeg",
+                original_filename=f"{safe_title}{suffix}",
+                content_type=content_type,
             )
         finally:
             if temp_path and os.path.exists(temp_path):

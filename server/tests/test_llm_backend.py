@@ -12,7 +12,7 @@ from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
 from app.llm.backend import DeepSeekBackend
 from app.llm.backend import LLMResponse
-from app.llm.speech import MossSpeaker
+from app.llm.speech import MossSpeaker, detect_audio_format
 from app.llm.token_credits import utc_week_start
 from pydantic import BaseModel
 
@@ -178,6 +178,17 @@ def test_moss_rejects_non_public_audio_url(
 
     with pytest.raises(ValueError, match="non-public"):
         speaker._validate_audio_url("https://127.0.0.1/audio.mp3")
+
+
+def test_moss_detects_actual_audio_container() -> None:
+    assert detect_audio_format(b"RIFF\x00\x00\x00\x00WAVEfmt ") == (
+        ".wav",
+        "audio/wav",
+    )
+    assert detect_audio_format(b"ID3\x04\x00\x00") == (".mp3", "audio/mpeg")
+    assert detect_audio_format(b"\xff\xfb\x90\x64") == (".mp3", "audio/mpeg")
+    with pytest.raises(ValueError, match="unsupported"):
+        detect_audio_format(b"not audio")
 
 
 def test_token_week_starts_monday_utc() -> None:

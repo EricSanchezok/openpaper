@@ -117,6 +117,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "ANYSEARCH_MCP_URL:" in compose
     assert "SCHOLIGHT_MCP_URL:" in compose
     assert "MOSS_MAX_AUDIO_BYTES:" in compose
+    assert "DEEPSEEK_STRUCTURED_RETRIES:" in compose
     for legacy_variable in (
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
@@ -129,6 +130,47 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         assert legacy_variable not in catalog + runtime + compose + ci
     assert "EXA_API_KEY" not in catalog + runtime + compose
     assert "FIRECRAWL_API_KEY" not in catalog + runtime + compose
+
+
+def test_environment_catalog_covers_code_and_compose_references() -> None:
+    assignment = re.compile(r"^([A-Z][A-Z0-9_]*)=", re.MULTILINE)
+    catalog_variables = set(
+        assignment.findall((ROOT / ".env.example").read_text(encoding="utf-8"))
+    )
+    runtime_variables = set(
+        assignment.findall(
+            (PRODUCTION / "runtime.env.example").read_text(encoding="utf-8")
+        )
+    )
+
+    code_patterns = (
+        re.compile(r'(?:os\.getenv|os\.environ\.get)\(\s*["\']([A-Z][A-Z0-9_]*)'),
+        re.compile(r'os\.environ\[\s*["\']([A-Z][A-Z0-9_]*)'),
+        re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)"),
+    )
+    code_variables: set[str] = set()
+    for source_root in (
+        ROOT / "server" / "app",
+        ROOT / "jobs" / "src",
+        ROOT / "client" / "src",
+    ):
+        for path in source_root.rglob("*"):
+            if path.suffix not in {".py", ".js", ".mjs", ".ts", ".tsx"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            for pattern in code_patterns:
+                code_variables.update(pattern.findall(source))
+
+    assert code_variables - {"NODE_ENV"} <= catalog_variables
+
+    compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
+    compose_variables = set(re.findall(r"\$\{(SCHOLENS_[A-Z0-9_]+)", compose))
+    generated_release_variables = {
+        "SCHOLENS_API_IMAGE",
+        "SCHOLENS_CLIENT_IMAGE",
+        "SCHOLENS_JOBS_IMAGE",
+    }
+    assert compose_variables - generated_release_variables <= runtime_variables
 
 
 def test_single_baseline_preserves_non_orm_search_triggers() -> None:

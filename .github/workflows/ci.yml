@@ -110,6 +110,8 @@ jobs:
         run: uv sync --frozen --group dev
       - name: Ruff
         run: uv run ruff check src
+      - name: Tests
+        run: uv run pytest -q
 
   deployment-contract:
     runs-on: ubuntu-latest
@@ -179,6 +181,7 @@ jobs:
           SCHOLENS_ALIYUN_DM_ACCESS_KEY_SECRET: fixture
           SCHOLENS_ALIYUN_DM_ACCOUNT_NAME: sender@example.invalid
           SCHOLENS_S3_BUCKET_NAME: fixture-bucket
+          SCHOLENS_CLOUDFLARE_BUCKET_NAME: fixture-bucket.s3.us-east-1.amazonaws.com
           SCHOLENS_DEEPSEEK_API_KEY: fixture
           SCHOLENS_MINERU_API_TOKEN: fixture
           SCHOLENS_MOSS_API_KEY: fixture

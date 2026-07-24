@@ -163,7 +163,7 @@ The following environment variables are required to run the Jobs Service:
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key for S3.                           | Yes      |
 | `AWS_REGION`            | The AWS region for the S3 bucket.                | No       |
 | `S3_BUCKET_NAME`        | The name of the S3 bucket for file storage.      | Yes      |
-| `CLOUDFLARE_BUCKET_NAME`| Asset hostname without `https://`; use the S3 regional hostname locally or a CDN hostname in production. | Yes |
+| `CLOUDFLARE_BUCKET_NAME`| Canonical asset hostname without `https://`; use the S3 regional hostname. Presigned URLs keep their provider host. | Yes |
 | `CELERY_BROKER_URL`     | The URL for the Celery message broker (RabbitMQ).   | Yes      |
 | `CELERY_RESULT_BACKEND` | The URL for the Celery result backend (Redis).   | Yes      |
 | `DEEPSEEK_API_KEY`      | DeepSeek key used for metadata extraction.       | Yes      |
