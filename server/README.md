@@ -29,6 +29,11 @@ At minimum, point `DATABASE_URL` at a `sanchezcloud` database with migrated
 the features you want to exercise. See [`../DEVELOPMENT.md`](../DEVELOPMENT.md)
 for the shared-local-account and AWS RDS distinction.
 
+AnySearch and Scholight are connected as remote Streamable HTTP MCP servers.
+Their tool schemas are discovered at runtime, so citation recovery uses the
+providers' native `search`, `extract`, and `search_papers` tools rather than
+maintaining local Exa/Firecrawl wrappers.
+
 ## Start the Application
 
 1. Start the jobs service (RabbitMQ + Celery worker) in a separate terminal:

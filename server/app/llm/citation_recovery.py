@@ -1,7 +1,7 @@
 """Agentic recovery of missing paper metadata.
 
-A small LLM loop that runs `web_search` (Exa) + `web_fetch` (Firecrawl) over
-a paper's bibliographic details, falls back to a forced structured-output
+A small LLM loop that uses AnySearch and Scholight MCP tools over a paper's
+bibliographic details, falls back to a forced structured-output
 extraction, and writes back any null fields it can confidently fill (with
 field_provenance). Reusable from any codepath that already has a Paper row
 (chat, post-upload background, backfill).
@@ -21,14 +21,12 @@ from app.database.models import Paper
 from app.helpers.citations import CitationFields, bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import extract_doi_from_url
 from app.helpers.parser import parse_publication_date
+from app.integrations.mcp import (
+    call_remote_tool_sync,
+    discover_function_declarations_sync,
+)
 from app.llm.base import BaseLLMClient, ModelType
 from app.llm.provider import LLMProvider
-from app.llm.tools.web_tools import (
-    web_fetch,
-    web_fetch_function,
-    web_search,
-    web_search_function,
-)
 from app.schemas.citation import CitationStep
 from app.schemas.responses import TextContent, ToolCallResult
 from app.schemas.user import CurrentUser
@@ -68,9 +66,10 @@ RECOVERY_SYSTEM_PROMPT = (
     "You are a bibliographic research assistant. Your job is to find the "
     "missing publication metadata (journal/venue, publisher, DOI, publication "
     "date) for one specific academic paper so it can be cited correctly.\n\n"
-    "Use web_search to locate authoritative sources, and web_fetch only when a "
-    "search result snippet is not enough. Critically verify that a source "
-    "describes THE SAME paper by matching its title and authors.\n\n"
+    "Use search for broad web results, search_papers for Scholight's ranked "
+    "academic index, and extract only when a search result is not enough. "
+    "Critically verify that a source describes THE SAME paper by matching its "
+    "title and authors.\n\n"
     "Be decisive and efficient — you usually need only ONE or TWO searches. As "
     "soon as a result reveals the venue/publisher/DOI, STOP searching and call "
     "submit_findings; do not keep searching for perfection. You have a strict, "
@@ -183,12 +182,19 @@ class MetadataRecoveryAgent(BaseLLMClient):
         missing: list[str],
         steps: list[CitationStep],
     ) -> Optional[dict[str, Any]]:
-        function_declarations = [
-            web_search_function,
-            web_fetch_function,
-            submit_findings_function,
-        ]
-        function_maps = {"web_search": web_search, "web_fetch": web_fetch}
+        try:
+            remote_declarations = [
+                declaration
+                for declaration in discover_function_declarations_sync()
+                if declaration["name"] in {"search", "extract", "search_papers"}
+            ]
+        except Exception:
+            logger.exception("Failed to discover citation MCP tools")
+            remote_declarations = []
+        function_declarations = [*remote_declarations, submit_findings_function]
+        remote_tool_names = {
+            str(declaration["name"]) for declaration in remote_declarations
+        }
         user_msg = self._describe_task(fields, missing)
         tool_call_results: list[ToolCallResult] = []
         prev_queries: set[str] = set()
@@ -233,7 +239,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                     )
                     continue
 
-                if name not in function_maps:
+                if name not in remote_tool_names:
                     continue
 
                 # Canonicalize args so semantically identical calls dedup
@@ -248,12 +254,12 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 prev_queries.add(dedup_key)
 
                 try:
-                    result = function_maps[name](**args)
+                    result = call_remote_tool_sync(name, args)
                 except Exception as e:
                     logger.warning("Citation tool %s failed: %s", name, e)
                     result = f"Error: {e}"
 
-                if name == "web_search":
+                if name in {"search", "search_papers"}:
                     steps.append(
                         CitationStep(
                             kind="web_search",
@@ -263,7 +269,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                             },
                         )
                     )
-                else:
+                elif name == "extract":
                     steps.append(
                         CitationStep(
                             kind="web_fetch",
@@ -324,7 +330,10 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 provider=LLMProvider.CEREBRAS,
                 enable_thinking=False,
             )
-            findings = json.loads(resp.text)
+            parsed_findings = json.loads(resp.text)
+            if not isinstance(parsed_findings, dict):
+                raise ValueError("Citation extraction did not return an object")
+            findings: dict[str, Any] = parsed_findings
         except Exception:
             logger.exception("Citation extraction failed")
             return None
@@ -386,7 +395,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         }
 
         filled: dict[str, Any] = {}
-        provenance: Dict[str, Any] = dict(paper.field_provenance or {})  # type: ignore
+        provenance: Dict[str, Any] = dict(paper.field_provenance or {})
         for f, value in candidates.items():
             if value and not current.get(f):
                 filled[f] = value

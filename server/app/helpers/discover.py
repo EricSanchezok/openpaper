@@ -3,13 +3,12 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, List, Optional
 
-from app.helpers.exa_search import search_exa
 from app.helpers.openalex_search import search_openalex
+from app.helpers.scholight_search import search_scholight
 from app.llm.base import BaseLLMClient, ModelType
 from app.llm.provider import LLMProvider
-from app.schemas.discover import DISCOVER_SOURCES
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -49,24 +48,13 @@ def decompose_query(question: str) -> list[str]:
     return parsed.subqueries
 
 
-def _get_domains_for_sources(sources: list[str]) -> Optional[list[str]]:
-    """Get combined domain list for the given source keys."""
-    domains = []
-    for source in sources:
-        if source in DISCOVER_SOURCES:
-            source_domains = DISCOVER_SOURCES[source].get("domains")
-            if source_domains:
-                domains.extend(source_domains)
-    return domains if domains else None
-
-
 async def run_discover_pipeline(
     question: str,
     sources: Optional[list[str]] = None,
     sort: Optional[str] = None,
     only_open_access: bool = False,
     year_filter: Optional[str] = None,
-) -> AsyncGenerator[dict, None]:
+) -> AsyncGenerator[dict[str, Any], None]:
     """
     Run the full discover pipeline, yielding streaming chunks:
     1. {"type": "subqueries", "content": [...]}
@@ -75,8 +63,8 @@ async def run_discover_pipeline(
 
     Args:
         question: The research question to explore
-        sources: Optional list of source keys to filter by. If includes "openalex",
-                 uses OpenAlex backend. Otherwise uses Exa with domain filtering.
+        sources: Optional list of source keys. "openalex" selects the legacy
+                 OpenAlex path; otherwise Scholight MCP is used.
         sort: Optional sort parameter for OpenAlex (e.g., "cited_by_count:desc")
         only_open_access: If True, only return open access papers (OpenAlex only)
         year_filter: Optional time filter ("last_year", "last_5_years", or None for all time)
@@ -87,10 +75,6 @@ async def run_discover_pipeline(
 
     # Determine search strategy based on sources
     use_openalex = sources and "openalex" in sources
-    exa_domains = None
-    if sources and not use_openalex:
-        exa_domains = _get_domains_for_sources(sources)
-
     # Calculate start date for date filtering
     start_date = None
     if year_filter == "last_year":
@@ -102,25 +86,30 @@ async def run_discover_pipeline(
     for subquery in subqueries:
         try:
             if use_openalex:
-                results = search_openalex(
-                    subquery,
-                    num_results=10,
-                    sort=sort,
-                    only_open_access=only_open_access,
-                    year_filter=year_filter,
-                )
+                content = [
+                    result.to_dict()
+                    for result in search_openalex(
+                        subquery,
+                        num_results=10,
+                        sort=sort,
+                        only_open_access=only_open_access,
+                        year_filter=year_filter,
+                    )
+                ]
             else:
-                results = search_exa(
-                    subquery,
-                    num_results=10,
-                    domains=exa_domains,
-                    start_published_date=start_date,
-                )
+                content = [
+                    result.to_dict()
+                    for result in await search_scholight(
+                        subquery,
+                        num_results=10,
+                        date_from=start_date,
+                    )
+                ]
 
             yield {
                 "type": "results",
                 "subquery": subquery,
-                "content": [r.to_dict() for r in results],
+                "content": content,
             }
         except Exception as e:
             logger.error(f"Search failed for subquery '{subquery}': {e}")

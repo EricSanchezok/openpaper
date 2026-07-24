@@ -30,7 +30,7 @@ const SORT_OPTIONS: { value: DiscoverSort; label: string }[] = [
 
 const PLACEHOLDERS: Record<SearchMode, string> = {
     scholarly: "Search structured indexed academic databases...",
-    explore: "Search across preprints, journals, and research sites...",
+    explore: "Search Scholight's ranked academic paper index...",
 }
 
 const YEAR_FILTER_OPTIONS: { value: YearFilter; label: string }[] = [
@@ -41,7 +41,7 @@ const YEAR_FILTER_OPTIONS: { value: YearFilter; label: string }[] = [
 
 const MODE_OPTIONS: { value: SearchMode; label: string; description: string }[] = [
     { value: "scholarly", label: "Scholarly", description: "Structured, indexed academic databases" },
-    { value: "explore", label: "Explore", description: "Preprints, journals, and research sites across the web" },
+    { value: "explore", label: "Scholight", description: "SanchezCloud ranked academic paper search" },
 ]
 
 interface DiscoverInputProps {
@@ -111,7 +111,7 @@ export default function DiscoverInput({
         <div className="w-full max-w-2xl mx-auto space-y-4">
             <h1 className="text-2xl font-semibold text-center">Discover Research</h1>
             <p className="text-sm text-muted-foreground text-center">
-                Enter a research question and we&apos;ll find relevant papers across the web.
+                Enter a research question and we&apos;ll search OpenAlex or Scholight.
             </p>
             <div className="relative">
                 <Textarea

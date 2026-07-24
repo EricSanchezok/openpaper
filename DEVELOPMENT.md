@@ -47,6 +47,15 @@ cp .env.example client/.env.local
 Optional integrations (Zotero, Stripe, Discover, audio, email, PostHog, admin,
 etc.) are grouped in the root `.env.example`.
 
+OpenPaper discovers remote model tools through MCP:
+
+- `ANYSEARCH_MCP_URL` and optional `ANYSEARCH_API_KEY` provide general search
+  and page extraction. Anonymous access works locally with lower quotas.
+- `SCHOLIGHT_MCP_URL` and optional `SCHOLIGHT_ACCESS_KEY` provide ranked paper
+  search. Use a Scholight `sk_live_...` Access Key for stable production quota;
+  an OpenPaper JWT is intentionally not accepted because JWT audiences are
+  product-specific.
+
 **Jobs tip:** set `ZOTERO_SYNC_INTERVAL_SECONDS=60` in `jobs/.env` when testing Celery Beat locally.
 
 ### Which account database is used?

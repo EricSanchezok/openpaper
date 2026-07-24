@@ -54,7 +54,7 @@ def hydrate_paper_metadata(
     errors so callers on a hot path are never broken by lookup failures.
 
     When `agentic=True`, after the deterministic CrossRef/OpenAlex pass leaves
-    bibliographic gaps, the citation subagent runs an Exa+Firecrawl+LLM
+    bibliographic gaps, the citation subagent runs an MCP-backed search/extract
     extraction fallback (confidence-gated, null-only write-back with
     field_provenance). This is expensive — only enable on background/off-hot
     paths (e.g. post-upload, backfill scripts), never on synchronous reads.

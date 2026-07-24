@@ -4,7 +4,7 @@ missing bibliographic metadata when needed.
 Strategy (cheapest first):
   1. cached        — all required fields present, render immediately.
   2. deterministic — fill via the shared CrossRef/OpenAlex hydration seam.
-  3. agentic       — delegate to `MetadataRecoveryAgent` (web_search + extraction
+  3. agentic       — delegate to `MetadataRecoveryAgent` (MCP search + extraction
                      + confidence-gated null-only write-back with provenance).
 
 This module is the chat-tool-facing layer. The agentic loop itself lives in

@@ -211,7 +211,7 @@ function DiscoverPageContent() {
                 // Explore mode with specific domain filters
                 requestBody.sources = selectedSources.filter(s => s !== "openalex")
             }
-            // Explore mode with no filters = use Exa with default domains
+            // Explore mode uses Scholight MCP; no filters means its full index.
 
             // Year filter applies to both modes
             if (yearFilter) {

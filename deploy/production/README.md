@@ -101,6 +101,12 @@ Add `CLOUD_AUTH_READ_TOKEN` as a read-only repository secret. Protect the GitHub
 environment with required reviewers. The publish role may push only to the three ECR repositories;
 the deploy role may send and inspect SSM commands only for the production instance.
 
+Configure `OPENPAPER_ANYSEARCH_API_KEY` and a dedicated
+`OPENPAPER_SCHOLIGHT_ACCESS_KEY` in `/etc/openpaper/runtime.env`. The Scholight
+credential is a scoped `sk_live_...` search Access Key, not either product's JWT.
+The corresponding MCP URLs default to the public AnySearch and SanchezCloud
+Scholight Streamable HTTP endpoints.
+
 ## Deploy and rollback
 
 Use the `Release` GitHub workflow. `publish` builds digest-addressed images, `deploy` additionally

@@ -5,14 +5,14 @@ post-upload step existed (or any paper still missing bibliographic fields).
 
 Each paper is hydrated through `hydrate_paper_metadata(force=True, agentic=True)`,
 which runs the deterministic CrossRef/OpenAlex pass first and then the
-Exa+Firecrawl+LLM-extraction fallback for whatever is still null. Writes are
+MCP search/extract + LLM fallback for whatever is still null. Writes are
 confidence-gated and null-only with field_provenance, so existing values are
 never clobbered.
 
 Usage:
     python -m app.scripts.backfill_paper_metadata [--limit N] [--dry-run]
 
-This calls external APIs (Exa, Firecrawl, Cerebras) for every candidate paper
+This calls external APIs (AnySearch, Scholight, Cerebras) for every candidate paper
 and is therefore not cheap — use --limit to bound the run, and prefer running
 during off-hours.
 """

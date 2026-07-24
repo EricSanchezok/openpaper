@@ -88,6 +88,10 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         "AUTH_ALIYUN_DM_ACCOUNT_NAME",
         "AUTH_ALIYUN_DM_FROM_ALIAS",
         "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS",
+        "ANYSEARCH_MCP_URL",
+        "ANYSEARCH_API_KEY",
+        "SCHOLIGHT_MCP_URL",
+        "SCHOLIGHT_ACCESS_KEY",
         "NEXT_PUBLIC_API_URL",
     ):
         assert f"{variable}=" in catalog
@@ -97,6 +101,12 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "OPENPAPER_ALIYUN_DM_REPLY_TO_ADDRESS=" in runtime
     assert "AUTH_ACCOUNT_LOCKOUT_THRESHOLD:" in compose
     assert "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS:" in compose
+    assert "OPENPAPER_ANYSEARCH_API_KEY=" in runtime
+    assert "OPENPAPER_SCHOLIGHT_ACCESS_KEY=" in runtime
+    assert "ANYSEARCH_MCP_URL:" in compose
+    assert "SCHOLIGHT_MCP_URL:" in compose
+    assert "EXA_API_KEY" not in catalog + runtime + compose
+    assert "FIRECRAWL_API_KEY" not in catalog + runtime + compose
 
 
 def test_single_baseline_preserves_non_orm_search_triggers() -> None:
