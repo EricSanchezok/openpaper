@@ -19,16 +19,15 @@ source .venv/bin/activate
 
 2. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
 
-3. Set up environment variables. Check `.env.example` for required and optional variables
+3. Set up environment variables from the repository-level catalog
 ```bash
-touch .env
+cp ../.env.example .env
 ```
 
-Add the following environment variables to your `.env` file:
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sanchezcloud
-GEMINI_API_KEY="your_gemini_api_key" # Replace with your actual API key from step 3
-```
+At minimum, point `DATABASE_URL` at a `sanchezcloud` database with migrated
+`auth` and `openpaper` schemas, then replace the placeholder provider keys for
+the features you want to exercise. See [`../DEVELOPMENT.md`](../DEVELOPMENT.md)
+for the shared-local-account and AWS RDS distinction.
 
 ## Start the Application
 

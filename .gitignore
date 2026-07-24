@@ -42,6 +42,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+
+# Local Celery Beat scheduler state.
+jobs/celerybeat-schedule*
 !.env.example
 
 # vercel

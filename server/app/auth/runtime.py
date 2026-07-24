@@ -41,6 +41,8 @@ class AuthRuntimeSettings(BaseSettings):
     jwt_secret: str = _DEVELOPMENT_JWT_SECRET
     jwt_access_token_ttl_minutes: int = 15
     jwt_refresh_token_ttl_days: int = 7
+    account_lockout_threshold: int = 5
+    account_lockout_duration_minutes: int = 15
     pg_ssl_root_cert: str = ""
     pg_pool_min_size: int = 2
     pg_pool_max_size: int = 10
@@ -48,16 +50,27 @@ class AuthRuntimeSettings(BaseSettings):
     aliyun_dm_access_key_secret: str = ""
     aliyun_dm_account_name: str = ""
     aliyun_dm_from_alias: str = "OpenPaper"
+    aliyun_dm_reply_to_address: bool = True
     public_web_url: str = "http://localhost:3000"
 
 
 settings = AuthRuntimeSettings()
-auth_config = AuthConfig(
-    client_id=OPENPAPER_AUTH_CLIENT_ID,
-    jwt_secret=settings.jwt_secret,
-    jwt_access_token_ttl_minutes=settings.jwt_access_token_ttl_minutes,
-    jwt_refresh_token_ttl_days=settings.jwt_refresh_token_ttl_days,
-)
+
+
+def build_auth_config(runtime_settings: AuthRuntimeSettings) -> AuthConfig:
+    return AuthConfig(
+        client_id=OPENPAPER_AUTH_CLIENT_ID,
+        jwt_secret=runtime_settings.jwt_secret,
+        jwt_access_token_ttl_minutes=runtime_settings.jwt_access_token_ttl_minutes,
+        jwt_refresh_token_ttl_days=runtime_settings.jwt_refresh_token_ttl_days,
+        account_lockout_threshold=runtime_settings.account_lockout_threshold,
+        account_lockout_duration_minutes=(
+            runtime_settings.account_lockout_duration_minutes
+        ),
+    )
+
+
+auth_config = build_auth_config(settings)
 
 
 def build_refresh_cookie_config(*, environment: str) -> RefreshCookieConfig:
@@ -100,6 +113,7 @@ def build_auth_email_sender(
         password_reset_url=f"{public_web_url}/login?mode=reset",
         from_alias=runtime_settings.aliyun_dm_from_alias,
         brand="OpenPaper",
+        reply_to_address=runtime_settings.aliyun_dm_reply_to_address,
     )
 
 

@@ -94,6 +94,21 @@ def test_refresh_cookie_is_secure_in_production() -> None:
     assert config.secure is True
 
 
+def test_auth_config_uses_openpaper_lockout_settings() -> None:
+    runtime_settings = runtime.AuthRuntimeSettings(
+        _env_file=None,
+        jwt_secret="x" * 32,
+        account_lockout_threshold=7,
+        account_lockout_duration_minutes=45,
+    )
+
+    config = runtime.build_auth_config(runtime_settings)
+
+    assert config.client_id == "openpaper"
+    assert config.account_lockout_threshold == 7
+    assert config.account_lockout_duration_minutes == 45
+
+
 def test_auth_email_sender_uses_openpaper_action_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -116,6 +131,7 @@ def test_auth_email_sender_uses_openpaper_action_urls(
         "https://openpaper.example/login?mode=reset"
     )
     assert factory.call_args.kwargs["brand"] == "OpenPaper"
+    assert factory.call_args.kwargs["reply_to_address"] is True
 
 
 @pytest.mark.asyncio

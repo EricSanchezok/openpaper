@@ -72,6 +72,33 @@ def test_database_contract_shares_auth_and_isolates_openpaper() -> None:
     assert "ALTER DEFAULT PRIVILEGES" in bootstrap
 
 
+def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
+    catalog = (ROOT / ".env.example").read_text(encoding="utf-8")
+    compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
+    runtime = (PRODUCTION / "runtime.env.example").read_text(encoding="utf-8")
+
+    for variable in (
+        "DATABASE_URL",
+        "AUTH_DATABASE_URL",
+        "AUTH_JWT_SECRET",
+        "AUTH_ACCOUNT_LOCKOUT_THRESHOLD",
+        "AUTH_ACCOUNT_LOCKOUT_DURATION_MINUTES",
+        "AUTH_ALIYUN_DM_ACCESS_KEY_ID",
+        "AUTH_ALIYUN_DM_ACCESS_KEY_SECRET",
+        "AUTH_ALIYUN_DM_ACCOUNT_NAME",
+        "AUTH_ALIYUN_DM_FROM_ALIAS",
+        "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS",
+        "NEXT_PUBLIC_API_URL",
+    ):
+        assert f"{variable}=" in catalog
+
+    assert not (ROOT / "server" / ".env.example").exists()
+    assert "OPENPAPER_AUTH_ACCOUNT_LOCKOUT_THRESHOLD=" in runtime
+    assert "OPENPAPER_ALIYUN_DM_REPLY_TO_ADDRESS=" in runtime
+    assert "AUTH_ACCOUNT_LOCKOUT_THRESHOLD:" in compose
+    assert "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS:" in compose
+
+
 def test_single_baseline_preserves_non_orm_search_triggers() -> None:
     versions = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))
 

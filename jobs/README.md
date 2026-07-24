@@ -165,7 +165,13 @@ The following environment variables are required to run the Jobs Service:
 | `CLOUDFLARE_BUCKET_NAME`| The name of the Cloudflare R2 bucket (if used).  | Yes      |
 | `CELERY_BROKER_URL`     | The URL for the Celery message broker (RabbitMQ).   | Yes      |
 | `CELERY_RESULT_BACKEND` | The URL for the Celery result backend (Redis).   | Yes      |
-| `LLM_API_KEY`           | The API key for the LLM service.                 | Yes      |
+| `GOOGLE_API_KEY`        | Google AI key used by PDF metadata extraction.   | Yes      |
+
+Copy the repository-level environment catalog before the first run:
+
+```bash
+cp ../.env.example .env
+```
 
 ### Running Locally
 

@@ -543,7 +543,7 @@ class PaperTag(Base):
     user = relationship("AuthUser", back_populates="paper_tags")
     papers = relationship(
         "Paper",
-        secondary="paper_tag_association",
+        secondary=lambda: PaperTagAssociation.__table__,
         back_populates="tags",
     )
 
@@ -668,7 +668,7 @@ class Paper(Base):
 
     tags = relationship(
         "PaperTag",
-        secondary="paper_tag_association",
+        secondary=lambda: PaperTagAssociation.__table__,
         back_populates="papers",
     )
 

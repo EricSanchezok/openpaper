@@ -46,6 +46,12 @@ ON CONFLICT (user_id) DO UPDATE SET is_admin = true;
 `OPENPAPER_ADMIN_SESSION_SECRET` only signs the admin browser session; it is not
 an administrator password.
 
+OpenPaper and Scholight may use the same Aliyun DirectMail account credentials.
+Keep `OPENPAPER_ALIYUN_DM_FROM_ALIAS` and the OpenPaper public URL
+product-specific so verification and password-reset links return to the correct
+frontend. The two products also keep independent JWT secrets and refresh-token
+audiences even though both authenticate against `auth.users`.
+
 ## One-time host setup
 
 The host needs Docker Engine, Compose v2, AWS CLI, `curl`, `flock`, and SSM connectivity. Its EC2

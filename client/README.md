@@ -7,7 +7,8 @@ First, ensure you've started the backend server. See `/server` for details.
 For a fresh setup, run:
 
 ```bash
-yarn go
+cp ../.env.example .env.local
+corepack yarn go
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to use the app.
@@ -16,5 +17,5 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to use the
 To run the development server, use:
 
 ```bash
-yarn dev
+corepack yarn dev
 ```
