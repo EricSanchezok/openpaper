@@ -55,6 +55,13 @@ jobs:
         run: uv run ruff check app tests migrations
       - name: Strict type check
         run: uv run mypy app
+      - name: Static cleanliness gates
+        run: |
+          if grep -R --exclude-dir=__pycache__ --line-number \
+            -E 'print\(|datetime\.utcnow\(|app\.api\.types' app; then
+            printf 'Forbidden legacy or debug pattern found in Server business code\n' >&2
+            exit 1
+          fi
       - name: Tests
         run: uv run pytest -q
 
@@ -81,6 +88,10 @@ jobs:
         run: yarn lint
       - name: Type check
         run: yarn tsc --noEmit
+      - name: Install Playwright browser
+        run: yarn playwright install --with-deps chromium
+      - name: Browser regressions
+        run: yarn test:e2e
       - name: Production build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -117,7 +128,7 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --frozen --group dev
       - name: Ruff
-        run: uv run ruff check src
+        run: uv run ruff check src tests
       - name: Tests
         run: uv run pytest -q
 
