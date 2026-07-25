@@ -25,6 +25,7 @@ from app.helpers.celery_config import (
     get_webhook_base_url,
 )
 from app.helpers.s3 import s3_service
+from app.helpers.redaction import redact_url
 from app.schemas.responses import DataTableSchema
 from app.schemas.user import CurrentUser
 from celery import Celery
@@ -58,6 +59,19 @@ class JobsClient:
         self.webhook_base_url = get_webhook_base_url(webhook_base_url)
         self.celery_broker_url = get_celery_broker_url(celery_broker_url)
         self.celery_api_url = get_celery_api_url(celery_api_url)
+        self._celery_app = Celery(
+            "scholens_tasks",
+            broker=self.celery_broker_url,
+        )
+        self._celery_app.conf.update(
+            broker_connection_retry_on_startup=True,
+            broker_connection_retry=True,
+            broker_connection_max_retries=3,
+            task_serializer="json",
+            accept_content=["json"],
+            result_serializer="json",
+            task_always_eager=False,
+        )
 
     def submit_pdf_processing_job(
         self,
@@ -90,34 +104,16 @@ class JobsClient:
         if len(s3_object_key) == 0:
             raise ValueError("s3_object_key cannot be empty")
 
-        print(
-            f"DEBUG: Submitting PDF job - S3 Object Key: {s3_object_key}, Job ID: {job_id}"
-        )
+        logger.info("Submitting PDF processing job %s", job_id)
 
         # Connect to Celery broker directly to submit task
         try:
-            # Create Celery app instance (this connects to the broker, not the worker code)
-            celery_app = Celery("scholens_tasks", broker=self.celery_broker_url)
-
-            # Configure Celery to be more tolerant of connection issues
-            celery_app.conf.update(
-                broker_connection_retry_on_startup=True,
-                broker_connection_retry=True,
-                broker_connection_max_retries=3,
-                task_serializer="json",
-                accept_content=["json"],
-                result_serializer="json",
-                task_always_eager=False,
-            )
-
             # Build webhook URL that includes your job ID
             webhook_url = (
                 f"{self.webhook_base_url}/api/webhooks/paper-processing/{job_id}"
             )
-            print(f"DEBUG: Webhook URL: {webhook_url}")
-
             # Submit the task to the queue (the separate jobs service will pick it up)
-            task = celery_app.send_task(
+            task = self._celery_app.send_task(
                 "upload_and_process_file",  # Task name as registered by the worker
                 kwargs={
                     "s3_object_key": s3_object_key,
@@ -130,25 +126,24 @@ class JobsClient:
                 queue="pdf_processing",
             )
 
-            print(f"DEBUG: Task submitted successfully with ID: {task.id}")
+            logger.info("Submitted PDF processing task %s for job %s", task.id, job_id)
             return str(task.id)
         except Exception as e:
-            # Provide more specific error information
             error_msg = str(e)
-            print(f"DEBUG: Task submission failed: {error_msg}")
             if "ACCESS_REFUSED" in error_msg:
-                raise Exception(
-                    f"Failed to authenticate with message broker. Please check your CELERY_BROKER_URL "
-                    f"and ensure it includes proper credentials. Current URL: {self.celery_broker_url[:20]}... "
-                    f"Error: {error_msg}"
-                ) from e
+                logger.error(
+                    "Message broker authentication failed for %s",
+                    redact_url(self.celery_broker_url),
+                )
+                raise RuntimeError("jobs_broker_authentication_failed") from e
             if "Connection refused" in error_msg or "111" in error_msg:
-                raise Exception(
-                    "Cannot reach the Celery message broker (RabbitMQ). "
-                    "Start Docker, then run `uv run start` in the `jobs/` directory. "
-                    f"Broker URL: {self.celery_broker_url}"
-                ) from e
-            raise Exception(f"Failed to submit PDF processing job: {error_msg}") from e
+                logger.error(
+                    "Message broker unavailable at %s",
+                    redact_url(self.celery_broker_url),
+                )
+                raise RuntimeError("jobs_broker_unavailable") from e
+            logger.exception("Failed to submit PDF processing job %s", job_id)
+            raise RuntimeError("jobs_submission_failed") from e
 
     def submit_data_table_processing_job(
         self, data_table: DataTableSchema, job_id: str
@@ -171,32 +166,15 @@ class JobsClient:
                 f"data_table must be DataTableSchema, got {type(data_table)}"
             )
 
-        print(f"DEBUG: Submitting Data Table job - Job ID: {job_id}")
+        logger.info("Submitting data table processing job %s", job_id)
 
         # Connect to Celery broker directly to submit task
         try:
-            # Create Celery app instance (this connects to the broker, not the worker code)
-            celery_app = Celery("scholens_tasks", broker=self.celery_broker_url)
-
-            # Configure Celery to be more tolerant of connection issues
-            celery_app.conf.update(
-                broker_connection_retry_on_startup=True,
-                broker_connection_retry=True,
-                broker_connection_max_retries=3,
-                task_serializer="json",
-                accept_content=["json"],
-                result_serializer="json",
-                task_always_eager=False,
-            )
-
             # Build webhook URL that includes your job ID
             webhook_url = (
                 f"{self.webhook_base_url}/api/webhooks/data-table-processing/{job_id}"
             )
-            print(f"DEBUG: Webhook URL: {webhook_url}")
-
-            # Submit the task to the queue (the separate jobs service will pick it up)
-            task = celery_app.send_task(
+            task = self._celery_app.send_task(
                 "process_data_table",  # Task name as registered by the worker
                 kwargs={
                     "data_table": data_table.model_dump(),
@@ -205,14 +183,15 @@ class JobsClient:
                 queue="pdf_processing",
             )
 
-            print(f"DEBUG: Task submitted successfully with ID: {task.id}")
+            logger.info(
+                "Submitted data table processing task %s for job %s",
+                task.id,
+                job_id,
+            )
             return str(task.id)
         except Exception as e:
-            error_msg = str(e)
-            print(f"DEBUG: Task submission failed: {error_msg}")
-            raise Exception(
-                f"Failed to submit data table processing job: {error_msg}"
-            ) from e
+            logger.exception("Failed to submit data table processing job %s", job_id)
+            raise RuntimeError("jobs_submission_failed") from e
 
     def check_celery_task_status(self, task_id: str) -> dict[str, Any]:
         """
@@ -244,17 +223,22 @@ class JobsClient:
                 "progress_message": task_status.get("progress_message"),
             }
 
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException:
+            logger.warning(
+                "Jobs status API unavailable at %s",
+                redact_url(self.celery_api_url),
+            )
             return {
                 "task_id": task_id,
                 "status": "API_ERROR",
-                "error": f"Failed to connect to Celery API: {str(e)}",
+                "error": "jobs_service_unavailable",
             }
-        except Exception as e:
+        except Exception:
+            logger.exception("Unexpected failure checking task %s", task_id)
             return {
                 "task_id": task_id,
                 "status": "ERROR",
-                "error": f"Unexpected error checking task status: {str(e)}",
+                "error": "task_status_failed",
             }
 
     def cancel_celery_task(self, task_id: str) -> dict[str, Any]:

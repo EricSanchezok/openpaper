@@ -19,6 +19,13 @@ class SubscriptionStatus(str, Enum):
     UNPAID = "unpaid"
 
 
+class StripeWebhookEventStatus(str, Enum):
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    IGNORED = "ignored"
+
+
 class ReasoningLevel(str, Enum):
     STANDARD = "standard"
     DEEP = "deep"

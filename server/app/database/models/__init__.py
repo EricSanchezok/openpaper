@@ -14,6 +14,7 @@ from .enums import (
     RoleType,
     SubscriptionPlan,
     SubscriptionStatus,
+    StripeWebhookEventStatus,
     ZoteroImportSource,
     ZoteroImportStatus,
 )
@@ -51,6 +52,7 @@ from .commerce import (
     Onboarding,
     Referral,
     ReferralCode,
+    StripeWebhookEvent,
     Subscription,
 )
 
@@ -99,6 +101,8 @@ __all__ = [
     "Subscription",
     "SubscriptionPlan",
     "SubscriptionStatus",
+    "StripeWebhookEvent",
+    "StripeWebhookEventStatus",
     "TokenUsageEvent",
     "TokenWeeklyUsage",
     "UserProfile",

@@ -41,6 +41,41 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
+        "stripe_webhook_events",
+        sa.Column("event_id", sa.String(length=255), nullable=False),
+        sa.Column("event_type", sa.String(length=128), nullable=False),
+        sa.Column("status", sa.String(length=16), nullable=False),
+        sa.Column(
+            "attempt_count", sa.Integer(), server_default="1", nullable=False
+        ),
+        sa.Column("last_error_code", sa.String(length=64), nullable=True),
+        sa.Column(
+            "received_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "status IN ('processing', 'completed', 'failed', 'ignored')",
+            name="ck_stripe_webhook_events_status",
+        ),
+        sa.PrimaryKeyConstraint("event_id"),
+        schema="scholens",
+    )
+    op.create_table(
         "token_weekly_usage",
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("week_start", sa.Date(), nullable=False),
@@ -1253,6 +1288,7 @@ def downgrade() -> None:
     )
     op.drop_table("token_usage_events", schema="scholens")
     op.drop_table("token_weekly_usage", schema="scholens")
+    op.drop_table("stripe_webhook_events", schema="scholens")
     op.drop_table("jobs_webhook_nonces", schema="scholens")
     op.execute(
         "DROP TRIGGER IF EXISTS paper_passages_tsvectorupdate "

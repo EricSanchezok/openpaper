@@ -12,6 +12,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    func,
     Index,
     Integer,
     String,
@@ -27,6 +28,7 @@ from .enums import (
     ReferralStatus,
     SubscriptionPlan,
     SubscriptionStatus,
+    StripeWebhookEventStatus,
 )
 
 if TYPE_CHECKING:
@@ -80,6 +82,37 @@ class Subscription(Base):
     )
 
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="subscription")
+
+
+class StripeWebhookEvent(Base):
+    """Minimal, non-PII ledger for reliable Stripe webhook processing."""
+
+    __tablename__ = "stripe_webhook_events"
+
+    event_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=StripeWebhookEventStatus.PROCESSING,
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'completed', 'failed', 'ignored')",
+            name="ck_stripe_webhook_events_status",
+        ),
+    )
 
 
 class Onboarding(Base):

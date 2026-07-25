@@ -33,6 +33,7 @@ class AdvisoryLockNamespace:
     """Stable int4 namespaces for advisory locks. Keep values unique."""
 
     PAPER_PROCESSING_WEBHOOK = 1885434469  # arbitrary int4 constant ("pape")
+    STRIPE_WEBHOOK = 1937011301  # arbitrary int4 constant ("stri")
 
 
 class AdvisoryLock:

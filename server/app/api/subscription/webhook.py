@@ -10,12 +10,18 @@ from app.api.subscription.config import (
     YEARLY_PRICE_ID,
     is_valid_price_id,
 )
+from app.api.subscription.webhook_ledger import (
+    begin_webhook_attempt,
+    complete_webhook,
+    fail_webhook,
+)
 from app.database.crud.referral_crud import referral_crud
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.crud.user_repository import user_repository
-from app.database.database import get_db
+from app.database.database import engine, get_db
 from app.database.models import (
     ReferralStatus,
+    StripeWebhookEventStatus,
     Subscription,
     SubscriptionPlan,
     SubscriptionStatus,
@@ -27,6 +33,7 @@ from app.helpers.email import (
     send_subscription_welcome_email,
 )
 from app.integrations.stripe_webhooks import construct_stripe_event
+from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -38,6 +45,20 @@ logger = logging.getLogger(__name__)
 CLAWBACK_WINDOW_SECONDS = 14 * 24 * 60 * 60
 
 router = APIRouter()
+
+
+def _complete_noop(db: Session, *, event_id: str) -> dict[str, object]:
+    complete_webhook(db, event_id=event_id)
+    return {"success": True, "no_op": True}
+
+
+def _ignore_event(db: Session, *, event_id: str) -> dict[str, object]:
+    complete_webhook(
+        db,
+        event_id=event_id,
+        status=StripeWebhookEventStatus.IGNORED,
+    )
+    return {"success": True, "ignored": True}
 
 
 @router.post("/stripe")
@@ -53,6 +74,9 @@ async def handle_stripe_webhook(
             status_code=500, detail="Stripe webhook secret not configured"
         )
 
+    event_id: str | None = None
+    event_lock: AdvisoryLock | None = None
+    ledger_started = False
     try:
         # Get the request body as bytes
         payload = await request.body()
@@ -69,9 +93,30 @@ async def handle_stripe_webhook(
             )
 
         # Handle the event
-        event_type = event["type"]
+        event_id = str(event["id"])
+        event_type = str(event["type"])
         subscription: Subscription | None
         logger.info(f"Processing Stripe event: {event_type}")
+
+        event_lock = AdvisoryLock(
+            engine,
+            namespace=AdvisoryLockNamespace.STRIPE_WEBHOOK,
+            key=event_id,
+        )
+        if not event_lock.acquire():
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "stripe_webhook_in_progress"},
+            )
+
+        claim = begin_webhook_attempt(
+            db,
+            event_id=event_id,
+            event_type=event_type,
+        )
+        ledger_started = True
+        if not claim.should_process:
+            return {"success": True, "duplicate": True}
 
         # Skip processing events that are not supported
         if event_type not in [
@@ -88,7 +133,7 @@ async def handle_stripe_webhook(
             "charge.refunded",
         ]:
             logger.info(f"Skipping unsupported event type: {event_type}")
-            return {"success": False}
+            return _ignore_event(db, event_id=event_id)
 
         if event_type == "checkout.session.completed":
             session = event["data"]["object"]
@@ -134,7 +179,7 @@ async def handle_stripe_webhook(
                     logger.info(
                         f"Skipping subscription creation for unsupported price ID: {stripe_received_price_id}"
                     )
-                    return {"success": False}
+                    return _ignore_event(db, event_id=event_id)
 
                 # Try to find the user by customer ID
                 existing_subscription = subscription_crud.get_by_stripe_customer_id(
@@ -168,10 +213,11 @@ async def handle_stripe_webhook(
                                 f"No email found for Stripe customer {customer_id}"
                             )
 
-                    except Exception as e:
-                        logger.error(
-                            f"Error retrieving Stripe customer {customer_id}: {e}"
+                    except Exception:
+                        logger.exception(
+                            "Error retrieving Stripe customer %s", customer_id
                         )
+                        raise
 
                 if user_id:
                     webhook_sub_item = stripe_sub["items"]["data"][0]
@@ -224,20 +270,19 @@ async def handle_stripe_webhook(
                     # pending and schedule the 30-day settlement callback.
                     try:
                         handle_referee_converted(db, user_id)
-                    except Exception as e:
-                        logger.error(
-                            f"Error handling referee conversion for {user_id}: {e}",
-                            exc_info=True,
+                    except Exception:
+                        logger.exception(
+                            "Error handling referee conversion for %s", user_id
                         )
+                        raise
                 else:
                     logger.warning(
                         f"Could not find user for customer {customer_id} when processing subscription.created"
                     )
 
-            except Exception as e:
-                logger.error(
-                    f"Error processing subscription creation: {e}", exc_info=True
-                )
+            except Exception:
+                logger.exception("Error processing subscription creation")
+                raise
 
         elif event_type == "customer.subscription.updated":
             stripe_sub = event["data"]["object"]
@@ -260,7 +305,7 @@ async def handle_stripe_webhook(
                         logger.info(
                             f"Skipping subscription update for unsupported price ID: {stripe_received_price_id}"
                         )
-                        return {"success": False}
+                        return _ignore_event(db, event_id=event_id)
 
                     cancel_at_period_end = getattr(
                         stripe_sub, "cancel_at_period_end", False
@@ -346,8 +391,9 @@ async def handle_stripe_webhook(
                         f"Subscription {subscription_id} updated to status: {stripe_sub.status}"
                     )
 
-            except Exception as e:
-                logger.error(f"Error updating subscription: {e}")
+            except Exception:
+                logger.exception("Error updating subscription")
+                raise
 
         elif event_type == "customer.subscription.deleted":
             stripe_sub = event["data"]["object"]
@@ -370,7 +416,7 @@ async def handle_stripe_webhook(
                         logger.info(
                             f"Skipping subscription deletion for unsupported price ID: {stripe_received_price_id}"
                         )
-                        return {"success": False}
+                        return _ignore_event(db, event_id=event_id)
 
                     # Downgrade to BASIC plan on cancellation
                     subscription_crud.update_subscription_status(
@@ -410,8 +456,9 @@ async def handle_stripe_webhook(
                         db=db,
                     )
 
-            except Exception as e:
-                logger.error(f"Error canceling subscription: {e}")
+            except Exception:
+                logger.exception("Error canceling subscription")
+                raise
 
         elif event_type == "invoice.payment_failed":
             invoice = event["data"]["object"]
@@ -446,7 +493,9 @@ async def handle_stripe_webhook(
                             logger.warning(
                                 f"No user found for subscription {subscription_id} when processing payment failure"
                             )
-                            return {"success": False}
+                            raise LookupError(
+                                f"Subscription user missing for {subscription_id}"
+                            )
 
                         logger.warning(
                             f"Payment failed for subscription {subscription_id}, user {subscription.user_id}"
@@ -458,8 +507,9 @@ async def handle_stripe_webhook(
                             str(user.email), email_message, str(user.display_name or "")
                         )
 
-            except Exception as e:
-                logger.error(f"Error processing payment failure: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Error processing payment failure")
+                raise
 
         elif event_type == "invoice.payment_succeeded":
             invoice = event["data"]["object"]
@@ -490,8 +540,9 @@ async def handle_stripe_webhook(
                             f"Payment succeeded for subscription {subscription_id}"
                         )
 
-            except Exception as e:
-                logger.error(f"Error processing payment success: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Error processing payment success")
+                raise
 
         elif event_type == "invoice.payment_action_required":
             invoice = event["data"]["object"]
@@ -523,7 +574,9 @@ async def handle_stripe_webhook(
                             logger.warning(
                                 f"No user found for subscription {subscription_id} when processing payment action required"
                             )
-                            return {"success": False}
+                            raise LookupError(
+                                f"Subscription user missing for {subscription_id}"
+                            )
 
                         email_message = "Payment action required for your subscription. Please complete the required action."
 
@@ -531,10 +584,9 @@ async def handle_stripe_webhook(
                             str(user.email), email_message, str(user.display_name or "")
                         )
 
-            except Exception as e:
-                logger.error(
-                    f"Error processing payment action required: {e}", exc_info=True
-                )
+            except Exception:
+                logger.exception("Error processing payment action required")
+                raise
 
         elif event_type == "customer.subscription.past_due":
             stripe_sub = event["data"]["object"]
@@ -569,50 +621,51 @@ async def handle_stripe_webhook(
                         logger.warning(
                             f"No user found for subscription {subscription_id} when processing past due subscription"
                         )
-                        return {"success": False}
+                        raise LookupError(
+                            f"Subscription user missing for {subscription_id}"
+                        )
                     email_message = "Your subscription is past due. Please update your payment method to avoid service interruption."
                     notify_billing_issue(
                         str(user.email), email_message, str(user.display_name or "")
                     )
 
-            except Exception as e:
-                logger.error(
-                    f"Error processing past due subscription: {e}", exc_info=True
-                )
+            except Exception:
+                logger.exception("Error processing past due subscription")
+                raise
 
         elif event_type == "charge.refunded":
             charge = event["data"]["object"]
             customer_id = charge.customer
             try:
                 if not customer_id:
-                    return {"success": True}
+                    return _complete_noop(db, event_id=event_id)
 
                 subscription = subscription_crud.get_by_stripe_customer_id(
                     db, customer_id
                 )
                 if not subscription:
-                    return {"success": True}
+                    return _complete_noop(db, event_id=event_id)
 
                 referee_user_id = subscription.user_id
                 referral = referral_crud.get_by_referee(db, referee_user_id)
                 if not referral:
-                    return {"success": True}
+                    return _complete_noop(db, event_id=event_id)
 
                 if str(referral.status) != ReferralStatus.CREDIT_PENDING.value:
                     # If credit is already available or already clawed back,
                     # nothing to do here. Refunds after 30 days are not our
                     # problem.
-                    return {"success": True}
+                    return _complete_noop(db, event_id=event_id)
 
                 # Only claw back if the refund landed inside our 14-day post-
                 # conversion window (Stripe's default refund window).
                 converted_at = referral.converted_at
                 if converted_at is None:
-                    return {"success": True}
+                    return _complete_noop(db, event_id=event_id)
                 if datetime.now(timezone.utc) - converted_at > timedelta(
                     seconds=CLAWBACK_WINDOW_SECONDS
                 ):
-                    return {"success": True}
+                    return _complete_noop(db, event_id=event_id)
 
                 referral_crud.mark_clawed_back(
                     db, referral, reason=f"refund:{charge.id}"
@@ -629,8 +682,9 @@ async def handle_stripe_webhook(
                 logger.info(
                     f"Clawed back referral {referral.id} due to refund {charge.id}"
                 )
-            except Exception as e:
-                logger.error(f"Error handling refund clawback: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Error handling refund clawback")
+                raise
 
         elif event_type in [
             "subscription_schedule.completed",
@@ -659,15 +713,31 @@ async def handle_stripe_webhook(
                             f"Cleared schedule_id {schedule_id} from subscription {subscription_id} "
                             f"(event: {event_type})"
                         )
-            except Exception as e:
-                logger.error(
-                    f"Error processing {event_type} for schedule {schedule_id}: {e}",
-                    exc_info=True,
+            except Exception:
+                logger.exception(
+                    "Error processing %s for schedule %s",
+                    event_type,
+                    schedule_id,
                 )
+                raise
 
-        # Return a 200 response to acknowledge receipt of the event.
+        complete_webhook(db, event_id=event_id)
         return {"success": True}
 
+    except HTTPException:
+        db.rollback()
+        if event_id is not None and ledger_started:
+            fail_webhook(db, event_id=event_id, error_code="webhook_http_error")
+        raise
     except Exception as e:
-        logger.error(f"Error processing Stripe webhook: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="internal_error")
+        db.rollback()
+        if event_id is not None and ledger_started:
+            fail_webhook(db, event_id=event_id, error_code="stripe_webhook_failed")
+        logger.exception("Error processing Stripe webhook event %s", event_id)
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "stripe_webhook_failed"},
+        ) from e
+    finally:
+        if event_lock is not None:
+            event_lock.release()
