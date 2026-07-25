@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test:e2e": "playwright test",
     "go": "yarn install && yarn build && yarn start"
   },
   "dependencies": {
@@ -50,8 +51,8 @@
     "next": "15.5.21",
     "next-themes": "^0.4.6",
     "posthog-js": "^1.242.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "react-hook-form": "^7.62.0",
     "react-markdown": "^10.1.0",
     "react-pdf-highlighter-extended": "^8.1.0",
@@ -68,6 +69,8 @@
     "zod": "^4.1.5"
   },
   "resolutions": {
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.1",
     "pdfjs-dist": "4.10.38",
     "fast-uri": "^3.1.2",
     "@eslint/eslintrc/js-yaml": "^4.2.0",
@@ -81,20 +84,21 @@
     "flatted": "^3.4.2",
     "micromatch/picomatch": "^2.3.2",
     "tinyglobby/picomatch": "^4.0.4",
-    "express-rate-limit": "^8.2.2",
     "dompurify": "^3.4.11",
     "router/path-to-regexp": "^8.4.0",
     "@tailwindcss/postcss/postcss": "^8.5.10"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.1",
     "eslint": "^9",
     "eslint-config-next": "15.5.21",
+    "pdf-lib": "^1.17.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

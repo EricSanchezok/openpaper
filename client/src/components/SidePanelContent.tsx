@@ -49,6 +49,7 @@ import { useSubscription, getTokenCreditUsagePercentage, isTokenCreditAtLimit, i
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { getAlphaHashToBackgroundColor, getInitials } from '@/lib/utils';
 import { MessageTraceViewer } from '@/components/MessageTraceViewer';
+import { useConversationHistory } from '@/components/side-panel/useConversationHistory';
 
 
 interface SidePanelContentProps {
@@ -115,11 +116,7 @@ export function SidePanelContent({
     addAnnotation,
 }: SidePanelContentProps) {
     const { user } = useAuth();
-    const [conversationId, setConversationId] = useState<string | null>(null);
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [currentMessage, setCurrentMessage] = useState('');
-    const [hasMoreMessages, setHasMoreMessages] = useState(true);
-    const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
     const [streamingReferences, setStreamingReferences] = useState<Reference | undefined>(undefined);
@@ -134,17 +131,26 @@ export function SidePanelContent({
     nextMonday.setUTCDate(nextMonday.getUTCDate() + daysUntilMonday);
     nextMonday.setUTCHours(0, 0, 0, 0);
     const [pendingStarterQuestion, setPendingStarterQuestion] = useState<string | null>(null);
-    const [pageNumberConversationHistory, setPageNumberConversationHistory] = useState(1);
     const [displayedText, setDisplayedText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [currentLoadingMessageIndex, setCurrentLoadingMessageIndex] = useState(0);
     const [errorState, setErrorState] = useState<{ failedUserMessage: string } | null>(null);
-    const [isFetchingHistory, setIsFetchingHistory] = useState(true);
 
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const chatInputFormRef = useRef<HTMLFormElement | null>(null);
     const inputMessageRef = useRef<HTMLTextAreaElement | null>(null);
-    const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+    const {
+        conversationId,
+        fetchMoreMessages,
+        handleScroll,
+        hasMoreMessages,
+        isFetchingHistory,
+        isLoadingMoreMessages,
+        messages,
+        messagesContainerRef,
+        scrollToLatestMessage,
+        setMessages,
+    } = useConversationHistory({ paperId: id, enabled: Boolean(user && paperData) });
 
     const END_DELIMITER = "END_OF_STREAM";
 
@@ -179,109 +185,6 @@ export function SidePanelContent({
         "Synthesizing findings...",
     ]
 
-    const fetchMoreMessages = useCallback(async () => {
-        if (!conversationId) {
-            return;
-        }
-
-        if (!hasMoreMessages || isLoadingMoreMessages) {
-            if (!isLoadingMoreMessages && isFetchingHistory) {
-                console.log("No more messages to fetch or already loading.");
-                setIsFetchingHistory(false);
-            }
-            return;
-        }
-
-        setIsLoadingMoreMessages(true);
-        try {
-            const response = await fetchFromApi(`/api/conversation/${conversationId}?page=${pageNumberConversationHistory}`, {
-                method: 'GET',
-            });
-
-            const fetchedMessages = response.messages.map((msg: ChatMessage) => ({
-                role: msg.role,
-                content: msg.content,
-                id: msg.id,
-                references: msg.references || {}
-            }));
-
-            if (fetchedMessages.length === 0) {
-                setHasMoreMessages(false);
-                return;
-            }
-
-            // Store current scroll position and height
-            const container = messagesContainerRef.current;
-            const scrollHeight = container?.scrollHeight || 0;
-
-            // Add new messages to the top
-            setMessages(prev => [...fetchedMessages, ...prev]);
-            setPageNumberConversationHistory(pageNumberConversationHistory + 1);
-
-            // After the component re-renders with new messages
-            setTimeout(() => {
-                if (container) {
-                    // Scroll to maintain the same relative position
-                    const newScrollHeight = container.scrollHeight;
-                    container.scrollTop = newScrollHeight - scrollHeight;
-                }
-            }, 0);
-        } catch (error) {
-            console.error('Error fetching more messages:', error);
-        } finally {
-            setIsLoadingMoreMessages(false);
-            if (isFetchingHistory) {
-                setIsFetchingHistory(false);
-            }
-        }
-    }, [hasMoreMessages, isLoadingMoreMessages, conversationId, pageNumberConversationHistory, isFetchingHistory]);
-
-
-
-    useEffect(() => {
-        if (!paperData) return;
-
-        // Initialize conversation once paper data is available
-        async function fetchConversation() {
-            let retrievedConversationId = null;
-            try {
-                const response = await fetchFromApi(`/api/paper/conversation?paper_id=${id}`, {
-                    method: 'GET',
-                });
-
-                if (response && response.id) {
-                    retrievedConversationId = response.id;
-                }
-                setConversationId(retrievedConversationId);
-            } catch (error) {
-                console.error('Error fetching conversation ID:', error);
-
-                try {
-
-                    if (!retrievedConversationId) {
-                        // If no conversation ID is returned, create a new one
-                        const newConversationResponse = await fetchFromApi(`/api/conversation/paper/${id}`, {
-                            method: 'POST',
-                        });
-                        retrievedConversationId = newConversationResponse.id;
-                    }
-
-                    setConversationId(retrievedConversationId);
-                } catch (error) {
-                    console.error('Error fetching conversation:', error);
-                }
-            }
-        }
-
-        fetchConversation();
-    }, [paperData, id]);
-
-    useEffect(() => {
-        if (user) {
-            fetchMoreMessages();
-        }
-    }, [user, fetchMoreMessages]);
-
     useEffect(() => {
         // Only fetch data when id is available
         if (!id) return;
@@ -302,28 +205,6 @@ export function SidePanelContent({
 
         fetchCapabilities();
     }, [id]);
-
-    const handleScroll = () => {
-        if (messagesContainerRef.current?.scrollTop === 0) {
-            fetchMoreMessages();
-        }
-    };
-
-    const scrollToLatestMessage = () => {
-        // TODO: Should this be scroll to second to last message / user message instead of latest message? Used for loading from history and loading new message.
-        if (messagesContainerRef.current && messages.length > 0) {
-            // Find the last message element in the DOM
-            const messageElements = messagesContainerRef.current.querySelectorAll('[data-message-index]');
-            const lastMessageElement = messageElements[messageElements.length - 1];
-
-            if (lastMessageElement) {
-                lastMessageElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start' // This positions the element at the top of the viewport
-                });
-            }
-        }
-    };
 
     const transformReferencesToFormat = useCallback((references: string[]) => {
         const citations = references.map((ref, index) => ({

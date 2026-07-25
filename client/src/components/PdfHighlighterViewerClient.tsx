@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect, useMemo, type RefObject } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import {
 	PdfLoader,
 	PdfHighlighter,
@@ -17,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ChevronUp } from "lucide-react";
 import type {
-	PaperHighlight,
 	HighlightColor,
 	ScaledPosition,
 } from "@/lib/schema";
@@ -45,160 +45,12 @@ import {
 	getUserHighlightBackgroundRgba,
 	PDF_TEXT_SELECTION_FILL,
 } from "./pdf-viewer";
-
-/** Matches `w-[280px]` on margin annotation cards */
-const ANNOTATION_CARD_WIDTH_PX = 280;
-const ANNOTATION_CARD_MARGIN_GAP_PX = 8;
-
-/** Use PDF page index from position when stored page_number is out of range (e.g. Zotero printed page label). */
-function resolveHighlightPageNumber(
-	highlight: PaperHighlight,
-	numPages: number | null
-): number | null {
-	const positionPage = highlight.position?.boundingRect?.pageNumber;
-	const stored = highlight.page_number;
-	if (stored != null && numPages != null && stored >= 1 && stored <= numPages) {
-		return stored;
-	}
-	if (positionPage != null && numPages != null && positionPage >= 1 && positionPage <= numPages) {
-		return positionPage;
-	}
-	if (stored != null && stored >= 1) return stored;
-	if (positionPage != null && positionPage >= 1) return positionPage;
-	return stored ?? positionPage ?? null;
-}
-
-/**
- * Anchor a margin card to a highlight that has no ScaledPosition (AI/assistant and
- * legacy highlights are painted as DOM overlays inside the page text layer rather
- * than via the highlighter library). Returns null until the overlay exists, which
- * only happens once that page's text layer has rendered.
- */
-function getAnnotationCardAnchorFromOverlay(
-	highlightId: string | undefined,
-	scrollContainer: HTMLElement
-): { top: number; left: number } | null {
-	if (!highlightId) return null;
-	const overlay = scrollContainer.querySelector<HTMLElement>(
-		`.text-match-highlight-overlay[data-highlight-id="${CSS.escape(highlightId)}"]`
-	);
-	if (!overlay) return null;
-
-	const containerRect = scrollContainer.getBoundingClientRect();
-	const overlayRect = overlay.getBoundingClientRect();
-	const scrollLeft = scrollContainer.scrollLeft;
-	const top = overlayRect.top - containerRect.top + scrollContainer.scrollTop;
-
-	// Prefer the page gutter (matching position-based cards); fall back to just
-	// right of the overlay if the enclosing page element can't be found.
-	const pageEl = overlay.closest<HTMLElement>(".page");
-	if (pageEl) {
-		const pageRect = pageEl.getBoundingClientRect();
-		const pageRightContent = pageRect.right - containerRect.left + scrollLeft;
-		const pageLeftContent = pageRect.left - containerRect.left + scrollLeft;
-		const rightGutterLeft = pageRightContent + ANNOTATION_CARD_MARGIN_GAP_PX;
-		const leftGutterLeft =
-			pageLeftContent - ANNOTATION_CARD_MARGIN_GAP_PX - ANNOTATION_CARD_WIDTH_PX;
-		let left = rightGutterLeft;
-		if (
-			rightGutterLeft + ANNOTATION_CARD_WIDTH_PX > scrollContainer.scrollWidth &&
-			leftGutterLeft >= 0
-		) {
-			left = leftGutterLeft;
-		}
-		return { top, left };
-	}
-	const left =
-		overlayRect.right - containerRect.left + scrollLeft + ANNOTATION_CARD_MARGIN_GAP_PX;
-	return { top, left };
-}
-
-/**
- * Anchor for margin annotation cards: right gutter by default, left gutter if the
- * card would not fit to the right of the page in the scroll container.
- */
-function getAnnotationCardAnchorForHighlight(
-	highlight: PaperHighlight,
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	viewer: any,
-	scrollContainer: HTMLElement,
-	numPages: number | null = null
-): { top: number; left: number } | null {
-	// Highlights without a ScaledPosition (AI/assistant, legacy) render as DOM
-	// overlays — anchor their card to the overlay instead.
-	if (!highlight.position) return getAnnotationCardAnchorFromOverlay(highlight.id, scrollContainer);
-
-	const pageNumber = resolveHighlightPageNumber(highlight, numPages);
-	if (!pageNumber) return null;
-
-	const pageView = viewer.getPageView(pageNumber - 1);
-	if (!pageView?.div || !pageView?.viewport) return null;
-
-	const { div: pageDiv, viewport } = pageView;
-	const { boundingRect } = highlight.position;
-	const scaleY = viewport.height / boundingRect.height;
-
-	// When coordinates are in PDF space (usePdfCoordinates: true), y1/y2 are
-	// measured from the page BOTTOM (PDF origin). We need to convert to CSS
-	// space where y is measured from the page TOP. Use y2 (the higher PDF
-	// coordinate = visually higher on page = smaller CSS y) to anchor the card
-	// at the top edge of the highlight.
-	const usePdfCoords = !!(highlight.position as { usePdfCoordinates?: boolean }).usePdfCoordinates;
-	const yOffset = usePdfCoords
-		? (boundingRect.height - boundingRect.y2) * scaleY
-		: boundingRect.y1 * scaleY;
-	const containerRect = scrollContainer.getBoundingClientRect();
-	const pageRect = (pageDiv as HTMLElement).getBoundingClientRect();
-	const scrollLeft = scrollContainer.scrollLeft;
-
-	const top =
-		pageRect.top -
-		containerRect.top +
-		scrollContainer.scrollTop +
-		yOffset;
-
-	const pageRightContent = pageRect.right - containerRect.left + scrollLeft;
-	const pageLeftContent = pageRect.left - containerRect.left + scrollLeft;
-
-	const rightGutterLeft = pageRightContent + ANNOTATION_CARD_MARGIN_GAP_PX;
-	const leftGutterLeft = pageLeftContent - ANNOTATION_CARD_MARGIN_GAP_PX - ANNOTATION_CARD_WIDTH_PX;
-
-	let left = rightGutterLeft;
-	if (
-		rightGutterLeft + ANNOTATION_CARD_WIDTH_PX > scrollContainer.scrollWidth &&
-		leftGutterLeft >= 0
-	) {
-		left = leftGutterLeft;
-	}
-
-	return { top, left };
-}
-
-/** Syncs PdfLoader's render-prop pdfDocument into parent state without calling setState during render. */
-function PdfDocumentSync({
-	pdfDocument,
-	pdfDocumentRef,
-	setPdfReady,
-	setNumPages,
-}: {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	pdfDocument: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	pdfDocumentRef: RefObject<any>;
-	setPdfReady: (ready: boolean) => void;
-	setNumPages: (n: number) => void;
-}) {
-	useEffect(() => {
-		pdfDocumentRef.current = pdfDocument;
-		setPdfReady(true);
-	}, [pdfDocument, pdfDocumentRef, setPdfReady]);
-
-	useEffect(() => {
-		setNumPages(pdfDocument.numPages);
-	}, [pdfDocument.numPages, setNumPages]);
-
-	return null;
-}
+import {
+	ANNOTATION_CARD_GAP_PX,
+	type AnnotationCardEntry,
+	getAnnotationCardAnchor,
+} from "./pdf-viewer/annotationCardLayout";
+import { PdfDocumentSync } from "./pdf-viewer/PdfDocumentSync";
 
 export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 	const {
@@ -238,17 +90,6 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 	} = props;
 
 	// Position anchors for inline annotation cards
-	interface AnnotationCardEntry {
-		highlightId: string;
-		top: number;
-		left: number;
-		scrollContainer: Element;
-		annotationId?: string;
-		// True when the highlight was created as part of opening this card
-		// (text-select → annotate). On cancel, that highlight should be removed.
-		// False/undefined when the card was opened on a pre-existing highlight.
-		transientHighlight?: boolean;
-	}
 	const [annotationCards, setAnnotationCards] = useState<AnnotationCardEntry[]>([]);
 	const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
 	const [selectionRectTop, setSelectionRectTop] = useState<number | null>(null);
@@ -308,8 +149,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 
 	// Refs
 	const highlighterUtilsRef = useRef<PdfHighlighterUtils | null>(null);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const pdfDocumentRef = useRef<any>(null);
+	const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	// When true, skip scrolling on the next activeHighlight change (e.g., when clicking directly on a highlight)
 	const blockScrollOnNextHighlight = useRef(false);
@@ -574,7 +414,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 			const next = prev.map((card) => {
 				const h = highlights.find((x) => x.id === card.highlightId);
 				if (!h) return card;
-				const anchor = getAnnotationCardAnchorForHighlight(h, viewer, scrollContainer, numPages);
+				const anchor = getAnnotationCardAnchor(h, viewer, scrollContainer, numPages);
 				if (!anchor) return card;
 				const same =
 					Math.abs(anchor.top - card.top) < 0.5 &&
@@ -612,7 +452,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 				const viewer = highlighterUtilsRef.current?.getViewer();
 				const scrollContainer = viewer?.container as HTMLElement | undefined;
 				if (!viewer || !scrollContainer) return prev;
-				const anchor = getAnnotationCardAnchorForHighlight(h, viewer, scrollContainer, numPages);
+				const anchor = getAnnotationCardAnchor(h, viewer, scrollContainer, numPages);
 				if (!anchor) return prev;
 				const firstAnn = annotations.find((a) => a.highlight_id === highlightId);
 				return [
@@ -784,7 +624,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 					const viewer = highlighterUtilsRef.current?.getViewer();
 					const scrollContainer = viewer?.container as HTMLElement | undefined;
 					if (viewer && scrollContainer) {
-						const anchor = getAnnotationCardAnchorForHighlight(ph, viewer, scrollContainer, numPages);
+						const anchor = getAnnotationCardAnchor(ph, viewer, scrollContainer, numPages);
 						if (anchor) {
 							setPeekAnnotationCardHighlightId(hid);
 							ensureAnnotationCardEntry(hid);
@@ -1048,7 +888,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 
 			attempted++;
 
-			const anchor = getAnnotationCardAnchorForHighlight(highlight, viewer, scrollContainer, numPages);
+			const anchor = getAnnotationCardAnchor(highlight, viewer, scrollContainer, numPages);
 			if (!anchor) {
 				missingPageView += 1;
 				return;
@@ -1465,7 +1305,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 							const viewer = highlighterUtilsRef.current?.getViewer();
 							const scrollContainer = viewer?.container as HTMLElement | undefined;
 							if (viewer && scrollContainer) {
-								const anchor = getAnnotationCardAnchorForHighlight(
+								const anchor = getAnnotationCardAnchor(
 									highlight,
 									viewer,
 									scrollContainer,
@@ -1796,7 +1636,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 						const h = highlights.find((x) => x.id === activeHighlight.id);
 						const anchor =
 							h?.position
-								? getAnnotationCardAnchorForHighlight(h, viewer, scrollContainer, numPages)
+								? getAnnotationCardAnchor(h, viewer, scrollContainer, numPages)
 								: null;
 						if (anchor) {
 							pos = { ...anchor, scrollContainer };
@@ -1807,7 +1647,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 							const pageRect = pdfPage?.getBoundingClientRect();
 							const top = (selectionRectTop ?? y) - containerRect.top + scrollTop;
 							const left = pageRect
-								? pageRect.right - containerRect.left + scrollLeft + ANNOTATION_CARD_MARGIN_GAP_PX
+								? pageRect.right - containerRect.left + scrollLeft + ANNOTATION_CARD_GAP_PX
 								: window.innerWidth * 0.6;
 							pos = { top, left, scrollContainer };
 						}
@@ -1819,7 +1659,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 						pos = {
 							top: (selectionRectTop ?? y) - containerRect.top + scrollTop,
 							left: pageRect
-								? pageRect.right - containerRect.left + scrollLeft + ANNOTATION_CARD_MARGIN_GAP_PX
+								? pageRect.right - containerRect.left + scrollLeft + ANNOTATION_CARD_GAP_PX
 								: window.innerWidth * 0.6,
 							scrollContainer,
 						};
