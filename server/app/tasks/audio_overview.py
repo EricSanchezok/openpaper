@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Literal
 from uuid import UUID
 
 from app.database.crud.audio_overview_crud import (
@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 async def generate_audio_overview(
     user: CurrentUser,
     audio_overview_job_id: UUID,
-    paper_id: Optional[UUID] = None,
-    project_id: Optional[UUID] = None,
-    additional_instructions: Optional[str] = None,
-    length: Optional[Literal["short", "medium", "long"]] = "medium",
+    paper_id: UUID | None = None,
+    project_id: UUID | None = None,
+    additional_instructions: str | None = None,
+    length: Literal["short", "medium", "long"] | None = "medium",
 ) -> None:
     """
     Generate an audio overview for a paper by creating a narrative summary
@@ -65,7 +65,7 @@ async def generate_audio_overview(
         conversable_title: str = ""
 
         # Step 1: Generate narrative summary
-        narrative_summary: Optional[AudioOverviewForLLM] = None
+        narrative_summary: AudioOverviewForLLM | None = None
 
         if paper_id:
             # Get paper details for title
@@ -193,8 +193,11 @@ async def generate_audio_overview(
         )
 
         # Step 3: Create AudioOverview record
+        conversable_id = paper_id if paper_id is not None else project_id
+        if conversable_id is None:
+            raise ValueError("Either paper_id or project_id must be provided")
         audio_overview_data = AudioOverviewCreate(
-            conversable_id=paper_id or project_id,  # type: ignore
+            conversable_id=conversable_id,
             conversable_type=(
                 ConversableType.PAPER if paper_id else ConversableType.PROJECT
             ),
@@ -207,8 +210,10 @@ async def generate_audio_overview(
         audio_overview = audio_overview_crud.create(
             db,
             obj_in=audio_overview_data,
-            current_user=user,
+            user=user,
         )
+        if audio_overview is None:
+            raise RuntimeError("Failed to persist audio overview")
 
         logger.info(f"Created AudioOverview record: {audio_overview.id}")
 
@@ -287,10 +292,10 @@ async def generate_audio_overview(
 async def generate_audio_overview_async(
     user: CurrentUser,
     audio_overview_job_id: UUID,
-    paper_id: Optional[UUID] = None,
-    project_id: Optional[UUID] = None,
-    additional_instructions: Optional[str] = None,
-    length: Optional[Literal["short", "medium", "long"]] = "medium",
+    paper_id: UUID | None = None,
+    project_id: UUID | None = None,
+    additional_instructions: str | None = None,
+    length: Literal["short", "medium", "long"] | None = "medium",
 ) -> None:
     """
     Async wrapper for generate_audio_overview function.

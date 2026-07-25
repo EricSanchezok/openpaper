@@ -2,7 +2,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import TypedDict
 
 from app.database.crud.annotation_crud import AnnotationCreate, annotation_crud
 from app.database.crud.base_crud import CRUDBase
@@ -14,6 +14,7 @@ from app.database.models import (
     AuthUser,
     Highlight,
     JobStatus,
+    JsonValue,
     Paper,
     PaperImage,
     PaperStatus,
@@ -27,65 +28,71 @@ from app.llm.utils import find_offsets
 from app.schemas.responses import PaperMetadataExtraction, ResponseCitation
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
-from sqlalchemy import func, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, load_only, selectinload
 
 logger = logging.getLogger(__name__)
 
 
+class PassageInsert(TypedDict):
+    start_line: int
+    end_line: int
+    content: str
+
+
 # Define Pydantic models for type safety
 class PaperBase(BaseModel):
-    file_url: Optional[str] = None
-    s3_object_key: Optional[str] = None
-    authors: Optional[List[str]] = None
-    title: Optional[str] = None
-    abstract: Optional[str] = None
-    institutions: Optional[List[str]] = None
-    summary: Optional[str] = None
-    summary_citations: Optional[List[ResponseCitation]] = None
-    starter_questions: Optional[List[str]] = None
-    publish_date: Optional[str] = None
-    raw_content: Optional[str] = None
-    parser_markdown_s3_key: Optional[str] = None
-    parser_archive_s3_key: Optional[str] = None
-    parser_backend: Optional[str] = None
-    parser_quality: Optional[str] = None
-    parser_version: Optional[str] = None
-    parser_warning_code: Optional[str] = None
-    upload_job_id: Optional[str] = None
-    preview_url: Optional[str] = None
-    size_in_kb: Optional[int] = None
+    file_url: str | None = None
+    s3_object_key: str | None = None
+    authors: list[str] | None = None
+    title: str | None = None
+    abstract: str | None = None
+    institutions: list[str] | None = None
+    summary: str | None = None
+    summary_citations: list[ResponseCitation] | None = None
+    starter_questions: list[str] | None = None
+    publish_date: str | None = None
+    raw_content: str | None = None
+    parser_markdown_s3_key: str | None = None
+    parser_archive_s3_key: str | None = None
+    parser_backend: str | None = None
+    parser_quality: str | None = None
+    parser_version: str | None = None
+    parser_warning_code: str | None = None
+    upload_job_id: str | None = None
+    preview_url: str | None = None
+    size_in_kb: int | None = None
     # We can't save tuples in the db, so we use a list (length 2) to represent page offsets
-    page_offset_map: Optional[dict[int, List[int]]] = None
+    page_offset_map: dict[int, list[int]] | None = None
 
 
 class PaperCreate(PaperBase):
     # Only mandate required fields for creation, others are optional
-    file_url: str  # type: ignore
-    raw_content: Optional[str] = None  # type: ignore
-    s3_object_key: Optional[str] = None
-    upload_job_id: Optional[str] = None
-    preview_url: Optional[str] = None
-    parent_paper_id: Optional[uuid.UUID] = None
+    file_url: str
+    raw_content: str | None = None
+    s3_object_key: str | None = None
+    upload_job_id: str | None = None
+    preview_url: str | None = None
+    parent_paper_id: uuid.UUID | None = None
 
 
 class PaperUpdate(PaperBase):
-    status: Optional[PaperStatus] = PaperStatus.todo
-    cached_presigned_url: Optional[str] = None
-    presigned_url_expires_at: Optional[datetime] = None
-    preview_url: Optional[str] = None
-    raw_content: Optional[str] = None
-    doi: Optional[str] = None
-    size_in_kb: Optional[int] = None
-    journal: Optional[str] = None
-    publisher: Optional[str] = None
-    attempted_metadata_at: Optional[datetime] = None
-    field_provenance: Optional[dict] = None
+    status: PaperStatus | None = PaperStatus.todo
+    cached_presigned_url: str | None = None
+    presigned_url_expires_at: datetime | None = None
+    preview_url: str | None = None
+    raw_content: str | None = None
+    doi: str | None = None
+    size_in_kb: int | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    attempted_metadata_at: datetime | None = None
+    field_provenance: dict[str, JsonValue] | None = None
 
 
 class PaperDocumentMetadata(BaseModel):
-    raw_content: Optional[str] = None
-    page_offsets: Optional[dict[int, Tuple[int, int]]] = None
+    raw_content: str | None = None
+    page_offsets: dict[int, tuple[int, int]] | None = None
 
 
 # Paper CRUD that inherits from the base CRUD
@@ -110,7 +117,11 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         if not paper.raw_content:
             raise ValueError(f"Raw content for paper {paper_id} is not set.")
 
-        offsets = {k: tuple(v) for k, v in paper.page_offset_map.items()}
+        offsets = (
+            {k: (v[0], v[1]) for k, v in paper.page_offset_map.items() if len(v) >= 2}
+            if paper.page_offset_map
+            else {}
+        )
 
         return PaperDocumentMetadata(
             raw_content=str(paper.raw_content),
@@ -119,7 +130,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
     def get_top_relevant_papers(
         self, db: Session, *, user: CurrentUser, limit: int = 3
-    ) -> List[Paper]:
+    ) -> list[Paper]:
         """
         Get recent papers with priority logic:
         1. Order by most recently uploaded
@@ -128,39 +139,37 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         4. Return up to limit papers
         """
         # First, get reading papers
-        reading_papers = (
-            db.query(Paper)
-            .filter(Paper.user_id == user.id, Paper.status == PaperStatus.reading)
+        reading_papers = db.scalars(
+            select(Paper)
+            .where(Paper.user_id == user.id, Paper.status == PaperStatus.reading)
             .join(
                 PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id, isouter=True
             )
-            .filter(
+            .where(
                 (PaperUploadJob.status == JobStatus.COMPLETED)
                 | (Paper.upload_job_id.is_(None))
             )
             .order_by(Paper.last_accessed_at.desc())
             .limit(limit)
-            .all()
-        )
+        ).all()
 
         # If we have enough reading papers, return them
         if len(reading_papers) >= limit:
-            return reading_papers
+            return list(reading_papers)
 
         # Calculate how many more papers we need
         remaining_limit = limit - len(reading_papers)
 
         # Get todo papers to fill the remaining slots
-        todo_papers = (
-            db.query(Paper)
-            .filter(Paper.user_id == user.id, Paper.status == PaperStatus.todo)
+        todo_papers = db.scalars(
+            select(Paper)
+            .where(Paper.user_id == user.id, Paper.status == PaperStatus.todo)
             .order_by(Paper.last_accessed_at.desc())
             .limit(remaining_limit)
-            .all()
-        )
+        ).all()
 
         # Combine and return
-        return reading_papers + todo_papers
+        return list(reading_papers) + list(todo_papers)
 
     def get_size_of_knowledge_base(self, db: Session, *, user: CurrentUser) -> int:
         """
@@ -170,10 +179,10 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         from app.helpers.s3 import s3_service
 
         # First, get papers with missing size_in_kb and update them
-        papers_without_size = (
-            db.query(Paper)
+        papers_without_size = db.scalars(
+            select(Paper)
             .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
-            .filter(
+            .where(
                 Paper.user_id == user.id,
                 (
                     Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
@@ -184,8 +193,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
                 Paper.size_in_kb.is_(None),  # Only papers without size_in_kb
                 Paper.s3_object_key.isnot(None),  # Must have S3 object key
             )
-            .all()
-        )
+        ).all()
 
         # Update papers that don't have size_in_kb set
         for paper in papers_without_size:
@@ -199,10 +207,10 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
                     self.update(db, db_obj=paper, obj_in=update_paper)
 
         # Now get all completed papers and sum their sizes
-        papers_with_size = (
-            db.query(Paper.size_in_kb)
+        total_size = db.scalar(
+            select(func.coalesce(func.sum(Paper.size_in_kb), 0))
             .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
-            .filter(
+            .where(
                 Paper.user_id == user.id,
                 (
                     Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
@@ -210,77 +218,71 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
                         PaperUploadJob.status == JobStatus.COMPLETED
                     )  # Or job is completed
                 ),
-                Paper.size_in_kb.isnot(None),  # Only papers with size_in_kb
             )
-            .all()
         )
-
-        # Sum all the sizes efficiently
-        total_size = sum(size[0] for size in papers_with_size if size[0] is not None)
-        return total_size
+        return int(total_size or 0)
 
     def make_public(
         self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         """Make a paper publicly accessible via share link"""
         paper = self.get(db, id=paper_id, user=user)
         if paper:
             # Generate a unique share ID if not already present
             if not paper.share_id:
-                paper.share_id = str(uuid.uuid4())  # type: ignore
-            paper.is_public = True  # type: ignore
+                paper.share_id = str(uuid.uuid4())
+            paper.is_public = True
             db.commit()
             db.refresh(paper)
         return paper
 
     def make_private(
         self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         """Make a paper private (not publicly accessible)"""
         paper = self.get(db, id=paper_id, user=user)
         if paper:
-            paper.is_public = False  # type: ignore
+            paper.is_public = False
             db.commit()
             db.refresh(paper)
         return paper
 
-    def get_public_paper(self, db: Session, *, share_id: str) -> Optional[Paper]:
+    def get_public_paper(self, db: Session, *, share_id: str) -> Paper | None:
         """Get a paper by its share_id if it's public"""
-        return (
-            db.query(Paper)
-            .join(AuthUser, Paper.user_id == AuthUser.id)
-            .filter(Paper.share_id == share_id, Paper.is_public.is_(True))
-            .first()
-        )
+        return db.scalars(
+            select(Paper).where(Paper.share_id == share_id, Paper.is_public.is_(True))
+        ).first()
 
     def get_by_upload_job_id(
         self, db: Session, *, upload_job_id: str, user: CurrentUser
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         """Get a paper by its upload job ID"""
-        return (
-            db.query(Paper)
-            .filter(Paper.upload_job_id == upload_job_id, Paper.user_id == user.id)
-            .first()
-        )
+        return db.scalars(
+            select(Paper).where(
+                Paper.upload_job_id == upload_job_id, Paper.user_id == user.id
+            )
+        ).first()
 
     def get_total_paper_count(self, db: Session, *, user: CurrentUser) -> int:
         """
         Get the total number of papers uploaded by a user.
         This includes all papers that have completed uploads.
         """
-        return (
-            db.query(Paper)
-            .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
-            .filter(
-                Paper.user_id == user.id,
-                (
-                    Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
-                    | (
-                        PaperUploadJob.status == JobStatus.COMPLETED
-                    )  # Or job is completed
-                ),
+        return int(
+            db.scalar(
+                select(func.count(Paper.id))
+                .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
+                .where(
+                    Paper.user_id == user.id,
+                    (
+                        Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
+                        | (
+                            PaperUploadJob.status == JobStatus.COMPLETED
+                        )  # Or job is completed
+                    ),
+                )
             )
-            .count()
+            or 0
         )
 
     def get_multi_uploads_completed(
@@ -290,14 +292,14 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         user: CurrentUser,
         skip: int = 0,
         limit: int = 500,
-        status: Optional[PaperStatus] = None,
-    ) -> List[Paper]:
+        status: PaperStatus | None = None,
+    ) -> list[Paper]:
         """
         Get multiple papers that have completed uploads
         Completed uploads are those either with a null upload_job_id OR an upload_job with status 'completed'.
         """
-        return (
-            db.query(Paper)
+        statement = (
+            select(Paper)
             .options(
                 selectinload(Paper.tags),
                 # Library listings only need lightweight metadata. Without this,
@@ -319,7 +321,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
                 ),
             )
             .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
-            .filter(
+            .where(
                 Paper.user_id == user.id,
                 (
                     Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
@@ -327,13 +329,14 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
                         PaperUploadJob.status == JobStatus.COMPLETED
                     )  # Or job is completed
                 ),
-                (Paper.status == status if status else True),
             )
             .order_by(Paper.updated_at.desc())
             .offset(skip)
             .limit(limit)
-            .all()
         )
+        if status:
+            statement = statement.where(Paper.status == status)
+        return list(db.scalars(statement).all())
 
     def create_ai_annotations(
         self,
@@ -342,18 +345,16 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         paper_id: str,
         extract_metadata: PaperMetadataExtraction,
         current_user: CurrentUser,
-    ):
+    ) -> None:
         # Idempotency: a redelivered upload job (Celery acks_late) can invoke this
         # twice for the same paper. If AI highlights already exist, this has
         # already run — skip to avoid duplicating highlights and annotations.
-        existing_ai_highlight = (
-            db.query(Highlight)
-            .filter(
+        existing_ai_highlight = db.scalars(
+            select(Highlight).where(
                 Highlight.paper_id == uuid.UUID(paper_id),
                 Highlight.role == RoleType.ASSISTANT,
             )
-            .first()
-        )
+        ).first()
         if existing_ai_highlight:
             logger.info(
                 f"AI highlights already exist for paper {paper_id}, "
@@ -401,7 +402,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
             n_annotation_obj = AnnotationCreate(
                 paper_id=uuid.UUID(paper_id),
-                highlight_id=n_ai_h.id,  # type: ignore
+                highlight_id=n_ai_h.id,
                 role=RoleType.ASSISTANT,
                 content=ai_highlight.annotation,
             )
@@ -427,7 +428,9 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             user (CurrentUser): Current user making the request.
         """
 
-        def _find_and_replace_all_placeholders(summary: str, images: List[PaperImage]):
+        def _find_and_replace_all_placeholders(
+            summary: str, images: list[PaperImage]
+        ) -> str:
             """Find all the image placeholders in the paper. Placeholders are referenced by markdown-style image syntax, where the link is just the placeholder ID. If a placeholder is found, replace it with the actual image URL."""
             for image in images:
                 placeholder = f"({image.placeholder_id})"
@@ -491,7 +494,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             paper_id (str): ID of the paper to update.
         """
         # Get the paper without a user context first
-        paper = db.query(Paper).filter(Paper.id == paper_id).first()
+        paper = db.get(Paper, paper_id)
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found")
@@ -500,23 +503,11 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         if not paper.is_public:
             raise ValueError(f"Paper with ID {paper_id} is not a shared paper")
 
-        # Create a CurrentUser object from the paper's user_id
-        user_id = db.query(Paper.user_id).filter(Paper.id == paper_id).first()
-        if not user_id:
-            raise ValueError(f"User for paper with ID {paper_id} not found")
-
-        user = db.query(AuthUser).filter(AuthUser.id == user_id[0]).first()
+        user = db.get(AuthUser, paper.user_id)
         if not user:
             raise ValueError(f"User for paper with ID {paper_id} not found")
 
-        current_user = CurrentUser(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            status=user.status,
-            email_verified=user.email_verified_at is not None,
-            is_active=user.status == "active",
-        )
+        current_user = CurrentUser.from_auth_user(user)
 
         # Call the original method with the created user
         return self.get_summary_replace_image_placeholders(
@@ -528,9 +519,9 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         db: Session,
         *,
         user: CurrentUser,
-        query: Optional[str] = None,
-        paper_ids: Optional[List[str]] = None,
-    ) -> List[Paper]:
+        query: str | None = None,
+        paper_ids: list[str] | None = None,
+    ) -> list[Paper]:
         """
         Get all papers available to the user, regardless of status.
         This includes papers with 'todo', 'reading', and 'completed' statuses.
@@ -539,32 +530,32 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         """
         # Eager-load tags in a single batched query: callers like the evidence
         # pipeline read paper.tags per paper, which would otherwise N+1.
-        db_query = (
-            db.query(Paper)
+        statement = (
+            select(Paper)
             .options(selectinload(Paper.tags))
-            .filter(Paper.user_id == user.id)
+            .where(Paper.user_id == user.id)
         )
 
         if paper_ids:
-            db_query = db_query.filter(Paper.id.in_(paper_ids))
+            statement = statement.where(Paper.id.in_(paper_ids))
 
-        db_query = db_query.filter(Paper.ts_vector.isnot(None))
+        statement = statement.where(Paper.ts_vector.isnot(None))
 
         if query:
             # The query is split into words and joined with '&' to create a tsquery.
             # This means all words in the query must be present in the document.
             ts_query = func.to_tsquery("english", " & ".join(query.split()))
-            db_query = db_query.filter(Paper.ts_vector.op("@@")(ts_query))
+            statement = statement.where(Paper.ts_vector.op("@@")(ts_query))
 
-        return db_query.order_by(Paper.updated_at.desc()).all()
+        return list(db.scalars(statement.order_by(Paper.updated_at.desc())).all())
 
     @staticmethod
     def build_passages(
         raw_content: str, window: int = 5, stride: int = 3
-    ) -> list[dict]:
+    ) -> list[PassageInsert]:
         """Split raw_content into overlapping passage windows."""
         lines = raw_content.split("\n")
-        passages = []
+        passages: list[PassageInsert] = []
         for i in range(0, len(lines), stride):
             chunk = lines[i : i + window]
             passages.append(
@@ -622,8 +613,8 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         *,
         user: CurrentUser,
         query: str,
-        paper_ids: Optional[List[uuid.UUID]] = None,
-    ) -> List[Tuple[str, int, str]]:
+        paper_ids: list[uuid.UUID] | None = None,
+    ) -> list[tuple[str, int, str]]:
         """
         Search for papers using passage-level FTS and return exact matching lines.
 
@@ -658,7 +649,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
               AND p.user_id = :user_id
         """
 
-        params: dict = {"user_id": user.id}
+        params: dict[str, object] = {"user_id": user.id}
         for i, term in enumerate(search_terms):
             params[f"term_{i}"] = term
 
@@ -672,7 +663,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
         # Refine: extract exact matching lines and deduplicate across
         # overlapping passage windows.
-        seen: dict[tuple, tuple] = {}
+        seen: dict[tuple[str, int], tuple[str, int, str]] = {}
         for paper_id, start_line, content in raw_results:
             for offset, line in enumerate(content.split("\n")):
                 if re.search(regex_query, line, re.IGNORECASE):
@@ -687,23 +678,22 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         db: Session,
         *,
         user: CurrentUser,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get a list of unique tags from all available papers.
         """
-        rows = (
-            db.query(PaperTag.name)
+        rows = db.scalars(
+            select(PaperTag.name)
             .join(PaperTag.papers)
-            .filter(
+            .where(
                 PaperTag.user_id == user.id,
                 Paper.user_id == user.id,
                 Paper.ts_vector.isnot(None),
             )
             .distinct()
-            .all()
-        )
+        ).all()
 
-        return [name.strip() for (name,) in rows if name and name.strip()]
+        return [name.strip() for name in rows if name and name.strip()]
 
     def get_forked_paper_by_parent_id(
         self, db: Session, *, parent_paper_id: uuid.UUID, user: CurrentUser
@@ -712,11 +702,12 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         Find a forked paper by its parent_paper_id for the current user.
         A user can only have one fork of a given paper.
         """
-        return (
-            db.query(Paper)
-            .filter(Paper.parent_paper_id == parent_paper_id, Paper.user_id == user.id)
-            .one_or_none()
-        )
+        return db.scalars(
+            select(Paper).where(
+                Paper.parent_paper_id == parent_paper_id,
+                Paper.user_id == user.id,
+            )
+        ).one_or_none()
 
     def fork_paper(
         self,
@@ -725,9 +716,9 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         original_paper: Paper,
         new_file_object_key: str,
         new_file_url: str,
-        new_preview_url: Optional[str],
+        new_preview_url: str | None,
         current_user: CurrentUser,
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         """
         Fork a paper to create a duplicate for the current user.
 
@@ -746,21 +737,21 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         new_paper_data = PaperCreate(
             file_url=new_file_url,
             s3_object_key=new_file_object_key,
-            authors=original_paper.authors,  # type: ignore
+            authors=original_paper.authors,
             title=str(original_paper.title),
             abstract=str(original_paper.abstract),
-            institutions=original_paper.institutions,  # type: ignore
+            institutions=original_paper.institutions,
             summary=str(original_paper.summary),
-            summary_citations=None,  # type: ignore
-            starter_questions=original_paper.starter_questions,  # type: ignore
+            summary_citations=None,
+            starter_questions=original_paper.starter_questions,
             publish_date=str(original_paper.publish_date)
             if original_paper.publish_date
-            else None,  # type: ignore
-            raw_content=original_paper.raw_content,  # type: ignore
+            else None,
+            raw_content=original_paper.raw_content,
             upload_job_id=None,  # New upload job ID
             preview_url=new_preview_url,
             size_in_kb=(
-                int(original_paper.size_in_kb)  # type: ignore
+                int(original_paper.size_in_kb)
                 if original_paper.size_in_kb is not None
                 else None
             ),
@@ -778,7 +769,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
                 paper_tag_crud.apply_keyword_tags(
                     db,
                     paper_id=uuid.UUID(str(forked_paper.id)),
-                    keywords=[str(tag.name) for tag in original_paper.tags if tag.name],  # type: ignore
+                    keywords=[str(tag.name) for tag in original_paper.tags if tag.name],
                     user_id=current_user.id,
                 )
             except Exception as e:
@@ -792,7 +783,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             try:
                 self.index_paper_passages(
                     db,
-                    paper_id=uuid.UUID(str(forked_paper.id)),  # type: ignore
+                    paper_id=uuid.UUID(str(forked_paper.id)),
                     raw_content=str(original_paper.raw_content),
                 )
             except Exception as e:
@@ -805,7 +796,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
     def get_by_doi_for_user(
         self, db: Session, *, user_id: int, doi: str
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         """Return the user's paper with a matching normalized DOI, if any."""
         normalized = normalize_doi(doi)
         if not normalized:
@@ -818,14 +809,12 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         escaped = (
             normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         )
-        return (
-            db.query(Paper)
-            .filter(
+        return db.scalars(
+            select(Paper).where(
                 Paper.user_id == user_id,
                 func.lower(Paper.doi).like(f"%{escaped}", escape="\\"),
             )
-            .first()
-        )
+        ).first()
 
 
 # Create a single instance to use throughout the application

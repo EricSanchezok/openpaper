@@ -1,11 +1,11 @@
 import logging
 import uuid
-from typing import List, Optional
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Paper, PaperImage
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class PaperImageBase(BaseModel):
     page_number: int
     image_index: int
     placeholder_id: str
-    caption: Optional[str] = None
+    caption: str | None = None
 
 
 class PaperImageCreate(PaperImageBase):
@@ -31,16 +31,16 @@ class PaperImageCreate(PaperImageBase):
 
 
 class PaperImageUpdate(BaseModel):
-    s3_object_key: Optional[str] = None
-    image_url: Optional[str] = None
-    format: Optional[str] = None
-    size_bytes: Optional[int] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    page_number: Optional[int] = None
-    image_index: Optional[int] = None
-    caption: Optional[str] = None
-    placeholder_id: Optional[str] = None
+    s3_object_key: str | None = None
+    image_url: str | None = None
+    format: str | None = None
+    size_bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
+    page_number: int | None = None
+    image_index: int | None = None
+    caption: str | None = None
+    placeholder_id: str | None = None
 
 
 # Paper Image CRUD that inherits from the base CRUD
@@ -49,16 +49,14 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
 
     def create_with_paper_validation(
         self, db: Session, *, obj_in: PaperImageCreate, user: CurrentUser
-    ) -> Optional[PaperImage]:
+    ) -> PaperImage | None:
         """
         Create a paper image with validation that the paper exists and belongs to the user
         """
         # Verify the paper exists and belongs to the user
-        paper = (
-            db.query(Paper)
-            .filter(Paper.id == obj_in.paper_id, Paper.user_id == user.id)
-            .first()
-        )
+        paper = db.scalars(
+            select(Paper).where(Paper.id == obj_in.paper_id, Paper.user_id == user.id)
+        ).first()
 
         if not paper:
             raise ValueError(
@@ -68,8 +66,8 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
         return self.create(db, obj_in=obj_in, user=user)
 
     def create_multiple_with_paper_validation(
-        self, db: Session, *, images: List[PaperImageCreate], user: CurrentUser
-    ) -> List[PaperImage]:
+        self, db: Session, *, images: list[PaperImageCreate], user: CurrentUser
+    ) -> list[PaperImage]:
         """
         Create multiple paper images with validation that the papers exist and belong to the user
         """
@@ -80,13 +78,13 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
         paper_ids = list(set(img.paper_id for img in images))
 
         # Verify all papers exist and belong to the user
-        existing_papers = (
-            db.query(Paper.id)
-            .filter(Paper.id.in_(paper_ids), Paper.user_id == user.id)
-            .all()
+        existing_paper_ids = set(
+            db.scalars(
+                select(Paper.id).where(
+                    Paper.id.in_(paper_ids), Paper.user_id == user.id
+                )
+            ).all()
         )
-
-        existing_paper_ids = {paper.id for paper in existing_papers}
 
         # Check if any paper IDs are missing
         missing_paper_ids = set(paper_ids) - existing_paper_ids
@@ -106,27 +104,26 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
 
     def get_by_paper_id(
         self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> List[PaperImage]:
+    ) -> list[PaperImage]:
         """
         Get all images for a specific paper
         """
         # First verify the paper belongs to the user
-        paper = (
-            db.query(Paper)
-            .filter(Paper.id == paper_id, Paper.user_id == user.id)
-            .first()
-        )
+        paper = db.scalars(
+            select(Paper).where(Paper.id == paper_id, Paper.user_id == user.id)
+        ).first()
 
         if not paper:
             raise ValueError(
                 f"Paper with ID {paper_id} not found or doesn't belong to user"
             )
 
-        return (
-            db.query(PaperImage)
-            .filter(PaperImage.paper_id == paper_id)
-            .order_by(PaperImage.page_number, PaperImage.image_index)
-            .all()
+        return list(
+            db.scalars(
+                select(PaperImage)
+                .where(PaperImage.paper_id == paper_id)
+                .order_by(PaperImage.page_number, PaperImage.image_index)
+            ).all()
         )
 
 

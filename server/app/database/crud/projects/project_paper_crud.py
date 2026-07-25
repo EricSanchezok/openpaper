@@ -1,6 +1,5 @@
 import logging
 import uuid
-from typing import List, Optional
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_base_crud import ProjectBaseCRUD
@@ -8,6 +7,7 @@ from app.database.crud.projects.project_crud import project_crud
 from app.database.models import Paper, Project, ProjectPaper, ProjectRole, ProjectRoles
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, load_only, selectinload
 
 logger = logging.getLogger(__name__)
@@ -28,15 +28,31 @@ class ProjectPaperUpdate(BaseModel):  # Empty update schema
 class ProjectPaperCRUD(
     ProjectBaseCRUD[ProjectPaper, ProjectPaperCreate, ProjectPaperUpdate]
 ):
+    @staticmethod
+    def _has_project_access(
+        db: Session, *, project_id: uuid.UUID, user_id: int
+    ) -> bool:
+        return (
+            db.scalar(
+                select(ProjectRole.id)
+                .where(
+                    ProjectRole.project_id == project_id,
+                    ProjectRole.user_id == user_id,
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
     def create(
         self,
         db: Session,
         *,
         obj_in: ProjectPaperCreate,
-        user: Optional[CurrentUser] = None,
-        project_id: Optional[uuid.UUID] = None,
+        user: CurrentUser | None = None,
+        project_id: uuid.UUID | None = None,
         auto_commit: bool = True,
-    ) -> Optional[ProjectPaper]:
+    ) -> ProjectPaper | None:
         # Validate required parameters for this implementation
         if user is None:
             raise ValueError("user parameter is required for ProjectPaperCRUD.create")
@@ -47,15 +63,13 @@ class ProjectPaperCRUD(
 
         try:
             # Check if the user has permission to add a paper to this project
-            project_role = (
-                db.query(ProjectRole)
-                .filter(
+            project_role = db.scalars(
+                select(ProjectRole).where(
                     ProjectRole.project_id == project_id,
                     ProjectRole.user_id == user.id,
                     ProjectRole.role.in_([ProjectRoles.ADMIN, ProjectRoles.EDITOR]),
                 )
-                .first()
-            )
+            ).first()
             if not project_role:
                 logger.warning(
                     f"User {user.id} does not have permission to add paper to project {project_id}"
@@ -63,11 +77,11 @@ class ProjectPaperCRUD(
                 return None
 
             # Check if the paper exists and belongs to the user
-            paper = (
-                db.query(Paper)
-                .filter(Paper.id == obj_in.paper_id, Paper.user_id == user.id)
-                .first()
-            )
+            paper = db.scalars(
+                select(Paper).where(
+                    Paper.id == obj_in.paper_id, Paper.user_id == user.id
+                )
+            ).first()
             if not paper:
                 logger.warning(
                     f"Paper with id {obj_in.paper_id} not found for user {user.id}"
@@ -75,14 +89,12 @@ class ProjectPaperCRUD(
                 return None
 
             # Check if the paper is already in the project
-            existing_project_paper = (
-                db.query(ProjectPaper)
-                .filter(
+            existing_project_paper = db.scalars(
+                select(ProjectPaper).where(
                     ProjectPaper.project_id == project_id,
                     ProjectPaper.paper_id == obj_in.paper_id,
                 )
-                .first()
-            )
+            ).first()
             if existing_project_paper:
                 logger.warning(
                     f"Paper {obj_in.paper_id} is already in project {project_id}"
@@ -115,62 +127,43 @@ class ProjectPaperCRUD(
         paper_id: uuid.UUID,
         project_id: uuid.UUID,
         user: CurrentUser,
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-            .first()
-        )
-        if not project_role:
+        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return None
 
-        project_paper = (
-            db.query(self.model)
-            .filter(
-                self.model.project_id == project_id, self.model.paper_id == paper_id
+        project_paper = db.scalars(
+            select(ProjectPaper).where(
+                ProjectPaper.project_id == project_id,
+                ProjectPaper.paper_id == paper_id,
             )
-            .first()
-        )
+        ).first()
 
         if not project_paper:
             return None
 
-        return db.query(Paper).filter(Paper.id == project_paper.paper_id).first()
+        return db.get(Paper, project_paper.paper_id)
 
     def get_all_papers_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> List[Paper]:
+    ) -> list[Paper]:
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-            .first()
-        )
-        if not project_role:
+        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return []
 
-        project_papers = (
-            db.query(self.model).filter(self.model.project_id == project_id).all()
-        )
-        paper_ids = [pp.paper_id for pp in project_papers]
-        papers = (
-            db.query(Paper)
+        paper_ids = db.scalars(
+            select(ProjectPaper.paper_id).where(ProjectPaper.project_id == project_id)
+        ).all()
+        papers = db.scalars(
+            select(Paper)
             .options(selectinload(Paper.tags))
-            .filter(Paper.id.in_(paper_ids))
-            .all()
-        )
-        return papers
+            .where(Paper.id.in_(paper_ids))
+        ).all()
+        return list(papers)
 
     def get_papers_metadata_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> List[Paper]:
+    ) -> list[Paper]:
         """
         Lightweight variant of get_all_papers_by_project_id for the project
         papers listing endpoint.
@@ -182,21 +175,13 @@ class ProjectPaperCRUD(
         previously fetched and discarded on every list request.
         """
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-            .first()
-        )
-        if not project_role:
+        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return []
 
-        papers = (
-            db.query(Paper)
+        papers = db.scalars(
+            select(Paper)
             .join(ProjectPaper, ProjectPaper.paper_id == Paper.id)
-            .filter(ProjectPaper.project_id == project_id)
+            .where(ProjectPaper.project_id == project_id)
             .options(
                 load_only(
                     Paper.title,
@@ -217,47 +202,39 @@ class ProjectPaperCRUD(
                     Paper.size_in_kb,
                 )
             )
-            .all()
-        )
-        return papers
+        ).all()
+        return list(papers)
 
     def get_project_paper_ids_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> List[uuid.UUID]:
+    ) -> list[uuid.UUID]:
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-            .first()
-        )
-        if not project_role:
+        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return []
 
-        project_papers = (
-            db.query(self.model).filter(self.model.project_id == project_id).all()
+        return list(
+            db.scalars(
+                select(ProjectPaper.paper_id).where(
+                    ProjectPaper.project_id == project_id
+                )
+            ).all()
         )
-        paper_ids = [pp.paper_id for pp in project_papers]
-        return paper_ids
 
     def get_paper_count_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
     ) -> int:
         """Number of papers in a project. Returns 0 if the user has no access."""
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-            .first()
-        )
-        if not project_role:
+        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return 0
 
-        return db.query(self.model).filter(self.model.project_id == project_id).count()
+        return int(
+            db.scalar(
+                select(func.count(ProjectPaper.id)).where(
+                    ProjectPaper.project_id == project_id
+                )
+            )
+            or 0
+        )
 
     def remove_by_paper_and_project(
         self,
@@ -266,26 +243,17 @@ class ProjectPaperCRUD(
         paper_id: uuid.UUID,
         project_id: uuid.UUID,
         user: CurrentUser,
-    ) -> Optional[ProjectPaper]:
+    ) -> ProjectPaper | None:
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-            .first()
-        )
-        if not project_role:
+        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return None
 
-        project_paper = (
-            db.query(self.model)
-            .filter(
-                self.model.project_id == project_id, self.model.paper_id == paper_id
+        project_paper = db.scalars(
+            select(ProjectPaper).where(
+                ProjectPaper.project_id == project_id,
+                ProjectPaper.paper_id == paper_id,
             )
-            .first()
-        )
+        ).first()
 
         if not project_paper:
             return None
@@ -296,28 +264,25 @@ class ProjectPaperCRUD(
 
     def get_projects_by_paper_id(
         self, db: Session, *, paper_id: uuid.UUID, user: CurrentUser
-    ) -> List[Project]:
+    ) -> list[Project]:
         # First, find all project-paper associations for the given paper_id
-        project_papers: List[ProjectPaper] = (
-            db.query(ProjectPaper).filter(ProjectPaper.paper_id == paper_id).all()
-        )
-        project_ids = [pp.project_id for pp in project_papers]
+        project_ids = db.scalars(
+            select(ProjectPaper.project_id).where(ProjectPaper.paper_id == paper_id)
+        ).all()
 
         if not project_ids:
             return []
 
         # Now, fetch all projects that match these IDs and that the user has access to
-        projects = (
-            db.query(Project)
+        projects = db.scalars(
+            select(Project)
             .join(ProjectRole, Project.id == ProjectRole.project_id)
-            .filter(
+            .where(
                 Project.id.in_(project_ids),
                 ProjectRole.user_id == user.id,
             )
-            .all()
-        )
-
-        return projects
+        ).all()
+        return list(projects)
 
     def get_forked_papers_by_parent_id(
         self, db: Session, *, parent_paper_id: uuid.UUID, user: CurrentUser
@@ -337,10 +302,10 @@ class ProjectPaperCRUD(
         parent_paper_id: str,
         new_file_object_key: str,
         new_file_url: str,
-        new_preview_url: Optional[str],
+        new_preview_url: str | None,
         project_id: str,
         current_user: CurrentUser,
-    ) -> Optional[Paper]:
+    ) -> Paper | None:
         """
         Fork a paper to create a duplicate for the current user.
         Validates that the user has access to the paper via the project,

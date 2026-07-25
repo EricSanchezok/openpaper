@@ -79,7 +79,9 @@ class ZoteroImportedItem(Base):
     status: Mapped[str] = mapped_column(
         String, nullable=False, default=ZoteroImportStatus.PROCESSING
     )
-    annotations_payload: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    annotations_payload: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

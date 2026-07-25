@@ -14,9 +14,10 @@ PDF processing microservice. The architecture is:
 The client can poll the job status using the same job_id throughout the process.
 """
 
+from app.api.types import ApiResponse
+
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Union
 from uuid import UUID
 
 from app.api.webhook_api import handle_failed_upload
@@ -81,7 +82,7 @@ async def get_upload_status(
     job_id: str,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """
     Get the status of a paper upload job, including real-time Celery task status.
     """
@@ -132,7 +133,11 @@ async def get_upload_status(
         "job_id": str(paper_upload_job.id),
         "status": paper_upload_job.status,
         "task_id": paper_upload_job.task_id,
-        "started_at": paper_upload_job.started_at.isoformat(),
+        "started_at": (
+            paper_upload_job.started_at.isoformat()
+            if paper_upload_job.started_at
+            else None
+        ),
         "completed_at": (
             paper_upload_job.completed_at.isoformat()
             if paper_upload_job.completed_at
@@ -166,7 +171,7 @@ async def upload_pdf_from_url(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
-):
+) -> ApiResponse:
     """
     Upload a document from a given URL, rather than the raw file.
     """
@@ -201,7 +206,7 @@ async def upload_pdf_from_url(
         started_at=datetime.now(timezone.utc),
     )
 
-    paper_upload_job: PaperUploadJob = paper_upload_job_crud.create(
+    paper_upload_job = paper_upload_job_crud.create(
         db=db,
         obj_in=paper_upload_job_obj,
         user=current_user,
@@ -255,7 +260,7 @@ async def upload_pdf(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
-):
+) -> ApiResponse:
     """
     Upload a PDF file
     """
@@ -324,7 +329,7 @@ async def upload_pdf(
         started_at=datetime.now(timezone.utc),
     )
 
-    paper_upload_job: PaperUploadJob = paper_upload_job_crud.create(
+    paper_upload_job = paper_upload_job_crud.create(
         db=db,
         obj_in=paper_upload_job_obj,
         user=current_user,
@@ -371,7 +376,7 @@ async def check_subscription_limits(
     current_user: CurrentUser,
     db: Session,
     project_id: UUID | None = None,
-) -> Union[str, None]:
+) -> str | None:
     """
     Check if the user can upload a new paper based on their subscription limits.
     Returns a JSONResponse with an error message if limits are exceeded.
@@ -404,7 +409,7 @@ async def upload_raw_file_microservice(
     paper_upload_job: PaperUploadJob,
     current_user: CurrentUser,
     db: Session,
-    project_id: Optional[UUID] = None,
+    project_id: UUID | None = None,
 ) -> None:
     """
     Helper function to upload a raw file using the microservice.

@@ -178,18 +178,20 @@ class TestZoteroImportCrudFilters(unittest.TestCase):
         from app.database.crud.zotero_import_crud import zotero_import_crud
 
         db = MagicMock()
-        query = db.query.return_value
-        join = query.join.return_value
-        filter_result = join.filter.return_value
-        order = filter_result.order_by.return_value
-        order.limit.return_value.all.return_value = []
+        db.scalars.return_value.all.return_value = []
 
         user_id = uuid4()
         zotero_import_crud.list_syncable_by_user(db, user_id=user_id, limit=10)
 
-        join.filter.assert_called_once()
-        filter_args = join.filter.call_args[0]
-        self.assertTrue(len(filter_args) > 0)
+        db.scalars.assert_called_once()
+        statement = db.scalars.call_args.args[0]
+        compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn(
+            "zotero_imported_items.import_source = 'pdf_attachment'", compiled
+        )
+        self.assertIn(
+            "zotero_imported_items.zotero_attachment_key IS NOT NULL", compiled
+        )
 
 
 class TestSyncBatch(unittest.IsolatedAsyncioTestCase):

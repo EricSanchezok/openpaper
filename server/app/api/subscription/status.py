@@ -1,3 +1,4 @@
+from app.api.types import ApiData as ApiResponse
 import logging
 from datetime import datetime, timezone
 
@@ -24,7 +25,7 @@ router = APIRouter()
 async def get_user_subscription(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """Get the current user's subscription status"""
     try:
         subscription = subscription_crud.get_by_user_id(db, current_user.id)
@@ -151,7 +152,7 @@ async def get_user_subscription(
 async def get_user_usage(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """Get the current user's subscription usage and limits"""
     try:
         usage_info = get_user_usage_info(db, current_user)

@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
 from uuid import UUID
 
 from app.database.crud.projects.project_base_crud import ProjectBaseCRUD
@@ -17,7 +16,7 @@ from app.database.models import (
 )
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -25,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Pydantic models
 class ProjectBase(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
 
 
 class ProjectCreate(ProjectBase):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
 
 
 class ProjectUpdate(ProjectBase):
@@ -39,21 +38,21 @@ class ProjectUpdate(ProjectBase):
 
 
 class AnnotatedProject(ProjectBase):
-    id: Optional[str] = None
+    id: str | None = None
     num_papers: int = 0
     num_conversations: int = 0
     num_audio_overviews: int = 0
     num_data_tables: int = 0
     num_roles: int = 0
-    updated_at: Optional[str] = None
-    created_at: Optional[str] = None
-    role: Optional[ProjectRoles] = None
+    updated_at: str | None = None
+    created_at: str | None = None
+    role: ProjectRoles | None = None
 
 
 class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
     def create(
-        self, db: Session, *, obj_in: ProjectCreate, user: Optional[CurrentUser] = None
-    ) -> Optional[Project]:
+        self, db: Session, *, obj_in: ProjectCreate, user: CurrentUser | None = None
+    ) -> Project | None:
 
         if user is None:
             raise ValueError("user parameter is required for ProjectCRUD.create")
@@ -85,15 +84,15 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
             return None
 
     def get_all_projects_by_user_with_metadata(
-        self, db: Session, user: CurrentUser, limit: Optional[int] = None
-    ) -> List[AnnotatedProject]:
+        self, db: Session, user: CurrentUser, limit: int | None = None
+    ) -> list[AnnotatedProject]:
         """
         Get all projects for a user with metadata (num_papers, num_conversations) in a single query.
         """
         try:
             # Subquery to count roles per project
             roles_subquery = (
-                db.query(
+                select(
                     ProjectRole.project_id,
                     func.count(ProjectRole.id).label("num_roles"),
                 )
@@ -102,8 +101,8 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
             )
 
             # Build a query that joins all necessary tables and aggregates the counts
-            query = (
-                db.query(
+            statement = (
+                select(
                     Project,
                     func.coalesce(func.count(ProjectPaper.id.distinct()), 0).label(
                         "num_papers"
@@ -142,12 +141,13 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
                     (DataTableExtractionJob.project_id == Project.id)
                     & (DataTableExtractionJob.status == JobStatus.COMPLETED),
                 )
-                .filter(ProjectRole.user_id == user.id)
+                .where(ProjectRole.user_id == user.id)
                 .group_by(Project.id, ProjectRole.role, roles_subquery.c.num_roles)
                 .order_by(Project.updated_at.desc())
-                .limit(limit)
-                .all()
             )
+            if limit is not None:
+                statement = statement.limit(limit)
+            rows = db.execute(statement).tuples().all()
 
             # Convert the results to AnnotatedProject objects
             annotated_projects = []
@@ -159,7 +159,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
                 num_data_tables,
                 role,
                 num_roles,
-            ) in query:
+            ) in rows:
                 annotated_project = AnnotatedProject(
                     id=str(project.id),
                     title=project.title,
@@ -187,7 +187,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
     def touch(self, db: Session, project_id: UUID) -> None:
         """Update the project's updated_at timestamp to now."""
         try:
-            project = db.query(Project).filter(Project.id == project_id).first()
+            project = db.get(Project, project_id)
             if project:
                 project.updated_at = datetime.now(timezone.utc)
                 db.commit()
@@ -199,43 +199,43 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
         self, db: Session, *, project_id: str, user_id: int, role: ProjectRoles
     ) -> bool:
         """Check if a user has a specific role in a project."""
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user_id,
                 ProjectRole.role == role,
             )
-            .first()
-        )
+        ).first()
         return project_role is not None
 
     def get_role_in_project(
         self, db: Session, *, project_id: str, user: CurrentUser
     ) -> ProjectRoles | None:
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
-        return project_role.role if project_role else None
+        ).first()
+        return ProjectRoles(project_role.role) if project_role else None
 
     def get_all_roles(
         self, db: Session, *, project_id: str, user: CurrentUser
-    ) -> List[ProjectRole]:
+    ) -> list[ProjectRole]:
         """Get all roles for a specific project."""
         project = self.get(db, id=project_id, user=user)
         if not project:
             return []
 
-        return db.query(ProjectRole).filter(ProjectRole.project_id == project_id).all()
+        return list(
+            db.scalars(
+                select(ProjectRole).where(ProjectRole.project_id == project_id)
+            ).all()
+        )
 
     def remove_collaborator(
         self, db: Session, *, project_id: str, role_id: str, user: CurrentUser
-    ) -> Optional[ProjectRole]:
+    ) -> ProjectRole | None:
         """Remove a collaborator from a specific project."""
         admin_project_role = self.has_role(
             db, project_id=project_id, user_id=user.id, role=ProjectRoles.ADMIN
@@ -244,14 +244,12 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
         if not admin_project_role:
             return None
 
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.id == role_id,
             )
-            .first()
-        )
+        ).first()
 
         if not project_role:
             return None
@@ -272,14 +270,12 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
         self, db: Session, *, project_id: str, user: CurrentUser
     ) -> bool:
         """Allow a user to remove themselves from a specific project."""
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
 
         if not project_role or project_role.role == ProjectRoles.ADMIN:
             return False
@@ -304,7 +300,7 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
         role_id: str,
         new_role: ProjectRoles,
         user: CurrentUser,
-    ) -> Optional[ProjectRole]:
+    ) -> ProjectRole | None:
         """Change a collaborator's role in a specific project."""
         admin_project_role = self.has_role(
             db, project_id=project_id, user_id=user.id, role=ProjectRoles.ADMIN
@@ -313,20 +309,18 @@ class ProjectCRUD(ProjectBaseCRUD[Project, ProjectCreate, ProjectUpdate]):
         if not admin_project_role:
             return None
 
-        project_role: ProjectRole | None = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.id == role_id,
             )
-            .first()
-        )
+        ).first()
 
         if not project_role:
             return None
 
         try:
-            project_role.role = str(new_role.value)  # type: ignore
+            project_role.role = str(new_role.value)
             db.add(project_role)
             db.commit()
             db.refresh(project_role)

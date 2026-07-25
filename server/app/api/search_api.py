@@ -1,3 +1,4 @@
+from app.api.types import ApiResponse
 import logging
 
 from app.auth.dependencies import get_required_user
@@ -8,6 +9,7 @@ from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ async def search_knowledge_base_endpoint(
     ),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Search across papers, annotations, and highlights in the user's knowledge base.
 
@@ -65,7 +67,7 @@ async def search_knowledge_base_endpoint(
         # Track the search event for analytics
         track_event(
             "knowledge_base_search",
-            user_id=current_user.id,
+            user_id=str(current_user.id),
             properties={
                 "query": q.strip(),
                 "total_papers": results.total_papers,
@@ -94,7 +96,7 @@ async def search_knowledge_base_endpoint(
 async def get_search_stats(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get statistics about the user's knowledge base for search context.
 
@@ -102,12 +104,27 @@ async def get_search_stats(
     """
     try:
         # Count total items in user's knowledge base
-        total_papers = db.query(Paper).filter(Paper.user_id == current_user.id).count()
-        total_highlights = (
-            db.query(Highlight).filter(Highlight.user_id == current_user.id).count()
+        total_papers = int(
+            db.scalar(
+                select(func.count(Paper.id)).where(Paper.user_id == current_user.id)
+            )
+            or 0
         )
-        total_annotations = (
-            db.query(Annotation).filter(Annotation.user_id == current_user.id).count()
+        total_highlights = int(
+            db.scalar(
+                select(func.count(Highlight.id)).where(
+                    Highlight.user_id == current_user.id
+                )
+            )
+            or 0
+        )
+        total_annotations = int(
+            db.scalar(
+                select(func.count(Annotation.id)).where(
+                    Annotation.user_id == current_user.id
+                )
+            )
+            or 0
         )
 
         return JSONResponse(

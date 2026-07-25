@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +27,7 @@ class CitationStep(BaseModel):
 
     kind: StepKind
     detail: str
-    data: Optional[dict[str, Any]] = None
+    data: dict[str, Any] | None = None
 
 
 class CitationData(BaseModel):
@@ -35,12 +35,12 @@ class CitationData(BaseModel):
     citation string in the user's chosen style — the server does not format it."""
 
     paper_id: str
-    title: Optional[str] = None
+    title: str | None = None
     authors: list[str] = Field(default_factory=list)
-    publish_date: Optional[str] = None
-    journal: Optional[str] = None
-    publisher: Optional[str] = None
-    doi: Optional[str] = None
+    publish_date: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    doi: str | None = None
 
 
 class CitationResult(BaseModel):
@@ -51,5 +51,5 @@ class CitationResult(BaseModel):
     method: CitationMethod
     missing_fields: list[str] = Field(default_factory=list)
     filled_fields: dict[str, Any] = Field(default_factory=dict)
-    confidence: Optional[float] = None
+    confidence: float | None = None
     steps: list[CitationStep] = Field(default_factory=list)

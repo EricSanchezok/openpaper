@@ -21,7 +21,7 @@ can carve out non-colliding namespaces.
 
 import logging
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from typing import Iterator
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -48,7 +48,7 @@ class AdvisoryLock:
         self._engine = engine
         self._namespace = namespace
         self._key = key
-        self._conn: Optional[Connection] = None
+        self._conn: Connection | None = None
 
     def acquire(self) -> bool:
         """Try to take the lock. Returns True if acquired, False if held elsewhere.

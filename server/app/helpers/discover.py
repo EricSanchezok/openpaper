@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator
 
 from app.helpers.anysearch_search import search_anysearch
 from app.helpers.openalex_search import search_openalex
@@ -27,7 +27,7 @@ Guidelines:
 
 
 class DecomposeResponse(BaseModel):
-    subqueries: List[str] = Field(
+    subqueries: list[str] = Field(
         description="A list of 2-5 targeted search subqueries for finding relevant research papers.",
         min_length=2,
         max_length=5,
@@ -47,10 +47,10 @@ def decompose_query(question: str) -> list[str]:
 
 async def run_discover_pipeline(
     question: str,
-    sources: Optional[list[str]] = None,
-    sort: Optional[str] = None,
+    sources: list[str] | None = None,
+    sort: str | None = None,
     only_open_access: bool = False,
-    year_filter: Optional[str] = None,
+    year_filter: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
     Run the full discover pipeline, yielding streaming chunks:

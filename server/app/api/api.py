@@ -1,3 +1,4 @@
+from app.api.types import ApiResponse
 from app.auth.dependencies import get_required_user
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ async def get_me(
 
 
 @router.get("/health")
-async def health_check():
+async def health_check() -> ApiResponse:
     """
     Health check endpoint to verify the API is running
     """

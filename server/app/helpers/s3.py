@@ -4,7 +4,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
-from typing import Dict, List, Optional
 
 import boto3
 import requests
@@ -13,7 +12,10 @@ from app.database.models import AuthUser, Paper
 from app.schemas.user import CurrentUser
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from types_boto3_s3 import S3Client
+from types_boto3_s3.type_defs import CopySourceTypeDef
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,10 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 class S3Service:
     """Service for handling S3 operations"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize S3 client"""
-        self.s3_client = boto3.client(
-            "s3",  # type: ignore
+        self.s3_client: S3Client = boto3.client(
+            "s3",
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             region_name=AWS_REGION,
@@ -42,8 +44,8 @@ class S3Service:
                 s3={"addressing_style": "virtual"},
             ),
         )
-        self.bucket_name = S3_BUCKET_NAME
-        self.cloudflare_bucket_name = CLOUDFLARE_BUCKET_NAME
+        self.bucket_name = S3_BUCKET_NAME or ""
+        self.cloudflare_bucket_name = CLOUDFLARE_BUCKET_NAME or ""
 
     def _validate_pdf_url(self, url: str) -> bool:
         """
@@ -166,14 +168,17 @@ class S3Service:
             body = response.get("Body")
             if body is None:
                 raise ValueError(f"S3 object {object_key} has no body")
-            return body.read()
+            data = body.read()
+            if not isinstance(data, bytes):
+                raise TypeError("S3 response body did not return bytes")
+            return data
         except ClientError as e:
             logger.error(f"Error downloading file from S3: {e}")
             raise ValueError(f"Failed to download file from S3: {object_key}") from e
 
     def generate_presigned_url(
         self, object_key: str, expiration: int = 86400
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a presigned URL for a file
 
@@ -185,16 +190,17 @@ class S3Service:
             str: Presigned URL or None if error
         """
         try:
-            return self.s3_client.generate_presigned_url(
+            url = self.s3_client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self.bucket_name, "Key": object_key},
                 ExpiresIn=expiration,
             )
+            return str(url)
         except ClientError as e:
             logger.error(f"Error generating presigned URL: {e}")
             return None
 
-    def get_file_size_in_kb(self, object_key: str) -> Optional[int]:
+    def get_file_size_in_kb(self, object_key: str) -> int | None:
         """
         Get the size of a file in KB from S3
 
@@ -211,7 +217,10 @@ class S3Service:
             response = self.s3_client.head_object(
                 Bucket=self.bucket_name, Key=object_key
             )
-            size_in_kb = response.get("ContentLength", 0) // 1024
+            content_length = response.get("ContentLength")
+            if content_length is None:
+                return None
+            size_in_kb = int(content_length) // 1024
             return size_in_kb
         except ClientError as e:
             logger.error(f"Error getting file size for {object_key}: {e}")
@@ -223,8 +232,8 @@ class S3Service:
         paper_id: str,
         object_key: str,
         expiration: int = 86400,
-        current_user: Optional[CurrentUser] = None,
-    ) -> Optional[str]:
+        current_user: CurrentUser | None = None,
+    ) -> str | None:
         """
         Get a cached presigned URL or generate a new one if expired/missing
 
@@ -265,7 +274,7 @@ class S3Service:
             # Calculate the size of the file in KB
             current_size = getattr(paper, "size_in_kb", None)
             if current_size is not None:
-                size_in_kb: Optional[int] = current_size
+                size_in_kb: int | None = current_size
             else:
                 size_in_kb = self.get_file_size_in_kb(object_key)
 
@@ -293,7 +302,7 @@ class S3Service:
             return None
 
     def invalidate_cached_url(
-        self, db: Session, paper_id: str, current_user: Optional[CurrentUser] = None
+        self, db: Session, paper_id: str, current_user: CurrentUser | None = None
     ) -> bool:
         """
         Invalidate the cached presigned URL for a paper
@@ -335,27 +344,21 @@ class S3Service:
         object_key: str,
         owner_id: str,
         expiration: int = 86400,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get a cached presigned URL for a paper owned by a specific user (used for shared papers)
         """
 
         try:
             # Get the owner user object
-            owner = db.query(AuthUser).filter(AuthUser.id == int(owner_id)).first()
+            owner = db.scalars(
+                select(AuthUser).where(AuthUser.id == int(owner_id))
+            ).first()
             if not owner:
                 return None
 
             # Convert to CurrentUser
-            current_user = CurrentUser(
-                id=owner.id,
-                email=owner.email,
-                display_name=owner.display_name,
-                status=owner.status,
-                email_verified=owner.email_verified_at is not None,
-                is_admin=bool(owner.profile and owner.profile.is_admin),
-                is_active=owner.status == "active",
-            )
+            current_user = CurrentUser.from_auth_user(owner)
 
             # Use the existing method
             return self.get_cached_presigned_url(
@@ -373,9 +376,9 @@ class S3Service:
     def get_cached_presigned_urls_bulk(
         self,
         db: Session,
-        papers: List[Paper],
+        papers: list[Paper],
         expiration: int = 86400,
-    ) -> Dict[str, Optional[str]]:
+    ) -> dict[str, str | None]:
         """
         Bulk retrieve presigned URLs for multiple papers, parallelizing S3 calls for expired URLs.
 
@@ -394,8 +397,8 @@ class S3Service:
         """
         from app.database.crud.paper_crud import PaperUpdate, paper_crud
 
-        result: Dict[str, Optional[str]] = {}
-        papers_needing_urls: List[Paper] = []
+        result: dict[str, str | None] = {}
+        papers_needing_urls: list[Paper] = []
         now = datetime.now(timezone.utc)
 
         # First pass: check cache status for all papers (fast, sequential)
@@ -423,7 +426,7 @@ class S3Service:
         # Second pass: generate new URLs in parallel (no DB access, just S3 API calls)
         def generate_url_for_paper(
             paper: Paper,
-        ) -> tuple[str, Optional[str], Optional[int]]:
+        ) -> tuple[str, str | None, int | None]:
             """Generate URL and file size for a single paper"""
             try:
                 url = self.generate_presigned_url(str(paper.s3_object_key), expiration)
@@ -439,8 +442,8 @@ class S3Service:
                 return (str(paper.id), None, None)
 
         # Use ThreadPoolExecutor for parallel S3 API calls
-        new_urls: Dict[str, Optional[str]] = {}
-        papers_to_update: Dict[str, tuple[Paper, str, Optional[int]]] = {}
+        new_urls: dict[str, str | None] = {}
+        papers_to_update: dict[str, tuple[Paper, str, int | None]] = {}
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_paper = {
@@ -507,7 +510,10 @@ class S3Service:
             new_object_key = f"{UPLOAD_DIR}/{uuid.uuid4()}-{new_filename}"
 
             # Copy the object within S3
-            copy_source = {"Bucket": self.bucket_name, "Key": source_object_key}
+            copy_source: CopySourceTypeDef = {
+                "Bucket": self.bucket_name,
+                "Key": source_object_key,
+            }
             self.s3_client.copy_object(
                 CopySource=copy_source,
                 Bucket=self.bucket_name,
@@ -523,7 +529,9 @@ class S3Service:
             logger.error(f"Error duplicating file in S3: {e}")
             raise
 
-    def duplicate_file_from_url(self, s3_url: str, new_filename: str):
+    def duplicate_file_from_url(
+        self, s3_url: str, new_filename: str
+    ) -> tuple[str, str]:
         """
         Duplicate a file in S3 given its URL
 

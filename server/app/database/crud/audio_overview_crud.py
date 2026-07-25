@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -14,6 +14,7 @@ from app.database.models import (
 from app.schemas.responses import ResponseCitation
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
@@ -27,18 +28,18 @@ class AudioOverviewJobCreate(AudioOverviewJobBase):
 
 
 class AudioOverviewJobUpdate(BaseModel):
-    status: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    status: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class AudioOverviewBase(BaseModel):
     conversable_id: UUID
     conversable_type: ConversableType = ConversableType.PAPER
     s3_object_key: str
-    transcript: Optional[str] = None
-    citations: Optional[List[ResponseCitation]] = None
-    title: Optional[str] = None
+    transcript: str | None = None
+    citations: list[ResponseCitation] | None = None
+    title: str | None = None
 
 
 class AudioOverviewCreate(AudioOverviewBase):
@@ -46,10 +47,10 @@ class AudioOverviewCreate(AudioOverviewBase):
 
 
 class AudioOverviewUpdate(BaseModel):
-    s3_object_key: Optional[str] = None
-    transcript: Optional[str] = None
-    citations: Optional[List[ResponseCitation]] = None
-    title: Optional[str] = None
+    s3_object_key: str | None = None
+    transcript: str | None = None
+    citations: list[ResponseCitation] | None = None
+    title: str | None = None
 
 
 class AudioOverviewJobCRUD(
@@ -57,16 +58,26 @@ class AudioOverviewJobCRUD(
 ):
     """CRUD operations for AudioOverviewJob model"""
 
-    def create(  # type: ignore[override]
-        self, db: Session, *, obj_in: AudioOverviewJobCreate, current_user: CurrentUser
-    ) -> AudioOverviewJob:
+    def create(
+        self,
+        db: Session,
+        *,
+        obj_in: AudioOverviewJobCreate,
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> AudioOverviewJob | None:
         """Create a new audio overview job"""
+        if user is None:
+            raise ValueError("User must be provided to create an audio overview job")
         obj_in_data = obj_in.model_dump(exclude_unset=True)
-        db_obj = AudioOverviewJob(**obj_in_data, user_id=current_user.id)
+        db_obj = AudioOverviewJob(**obj_in_data, user_id=user.id)
 
         db.add(db_obj)
-        db.commit()
-        db.refresh(db_obj)
+        if auto_commit:
+            db.commit()
+            db.refresh(db_obj)
+        else:
+            db.flush()
         return db_obj
 
     def get_by_conversable_and_user(
@@ -76,45 +87,48 @@ class AudioOverviewJobCRUD(
         conversable_id: UUID,
         conversable_type: ConversableType,
         current_user: CurrentUser,
-    ) -> Optional[List[AudioOverviewJob]]:
+    ) -> list[AudioOverviewJob] | None:
         """Get audio overviews by conversable ID, type and user"""
         if conversable_type == ConversableType.PAPER:
             # For papers, check direct ownership
-            return (
-                db.query(AudioOverviewJob)
-                .filter(
+            return list(
+                db.scalars(
+                    select(AudioOverviewJob)
+                    .where(
+                        AudioOverviewJob.conversable_id == conversable_id,
+                        AudioOverviewJob.conversable_type == conversable_type,
+                        AudioOverviewJob.user_id == current_user.id,
+                    )
+                    .order_by(AudioOverviewJob.created_at.desc())
+                ).all()
+            )
+        elif conversable_type == ConversableType.PROJECT:
+            # For projects, check user has project access through ProjectRole
+            return list(
+                db.scalars(
+                    select(AudioOverviewJob)
+                    .join(Project, AudioOverviewJob.conversable_id == Project.id)
+                    .join(ProjectRole, Project.id == ProjectRole.project_id)
+                    .where(
+                        AudioOverviewJob.conversable_id == conversable_id,
+                        AudioOverviewJob.conversable_type == conversable_type,
+                        ProjectRole.user_id == current_user.id,
+                    )
+                    .order_by(AudioOverviewJob.created_at.desc())
+                ).all()
+            )
+
+        # Fallback to direct ownership for other types
+        return list(
+            db.scalars(
+                select(AudioOverviewJob)
+                .where(
                     AudioOverviewJob.conversable_id == conversable_id,
                     AudioOverviewJob.conversable_type == conversable_type,
                     AudioOverviewJob.user_id == current_user.id,
                 )
                 .order_by(AudioOverviewJob.created_at.desc())
-                .all()
-            )
-        elif conversable_type == ConversableType.PROJECT:
-            # For projects, check user has project access through ProjectRole
-            return (
-                db.query(AudioOverviewJob)
-                .join(Project, AudioOverviewJob.conversable_id == Project.id)
-                .join(ProjectRole, Project.id == ProjectRole.project_id)
-                .filter(
-                    AudioOverviewJob.conversable_id == conversable_id,
-                    AudioOverviewJob.conversable_type == conversable_type,
-                    ProjectRole.user_id == current_user.id,
-                )
-                .order_by(AudioOverviewJob.created_at.desc())
-                .all()
-            )
-
-        # Fallback to direct ownership for other types
-        return (
-            db.query(AudioOverviewJob)
-            .filter(
-                AudioOverviewJob.conversable_id == conversable_id,
-                AudioOverviewJob.conversable_type == conversable_type,
-                AudioOverviewJob.user_id == current_user.id,
-            )
-            .order_by(AudioOverviewJob.created_at.desc())
-            .all()
+            ).all()
         )
 
     def get_user_jobs(
@@ -122,21 +136,25 @@ class AudioOverviewJobCRUD(
         db: Session,
         *,
         current_user: CurrentUser,
-        status: Optional[str] = None,
-        conversable_type: Optional[ConversableType] = None,
-    ) -> List[AudioOverviewJob]:
+        status: str | None = None,
+        conversable_type: ConversableType | None = None,
+    ) -> list[AudioOverviewJob]:
         """Get all audio overview jobs for a user, optionally filtered by status and type"""
-        query = db.query(AudioOverviewJob).filter(
+        statement = select(AudioOverviewJob).where(
             AudioOverviewJob.user_id == current_user.id
         )
 
         if status:
-            query = query.filter(AudioOverviewJob.status == status)
+            statement = statement.where(AudioOverviewJob.status == status)
 
         if conversable_type:
-            query = query.filter(AudioOverviewJob.conversable_type == conversable_type)
+            statement = statement.where(
+                AudioOverviewJob.conversable_type == conversable_type
+            )
 
-        return query.order_by(AudioOverviewJob.created_at.desc()).all()
+        return list(
+            db.scalars(statement.order_by(AudioOverviewJob.created_at.desc())).all()
+        )
 
     def update_status(
         self,
@@ -145,17 +163,15 @@ class AudioOverviewJobCRUD(
         job_id: UUID,
         status: str,
         current_user: CurrentUser,
-        status_message: Optional[str] = None,
-    ) -> Optional[AudioOverviewJob]:
+        status_message: str | None = None,
+    ) -> AudioOverviewJob | None:
         """Update job status with timestamp tracking"""
-        job = (
-            db.query(AudioOverviewJob)
-            .filter(
+        job = db.scalars(
+            select(AudioOverviewJob).where(
                 AudioOverviewJob.id == job_id,
                 AudioOverviewJob.user_id == current_user.id,
             )
-            .first()
-        )
+        ).first()
 
         if not job:
             return None
@@ -183,16 +199,14 @@ class AudioOverviewJobCRUD(
         job_id: UUID,
         status_message: str,
         current_user: CurrentUser,
-    ) -> Optional[AudioOverviewJob]:
+    ) -> AudioOverviewJob | None:
         """Update only the status message without changing status"""
-        job = (
-            db.query(AudioOverviewJob)
-            .filter(
+        job = db.scalars(
+            select(AudioOverviewJob).where(
                 AudioOverviewJob.id == job_id,
                 AudioOverviewJob.user_id == current_user.id,
             )
-            .first()
-        )
+        ).first()
 
         if not job:
             return None
@@ -202,7 +216,7 @@ class AudioOverviewJobCRUD(
         db.refresh(job)
         return job
 
-    def job_to_dict(self, job: AudioOverviewJob) -> Dict[str, Any]:
+    def job_to_dict(self, job: AudioOverviewJob) -> dict[str, Any]:
         """Convert AudioOverviewJob object to dictionary"""
         return {
             "id": str(job.id),
@@ -222,16 +236,26 @@ class AudioOverviewCRUD(
 ):
     """CRUD operations for AudioOverview model"""
 
-    def create(  # type: ignore[override]
-        self, db: Session, *, obj_in: AudioOverviewCreate, current_user: CurrentUser
-    ) -> AudioOverview:
+    def create(
+        self,
+        db: Session,
+        *,
+        obj_in: AudioOverviewCreate,
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> AudioOverview | None:
         """Create a new audio overview"""
+        if user is None:
+            raise ValueError("User must be provided to create an audio overview")
         obj_in_data = obj_in.model_dump(exclude_unset=True)
-        db_obj = AudioOverview(**obj_in_data, user_id=current_user.id)
+        db_obj = AudioOverview(**obj_in_data, user_id=user.id)
 
         db.add(db_obj)
-        db.commit()
-        db.refresh(db_obj)
+        if auto_commit:
+            db.commit()
+            db.refresh(db_obj)
+        else:
+            db.flush()
         return db_obj
 
     def get_by_conversable_and_user(
@@ -241,45 +265,48 @@ class AudioOverviewCRUD(
         conversable_id: UUID,
         conversable_type: ConversableType,
         current_user: CurrentUser,
-    ) -> Optional[List[AudioOverview]]:
+    ) -> list[AudioOverview] | None:
         """Get audio overviews by conversable ID, type and user"""
         if conversable_type == ConversableType.PAPER:
             # For papers, check direct ownership
-            return (
-                db.query(AudioOverview)
-                .filter(
+            return list(
+                db.scalars(
+                    select(AudioOverview)
+                    .where(
+                        AudioOverview.conversable_id == conversable_id,
+                        AudioOverview.conversable_type == conversable_type,
+                        AudioOverview.user_id == current_user.id,
+                    )
+                    .order_by(AudioOverview.created_at.desc())
+                ).all()
+            )
+        elif conversable_type == ConversableType.PROJECT:
+            # For projects, check user has project access through ProjectRole
+            return list(
+                db.scalars(
+                    select(AudioOverview)
+                    .join(Project, AudioOverview.conversable_id == Project.id)
+                    .join(ProjectRole, Project.id == ProjectRole.project_id)
+                    .where(
+                        AudioOverview.conversable_id == conversable_id,
+                        AudioOverview.conversable_type == conversable_type,
+                        ProjectRole.user_id == current_user.id,
+                    )
+                    .order_by(AudioOverview.created_at.desc())
+                ).all()
+            )
+
+        # Fallback to direct ownership for other types
+        return list(
+            db.scalars(
+                select(AudioOverview)
+                .where(
                     AudioOverview.conversable_id == conversable_id,
                     AudioOverview.conversable_type == conversable_type,
                     AudioOverview.user_id == current_user.id,
                 )
                 .order_by(AudioOverview.created_at.desc())
-                .all()
-            )
-        elif conversable_type == ConversableType.PROJECT:
-            # For projects, check user has project access through ProjectRole
-            return (
-                db.query(AudioOverview)
-                .join(Project, AudioOverview.conversable_id == Project.id)
-                .join(ProjectRole, Project.id == ProjectRole.project_id)
-                .filter(
-                    AudioOverview.conversable_id == conversable_id,
-                    AudioOverview.conversable_type == conversable_type,
-                    ProjectRole.user_id == current_user.id,
-                )
-                .order_by(AudioOverview.created_at.desc())
-                .all()
-            )
-
-        # Fallback to direct ownership for other types
-        return (
-            db.query(AudioOverview)
-            .filter(
-                AudioOverview.conversable_id == conversable_id,
-                AudioOverview.conversable_type == conversable_type,
-                AudioOverview.user_id == current_user.id,
-            )
-            .order_by(AudioOverview.created_at.desc())
-            .all()
+            ).all()
         )
 
     def get_mrc_by_conversable_and_user(
@@ -289,50 +316,54 @@ class AudioOverviewCRUD(
         conversable_id: UUID,
         conversable_type: ConversableType,
         current_user: CurrentUser,
-    ) -> Optional[AudioOverview]:
+    ) -> AudioOverview | None:
         """Get the most recent audio overview by conversable ID, type and user"""
-        return (
-            db.query(AudioOverview)
-            .filter(
+        return db.scalars(
+            select(AudioOverview)
+            .where(
                 AudioOverview.conversable_id == conversable_id,
                 AudioOverview.conversable_type == conversable_type,
                 AudioOverview.user_id == current_user.id,
             )
             .order_by(AudioOverview.created_at.desc())
-            .first()
-        )
+        ).first()
 
     def get_by_id_project_and_user(
         self, db: Session, *, id: UUID, project_id: UUID, current_user: CurrentUser
-    ) -> Optional[AudioOverview]:
+    ) -> AudioOverview | None:
         """Get audio overview by ID, project ID and user - ensures user has project access"""
-        return (
-            db.query(AudioOverview)
+        return db.scalars(
+            select(AudioOverview)
             .join(Project, AudioOverview.conversable_id == Project.id)
             .join(ProjectRole, Project.id == ProjectRole.project_id)
-            .filter(
+            .where(
                 AudioOverview.id == id,
                 AudioOverview.conversable_id == project_id,
                 AudioOverview.conversable_type == ConversableType.PROJECT,
                 ProjectRole.user_id == current_user.id,
             )
-            .first()
-        )
+        ).first()
 
     def get_user_overviews(
         self,
         db: Session,
         *,
         current_user: CurrentUser,
-        conversable_type: Optional[ConversableType] = None,
-    ) -> List[AudioOverview]:
+        conversable_type: ConversableType | None = None,
+    ) -> list[AudioOverview]:
         """Get all audio overviews for a user, optionally filtered by type"""
-        query = db.query(AudioOverview).filter(AudioOverview.user_id == current_user.id)
+        statement = select(AudioOverview).where(
+            AudioOverview.user_id == current_user.id
+        )
 
         if conversable_type:
-            query = query.filter(AudioOverview.conversable_type == conversable_type)
+            statement = statement.where(
+                AudioOverview.conversable_type == conversable_type
+            )
 
-        return query.order_by(AudioOverview.created_at.desc()).all()
+        return list(
+            db.scalars(statement.order_by(AudioOverview.created_at.desc())).all()
+        )
 
     def update_transcript(
         self,
@@ -341,16 +372,14 @@ class AudioOverviewCRUD(
         overview_id: UUID,
         transcript: str,
         current_user: CurrentUser,
-    ) -> Optional[AudioOverview]:
+    ) -> AudioOverview | None:
         """Update the transcript for an audio overview"""
-        overview = (
-            db.query(AudioOverview)
-            .filter(
+        overview = db.scalars(
+            select(AudioOverview).where(
                 AudioOverview.id == overview_id,
                 AudioOverview.user_id == current_user.id,
             )
-            .first()
-        )
+        ).first()
 
         if not overview:
             return None
@@ -360,7 +389,7 @@ class AudioOverviewCRUD(
         db.refresh(overview)
         return overview
 
-    def overview_to_dict(self, overview: AudioOverview) -> Dict[str, Any]:
+    def overview_to_dict(self, overview: AudioOverview) -> dict[str, Any]:
         """Convert AudioOverview object to dictionary"""
         return {
             "id": str(overview.id),

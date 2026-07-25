@@ -1,12 +1,12 @@
 import logging
 import uuid
-from typing import Optional
 
 from app.database.crud.projects.project_base_crud import ProjectBaseCRUD
 from app.database.crud.projects.project_crud import project_crud
 from app.database.models import ProjectAudioOverview, ProjectRole, ProjectRoles
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,9 @@ class ProjectAudioOverviewCRUD(
         db: Session,
         *,
         obj_in: ProjectAudioOverviewCreate,
-        user: Optional[CurrentUser] = None,
-        project_id: Optional[uuid.UUID] = None,
-    ) -> Optional[ProjectAudioOverview]:
+        user: CurrentUser | None = None,
+        project_id: uuid.UUID | None = None,
+    ) -> ProjectAudioOverview | None:
         # Validate required parameters for this implementation
         if user is None:
             raise ValueError(
@@ -49,15 +49,13 @@ class ProjectAudioOverviewCRUD(
 
         try:
             # Check if the user has permission to create in this project
-            project_role = (
-                db.query(ProjectRole)
-                .filter(
+            project_role = db.scalars(
+                select(ProjectRole).where(
                     ProjectRole.project_id == project_id,
                     ProjectRole.user_id == user.id,
                     ProjectRole.role.in_([ProjectRoles.ADMIN]),
                 )
-                .first()
-            )
+            ).first()
             if not project_role:
                 return None
 

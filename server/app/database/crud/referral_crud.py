@@ -3,7 +3,7 @@ import secrets
 import string
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import TypedDict
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import (
@@ -13,10 +13,18 @@ from app.database.models import (
     ReferralStatus,
 )
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+class ReferralSummary(TypedDict):
+    total_referrals: int
+    total_converted: int
+    pending_cents: int
+    available_cents: int
+
 
 CODE_ALPHABET = string.ascii_uppercase + string.digits
 CODE_LENGTH = 7
@@ -29,7 +37,7 @@ class ReferralCodeCreate(BaseModel):
 
 
 class ReferralCodeUpdate(BaseModel):
-    code: Optional[str] = None
+    code: str | None = None
 
 
 class ReferralCreate(BaseModel):
@@ -42,12 +50,12 @@ class ReferralCreate(BaseModel):
 
 
 class ReferralUpdate(BaseModel):
-    status: Optional[str] = None
-    converted_at: Optional[datetime] = None
-    credit_available_at: Optional[datetime] = None
-    referee_coupon_id: Optional[str] = None
-    stripe_balance_transaction_id: Optional[str] = None
-    fraud_reason: Optional[str] = None
+    status: str | None = None
+    converted_at: datetime | None = None
+    credit_available_at: datetime | None = None
+    referee_coupon_id: str | None = None
+    stripe_balance_transaction_id: str | None = None
+    fraud_reason: str | None = None
 
 
 def _generate_code() -> str:
@@ -55,11 +63,15 @@ def _generate_code() -> str:
 
 
 class CRUDReferralCode(CRUDBase[ReferralCode, ReferralCodeCreate, ReferralCodeUpdate]):
-    def get_by_user_id(self, db: Session, user_id: int) -> Optional[ReferralCode]:
-        return db.query(self.model).filter(self.model.user_id == user_id).first()
+    def get_by_user_id(self, db: Session, user_id: int) -> ReferralCode | None:
+        return db.scalars(
+            select(ReferralCode).where(ReferralCode.user_id == user_id)
+        ).first()
 
-    def get_by_code(self, db: Session, code: str) -> Optional[ReferralCode]:
-        return db.query(self.model).filter(self.model.code == code.upper()).first()
+    def get_by_code(self, db: Session, code: str) -> ReferralCode | None:
+        return db.scalars(
+            select(ReferralCode).where(ReferralCode.code == code.upper())
+        ).first()
 
     def get_or_create_for_user(
         self, db: Session, user_id: int
@@ -83,32 +95,28 @@ class CRUDReferralCode(CRUDBase[ReferralCode, ReferralCodeCreate, ReferralCodeUp
 
 
 class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
-    def get_by_id(self, db: Session, referral_id: uuid.UUID) -> Optional[Referral]:
+    def get_by_id(self, db: Session, referral_id: uuid.UUID) -> Referral | None:
         """Fetch a referral by its primary key.
 
         Referrals are not user-scoped — callers (e.g. the internal settlement
         webhook) authenticate via the unguessable referral UUID itself.
         """
-        return db.query(self.model).filter(self.model.id == referral_id).first()
+        return db.get(Referral, referral_id)
 
-    def get_by_referee(self, db: Session, referee_user_id: int) -> Optional[Referral]:
-        return (
-            db.query(self.model)
-            .filter(self.model.referee_user_id == referee_user_id)
-            .first()
-        )
+    def get_by_referee(self, db: Session, referee_user_id: int) -> Referral | None:
+        return db.scalars(
+            select(Referral).where(Referral.referee_user_id == referee_user_id)
+        ).first()
 
     def get_attributed_for_referee(
         self, db: Session, referee_user_id: int
-    ) -> Optional[Referral]:
-        return (
-            db.query(self.model)
-            .filter(
-                self.model.referee_user_id == referee_user_id,
-                self.model.status == ReferralStatus.ATTRIBUTED.value,
+    ) -> Referral | None:
+        return db.scalars(
+            select(Referral).where(
+                Referral.referee_user_id == referee_user_id,
+                Referral.status == ReferralStatus.ATTRIBUTED.value,
             )
-            .first()
-        )
+        ).first()
 
     def create_attribution(
         self,
@@ -118,7 +126,7 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         referee_user_id: int,
         code_used: str,
         attribution_method: ReferralAttributionMethod,
-    ) -> Optional[Referral]:
+    ) -> Referral | None:
         obj = Referral(
             referrer_user_id=referrer_user_id,
             referee_user_id=referee_user_id,
@@ -194,20 +202,25 @@ class CRUDReferral(CRUDBase[Referral, ReferralCreate, ReferralUpdate]):
         db.refresh(referral)
         return referral
 
-    def get_summary_for_referrer(self, db: Session, referrer_user_id: int) -> dict:
+    def get_summary_for_referrer(
+        self, db: Session, referrer_user_id: int
+    ) -> ReferralSummary:
         rows = (
-            db.query(
-                self.model.status,
-                func.count(self.model.id),
-                func.coalesce(func.sum(self.model.referrer_credit_cents), 0),
+            db.execute(
+                select(
+                    Referral.status,
+                    func.count(Referral.id),
+                    func.coalesce(func.sum(Referral.referrer_credit_cents), 0),
+                )
+                .where(Referral.referrer_user_id == referrer_user_id)
+                .group_by(Referral.status)
             )
-            .filter(self.model.referrer_user_id == referrer_user_id)
-            .group_by(self.model.status)
+            .tuples()
             .all()
         )
 
-        counts: dict = {s.value: 0 for s in ReferralStatus}
-        cents: dict = {s.value: 0 for s in ReferralStatus}
+        counts: dict[str, int] = {s.value: 0 for s in ReferralStatus}
+        cents: dict[str, int] = {s.value: 0 for s in ReferralStatus}
         for status, count, total in rows:
             counts[status] = int(count)
             cents[status] = int(total)

@@ -1,10 +1,11 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import SessionLocal
-from posthog import Posthog
+from app.database.models import Subscription
+from app.integrations.posthog_client import capture_event, create_posthog_client
 from sqlalchemy.exc import InvalidRequestError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -13,23 +14,10 @@ logger = logging.getLogger(__name__)
 POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY", None)
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
 
-posthog = (
-    Posthog(
-        POSTHOG_API_KEY,
-        host="https://us.i.posthog.com",
-        enable_exception_autocapture=True,
-    )
-    if POSTHOG_API_KEY
-    else None
-)
+posthog = create_posthog_client(POSTHOG_API_KEY) if POSTHOG_API_KEY else None
 
 posthog_sync = (
-    Posthog(
-        POSTHOG_API_KEY,
-        host="https://us.i.posthog.com",
-        sync_mode=True,
-        enable_exception_autocapture=True,
-    )
+    create_posthog_client(POSTHOG_API_KEY, synchronous=True)
     if POSTHOG_API_KEY
     else None
 )
@@ -38,7 +26,7 @@ if DEBUG and posthog:
     posthog.debug = True
 
 
-def _lookup_subscription(db: Optional[Session], user_id: int):
+def _lookup_subscription(db: Session | None, user_id: int) -> Subscription | None:
     """
     Look up a user's subscription for event enrichment.
 
@@ -67,10 +55,10 @@ def _lookup_subscription(db: Optional[Session], user_id: int):
 
 def track_event(
     event_name: str,
-    properties: Optional[dict[str, Any]] = None,
-    user_id: Optional[str] = None,
+    properties: dict[str, Any] | None = None,
+    user_id: str | None = None,
     sync: bool = False,
-    db: Optional[Session] = None,
+    db: Session | None = None,
 ) -> None:
     """
     Track an event with PostHog.
@@ -109,12 +97,18 @@ def track_event(
                 )
 
         if sync:
-            posthog_sync.capture(
-                distinct_id=user_id, event=event_name, properties=event_properties
+            capture_event(
+                posthog_sync,
+                distinct_id=user_id,
+                event=event_name,
+                properties=event_properties,
             )
         else:
-            posthog.capture(
-                distinct_id=user_id, event=event_name, properties=event_properties
+            capture_event(
+                posthog,
+                distinct_id=user_id,
+                event=event_name,
+                properties=event_properties,
             )
     else:
         print(

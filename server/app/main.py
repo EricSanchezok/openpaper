@@ -1,7 +1,7 @@
 import logging
 import os
 
-import uvicorn  # type: ignore
+import uvicorn
 from app.api.annotation_api import annotation_router
 from app.api.api import router
 from app.api.auth_api import auth_router
@@ -117,7 +117,7 @@ setup_admin(app)  # Setup admin interface
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
-    log_config = uvicorn.config.LOGGING_CONFIG  # type: ignore
+    log_config = uvicorn.config.LOGGING_CONFIG
     log_config["formatters"]["access"]["fmt"] = (
         "%(asctime)s - %(levelname)s - %(message)s"
     )

@@ -2,7 +2,6 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.helpers.celery_config import get_celery_broker_url, get_webhook_base_url
 from celery import Celery
@@ -17,9 +16,9 @@ def schedule_referral_settlement(
     referral_id: str,
     eta: datetime,
     *,
-    webhook_base_url: Optional[str] = None,
-    celery_broker_url: Optional[str] = None,
-) -> Optional[str]:
+    webhook_base_url: str | None = None,
+    celery_broker_url: str | None = None,
+) -> str | None:
     """
     Submit a delayed callback task that fires at `eta` and POSTs to the
     settlement webhook on the server. Returns the Celery task id, or None if
@@ -58,7 +57,7 @@ def schedule_referral_settlement(
             f"Scheduled referral settlement: referral={referral_id} task={task.id} "
             f"eta={eta.isoformat()} (in {seconds_until:.0f}s)"
         )
-        return task.id
+        return str(task.id) if task.id is not None else None
     except Exception as e:
         logger.error(
             f"Failed to schedule referral settlement for {referral_id}: {e}",

@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Dict, Optional
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
@@ -18,7 +17,7 @@ REQUEST_TOKEN_URL = "https://www.zotero.org/oauth/request"
 AUTHORIZE_URL = "https://www.zotero.org/oauth/authorize"
 ACCESS_TOKEN_URL = "https://www.zotero.org/oauth/access"
 
-DEFAULT_PERMISSIONS: Dict[str, str] = {
+DEFAULT_PERMISSIONS: dict[str, str] = {
     "library_access": "1",
     "notes_access": "1",
     "write_access": "0",
@@ -50,9 +49,9 @@ class ZoteroAuthClient:
     def _oauth_session(
         self,
         *,
-        resource_owner_key: Optional[str] = None,
-        resource_owner_secret: Optional[str] = None,
-        verifier: Optional[str] = None,
+        resource_owner_key: str | None = None,
+        resource_owner_secret: str | None = None,
+        verifier: str | None = None,
     ) -> OAuth1Session:
         return OAuth1Session(
             self.client_key,
@@ -63,7 +62,7 @@ class ZoteroAuthClient:
             verifier=verifier,
         )
 
-    def get_request_token(self) -> Optional[ZoteroRequestTokenResult]:
+    def get_request_token(self) -> ZoteroRequestTokenResult | None:
         if not self.client_key or not self.client_secret or not self.redirect_uri:
             logger.error("Zotero OAuth credentials are not configured")
             return None
@@ -87,7 +86,7 @@ class ZoteroAuthClient:
     def get_authorize_url(
         self,
         oauth_token: str,
-        permissions: Optional[Dict[str, str]] = None,
+        permissions: dict[str, str] | None = None,
     ) -> str:
         params = {"oauth_token": oauth_token}
         params.update(permissions or DEFAULT_PERMISSIONS)
@@ -98,7 +97,7 @@ class ZoteroAuthClient:
         request_token: str,
         request_token_secret: str,
         verifier: str,
-    ) -> Optional[ZoteroAccessTokenResult]:
+    ) -> ZoteroAccessTokenResult | None:
         if not self.client_key or not self.client_secret:
             logger.error("Zotero OAuth credentials are not configured")
             return None

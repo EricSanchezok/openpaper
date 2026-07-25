@@ -1,15 +1,26 @@
 import re
-from typing import List, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import NotRequired, TypedDict
 
 from app.schemas.message import CitationIndex, OriginalSnippet
 from app.schemas.responses import ResponseCitation
+
+
+class CitationPayload(TypedDict):
+    key: int
+    reference: str
+    paper_id: NotRequired[str]
+
+
+class CitationCollection(TypedDict):
+    citations: list[CitationPayload]
 
 
 class CitationHandler:
     """Handles citation formatting and reference management"""
 
     @staticmethod
-    def format_citations(citations: list[dict]) -> str:
+    def format_citations(citations: Sequence["CitationPayload"]) -> str:
         """Format citations into a structured string"""
         citation_format = "---EVIDENCE---\n"
         formatted_citations = []
@@ -29,11 +40,11 @@ class CitationHandler:
         return citation_format
 
     @staticmethod
-    def convert_references_to_dict(references: Sequence[str]) -> dict:
+    def convert_references_to_dict(references: Sequence[str]) -> "CitationCollection":
         """Convert user references to structured citations. Currently only used for user citations."""
-        citations = []
+        citations: list[CitationPayload] = []
         for idx, ref in enumerate(references):
-            citation = {
+            citation: CitationPayload = {
                 "key": idx + 1,
                 "reference": ref,
             }
@@ -41,7 +52,7 @@ class CitationHandler:
         return {"citations": citations}
 
     @staticmethod
-    def convert_references_to_citations(references: Optional[Sequence[str]]) -> str:
+    def convert_references_to_citations(references: Sequence[str] | None) -> str:
         """Convert user references to structured citations. Currently only used for user citations."""
         if not references:
             return ""
@@ -50,7 +61,7 @@ class CitationHandler:
         )
 
     @staticmethod
-    def parse_evidence_block(evidence_text: str) -> list[dict]:
+    def parse_evidence_block(evidence_text: str) -> list["CitationPayload"]:
         """
         Parse evidence block into structured citations
         Handles multi-line citations between @cite markers
@@ -61,9 +72,9 @@ class CitationHandler:
         @cite[2]
         "Second piece of evidence"
         """
-        citations = []
+        citations: list[CitationPayload] = []
         lines = evidence_text.strip().split("\n")
-        current_citation: dict[str, Union[int, str]] | None = None
+        current_citation: CitationPayload | None = None
         current_text_lines: list[str] = []
 
         for line in lines:
@@ -93,21 +104,22 @@ class CitationHandler:
 
     @staticmethod
     def convert_response_citation_to_paper_citation(
-        response_citations: List[ResponseCitation],
-    ):
+        response_citations: list[ResponseCitation],
+    ) -> "CitationCollection":
         """Convert ResponseCitation objects to structured citation dicts"""
-        citations = []
+        citations: list[CitationPayload] = []
         for resp_citation in response_citations:
-            citation = {
+            citation: CitationPayload = {
                 "key": resp_citation.index,
                 "reference": resp_citation.text,
-                "paper_id": resp_citation.paper_id,
             }
+            if resp_citation.paper_id is not None:
+                citation["paper_id"] = resp_citation.paper_id
             citations.append(citation)
         return {"citations": citations}
 
     @staticmethod
-    def parse_multi_paper_evidence_block(evidence_text: str) -> list[dict]:
+    def parse_multi_paper_evidence_block(evidence_text: str) -> list["CitationPayload"]:
         """
         Parse evidence block into structured citations from multiple papers.
         Handles multi-line citations between @cite markers
@@ -118,9 +130,9 @@ class CitationHandler:
         @cite[2|paper_id]
         "Second piece of evidence"
         """
-        citations = []
+        citations: list[CitationPayload] = []
         lines = evidence_text.strip().split("\n")
-        current_citation: dict[str, Union[int, str]] | None = None
+        current_citation: CitationPayload | None = None
         current_text_lines: list[str] = []
 
         for line in lines:
@@ -155,9 +167,9 @@ class CitationHandler:
 
     @staticmethod
     def resolve_compacted_citations(
-        citations: list[dict],
+        citations: list["CitationPayload"],
         citation_index: CitationIndex,
-    ) -> list[dict]:
+    ) -> list["CitationPayload"]:
         """
         Resolve LLM-generated citations from compacted summaries back to
         original snippets using the citation index.
@@ -166,7 +178,7 @@ class CitationHandler:
         [@n] markers. If so, look up the original snippets and combine them.
         If no markers found, use fuzzy matching or keep the summary text.
         """
-        resolved = []
+        resolved: list[CitationPayload] = []
 
         for citation in citations:
             paper_id = citation.get("paper_id")
@@ -201,13 +213,13 @@ class CitationHandler:
             )
 
             if best_match:
-                resolved.append(
-                    {
-                        "key": citation["key"],
-                        "reference": best_match.text,
-                        "paper_id": paper_id,
-                    }
-                )
+                resolved_citation: CitationPayload = {
+                    "key": citation["key"],
+                    "reference": best_match.text,
+                }
+                if paper_id is not None:
+                    resolved_citation["paper_id"] = paper_id
+                resolved.append(resolved_citation)
             else:
                 # Last resort: keep the summary-derived citation
                 resolved.append(citation)
@@ -217,9 +229,9 @@ class CitationHandler:
     @staticmethod
     def _find_best_match(
         reference: str,
-        paper_id: Optional[str],
+        paper_id: str | None,
         citation_index: "CitationIndex",
-    ) -> Optional["OriginalSnippet"]:
+    ) -> "OriginalSnippet | None":
         """
         Find the original snippet that best matches a summary-derived citation.
         Uses simple word overlap for speed (no semantic search).

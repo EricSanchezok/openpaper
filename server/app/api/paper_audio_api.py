@@ -1,7 +1,8 @@
+from app.api.types import ApiResponse
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Literal
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.audio_overview_crud import (
@@ -40,8 +41,8 @@ paper_audio_router = APIRouter()
 class AudioOverviewCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    additional_instructions: Optional[str] = Field(default=None, max_length=10_000)
-    length: Optional[Literal["short", "medium", "long"]] = "medium"
+    additional_instructions: str | None = Field(default=None, max_length=10_000)
+    length: Literal["short", "medium", "long"] | None = "medium"
 
 
 @paper_audio_router.post("/")
@@ -52,7 +53,7 @@ async def create_audio_overview(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Create audio overview by ID
     """
@@ -86,7 +87,7 @@ async def create_audio_overview(
         obj_in=AudioOverviewJobCreate(
             conversable_id=paper_uuid, conversable_type=ConversableType.PAPER
         ),
-        current_user=current_user,
+        user=current_user,
     )
 
     if not audio_overview_job:
@@ -158,7 +159,7 @@ async def get_audio_overview_job_status(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get the status of the audio overview job by ID
     """
@@ -211,7 +212,7 @@ async def get_audio_overviews_by_paper_id(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all audio overviews for a specific paper by ID
     """
@@ -244,7 +245,7 @@ async def get_audio_overview_by_id(
     audio_overview_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get a specific audio overview by ID
     """
@@ -283,7 +284,7 @@ async def get_mrc_audio_overview_file(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get the audio overview file by ID
     """

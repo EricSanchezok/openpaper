@@ -1,6 +1,5 @@
 import logging
 import uuid
-from typing import List
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
@@ -9,13 +8,14 @@ from app.database.crud.projects.project_paper_crud import (
     project_paper_crud,
 )
 from app.database.database import get_db
-from app.database.models import Paper, ProjectPaper
+from app.database.models import Paper
 from app.database.telemetry import track_event
 from app.helpers.s3 import s3_service
 from app.helpers.subscription_limits import (
     can_user_add_papers_to_project,
     can_user_upload_paper,
 )
+from app.schemas.orm_responses import serialize_project
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -169,7 +169,7 @@ async def get_forked_paper(
 
 
 class AddPaperToProjectRequest(BaseModel):
-    paper_ids: List[str]
+    paper_ids: list[str]
 
 
 @project_papers_router.post("/{project_id}")
@@ -246,7 +246,7 @@ async def get_project_papers(
             db, project_id=uuid.UUID(project_id), user=current_user
         )
 
-        file_urls: dict = {}
+        file_urls: dict[str, str | None] = {}
         if load_urls:
             # Bulk retrieve presigned URLs (optimized with parallelization)
             file_urls = s3_service.get_cached_presigned_urls_bulk(
@@ -401,7 +401,7 @@ async def get_projects_from_paper_id(
 
         return JSONResponse(
             status_code=200,
-            content=[project.to_dict() for project in projects],
+            content=[serialize_project(project) for project in projects],
         )
 
     except Exception as e:
@@ -422,13 +422,11 @@ async def remove_paper_from_project(
     """Remove a paper from a project"""
     try:
         # The id passed here is the id of the ProjectPaper association
-        removed_project_paper: ProjectPaper = (
-            project_paper_crud.remove_by_paper_and_project(
-                db,
-                paper_id=uuid.UUID(project_paper_id),
-                project_id=uuid.UUID(project_id),
-                user=current_user,
-            )
+        removed_project_paper = project_paper_crud.remove_by_paper_and_project(
+            db,
+            paper_id=uuid.UUID(project_paper_id),
+            project_id=uuid.UUID(project_id),
+            user=current_user,
         )
 
         if not removed_project_paper:

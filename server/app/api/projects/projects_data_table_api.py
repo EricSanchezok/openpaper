@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.projects.project_data_table_crud import (
@@ -42,7 +41,7 @@ class CreateDataTableRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project_id: uuid.UUID
-    columns: List[str] = Field(min_length=1, max_length=50)
+    columns: list[str] = Field(min_length=1, max_length=50)
 
     @field_validator("columns")
     @classmethod
@@ -163,7 +162,7 @@ async def create_data_table(
         except AILimitExceeded as exc:
             return JSONResponse(status_code=429, content={"code": exc.code})
 
-        papers: List[DocumentMapping] = []
+        papers: list[DocumentMapping] = []
 
         project_papers = project_paper_crud.get_all_papers_by_project_id(
             db, project_id=request.project_id, user=current_user
@@ -305,7 +304,9 @@ async def list_data_table_jobs(
                             operation_id=str(job.id),
                         )
                     else:
-                        job_age = datetime.now(timezone.utc) - job.created_at
+                        job_age = datetime.now(timezone.utc) - (
+                            job.created_at or datetime.now(timezone.utc)
+                        )
 
                         # If job has been running longer than max runtime and Celery still shows running,
                         # assume it's lost and mark as failed
@@ -338,7 +339,9 @@ async def list_data_table_jobs(
                 job
                 for job in jobs
                 if not (
-                    job.status == JobStatus.FAILED and job.started_at < one_hour_ago
+                    job.status == JobStatus.FAILED
+                    and job.started_at is not None
+                    and job.started_at < one_hour_ago
                 )
             ]
 
@@ -410,7 +413,9 @@ async def get_data_table_job_status(
             else:
                 # If job has been running for longer than the max runtime,
                 # and Celery has no record of it, assume it's lost
-                job_age = datetime.now(timezone.utc) - job.created_at
+                job_age = datetime.now(timezone.utc) - (
+                    job.created_at or datetime.now(timezone.utc)
+                )
 
                 if (
                     job_age > MAX_DATA_TABLES_JOB_RUNTIME

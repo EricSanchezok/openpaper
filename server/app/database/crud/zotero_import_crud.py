@@ -1,86 +1,80 @@
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
 from uuid import UUID
 
 from app.database.models import (
+    JsonValue,
     Paper,
     ZoteroConnection,
     ZoteroImportedItem,
     ZoteroImportSource,
     ZoteroImportStatus,
 )
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 
 class CRUDZoteroImport:
     def get_by_item_key(
         self, db: Session, *, user_id: int, zotero_item_key: str
-    ) -> Optional[ZoteroImportedItem]:
-        return (
-            db.query(ZoteroImportedItem)
-            .filter(
+    ) -> ZoteroImportedItem | None:
+        return db.scalars(
+            select(ZoteroImportedItem).where(
                 ZoteroImportedItem.user_id == user_id,
                 ZoteroImportedItem.zotero_item_key == zotero_item_key,
             )
-            .first()
-        )
+        ).first()
 
     def get_by_upload_job_id(
         self, db: Session, *, upload_job_id: UUID
-    ) -> Optional[ZoteroImportedItem]:
-        return (
-            db.query(ZoteroImportedItem)
-            .filter(ZoteroImportedItem.upload_job_id == upload_job_id)
-            .first()
+    ) -> ZoteroImportedItem | None:
+        return db.scalars(
+            select(ZoteroImportedItem).where(
+                ZoteroImportedItem.upload_job_id == upload_job_id
+            )
+        ).first()
+
+    def get_max_last_synced_at(self, db: Session, *, user_id: int) -> datetime | None:
+        return db.scalar(
+            select(func.max(ZoteroImportedItem.last_synced_at)).where(
+                ZoteroImportedItem.user_id == user_id
+            )
         )
 
-    def get_max_last_synced_at(
-        self, db: Session, *, user_id: int
-    ) -> Optional[datetime]:
-        return (
-            db.query(func.max(ZoteroImportedItem.last_synced_at))
-            .filter(ZoteroImportedItem.user_id == user_id)
-            .scalar()
-        )
-
-    def get_auto_import_since(self, db: Session, *, user_id: int) -> Optional[datetime]:
-        return (
-            db.query(func.max(ZoteroImportedItem.created_at))
-            .filter(
+    def get_auto_import_since(self, db: Session, *, user_id: int) -> datetime | None:
+        return db.scalar(
+            select(func.max(ZoteroImportedItem.created_at)).where(
                 ZoteroImportedItem.user_id == user_id,
                 ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
             )
-            .scalar()
         )
 
     def list_recent_by_user(
         self, db: Session, *, user_id: int, limit: int = 20
-    ) -> List[Tuple[ZoteroImportedItem, Optional[str]]]:
-        return (
-            db.query(ZoteroImportedItem, Paper.title)
+    ) -> list[tuple[ZoteroImportedItem, str | None]]:
+        statement = (
+            select(ZoteroImportedItem, Paper.title)
             .outerjoin(Paper, ZoteroImportedItem.paper_id == Paper.id)
-            .filter(ZoteroImportedItem.user_id == user_id)
+            .where(ZoteroImportedItem.user_id == user_id)
             .order_by(ZoteroImportedItem.created_at.desc())
             .limit(limit)
-            .all()
         )
+        return list(db.execute(statement).tuples().all())
 
     def list_by_item_keys(
-        self, db: Session, *, user_id: int, item_keys: List[str]
-    ) -> List[Tuple[ZoteroImportedItem, Optional[str]]]:
+        self, db: Session, *, user_id: int, item_keys: list[str]
+    ) -> list[tuple[ZoteroImportedItem, str | None]]:
         if not item_keys:
             return []
-        return (
-            db.query(ZoteroImportedItem, Paper.title)
+        statement = (
+            select(ZoteroImportedItem, Paper.title)
             .outerjoin(Paper, ZoteroImportedItem.paper_id == Paper.id)
-            .filter(
+            .where(
                 ZoteroImportedItem.user_id == user_id,
                 ZoteroImportedItem.zotero_item_key.in_(item_keys),
             )
             .order_by(ZoteroImportedItem.created_at.desc())
-            .all()
         )
+        return list(db.execute(statement).tuples().all())
 
     def create(
         self,
@@ -89,11 +83,11 @@ class CRUDZoteroImport:
         user_id: int,
         zotero_item_key: str,
         import_source: str,
-        zotero_attachment_key: Optional[str] = None,
-        source_url: Optional[str] = None,
-        paper_id: Optional[UUID] = None,
-        upload_job_id: Optional[UUID] = None,
-        annotations_payload: Optional[list] = None,
+        zotero_attachment_key: str | None = None,
+        source_url: str | None = None,
+        paper_id: UUID | None = None,
+        upload_job_id: UUID | None = None,
+        annotations_payload: list[dict[str, JsonValue]] | None = None,
         status: str = ZoteroImportStatus.PROCESSING,
     ) -> ZoteroImportedItem:
         db_obj = ZoteroImportedItem(
@@ -118,8 +112,8 @@ class CRUDZoteroImport:
         *,
         item: ZoteroImportedItem,
         status: str,
-        error_message: Optional[str] = None,
-        paper_id: Optional[UUID] = None,
+        error_message: str | None = None,
+        paper_id: UUID | None = None,
     ) -> ZoteroImportedItem:
         setattr(item, "status", status)
         if error_message is not None:
@@ -133,32 +127,34 @@ class CRUDZoteroImport:
 
     def list_syncable_by_user(
         self, db: Session, *, user_id: int, limit: int
-    ) -> List[ZoteroImportedItem]:
-        return (
-            db.query(ZoteroImportedItem)
-            .join(Paper, ZoteroImportedItem.paper_id == Paper.id)
-            .filter(
-                ZoteroImportedItem.user_id == user_id,
-                ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
-                ZoteroImportedItem.paper_id.isnot(None),
-                ZoteroImportedItem.import_source == ZoteroImportSource.PDF_ATTACHMENT,
-                ZoteroImportedItem.zotero_attachment_key.isnot(None),
-            )
-            .order_by(
-                ZoteroImportedItem.last_synced_at.asc().nullsfirst(),
-                ZoteroImportedItem.created_at.desc(),
-            )
-            .limit(limit)
-            .all()
+    ) -> list[ZoteroImportedItem]:
+        return list(
+            db.scalars(
+                select(ZoteroImportedItem)
+                .join(Paper, ZoteroImportedItem.paper_id == Paper.id)
+                .where(
+                    ZoteroImportedItem.user_id == user_id,
+                    ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
+                    ZoteroImportedItem.paper_id.isnot(None),
+                    ZoteroImportedItem.import_source
+                    == ZoteroImportSource.PDF_ATTACHMENT,
+                    ZoteroImportedItem.zotero_attachment_key.isnot(None),
+                )
+                .order_by(
+                    ZoteroImportedItem.last_synced_at.asc().nullsfirst(),
+                    ZoteroImportedItem.created_at.desc(),
+                )
+                .limit(limit)
+            ).all()
         )
 
     def list_user_ids_due_for_sync(
         self, db: Session, *, threshold_hours: float = 24
-    ) -> List[UUID]:
+    ) -> list[int]:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=threshold_hours)
 
-        rows = (
-            db.query(ZoteroImportedItem.user_id)
+        rows = db.scalars(
+            select(ZoteroImportedItem.user_id)
             # Only users who still have a live Zotero connection are syncable.
             # Imported items survive a disconnect (the papers stay in the
             # library), so without this join we'd surface disconnected users as
@@ -167,7 +163,7 @@ class CRUDZoteroImport:
                 ZoteroConnection,
                 ZoteroConnection.user_id == ZoteroImportedItem.user_id,
             )
-            .filter(
+            .where(
                 ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
                 ZoteroImportedItem.import_source == ZoteroImportSource.PDF_ATTACHMENT,
                 ZoteroImportedItem.zotero_attachment_key.isnot(None),
@@ -177,10 +173,9 @@ class CRUDZoteroImport:
                 ),
             )
             .distinct()
-            .all()
-        )
+        ).all()
 
-        return [row.user_id for row in rows]
+        return list(rows)
 
     def finalize_processing_import(
         self,
@@ -188,12 +183,12 @@ class CRUDZoteroImport:
         *,
         item: ZoteroImportedItem,
         import_source: str,
-        zotero_attachment_key: Optional[str],
-        source_url: Optional[str],
+        zotero_attachment_key: str | None,
+        source_url: str | None,
         paper_id: UUID,
         upload_job_id: UUID,
-        annotations_payload: Optional[list],
-        last_synced_at: Optional[datetime] = None,
+        annotations_payload: list[dict[str, JsonValue]] | None,
+        last_synced_at: datetime | None = None,
     ) -> ZoteroImportedItem:
         setattr(item, "import_source", import_source)
         setattr(item, "zotero_attachment_key", zotero_attachment_key)
@@ -214,7 +209,7 @@ class CRUDZoteroImport:
         db: Session,
         *,
         item: ZoteroImportedItem,
-        annotations_payload: Optional[list],
+        annotations_payload: list[dict[str, JsonValue]] | None,
         last_synced_at: datetime,
     ) -> ZoteroImportedItem:
         setattr(item, "annotations_payload", annotations_payload)

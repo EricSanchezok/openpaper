@@ -124,8 +124,10 @@ class DiscoverSearch(Base):
         BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
     question: Mapped[str] = mapped_column(Text, nullable=False)
-    subqueries: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
-    results: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    subqueries: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    results: Mapped[dict[str, list[dict[str, JsonValue]]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     user: Mapped["AuthUser"] = relationship("AuthUser")
 
@@ -314,7 +316,9 @@ class DataTableRow(Base):
         ForeignKey("papers.id", ondelete="CASCADE"),
         nullable=False,
     )
-    values: Mapped[JsonValue] = mapped_column(JSONB, nullable=False, default={})
+    values: Mapped[dict[str, JsonValue]] = mapped_column(
+        JSONB, nullable=False, default={}
+    )
     # values schema: {
     #   "column_name": {
     #     "value": "extracted value",

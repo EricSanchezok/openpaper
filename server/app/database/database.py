@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
 
 from app.database.config import Settings
 from sqlalchemy import create_engine
@@ -26,7 +27,7 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
 
 
 # Dependency for FastAPI
-def get_db():
+def get_db() -> Iterator[Session]:
     db = SessionLocal()
     try:
         yield db
@@ -35,7 +36,7 @@ def get_db():
 
 
 @asynccontextmanager
-async def aget_db():
+async def aget_db() -> AsyncIterator[Session]:
     db = SessionLocal()
     try:
         yield db

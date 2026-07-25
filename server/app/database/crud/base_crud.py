@@ -1,23 +1,24 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
+from typing import Generic, TypeVar
 
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import Base
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 # Type variable for SQLAlchemy models
-ModelType = TypeVar("ModelType", bound="Base")  # type: ignore
+ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 logger = logging.getLogger(__name__)
 
 
-def _get_sanitized_field_names(data: Dict[str, Any]) -> List[str]:
-    sanitized_fields: List[str] = []
+def _get_sanitized_field_names(data: dict[str, object]) -> list[str]:
+    sanitized_fields: list[str] = []
     for field, value in data.items():
         if sanitize_for_postgres(value) != value:
             sanitized_fields.append(field)
@@ -26,38 +27,40 @@ def _get_sanitized_field_names(data: Dict[str, Any]) -> List[str]:
 
 # Generic CRUD base class with type safety
 class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
-    def __init__(self, model: Type[ModelType]):
+    def __init__(self, model: type[ModelType]):
         """
         CRUD object with default methods to Create, Read, Update, Delete
         """
         self.model = model
 
-    def _filter_by_user(self, query, user: Optional[CurrentUser] = None):
+    def _filter_by_user(
+        self,
+        statement: Select[tuple[ModelType]],
+        user: CurrentUser | None = None,
+    ) -> Select[tuple[ModelType]]:
         """Add user filter to query if model has user_id and user is provided"""
         if user and hasattr(self.model, "user_id"):
-            return query.filter(self.model.user_id == user.id)
-        return query
+            return statement.where(getattr(self.model, "user_id") == user.id)
+        return statement
 
     def get(
         self,
         db: Session,
-        id: Any,
+        id: object,
         *,
-        user: Optional[CurrentUser] = None,
+        user: CurrentUser | None = None,
         update_last_accessed: bool = False,
-    ) -> Optional[ModelType]:
+    ) -> ModelType | None:
         """Get a single record by ID, optionally filtered by user"""
         try:
-            query = db.query(self.model).filter(self.model.id == id)
-            query = self._filter_by_user(query, user)
-            if update_last_accessed and hasattr(self.model, "last_accessed_at"):
-                # Update last accessed timestamp if applicable
-                query.update(
-                    {self.model.last_accessed_at: datetime.now(timezone.utc)},
-                    synchronize_session=False,
-                )
+            statement = select(self.model).where(getattr(self.model, "id") == id)
+            statement = self._filter_by_user(statement, user)
+            obj = db.scalars(statement).first()
+            if obj and update_last_accessed and hasattr(obj, "last_accessed_at"):
+                setattr(obj, "last_accessed_at", datetime.now(timezone.utc))
                 db.commit()
-            return query.first()
+                db.refresh(obj)
+            return obj
         except Exception as e:
             # Roll back so a failed (often auto-)flush doesn't leave the session
             # stuck in PendingRollbackError for every subsequent operation.
@@ -74,13 +77,12 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         *,
         skip: int = 0,
         limit: int = 100,
-        user: Optional[CurrentUser] = None,
-    ) -> List[ModelType]:
+        user: CurrentUser | None = None,
+    ) -> list[ModelType]:
         """Get multiple records with pagination, optionally filtered by user"""
         try:
-            query = db.query(self.model)
-            query = self._filter_by_user(query, user)
-            return query.offset(skip).limit(limit).all()
+            statement = self._filter_by_user(select(self.model), user)
+            return list(db.scalars(statement.offset(skip).limit(limit)).all())
         except Exception as e:
             db.rollback()
             logger.error(
@@ -90,19 +92,22 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             return []
 
     def get_by(
-        self, db: Session, *, user: Optional[CurrentUser] = None, **filters
-    ) -> Optional[ModelType]:
+        self,
+        db: Session,
+        *,
+        user: CurrentUser | None = None,
+        **filters: object,
+    ) -> ModelType | None:
         """Get a single record by arbitrary filters"""
         try:
-            query = db.query(self.model)
-            query = self._filter_by_user(query, user)
+            statement = self._filter_by_user(select(self.model), user)
 
             # Apply filters
             for field, value in filters.items():
                 if hasattr(self.model, field):
-                    query = query.filter(getattr(self.model, field) == value)
+                    statement = statement.where(getattr(self.model, field) == value)
 
-            return query.first()
+            return db.scalars(statement).first()
         except Exception as e:
             db.rollback()
             logger.error(
@@ -117,20 +122,19 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         *,
         skip: int = 0,
         limit: int = 100,
-        user: Optional[CurrentUser] = None,
-        **filters,
-    ) -> List[ModelType]:
+        user: CurrentUser | None = None,
+        **filters: object,
+    ) -> list[ModelType]:
         """Get multiple records by arbitrary filters"""
         try:
-            query = db.query(self.model)
-            query = self._filter_by_user(query, user)
+            statement = self._filter_by_user(select(self.model), user)
 
             # Apply filters
             for field, value in filters.items():
                 if hasattr(self.model, field):
-                    query = query.filter(getattr(self.model, field) == value)
+                    statement = statement.where(getattr(self.model, field) == value)
 
-            return query.offset(skip).limit(limit).all()
+            return list(db.scalars(statement.offset(skip).limit(limit)).all())
         except Exception as e:
             db.rollback()
             logger.error(
@@ -144,9 +148,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         db: Session,
         *,
         obj_in: CreateSchemaType,
-        user: Optional[CurrentUser] = None,
+        user: CurrentUser | None = None,
         auto_commit: bool = True,
-    ) -> Optional[ModelType]:
+    ) -> ModelType | None:
         """Create a new record, optionally associating with a user.
         Set auto_commit=False to flush without committing, allowing the caller to
         batch multiple operations into a single transaction.
@@ -183,9 +187,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         db: Session,
         *,
         db_obj: ModelType,
-        obj_in: Union[UpdateSchemaType, Dict[str, Any]],
-        user: Optional[CurrentUser] = None,
-    ) -> Optional[ModelType]:
+        obj_in: UpdateSchemaType | dict[str, object],
+        user: CurrentUser | None = None,
+    ) -> ModelType | None:
         """Update a record, verifying user ownership if specified"""
         if user and hasattr(db_obj, "user_id") and db_obj.user_id != user.id:
             logger.warning(
@@ -205,7 +209,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 logger.warning(
                     "Sanitized null characters before updating %s %s in fields: %s",
                     self.model.__name__,
-                    db_obj.id,
+                    getattr(db_obj, "id", None),
                     ", ".join(sanitized_fields),
                 )
 
@@ -220,19 +224,22 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         except Exception as e:
             db.rollback()
             logger.error(
-                f"Error updating {self.model.__name__} with ID {db_obj.id}: {str(e)}",
+                "Error updating %s with ID %s: %s",
+                self.model.__name__,
+                getattr(db_obj, "id", None),
+                e,
                 exc_info=True,
             )
             return None
 
     def remove(
-        self, db: Session, *, id: Any, user: Optional[CurrentUser] = None
-    ) -> Optional[ModelType]:
+        self, db: Session, *, id: object, user: CurrentUser | None = None
+    ) -> ModelType | None:
         """Delete a record, optionally verifying user ownership"""
         try:
-            query = db.query(self.model).filter(self.model.id == id)
-            query = self._filter_by_user(query, user)
-            obj = query.first()
+            statement = select(self.model).where(getattr(self.model, "id") == id)
+            statement = self._filter_by_user(statement, user)
+            obj = db.scalars(statement).first()
             if obj:
                 db.delete(obj)
                 db.commit()
@@ -254,9 +261,11 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     ) -> bool:
         """Check if any records exist, optionally filtered by user"""
         try:
-            query = db.query(self.model)
-            query = self._filter_by_user(query, user)
-            return query.count() > 0
+            statement = self._filter_by_user(select(self.model), user).limit(1)
+            count = db.execute(
+                select(func.count()).select_from(statement.subquery())
+            ).scalar_one()
+            return count > 0
         except Exception as e:
             logger.error(
                 f"Error checking if any {self.model.__name__} objects exist: {str(e)}",

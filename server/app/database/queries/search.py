@@ -1,19 +1,18 @@
 from datetime import datetime
-from typing import List, Optional
 
 from app.database.models import Annotation, Highlight, Paper
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 
 class HighlightResult(BaseModel):
     id: str
     raw_text: str
-    start_offset: Optional[int]
-    end_offset: Optional[int]
-    page_number: Optional[int]
+    start_offset: int | None
+    end_offset: int | None
+    page_number: int | None
     role: str
     created_at: datetime
 
@@ -34,23 +33,23 @@ class AnnotationResult(BaseModel):
 
 class PaperResult(BaseModel):
     id: str
-    title: Optional[str]
-    authors: Optional[List[str]]
-    abstract: Optional[str]
+    title: str | None
+    authors: list[str] | None
+    abstract: str | None
     status: str
-    publish_date: Optional[datetime]
+    publish_date: datetime | None
     created_at: datetime
     last_accessed_at: datetime
-    highlights: List[HighlightResult]
-    annotations: List[AnnotationResult]
-    preview_url: Optional[str] = None
+    highlights: list[HighlightResult]
+    annotations: list[AnnotationResult]
+    preview_url: str | None = None
 
     class Config:
         from_attributes = True
 
 
 class SearchResults(BaseModel):
-    papers: List[PaperResult]
+    papers: list[PaperResult]
     total_papers: int
     total_highlights: int
     total_annotations: int
@@ -62,7 +61,7 @@ def search_knowledge_base(
     query: str,
     limit: int = 50,
     offset: int = 0,
-    papers_filter: Optional[List[str]] = None,
+    papers_filter: list[str] | None = None,
 ) -> SearchResults:
     """
     Search across papers, annotations, and highlights in a user's knowledge base.
@@ -85,43 +84,84 @@ def search_knowledge_base(
 
     # Build the main query for papers that match the search criteria
     # We'll search in paper title, abstract, raw_content, and related annotations/highlights
-    paper_query = (
-        db.query(Paper)
-        .filter(Paper.user_id == user.id)
-        .filter(Paper.id.in_(papers_filter) if papers_filter else True)
-        .filter(
+    matching_highlight_papers = select(Highlight.paper_id).where(
+        Highlight.user_id == user.id,
+        func.lower(Highlight.raw_text).like(search_pattern),
+    )
+    matching_annotation_papers = select(Annotation.paper_id).where(
+        Annotation.user_id == user.id,
+        func.lower(Annotation.content).like(search_pattern),
+    )
+    paper_statement = (
+        select(Paper)
+        .where(Paper.user_id == user.id)
+        .where(
             or_(
                 func.lower(Paper.title).like(search_pattern),
                 func.lower(Paper.abstract).like(search_pattern),
                 func.lower(Paper.raw_content).like(search_pattern),
                 # Include papers that have matching highlights
-                Paper.id.in_(
-                    db.query(Highlight.paper_id).filter(
-                        and_(
-                            Highlight.user_id == user.id,
-                            func.lower(Highlight.raw_text).like(search_pattern),
-                        )
-                    )
-                ),
+                Paper.id.in_(matching_highlight_papers),
                 # Include papers that have matching annotations
-                Paper.id.in_(
-                    db.query(Annotation.paper_id).filter(
-                        and_(
-                            Annotation.user_id == user.id,
-                            func.lower(Annotation.content).like(search_pattern),
-                        )
-                    )
-                ),
+                Paper.id.in_(matching_annotation_papers),
             )
         )
         .order_by(Paper.last_accessed_at.desc())
     )
+    if papers_filter:
+        paper_statement = paper_statement.where(Paper.id.in_(papers_filter))
 
     # Get total count for pagination
-    total_papers = paper_query.count()
+    total_papers = int(
+        db.scalar(
+            select(func.count()).select_from(paper_statement.order_by(None).subquery())
+        )
+        or 0
+    )
 
     # Apply pagination
-    papers = paper_query.offset(offset).limit(limit).all()
+    papers = list(db.scalars(paper_statement.offset(offset).limit(limit)).all())
+    paper_ids = [paper.id for paper in papers]
+
+    matching_highlights = (
+        list(
+            db.scalars(
+                select(Highlight)
+                .where(
+                    Highlight.paper_id.in_(paper_ids),
+                    Highlight.user_id == user.id,
+                    func.lower(Highlight.raw_text).like(search_pattern),
+                )
+                .order_by(Highlight.created_at.desc())
+            ).all()
+        )
+        if paper_ids
+        else []
+    )
+    matching_annotations = (
+        list(
+            db.scalars(
+                select(Annotation)
+                .options(joinedload(Annotation.highlight))
+                .where(
+                    Annotation.paper_id.in_(paper_ids),
+                    Annotation.user_id == user.id,
+                    func.lower(Annotation.content).like(search_pattern),
+                )
+                .order_by(Annotation.created_at.desc())
+            )
+            .unique()
+            .all()
+        )
+        if paper_ids
+        else []
+    )
+    highlights_by_paper: dict[object, list[Highlight]] = {}
+    for highlight in matching_highlights:
+        highlights_by_paper.setdefault(highlight.paper_id, []).append(highlight)
+    annotations_by_paper: dict[object, list[Annotation]] = {}
+    for annotation in matching_annotations:
+        annotations_by_paper.setdefault(annotation.paper_id, []).append(annotation)
 
     # For each paper, get matching highlights and annotations
     results = []
@@ -129,34 +169,8 @@ def search_knowledge_base(
     total_annotations = 0
 
     for paper in papers:
-        # Get highlights that match the search query for this paper
-        matching_highlights = (
-            db.query(Highlight)
-            .filter(
-                and_(
-                    Highlight.paper_id == paper.id,
-                    Highlight.user_id == user.id,
-                    func.lower(Highlight.raw_text).like(search_pattern),
-                )
-            )
-            .order_by(Highlight.created_at.desc())
-            .all()
-        )
-
-        # Get annotations that match the search query for this paper
-        matching_annotations = (
-            db.query(Annotation)
-            .options(joinedload(Annotation.highlight))
-            .filter(
-                and_(
-                    Annotation.paper_id == paper.id,
-                    Annotation.user_id == user.id,
-                    func.lower(Annotation.content).like(search_pattern),
-                )
-            )
-            .order_by(Annotation.created_at.desc())
-            .all()
-        )
+        paper_highlights = highlights_by_paper.get(paper.id, [])
+        paper_annotations = annotations_by_paper.get(paper.id, [])
 
         # Convert to Pydantic models
         highlight_results = [
@@ -169,7 +183,7 @@ def search_knowledge_base(
                 role=h.role,
                 created_at=h.created_at,
             )
-            for h in matching_highlights
+            for h in paper_highlights
         ]
 
         annotation_results = [
@@ -188,7 +202,7 @@ def search_knowledge_base(
                     created_at=a.highlight.created_at,
                 ),
             )
-            for a in matching_annotations
+            for a in paper_annotations
         ]
 
         paper_result = PaperResult(

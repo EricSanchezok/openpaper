@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Optional
+from datetime import datetime, timezone
 
 from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.conversation_crud import (
@@ -66,14 +66,14 @@ async def get_everything_conversations(
         )
         conversations = sorted(
             conversations,
-            key=lambda x: x.updated_at,
-            reverse=True,  # type: ignore
+            key=lambda x: x.updated_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
         )
         result = [
             {
                 "id": str(conv.id),
                 "title": conv.title,
-                "updated_at": conv.updated_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
             }
             for conv in conversations
         ]
@@ -92,7 +92,7 @@ async def get_shared_paper_conversation(
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
-    current_user: Optional[CurrentUser] = Depends(get_current_user),
+    current_user: CurrentUser | None = Depends(get_current_user),
 ) -> JSONResponse:
     """Get conversation for a shared paper"""
     try:
@@ -115,7 +115,7 @@ async def get_shared_paper_conversation(
         # Fetch messages for the conversation
         messages = message_crud.get_shared_conversation_messages(
             db,
-            conversation_id=conversation.id,  # type: ignore
+            conversation_id=conversation.id,
             share_paper_id=share_paper_id,
             page=page,
             page_size=page_size,

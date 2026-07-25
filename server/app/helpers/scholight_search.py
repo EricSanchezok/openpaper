@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from app.integrations.mcp import SCHOLIGHT_MCP
 
@@ -13,12 +13,12 @@ class ScholightResult:
     title: str
     url: str
     authors: list[str] = field(default_factory=list)
-    published_date: Optional[str] = None
-    text: Optional[str] = None
+    published_date: str | None = None
+    text: str | None = None
     highlights: list[str] = field(default_factory=list)
     highlight_scores: list[float] = field(default_factory=list)
-    favicon: Optional[str] = None
-    summary: Optional[str] = None
+    favicon: str | None = None
+    summary: str | None = None
     source: str = "Scholight"
 
     def to_dict(self) -> dict[str, Any]:

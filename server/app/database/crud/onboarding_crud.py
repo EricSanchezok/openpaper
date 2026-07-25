@@ -1,21 +1,19 @@
-from typing import Optional
-
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Onboarding
 from pydantic import BaseModel
 
 
 class OnboardingBase(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    company: Optional[str] = None
-    research_fields: Optional[str] = None
-    research_fields_other: Optional[str] = None
-    job_titles: Optional[str] = None
-    job_titles_other: Optional[str] = None
-    reading_frequency: Optional[str] = None
-    referral_source: Optional[str] = None
-    referral_source_other: Optional[str] = None
+    name: str | None = None
+    email: str | None = None
+    company: str | None = None
+    research_fields: str | None = None
+    research_fields_other: str | None = None
+    job_titles: str | None = None
+    job_titles_other: str | None = None
+    reading_frequency: str | None = None
+    referral_source: str | None = None
+    referral_source_other: str | None = None
 
 
 class OnboardingCreate(OnboardingBase):

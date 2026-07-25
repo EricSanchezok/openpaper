@@ -1,7 +1,10 @@
 """API routes for the Discover feature."""
 
+from app.api.types import ApiData as ApiResponse
+
 import json
 import logging
+from collections.abc import AsyncGenerator
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.discover_crud import discover_search_crud
@@ -16,14 +19,18 @@ from app.helpers.ai_limits import (
 from app.helpers.discover import run_discover_pipeline
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.discover import DISCOVER_SOURCES, DiscoverSearchRequest
+from app.database.models import JsonValue
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import TypeAdapter
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 discover_router = APIRouter()
+
+_DISCOVER_RESULTS_ADAPTER = TypeAdapter(dict[str, list[dict[str, JsonValue]]])
 
 END_DELIMITER = "END_OF_STREAM"
 
@@ -59,9 +66,9 @@ async def discover_search(
     except AILimitExceeded as exc:
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    async def run_response_generator():
+    async def run_response_generator() -> AsyncGenerator[str, None]:
         collected_subqueries: list[str] = []
-        collected_results: dict[str, list] = {}
+        collected_results: dict[str, list[dict[str, object]]] = {}
 
         try:
             async for chunk in run_discover_pipeline(
@@ -84,7 +91,9 @@ async def discover_search(
                         db,
                         question=request.question,
                         subqueries=collected_subqueries,
-                        results=collected_results,
+                        results=_DISCOVER_RESULTS_ADAPTER.validate_python(
+                            collected_results
+                        ),
                         user=current_user,
                     )
 
@@ -128,7 +137,7 @@ async def discover_search(
             )
             yield f"{json.dumps({'type': 'error', 'content': 'discover_failed'})}{END_DELIMITER}"
 
-    async def response_generator():
+    async def response_generator() -> AsyncGenerator[str, None]:
         try:
             with llm_usage_context(
                 user_id=int(current_user.id),
@@ -146,7 +155,7 @@ async def discover_search(
 async def discover_history(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """Get the user's past discover searches."""
     searches = discover_search_crud.get_history(db, user=current_user, limit=20)
     return [
@@ -162,7 +171,7 @@ async def discover_history(
 
 
 @discover_router.get("/sources")
-async def discover_sources():
+async def discover_sources() -> ApiResponse:
     """Get the list of available source filters for discover search."""
     return [
         {"key": key, "label": info["label"], "description": info["description"]}
@@ -175,7 +184,7 @@ async def discover_get(
     search_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """Get a single discover search by ID."""
     search = discover_search_crud.get_by_id(db, search_id=search_id, user=current_user)
     if not search:

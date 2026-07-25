@@ -28,6 +28,7 @@ from app.database.database import SessionLocal
 from app.database.models import Paper
 from app.helpers.citations import bibliographic_gaps, fields_from_paper
 from app.helpers.metadata_hydration import hydrate_paper_metadata
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -36,19 +37,19 @@ logger = logging.getLogger(__name__)
 
 def _candidate_papers(db: Session, limit: int | None) -> list[Paper]:
     # Anything still missing DOI, venue, or publish_date is a candidate.
-    q = (
-        db.query(Paper)
-        .filter(
+    statement = (
+        select(Paper)
+        .where(
             (Paper.doi.is_(None))
             | ((Paper.journal.is_(None)) & (Paper.publisher.is_(None)))
             | (Paper.publish_date.is_(None))
         )
-        .filter(Paper.title.isnot(None))
+        .where(Paper.title.isnot(None))
         .order_by(Paper.last_accessed_at.desc().nullslast())
     )
     if limit:
-        q = q.limit(limit)
-    return q.all()
+        statement = statement.limit(limit)
+    return list(db.scalars(statement).all())
 
 
 def backfill(limit: int | None = None, dry_run: bool = False) -> None:

@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.crud.projects.project_crud import project_crud
@@ -13,6 +12,7 @@ from app.database.models import (
 from app.helpers.email import send_general_invite_email, send_project_invite_email
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class ProjectRoleInvitationCreate(ProjectRoleInvitationBase):
 
 
 class ProjectRoleInvitationUpdate(BaseModel):
-    role: Optional[ProjectRoles] = None
+    role: ProjectRoles | None = None
 
 
 class ProjectRoleInvitationCRUD(
@@ -45,8 +45,9 @@ class ProjectRoleInvitationCRUD(
         db: Session,
         *,
         obj_in: ProjectRoleInvitationCreate,
-        user: Optional[CurrentUser] = None,
-    ) -> Optional[ProjectRoleInvitation]:
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> ProjectRoleInvitation | None:
         if user is None:
             raise ValueError(
                 "user parameter is required for ProjectRoleInvitationCRUD.create"
@@ -69,8 +70,11 @@ class ProjectRoleInvitationCRUD(
                 invited_by=obj_in.invited_by,
             )
             db.add(db_obj)
-            db.commit()
-            db.refresh(db_obj)
+            if auto_commit:
+                db.commit()
+                db.refresh(db_obj)
+            else:
+                db.flush()
             return db_obj
         except Exception as e:
             db.rollback()
@@ -82,15 +86,13 @@ class ProjectRoleInvitationCRUD(
 
     def get_by_project_and_email(
         self, db: Session, *, project_id: str, email: str
-    ) -> Optional[ProjectRoleInvitation]:
-        return (
-            db.query(self.model)
-            .filter(
+    ) -> ProjectRoleInvitation | None:
+        return db.scalars(
+            select(ProjectRoleInvitation).where(
                 ProjectRoleInvitation.project_id == project_id,
                 ProjectRoleInvitation.email == email,
             )
-            .first()
-        )
+        ).first()
 
     def get_by_project(
         self, db: Session, *, project_id: str, user: CurrentUser
@@ -100,13 +102,16 @@ class ProjectRoleInvitationCRUD(
         if not project:
             return []
 
-        return (
-            db.query(self.model)
-            .options(
-                joinedload(ProjectRoleInvitation.inviter),
-                joinedload(ProjectRoleInvitation.project),
+        return list(
+            db.scalars(
+                select(ProjectRoleInvitation)
+                .options(
+                    joinedload(ProjectRoleInvitation.inviter),
+                    joinedload(ProjectRoleInvitation.project),
+                )
+                .where(ProjectRoleInvitation.project_id == project_id)
             )
-            .filter(ProjectRoleInvitation.project_id == project_id)
+            .unique()
             .all()
         )
 
@@ -118,20 +123,18 @@ class ProjectRoleInvitationCRUD(
         email: str,
         role: ProjectRoles,
         inviting_user: CurrentUser,
-    ) -> Optional[ProjectRoleInvitation]:
+    ) -> ProjectRoleInvitation | None:
         """Invite a user to a project with a specific role by creating an invitation."""
         try:
             # Check if the user is already a member of the project
             invited_user = user_repository.get_by_email(db, email=email)
             if invited_user:
-                existing_role = (
-                    db.query(ProjectRole)
-                    .filter(
+                existing_role = db.scalars(
+                    select(ProjectRole).where(
                         ProjectRole.project_id == project_id,
                         ProjectRole.user_id == invited_user.id,
                     )
-                    .first()
-                )
+                ).first()
                 if existing_role:
                     logger.info(
                         f"User with email {email} is already a member of project {project_id}."
@@ -158,7 +161,7 @@ class ProjectRoleInvitationCRUD(
             invitation = self.create(db, obj_in=invitation_create, user=inviting_user)
 
             if invitation:
-                project = db.query(Project).filter(Project.id == project_id).first()
+                project = db.get(Project, project_id)
                 if not project:
                     logger.error(f"Project with id {project_id} not found.")
                     return invitation
@@ -166,7 +169,7 @@ class ProjectRoleInvitationCRUD(
                 if invited_user:
                     send_project_invite_email(
                         to_email=email,
-                        project_title=project.title,
+                        project_title=project.title or "Untitled project",
                         from_name=str(
                             inviting_user.display_name or inviting_user.email
                         ),
@@ -194,7 +197,7 @@ class ProjectRoleInvitationCRUD(
         db: Session,
         *,
         project_id: str,
-        invites: List[ProjectRoleInvitationBase],
+        invites: list[ProjectRoleInvitationBase],
         inviting_user: CurrentUser,
     ) -> list[ProjectRoleInvitation]:
         """Invite multiple users to a project with a specific role by creating invitations."""
@@ -213,14 +216,10 @@ class ProjectRoleInvitationCRUD(
 
     def accept_invitation(
         self, db: Session, *, invitation_id: str, user: CurrentUser
-    ) -> Optional[ProjectRole]:
+    ) -> ProjectRole | None:
         """Accept a project invitation."""
         try:
-            invitation: ProjectRoleInvitation | None = (
-                db.query(ProjectRoleInvitation)
-                .filter(ProjectRoleInvitation.id == invitation_id)
-                .first()
-            )
+            invitation = db.get(ProjectRoleInvitation, invitation_id)
 
             if not invitation or invitation.email != user.email:
                 logger.warning(
@@ -255,11 +254,7 @@ class ProjectRoleInvitationCRUD(
     ) -> bool:
         """Reject a project invitation."""
         try:
-            invitation: ProjectRoleInvitation | None = (
-                db.query(ProjectRoleInvitation)
-                .filter(ProjectRoleInvitation.id == invitation_id)
-                .first()
-            )
+            invitation = db.get(ProjectRoleInvitation, invitation_id)
 
             if not invitation or invitation.email != user.email:
                 logger.warning(
@@ -285,16 +280,19 @@ class ProjectRoleInvitationCRUD(
         self, db: Session, *, email: str
     ) -> list[ProjectRoleInvitation]:
         """Get all pending invitations for a given email."""
-        return (
-            db.query(ProjectRoleInvitation)
-            .options(
-                joinedload(ProjectRoleInvitation.inviter),
-                joinedload(ProjectRoleInvitation.project),
+        return list(
+            db.scalars(
+                select(ProjectRoleInvitation)
+                .options(
+                    joinedload(ProjectRoleInvitation.inviter),
+                    joinedload(ProjectRoleInvitation.project),
+                )
+                .where(
+                    ProjectRoleInvitation.email == email,
+                    ProjectRoleInvitation.accepted_at.is_(None),
+                )
             )
-            .filter(
-                ProjectRoleInvitation.email == email,
-                ProjectRoleInvitation.accepted_at is None,
-            )
+            .unique()
             .all()
         )
 
@@ -303,11 +301,7 @@ class ProjectRoleInvitationCRUD(
     ) -> bool:
         """Retract a project invitation."""
         try:
-            invitation: ProjectRoleInvitation | None = (
-                db.query(ProjectRoleInvitation)
-                .filter(ProjectRoleInvitation.id == invitation_id)
-                .first()
-            )
+            invitation = db.get(ProjectRoleInvitation, invitation_id)
 
             if not invitation:
                 logger.warning(

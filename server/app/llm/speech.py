@@ -33,9 +33,7 @@ def detect_audio_format(audio: bytes) -> tuple[str, str]:
     if len(audio) >= 12 and audio.startswith(b"RIFF") and audio[8:12] == b"WAVE":
         return ".wav", "audio/wav"
     if audio.startswith(b"ID3") or (
-        len(audio) >= 2
-        and audio[0] == 0xFF
-        and audio[1] & 0xE0 == 0xE0
+        len(audio) >= 2 and audio[0] == 0xFF and audio[1] & 0xE0 == 0xE0
     ):
         return ".mp3", "audio/mpeg"
     raise ValueError("MOSS returned an unsupported audio format")

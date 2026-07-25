@@ -1,6 +1,6 @@
+from app.api.types import ApiData as ApiResponse
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import stripe
 from app.api.referral.service import handle_referee_converted
@@ -14,13 +14,19 @@ from app.database.crud.referral_crud import referral_crud
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.crud.user_repository import user_repository
 from app.database.database import get_db
-from app.database.models import ReferralStatus, SubscriptionPlan, SubscriptionStatus
+from app.database.models import (
+    ReferralStatus,
+    Subscription,
+    SubscriptionPlan,
+    SubscriptionStatus,
+)
 from app.database.telemetry import track_event
 from app.helpers.email import (
     notify_billing_issue,
     send_confirmation_cancellation_email,
     send_subscription_welcome_email,
 )
+from app.integrations.stripe_webhooks import construct_stripe_event
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -39,7 +45,7 @@ async def handle_stripe_webhook(
     request: Request,
     stripe_signature: str = Header(None),
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """Handle Stripe webhook events for subscription management"""
 
     if not STRIPE_WEBHOOK_SECRET:
@@ -53,7 +59,7 @@ async def handle_stripe_webhook(
 
         # Verify the webhook signature
         try:
-            event = stripe.Webhook.construct_event(
+            event = construct_stripe_event(
                 payload, stripe_signature, STRIPE_WEBHOOK_SECRET
             )
         except Exception as e:
@@ -64,6 +70,7 @@ async def handle_stripe_webhook(
 
         # Handle the event
         event_type = event["type"]
+        subscription: Subscription | None
         logger.info(f"Processing Stripe event: {event_type}")
 
         # Skip processing events that are not supported
@@ -134,9 +141,9 @@ async def handle_stripe_webhook(
                     db, customer_id
                 )
 
-                user_id: Optional[int] = None
+                user_id: int | None = None
                 if existing_subscription:
-                    user_id = existing_subscription.user_id  # type: ignore
+                    user_id = existing_subscription.user_id
                 else:
                     try:
                         stripe_customer = stripe.Customer.retrieve(customer_id)
@@ -587,7 +594,7 @@ async def handle_stripe_webhook(
                     return {"success": True}
 
                 referee_user_id = subscription.user_id
-                referral = referral_crud.get_by_referee(db, referee_user_id)  # type: ignore[arg-type]
+                referral = referral_crud.get_by_referee(db, referee_user_id)
                 if not referral:
                     return {"success": True}
 
@@ -599,10 +606,10 @@ async def handle_stripe_webhook(
 
                 # Only claw back if the refund landed inside our 14-day post-
                 # conversion window (Stripe's default refund window).
-                converted_at = referral.converted_at  # type: ignore[assignment]
+                converted_at = referral.converted_at
                 if converted_at is None:
                     return {"success": True}
-                if datetime.now(timezone.utc) - converted_at > timedelta(  # type: ignore[operator]
+                if datetime.now(timezone.utc) - converted_at > timedelta(
                     seconds=CLAWBACK_WINDOW_SECONDS
                 ):
                     return {"success": True}

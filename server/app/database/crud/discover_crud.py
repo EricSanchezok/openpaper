@@ -1,12 +1,12 @@
 """CRUD operations for DiscoverSearch."""
 
 import logging
-from typing import List, Optional
 from uuid import UUID
 
-from app.database.models import DiscoverSearch
+from app.database.models import DiscoverSearch, JsonValue
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DiscoverSearchCreate(BaseModel):
     question: str
     subqueries: list[str]
-    results: dict
+    results: dict[str, list[dict[str, JsonValue]]]
 
 
 class DiscoverSearchCRUD:
@@ -25,9 +25,9 @@ class DiscoverSearchCRUD:
         *,
         question: str,
         subqueries: list[str],
-        results: dict,
+        results: dict[str, list[dict[str, JsonValue]]],
         user: CurrentUser,
-    ) -> Optional[DiscoverSearch]:
+    ) -> DiscoverSearch | None:
         try:
             obj = DiscoverSearch(
                 user_id=user.id,
@@ -50,14 +50,15 @@ class DiscoverSearchCRUD:
         *,
         user: CurrentUser,
         limit: int = 20,
-    ) -> List[DiscoverSearch]:
+    ) -> list[DiscoverSearch]:
         try:
-            return (
-                db.query(DiscoverSearch)
-                .filter(DiscoverSearch.user_id == user.id)
-                .order_by(DiscoverSearch.created_at.desc())
-                .limit(limit)
-                .all()
+            return list(
+                db.scalars(
+                    select(DiscoverSearch)
+                    .where(DiscoverSearch.user_id == user.id)
+                    .order_by(DiscoverSearch.created_at.desc())
+                    .limit(limit)
+                ).all()
             )
         except Exception as e:
             logger.error(f"Error fetching discover history: {e}", exc_info=True)
@@ -69,16 +70,14 @@ class DiscoverSearchCRUD:
         *,
         search_id: str,
         user: CurrentUser,
-    ) -> Optional[DiscoverSearch]:
+    ) -> DiscoverSearch | None:
         try:
-            return (
-                db.query(DiscoverSearch)
-                .filter(
+            return db.scalars(
+                select(DiscoverSearch).where(
                     DiscoverSearch.id == UUID(search_id),
                     DiscoverSearch.user_id == user.id,
                 )
-                .first()
-            )
+            ).first()
         except Exception as e:
             logger.error(
                 f"Error fetching discover search {search_id}: {e}", exc_info=True

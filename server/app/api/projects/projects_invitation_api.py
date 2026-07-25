@@ -1,3 +1,4 @@
+from app.api.types import ApiResponse
 import logging
 import uuid
 
@@ -35,7 +36,7 @@ class BulkInviteRequest(BaseModel):
 async def get_user_invitations(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """Get all invitations for the current user"""
     invitations = project_role_invitation_crud.get_pending_invitations_for_email(
         db, email=current_user.email
@@ -62,7 +63,7 @@ async def get_project_invitations(
     project_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """Get all invitations for a project"""
     invitations = project_role_invitation_crud.get_by_project(
         db, project_id=project_id, user=current_user
@@ -112,11 +113,11 @@ async def invite_user_to_project(
             )
 
         # Validate all roles before processing
-        validated_invites = []
+        validated_invites: list[tuple[str, ProjectRoles]] = []
         for invite in request.invites:
             try:
                 role = ProjectRoles(invite.role)
-                validated_invites.append({"email": str(invite.email), "role": role})
+                validated_invites.append((str(invite.email), role))
             except ValueError:
                 return JSONResponse(
                     status_code=400,
@@ -126,8 +127,8 @@ async def invite_user_to_project(
                 )
 
         invites_data = [
-            ProjectRoleInvitationBase(email=inv["email"], role=inv["role"])
-            for inv in validated_invites
+            ProjectRoleInvitationBase(email=email, role=role)
+            for email, role in validated_invites
         ]
 
         invitations = project_role_invitation_crud.invite_users(
@@ -147,8 +148,8 @@ async def invite_user_to_project(
             "users_invited_to_project",
             user_id=str(current_user.id),
             properties={
-                "invited_emails": [inv["email"] for inv in validated_invites],
-                "roles": [inv["role"] for inv in validated_invites],
+                "invited_emails": [email for email, _role in validated_invites],
+                "roles": [role for _email, role in validated_invites],
                 "success_count": len(invitations),
             },
             db=db,

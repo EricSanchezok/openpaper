@@ -11,6 +11,7 @@ from app.database.database import get_db
 from app.database.models import ProjectRoles
 from app.database.telemetry import track_event
 from app.helpers.subscription_limits import can_user_create_project
+from app.schemas.orm_responses import serialize_project
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -69,7 +70,7 @@ async def create_project(
 
         return JSONResponse(
             status_code=201,
-            content=project.to_dict(),
+            content=serialize_project(project),
         )
     except Exception as e:
         logger.error(f"Error creating project: {e}")
@@ -97,7 +98,7 @@ async def get_projects(
             response_data = [project.model_dump() for project in annotated_projects]
         else:
             projects = project_crud.get_multi_by_user(db, user=current_user)
-            response_data = [project.to_dict() for project in projects]
+            response_data = [serialize_project(project) for project in projects]
 
         return JSONResponse(
             status_code=200,
@@ -125,7 +126,7 @@ async def get_project(
                 status_code=404,
                 content={"message": f"Project with ID {project_id} not found."},
             )
-        project_payload = project.to_dict()
+        project_payload = serialize_project(project)
 
         role = project_crud.get_role_in_project(
             db, project_id=project_id, user=current_user
@@ -170,7 +171,7 @@ async def update_project(
 
         track_event("project_updated", user_id=str(current_user.id), db=db)
 
-        return JSONResponse(status_code=200, content=project.to_dict())
+        return JSONResponse(status_code=200, content=serialize_project(project))
     except Exception as e:
         logger.error(f"Error updating project: {e}")
         return JSONResponse(

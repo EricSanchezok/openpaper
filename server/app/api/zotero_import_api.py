@@ -1,10 +1,11 @@
+from app.api.types import ApiData as ApiResponse
 import logging
-from typing import List, Optional
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import get_db
+from app.database.models import ZoteroImportedItem
 from app.database.telemetry import track_event
 from app.helpers.subscription_limits import can_user_upload_paper
 from app.schemas.user import CurrentUser
@@ -32,7 +33,7 @@ zotero_router = APIRouter()
 def zotero_library(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """List importable journal articles, conference papers, and preprints from the user's Zotero library."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
@@ -60,7 +61,7 @@ async def zotero_import(
     request: ZoteroImportRequest,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """Import selected journal articles, conference papers, and preprints from Zotero (PDF or URL fallback)."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
@@ -111,7 +112,7 @@ async def zotero_import(
 async def zotero_sync(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """Manually trigger annotation sync for all already-imported Zotero PDF papers. Available to all plan tiers."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
@@ -147,7 +148,7 @@ async def zotero_sync(
 
 
 def _zotero_import_status_items(
-    rows: list,
+    rows: list[tuple[ZoteroImportedItem, str | None]],
 ) -> list[ZoteroImportStatusItem]:
     return [
         ZoteroImportStatusItem(
@@ -167,10 +168,10 @@ def _zotero_import_status_items(
 
 @zotero_router.get("/import/status", response_model=ZoteroImportStatusListResponse)
 async def zotero_import_status_list(
-    item_keys: Optional[List[str]] = Query(None),
+    item_keys: list[str] | None = Query(None),
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """List recent Zotero import records for the current user."""
     if item_keys:
         rows = zotero_import_crud.list_by_item_keys(

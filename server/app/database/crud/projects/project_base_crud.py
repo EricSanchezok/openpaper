@@ -1,69 +1,73 @@
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Generic
 
 from app.database.crud.base_crud import (
     CreateSchemaType,
-    CRUDBase,
     ModelType,
     UpdateSchemaType,
 )
 from app.database.models import Project, ProjectPaper, ProjectRole, ProjectRoles
 from app.schemas.user import CurrentUser
-from sqlalchemy.orm import Query, Session
+from sqlalchemy import Select, delete, select
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
-class ProjectBaseCRUD(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
-    def _get_base_query(self, db: Session) -> Query:
-        if self.model == Project:
-            return db.query(self.model)
-        else:
-            return db.query(self.model).join(
-                Project, self.model.project_id == Project.id
-            )
+class ProjectBaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    def __init__(self, model: type[ModelType]) -> None:
+        self.model = model
 
-    def get(self, db: Session, id: Any, *, user: CurrentUser) -> Optional[ModelType]:  # type: ignore
-        query = self._get_base_query(db)
-        return (
-            query.join(ProjectRole, Project.id == ProjectRole.project_id)
-            .filter(self.model.id == id, ProjectRole.user_id == user.id)
-            .first()
+    def _get_base_statement(self) -> Select[tuple[ModelType]]:
+        if self.model == Project:
+            return select(self.model)
+        return select(self.model).join(
+            Project, getattr(self.model, "project_id") == Project.id
         )
+
+    def get(self, db: Session, id: object, *, user: CurrentUser) -> ModelType | None:
+        statement = (
+            self._get_base_statement()
+            .join(ProjectRole, Project.id == ProjectRole.project_id)
+            .where(getattr(self.model, "id") == id, ProjectRole.user_id == user.id)
+        )
+        return db.scalars(statement).first()
 
     def get_multi_by_user(
         self, db: Session, *, user: CurrentUser, skip: int = 0, limit: int = 100
-    ) -> List[ModelType]:
-        query = self._get_base_query(db)
-        join_on = Project.id if self.model == Project else self.model.project_id
-        return (
-            query.join(ProjectRole, join_on == ProjectRole.project_id)
-            .filter(ProjectRole.user_id == user.id)
+    ) -> list[ModelType]:
+        join_on = (
+            Project.id if self.model == Project else getattr(self.model, "project_id")
+        )
+        statement = (
+            self._get_base_statement()
+            .join(ProjectRole, join_on == ProjectRole.project_id)
+            .where(ProjectRole.user_id == user.id)
             .order_by(self.model.created_at.desc())
             .offset(skip)
             .limit(limit)
-            .all()
         )
+        return list(db.scalars(statement).all())
 
-    def update(  # type: ignore
+    def update(
         self,
         db: Session,
         *,
-        id: Any,
-        obj_in: Union[UpdateSchemaType, Dict[str, Any]],
+        id: object,
+        obj_in: UpdateSchemaType | dict[str, object],
         user: CurrentUser,
-    ) -> Optional[ModelType]:
+    ) -> ModelType | None:
         try:
-            query = self._get_base_query(db)
-            db_obj = (
-                query.join(ProjectRole, Project.id == ProjectRole.project_id)
-                .filter(
-                    self.model.id == id,
+            statement = (
+                self._get_base_statement()
+                .join(ProjectRole, Project.id == ProjectRole.project_id)
+                .where(
+                    getattr(self.model, "id") == id,
                     ProjectRole.user_id == user.id,
                     ProjectRole.role.in_([ProjectRoles.ADMIN]),
                 )
-                .first()
             )
+            db_obj = db.scalars(statement).first()
 
             if not db_obj:
                 return None
@@ -88,30 +92,31 @@ class ProjectBaseCRUD(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
             )
             return None
 
-    def remove(self, db: Session, *, id: Any, user: CurrentUser) -> Optional[ModelType]:  # type: ignore
+    def remove(self, db: Session, *, id: object, user: CurrentUser) -> ModelType | None:
         try:
-            query = self._get_base_query(db)
-            obj = (
-                query.join(ProjectRole, Project.id == ProjectRole.project_id)
-                .filter(
-                    self.model.id == id,
+            statement = (
+                self._get_base_statement()
+                .join(ProjectRole, Project.id == ProjectRole.project_id)
+                .where(
+                    getattr(self.model, "id") == id,
                     ProjectRole.user_id == user.id,
                     ProjectRole.role.in_([ProjectRoles.ADMIN]),
                 )
-                .first()
             )
+            obj = db.scalars(statement).first()
 
             if obj:
                 if self.model == Project:
-                    project_id = obj.id
+                    project_id = getattr(obj, "id")
 
-                    db.query(ProjectPaper).filter(
-                        ProjectPaper.project_id == project_id
-                    ).delete(synchronize_session=False)
-
-                    db.query(ProjectRole).filter(
-                        ProjectRole.project_id == project_id
-                    ).delete(synchronize_session=False)
+                    db.execute(
+                        delete(ProjectPaper).where(
+                            ProjectPaper.project_id == project_id
+                        )
+                    )
+                    db.execute(
+                        delete(ProjectRole).where(ProjectRole.project_id == project_id)
+                    )
 
                 db.delete(obj)
                 db.commit()

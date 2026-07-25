@@ -8,7 +8,7 @@ to the separate jobs service worker, and uses the HTTP API to check task status.
 import logging
 import time
 from io import BytesIO
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 import requests
@@ -41,9 +41,9 @@ class JobsClient:
 
     def __init__(
         self,
-        webhook_base_url: Optional[str] = None,
-        celery_broker_url: Optional[str] = None,
-        celery_api_url: Optional[str] = None,
+        webhook_base_url: str | None = None,
+        celery_broker_url: str | None = None,
+        celery_api_url: str | None = None,
     ):
         """
         Initialize the client.
@@ -131,7 +131,7 @@ class JobsClient:
             )
 
             print(f"DEBUG: Task submitted successfully with ID: {task.id}")
-            return task.id
+            return str(task.id)
         except Exception as e:
             # Provide more specific error information
             error_msg = str(e)
@@ -206,7 +206,7 @@ class JobsClient:
             )
 
             print(f"DEBUG: Task submitted successfully with ID: {task.id}")
-            return task.id
+            return str(task.id)
         except Exception as e:
             error_msg = str(e)
             print(f"DEBUG: Task submission failed: {error_msg}")
@@ -214,7 +214,7 @@ class JobsClient:
                 f"Failed to submit data table processing job: {error_msg}"
             ) from e
 
-    def check_celery_task_status(self, task_id: str) -> Dict[str, Any]:
+    def check_celery_task_status(self, task_id: str) -> dict[str, Any]:
         """
         Check the status of a Celery task using the HTTP API.
 
@@ -257,7 +257,7 @@ class JobsClient:
                 "error": f"Unexpected error checking task status: {str(e)}",
             }
 
-    def cancel_celery_task(self, task_id: str) -> Dict[str, Any]:
+    def cancel_celery_task(self, task_id: str) -> dict[str, Any]:
         """
         Cancel a Celery task using the HTTP API.
 
@@ -300,8 +300,8 @@ class JobsClient:
         paper_upload_job: PaperUploadJob,
         db: Session,
         user: CurrentUser,
-        project_id: Optional[UUID] = None,
-        original_filename: Optional[str] = None,
+        project_id: UUID | None = None,
+        original_filename: str | None = None,
     ) -> str:
         """
         Upload a PDF file to S3 and submit a processing job.
@@ -336,7 +336,7 @@ class JobsClient:
         )
 
         # Track created resources for potential rollback
-        s3_object_key: Optional[str] = None
+        s3_object_key: str | None = None
         created_paper = None
         created_project_paper = None
         db_committed = False

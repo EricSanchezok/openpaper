@@ -1,6 +1,6 @@
+from app.api.types import ApiResponse
 import logging
 import uuid
-from typing import List, Optional
 
 from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.annotation_crud import annotation_crud
@@ -20,12 +20,20 @@ from app.database.telemetry import track_event
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.s3 import s3_service
 from app.helpers.subscription_limits import can_user_upload_paper
+from app.schemas.orm_responses import (
+    serialize_annotation,
+    serialize_conversation,
+    serialize_highlight,
+    serialize_paper,
+    serialize_paper_note,
+)
 from app.schemas.responses import ResponseCitation
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -37,13 +45,13 @@ paper_router = APIRouter()
 
 
 class SharePaperSchemaResponse(BaseModel):
-    paper_data: dict
-    highlight_data: dict
-    annotations_data: dict
+    paper_data: dict[str, object]
+    highlight_data: dict[str, object]
+    annotations_data: dict[str, object]
 
 
 class CreatePaperNoteSchema(BaseModel):
-    content: Optional[str]
+    content: str | None
 
 
 class UpdatePaperNoteSchema(BaseModel):
@@ -51,21 +59,18 @@ class UpdatePaperNoteSchema(BaseModel):
 
 
 class UpdatePaperFieldsSchema(BaseModel):
-    title: Optional[str] = None
-    authors: Optional[List[str]] = None
-    abstract: Optional[str] = None
-    institutions: Optional[List[str]] = None
-    publish_date: Optional[str] = None
-    doi: Optional[str] = None
-    journal: Optional[str] = None
-    publisher: Optional[str] = None
+    title: str | None = None
+    authors: list[str] | None = None
+    abstract: str | None = None
+    institutions: list[str] | None = None
+    publish_date: str | None = None
+    doi: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
 
 
 def _serialize_paper_for_client(paper: Paper) -> dict[str, object]:
-    data: dict[str, object] = paper.to_dict()
-    data.pop("parser_backend", None)
-    data.pop("parser_version", None)
-    return data
+    return dict(serialize_paper(paper))
 
 
 @paper_router.get("/all")
@@ -73,11 +78,11 @@ async def get_paper_ids(
     db: Session = Depends(get_db),
     detailed: bool = False,
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all paper IDs
     """
-    papers: List[Paper] = paper_crud.get_multi_uploads_completed(db, user=current_user)
+    papers: list[Paper] = paper_crud.get_multi_uploads_completed(db, user=current_user)
 
     # Bulk retrieve presigned URLs for all papers (optimized with parallelization)
     file_urls = {}
@@ -105,7 +110,7 @@ async def get_paper_ids(
             "tags": [
                 {"id": str(tag.id), "name": tag.name, "color": tag.color}
                 for tag in paper.tags
-            ],  # type: ignore
+            ],
         }
         for paper in papers
     ]
@@ -119,11 +124,11 @@ async def get_paper_ids(
 async def get_active_paper_ids(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all active paper IDs
     """
-    papers: List[Paper] = paper_crud.get_multi_uploads_completed(
+    papers: list[Paper] = paper_crud.get_multi_uploads_completed(
         db, user=current_user, status=PaperStatus.reading
     )
     if not papers:
@@ -230,7 +235,7 @@ async def get_paper_note(
     paper_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get the paper note associated with this document.
     """
@@ -246,7 +251,7 @@ async def get_paper_note(
     )
 
     if paper_note:
-        return JSONResponse(content=paper_note.to_dict(), status_code=200)
+        return JSONResponse(content=serialize_paper_note(paper_note), status_code=200)
 
     raise HTTPException(
         status_code=404, detail=f"Paper Note does not exist for document {paper_id}"
@@ -258,8 +263,8 @@ async def create_paper_note(
     paper_id: str,
     request: CreatePaperNoteSchema,
     db: Session = Depends(get_db),
-    current_user: Optional[CurrentUser] = Depends(get_required_user),
-):
+    current_user: CurrentUser | None = Depends(get_required_user),
+) -> ApiResponse:
     """
     Create the paper note associated with this document
     """
@@ -295,7 +300,7 @@ async def create_paper_note(
         db=db,
     )
 
-    return JSONResponse(content=paper_note.to_dict(), status_code=201)
+    return JSONResponse(content=serialize_paper_note(paper_note), status_code=201)
 
 
 @paper_router.post("/status")
@@ -304,7 +309,7 @@ async def set_paper_status(
     status: PaperStatus,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Set the status of a paper
     """
@@ -346,7 +351,7 @@ async def update_paper_fields(
     request: UpdatePaperFieldsSchema,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Update editable fields of a paper (title, authors, abstract, etc.)
     """
@@ -389,11 +394,11 @@ async def update_paper_fields(
 async def get_relevant_papers(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get the most relevant papers uploaded by the user
     """
-    papers: List[Paper] = paper_crud.get_top_relevant_papers(db, user=current_user)
+    papers: list[Paper] = paper_crud.get_top_relevant_papers(db, user=current_user)
     if not papers:
         return JSONResponse(
             status_code=404, content={"message": "No relevant papers found"}
@@ -426,7 +431,7 @@ async def update_paper_note(
     request: UpdatePaperNoteSchema,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Update the paper note associated with this document
     """
@@ -475,7 +480,9 @@ async def update_paper_note(
         db=db,
     )
 
-    return JSONResponse(content=updated_paper_note.to_dict(), status_code=200)
+    return JSONResponse(
+        content=serialize_paper_note(updated_paper_note), status_code=200
+    )
 
 
 @paper_router.get("/conversation")
@@ -483,7 +490,7 @@ async def get_mru_paper_conversation(
     paper_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get latest conversation associated with specific document
     """
@@ -512,9 +519,7 @@ async def get_mru_paper_conversation(
     latest_conversation = conversations[-1]
 
     # Prepare the response data
-    conversation_data = (
-        latest_conversation.to_dict()
-    )  # Assuming to_dict() method exists
+    conversation_data = serialize_conversation(latest_conversation)
 
     # Return the conversation data
     return JSONResponse(status_code=200, content=conversation_data)
@@ -526,7 +531,7 @@ async def get_pdf(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get a document by ID
     """
@@ -549,7 +554,7 @@ async def get_pdf(
 
     paper_data = _serialize_paper_for_client(paper)
     paper_data["file_url"] = signed_url
-    paper_data["summary_citations"] = [  # type: ignore
+    paper_data["summary_citations"] = [
         ResponseCitation.model_validate(citation).model_dump()
         for citation in paper.summary_citations or []
     ]
@@ -558,20 +563,21 @@ async def get_pdf(
         db, paper_id=id, current_user=current_user
     )
 
-    paper_data["tags"] = [  # type: ignore
-        {"id": str(t.id), "name": t.name, "color": t.color}
-        for t in paper.tags  # type: ignore
+    paper_data["tags"] = [
+        {"id": str(t.id), "name": t.name, "color": t.color} for t in paper.tags
     ]
 
     # Flag whether this paper originated from a Zotero import (surfaced as a
     # provenance badge in the library detail panel).
     paper_data["zotero_synced"] = (
-        db.query(ZoteroImportedItem.id)
-        .filter(
-            ZoteroImportedItem.paper_id == paper.id,
-            ZoteroImportedItem.user_id == current_user.id,
+        db.scalar(
+            select(ZoteroImportedItem.id)
+            .where(
+                ZoteroImportedItem.paper_id == paper.id,
+                ZoteroImportedItem.user_id == current_user.id,
+            )
+            .limit(1)
         )
-        .first()
         is not None
     )
 
@@ -585,7 +591,7 @@ async def share_pdf(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Share a document by ID
     """
@@ -624,7 +630,7 @@ async def unshare_pdf(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Unshare a document by ID
     """
@@ -662,13 +668,13 @@ async def get_shared_pdf(
     request: Request,
     id: str,
     db: Session = Depends(get_db),
-    current_user: Optional[CurrentUser] = Depends(get_current_user),
-):
+    current_user: CurrentUser | None = Depends(get_current_user),
+) -> ApiResponse:
     """
     Get a shared document by ID
     """
     # Fetch the document from the database
-    response = {}
+    response: dict[str, object] = {}
 
     paper = paper_crud.get_public_paper(db, share_id=id)
 
@@ -693,7 +699,7 @@ async def get_shared_pdf(
     highlights = highlight_crud.get_public_highlights_data_by_paper_id(db, share_id=id)
 
     paper_data["file_url"] = signed_url
-    paper_data["summary_citations"] = [  # type: ignore
+    paper_data["summary_citations"] = [
         ResponseCitation.model_validate(citation).model_dump()
         for citation in paper.summary_citations or []
     ]
@@ -703,12 +709,21 @@ async def get_shared_pdf(
         )
     )
     response["paper"] = paper_data
-    response["highlights"] = [highlight.to_dict() for highlight in highlights]
-    response["annotations"] = [annotation.to_dict() for annotation in annotations]
+    response["highlights"] = [
+        serialize_highlight(highlight) for highlight in highlights
+    ]
+    response["annotations"] = [
+        serialize_annotation(annotation) for annotation in annotations
+    ]
+    owner = paper.user
+    if owner is None:
+        return JSONResponse(
+            status_code=404, content={"message": "Document owner not found"}
+        )
     response["owner"] = {
-        "display_name": paper.user.display_name or paper.user.email,
-        "id": str(paper.user.id),
-    }  # type: ignore
+        "display_name": owner.display_name or owner.email,
+        "id": str(owner.id),
+    }
 
     track_event(
         "paper_shared_view",
@@ -730,7 +745,7 @@ async def delete_pdf(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Delete a document by ID
     """

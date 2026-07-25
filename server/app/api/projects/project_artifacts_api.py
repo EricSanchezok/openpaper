@@ -1,3 +1,4 @@
+from app.api.types import ApiResponse
 import logging
 import uuid
 
@@ -22,7 +23,7 @@ async def get_project_artifacts(
     project_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get chat-generated artifacts (citations) for a project.
 

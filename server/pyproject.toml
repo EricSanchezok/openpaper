@@ -31,6 +31,7 @@ dependencies = [
     "types-requests>=2.32.0.20250306",
     "boto3>=1.37.33",
     "types-boto3>=1.37.33",
+    "types-boto3-s3>=1.37.33",
     "sqladmin[full]>=0.25.1",
     "itsdangerous>=2.2.0",
     "gunicorn>=23.0.0",
@@ -68,12 +69,25 @@ dev = [
 ]
 
 [tool.mypy]
-plugins = [
-    "sqlalchemy.ext.mypy.plugin",
-]
 show_error_codes = true
 strict = true
 
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*", "requests_oauthlib", "requests_oauthlib.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.integrations.posthog_client"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["app.integrations.stripe_webhooks"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["app.helpers.pdf_jobs", "app.helpers.referral_jobs"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
 ignore_missing_imports = true

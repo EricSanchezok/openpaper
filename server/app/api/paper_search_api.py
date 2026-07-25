@@ -1,5 +1,5 @@
+from app.api.types import ApiResponse
 import logging
-from typing import Optional
 
 from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
@@ -31,11 +31,11 @@ async def search_papers(
     query: str = Query(min_length=1, max_length=1_000),
     page: int = Query(default=1, ge=1, le=100),
     # Accept filter in the body for more complex queries
-    filter: Optional[OpenAlexFilter] = None,
-    sort: Optional[PaperSort] = None,
+    filter: OpenAlexFilter | None = None,
+    sort: PaperSort | None = None,
     db: Session = Depends(get_db),
-    current_user: Optional[CurrentUser] = Depends(get_current_user),
-):
+    current_user: CurrentUser | None = Depends(get_current_user),
+) -> ApiResponse:
     """
     Search for papers based on the provided query.
     """
@@ -51,7 +51,7 @@ async def search_papers(
         )
         track_event(
             "paper_search",
-            user_id=current_user.id if current_user else None,
+            user_id=str(current_user.id) if current_user else None,
             properties={
                 "query": query,
                 "page": page,
@@ -73,11 +73,11 @@ async def search_papers(
 @paper_search_router.post("/match")
 async def get_paper_graph(
     request: Request,
-    doi: Optional[str] = None,
-    paper_id: Optional[str] = None,
+    doi: str | None = None,
+    paper_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get the citation graph for a paper.
 
@@ -136,7 +136,7 @@ async def get_paper_graph(
         graph = construct_citation_graph(work.id)
         track_event(
             "citation_graph_view",
-            user_id=current_user.id,
+            user_id=str(current_user.id),
             properties={
                 "cited_by_count": graph.cited_by.meta.get("count", 0),
                 "cites_count": graph.cites.meta.get("count", 0),
@@ -160,7 +160,7 @@ async def get_author_works(
     page: int = 1,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get works by a specific author from OpenAlex.
 
@@ -178,7 +178,7 @@ async def get_author_works(
         results = search_open_alex(search_term=None, filter=author_filter, page=page)
         track_event(
             "author_works_view",
-            user_id=current_user.id,
+            user_id=str(current_user.id),
             properties={
                 "page": page,
                 "results_count": len(results.results),

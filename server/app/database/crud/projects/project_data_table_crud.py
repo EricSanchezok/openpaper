@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, cast
+from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -17,6 +17,7 @@ from app.database.models import (
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 logger = logging.getLogger(__name__)
@@ -29,16 +30,16 @@ logger = logging.getLogger(__name__)
 
 class DataTableJobCreate(BaseModel):
     project_id: UUID
-    columns: List[str]
-    task_id: Optional[str] = None
+    columns: list[str]
+    task_id: str | None = None
 
 
 class DataTableJobUpdate(BaseModel):
-    status: Optional[str] = None
-    task_id: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    status: str | None = None
+    task_id: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
 
 
 # ================================
@@ -50,23 +51,23 @@ class DataTableResultCreate(BaseModel):
     job_id: UUID
     title: str
     success: bool
-    columns: List[str]
-    row_failures: List[UUID] = []
+    columns: list[str]
+    row_failures: list[UUID] = []
 
 
 class DataTableResultUpdate(BaseModel):
-    success: Optional[bool] = None
-    columns: Optional[List[str]] = None
+    success: bool | None = None
+    columns: list[str] | None = None
 
 
 class DataTableRowCreate(BaseModel):
     data_table_id: UUID
     paper_id: UUID
-    values: Dict[str, Any]  # {column_name: {value: str, citations: [...]}}
+    values: dict[str, Any]  # {column_name: {value: str, citations: [...]}}
 
 
 class DataTableRowUpdate(BaseModel):
-    values: Optional[Dict[str, Any]] = None
+    values: dict[str, Any] | None = None
 
 
 # ================================
@@ -79,24 +80,25 @@ class DataTableJobCRUD(
 ):
     """CRUD operations for DataTableExtractionJob model"""
 
-    def create(  # type: ignore[override]
+    def create(
         self,
         db: Session,
         *,
         obj_in: DataTableJobCreate,
-        user: CurrentUser,
-    ) -> Optional[DataTableExtractionJob]:
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> DataTableExtractionJob | None:
         """Create a new data table extraction job"""
+        if user is None:
+            raise ValueError("User must be provided to create a data table job")
         # Check if user has access to the project
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == obj_in.project_id,
                 ProjectRole.user_id == user.id,
                 ProjectRole.role.in_([ProjectRoles.ADMIN, ProjectRoles.EDITOR]),
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             logger.warning(
                 f"User {user.id} does not have permission to create job in project {obj_in.project_id}"
@@ -112,8 +114,11 @@ class DataTableJobCRUD(
                 status=JobStatus.PENDING,
             )
             db.add(db_obj)
-            db.commit()
-            db.refresh(db_obj)
+            if auto_commit:
+                db.commit()
+                db.refresh(db_obj)
+            else:
+                db.flush()
 
             # Touch project updated_at so it sorts to top of recent projects
             project_crud.touch(db, obj_in.project_id)
@@ -149,15 +154,13 @@ class DataTableJobCRUD(
         start_of_week -= timedelta(days=start_of_week.weekday())
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        count = (
-            db.query(DataTableExtractionJob)
-            .filter(
+        count = db.scalar(
+            select(func.count(DataTableExtractionJob.id)).where(
                 DataTableExtractionJob.user_id == user.id,
                 DataTableExtractionJob.created_at >= start_of_week,
             )
-            .count()
         )
-        return count
+        return int(count or 0)
 
     def get_by_project(
         self,
@@ -165,25 +168,26 @@ class DataTableJobCRUD(
         *,
         project_id: UUID,
         user: CurrentUser,
-    ) -> List[DataTableExtractionJob]:
+    ) -> list[DataTableExtractionJob]:
         """Get all data table jobs for a project with their associated results"""
         # Check if user has access to the project
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return []
 
-        return (
-            db.query(DataTableExtractionJob)
-            .options(joinedload(DataTableExtractionJob.result))
-            .filter(DataTableExtractionJob.project_id == project_id)
-            .order_by(DataTableExtractionJob.created_at.desc())
+        return list(
+            db.scalars(
+                select(DataTableExtractionJob)
+                .options(joinedload(DataTableExtractionJob.result))
+                .where(DataTableExtractionJob.project_id == project_id)
+                .order_by(DataTableExtractionJob.created_at.desc())
+            )
+            .unique()
             .all()
         )
 
@@ -193,28 +197,27 @@ class DataTableJobCRUD(
         *,
         project_id: UUID,
         user: CurrentUser,
-    ) -> List[DataTableExtractionJob]:
+    ) -> list[DataTableExtractionJob]:
         """Get all pending data table jobs for a project"""
         # Check if user has access to the project
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return []
 
-        return (
-            db.query(DataTableExtractionJob)
-            .filter(
-                DataTableExtractionJob.project_id == project_id,
-                DataTableExtractionJob.status == JobStatus.PENDING,
-            )
-            .order_by(DataTableExtractionJob.created_at.desc())
-            .all()
+        return list(
+            db.scalars(
+                select(DataTableExtractionJob)
+                .where(
+                    DataTableExtractionJob.project_id == project_id,
+                    DataTableExtractionJob.status == JobStatus.PENDING,
+                )
+                .order_by(DataTableExtractionJob.created_at.desc())
+            ).all()
         )
 
     def get_by_id_and_project(
@@ -224,40 +227,36 @@ class DataTableJobCRUD(
         job_id: UUID,
         project_id: UUID,
         user: CurrentUser,
-    ) -> Optional[DataTableExtractionJob]:
+    ) -> DataTableExtractionJob | None:
         """Get a specific job by ID within a project"""
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return None
 
-        return (
-            db.query(DataTableExtractionJob)
-            .filter(
+        return db.scalars(
+            select(DataTableExtractionJob).where(
                 DataTableExtractionJob.id == job_id,
                 DataTableExtractionJob.project_id == project_id,
             )
-            .first()
-        )
+        ).first()
 
     def get_by_task_id(
         self,
         db: Session,
         *,
         task_id: str,
-    ) -> Optional[DataTableExtractionJob]:
+    ) -> DataTableExtractionJob | None:
         """Get a job by its Celery task ID (for webhook handlers)"""
-        return (
-            db.query(DataTableExtractionJob)
-            .filter(DataTableExtractionJob.task_id == task_id)
-            .first()
-        )
+        return db.scalars(
+            select(DataTableExtractionJob).where(
+                DataTableExtractionJob.task_id == task_id
+            )
+        ).first()
 
     def update_status(
         self,
@@ -265,31 +264,27 @@ class DataTableJobCRUD(
         *,
         job_id: UUID,
         status: str,
-        error_message: Optional[str] = None,
-    ) -> Optional[DataTableExtractionJob]:
+        error_message: str | None = None,
+    ) -> DataTableExtractionJob | None:
         """Update job status with timestamp tracking"""
-        job: DataTableExtractionJob | None = (
-            db.query(DataTableExtractionJob)
-            .filter(DataTableExtractionJob.id == job_id)
-            .first()
-        )
+        job = db.get(DataTableExtractionJob, job_id)
 
         if not job:
             return None
 
-        job.status = status  # type: ignore
+        job.status = status
 
         now = datetime.now(timezone.utc)
 
         # Set timestamps based on status
         if status == JobStatus.RUNNING and not job.started_at:
-            job.started_at = now  # type: ignore
+            job.started_at = now
         elif status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]:
             if not job.completed_at:
-                job.completed_at = now  # type: ignore
+                job.completed_at = now
 
         if error_message:
-            job.error_message = error_message  # type: ignore
+            job.error_message = error_message
 
         db.commit()
         db.refresh(job)
@@ -305,7 +300,7 @@ class DataTableJobCRUD(
                 properties={
                     "job_id": str(job_id),
                     "project_id": str(job.project_id),
-                    "num_columns": len(job.columns) if job.columns else 0,  # type: ignore
+                    "num_columns": len(job.columns) if job.columns else 0,
                     "time_to_completion_seconds": time_elapsed,
                 },
                 user_id=str(job.user_id),
@@ -332,13 +327,9 @@ class DataTableJobCRUD(
         *,
         job_id: UUID,
         task_id: str,
-    ) -> Optional[DataTableExtractionJob]:
+    ) -> DataTableExtractionJob | None:
         """Update the Celery task ID for a job"""
-        job = (
-            db.query(DataTableExtractionJob)
-            .filter(DataTableExtractionJob.id == job_id)
-            .first()
-        )
+        job = db.get(DataTableExtractionJob, job_id)
 
         if not job:
             return None
@@ -348,7 +339,7 @@ class DataTableJobCRUD(
         db.refresh(job)
         return job
 
-    def job_to_dict(self, job: DataTableExtractionJob) -> Dict[str, Any]:
+    def job_to_dict(self, job: DataTableExtractionJob) -> dict[str, Any]:
         """Convert DataTableExtractionJob object to dictionary"""
         return {
             "id": str(job.id),
@@ -376,13 +367,14 @@ class DataTableResultCRUD(
 ):
     """CRUD operations for DataTableExtractionResult model"""
 
-    def create(  # type: ignore[override]
+    def create(
         self,
         db: Session,
         *,
         obj_in: DataTableResultCreate,
-        user: Optional[CurrentUser] = None,
-    ) -> Optional[DataTableExtractionResult]:
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> DataTableExtractionResult | None:
         """Create a new data table result"""
         try:
             db_obj = DataTableExtractionResult(
@@ -393,8 +385,11 @@ class DataTableResultCRUD(
                 row_failures=obj_in.row_failures,
             )
             db.add(db_obj)
-            db.commit()
-            db.refresh(db_obj)
+            if auto_commit:
+                db.commit()
+                db.refresh(db_obj)
+            else:
+                db.flush()
 
             track_event(
                 "data_table_result_created",
@@ -422,12 +417,15 @@ class DataTableResultCRUD(
         db: Session,
         *,
         job_id: UUID,
-    ) -> Optional[DataTableExtractionResult]:
+    ) -> DataTableExtractionResult | None:
         """Get result by job ID with rows eagerly loaded"""
         return (
-            db.query(DataTableExtractionResult)
-            .options(joinedload(DataTableExtractionResult.rows))
-            .filter(DataTableExtractionResult.job_id == job_id)
+            db.scalars(
+                select(DataTableExtractionResult)
+                .options(joinedload(DataTableExtractionResult.rows))
+                .where(DataTableExtractionResult.job_id == job_id)
+            )
+            .unique()
             .first()
         )
 
@@ -437,35 +435,34 @@ class DataTableResultCRUD(
         *,
         project_id: UUID,
         user: CurrentUser,
-    ) -> List[DataTableExtractionResult]:
+    ) -> list[DataTableExtractionResult]:
         """Get all results for a project"""
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return []
 
-        return (
-            db.query(DataTableExtractionResult)
-            .join(
-                DataTableExtractionJob,
-                DataTableExtractionResult.job_id == DataTableExtractionJob.id,
-            )
-            .filter(DataTableExtractionJob.project_id == project_id)
-            .order_by(DataTableExtractionResult.created_at.desc())
-            .all()
+        return list(
+            db.scalars(
+                select(DataTableExtractionResult)
+                .join(
+                    DataTableExtractionJob,
+                    DataTableExtractionResult.job_id == DataTableExtractionJob.id,
+                )
+                .where(DataTableExtractionJob.project_id == project_id)
+                .order_by(DataTableExtractionResult.created_at.desc())
+            ).all()
         )
 
     def result_to_dict(
         self, result: DataTableExtractionResult, include_rows: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Convert DataTableExtractionResult object to dictionary"""
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "id": str(result.id),
             "job_id": str(result.job_id),
             "title": result.title,
@@ -478,14 +475,13 @@ class DataTableResultCRUD(
             "updated_at": result.updated_at.isoformat() if result.updated_at else None,
         }
         if include_rows and result.rows:
-            rows_list = cast(List[DataTableRow], result.rows)
             data["rows"] = [
                 {
                     "id": str(row.id),
                     "paper_id": str(row.paper_id),
                     "values": row.values,
                 }
-                for row in rows_list
+                for row in result.rows
             ]
         return data
 
@@ -498,13 +494,14 @@ class DataTableResultCRUD(
 class DataTableRowCRUD(CRUDBase[DataTableRow, DataTableRowCreate, DataTableRowUpdate]):
     """CRUD operations for DataTableRow model"""
 
-    def create(  # type: ignore[override]
+    def create(
         self,
         db: Session,
         *,
         obj_in: DataTableRowCreate,
-        user: Optional[CurrentUser] = None,
-    ) -> Optional[DataTableRow]:
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> DataTableRow | None:
         """Create a new data table row.
 
         Values are sanitized to remove null characters that PostgreSQL cannot store.
@@ -516,8 +513,11 @@ class DataTableRowCRUD(CRUDBase[DataTableRow, DataTableRowCreate, DataTableRowUp
                 values=sanitize_for_postgres(obj_in.values),
             )
             db.add(db_obj)
-            db.commit()
-            db.refresh(db_obj)
+            if auto_commit:
+                db.commit()
+                db.refresh(db_obj)
+            else:
+                db.flush()
             return db_obj
         except Exception as e:
             db.rollback()
@@ -528,8 +528,8 @@ class DataTableRowCRUD(CRUDBase[DataTableRow, DataTableRowCreate, DataTableRowUp
         self,
         db: Session,
         *,
-        rows: List[DataTableRowCreate],
-    ) -> List[DataTableRow]:
+        rows: list[DataTableRowCreate],
+    ) -> list[DataTableRow]:
         """Create multiple data table rows in a single transaction.
 
         Values are sanitized to remove null characters (\\u0000) that PostgreSQL
@@ -570,12 +570,12 @@ class DataTableRowCRUD(CRUDBase[DataTableRow, DataTableRowCreate, DataTableRowUp
         db: Session,
         *,
         data_table_id: UUID,
-    ) -> List[DataTableRow]:
+    ) -> list[DataTableRow]:
         """Get all rows for a data table result"""
-        return (
-            db.query(DataTableRow)
-            .filter(DataTableRow.data_table_id == data_table_id)
-            .all()
+        return list(
+            db.scalars(
+                select(DataTableRow).where(DataTableRow.data_table_id == data_table_id)
+            ).all()
         )
 
 

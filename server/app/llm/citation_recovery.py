@@ -14,7 +14,7 @@ higher-level `app.llm.citation_agent` imports both).
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.models import Paper
@@ -120,10 +120,10 @@ class MetadataRecoveryAgent(BaseLLMClient):
         *,
         db: Session,
         paper: Paper,
-        user: Optional[CurrentUser] = None,
-        missing_hint: Optional[list[str]] = None,
-        steps: Optional[list[CitationStep]] = None,
-    ) -> tuple[Paper, dict[str, Any], Optional[float]]:
+        user: CurrentUser | None = None,
+        missing_hint: list[str] | None = None,
+        steps: list[CitationStep] | None = None,
+    ) -> tuple[Paper, dict[str, Any], float | None]:
         """Agentic fallback that tries to fill the paper's missing metadata.
 
         Confidence-gated, null-only write-back with `field_provenance`. Pass
@@ -178,7 +178,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         fields: CitationFields,
         missing: list[str],
         steps: list[CitationStep],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         try:
             remote_declarations = [
                 declaration
@@ -214,7 +214,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
             if not resp.tool_calls:
                 break
 
-            submitted: Optional[dict[str, Any]] = None
+            submitted: dict[str, Any] | None = None
             for call in resp.tool_calls:
                 name = (call.name or "").lower()
                 args = call.args or {}
@@ -285,7 +285,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         missing: list[str],
         tool_call_results: list[ToolCallResult],
         steps: list[CitationStep],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Forced structured extraction of citation fields from gathered sources."""
         if not tool_call_results:
             return None
@@ -353,7 +353,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         paper: Paper,
         findings: dict[str, Any],
         confidence: float,
-        current_user: Optional[CurrentUser],
+        current_user: CurrentUser | None,
         steps: list[CitationStep],
     ) -> dict[str, Any]:
         source_url = findings.get("source_url")
@@ -383,7 +383,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         }
 
         filled: dict[str, Any] = {}
-        provenance: Dict[str, Any] = dict(paper.field_provenance or {})
+        provenance: dict[str, Any] = dict(paper.field_provenance or {})
         for f, value in candidates.items():
             if value and not current.get(f):
                 filled[f] = value
@@ -419,7 +419,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         return filled
 
 
-_recovery_agent: Optional[MetadataRecoveryAgent] = None
+_recovery_agent: MetadataRecoveryAgent | None = None
 
 
 def get_recovery_agent() -> MetadataRecoveryAgent:

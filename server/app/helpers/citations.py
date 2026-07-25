@@ -10,7 +10,6 @@ that decides whether we need to go look up more metadata.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 # Canonical style keys (mirror the client's supported styles).
 MLA = "MLA"
@@ -37,7 +36,7 @@ STYLE_DISPLAY_NAMES = {
 }
 
 
-def normalize_style(value: Optional[str]) -> str:
+def normalize_style(value: str | None) -> str:
     """Map a free-form style string (e.g. "APA 7th edition") to a canonical key.
 
     Defaults to APA when the input is empty or unrecognized.
@@ -69,12 +68,12 @@ def normalize_style(value: Optional[str]) -> str:
 class CitationFields:
     """The subset of paper metadata needed to render a citation."""
 
-    title: Optional[str] = None
+    title: str | None = None
     authors: list[str] = field(default_factory=list)
-    publish_date: Optional[str] = None  # ISO date string; year is extracted from it
-    journal: Optional[str] = None
-    publisher: Optional[str] = None
-    doi: Optional[str] = None
+    publish_date: str | None = None  # ISO date string; year is extracted from it
+    journal: str | None = None
+    publisher: str | None = None
+    doi: str | None = None
 
 
 def fields_from_paper(paper: object) -> CitationFields:
@@ -94,7 +93,7 @@ def fields_from_paper(paper: object) -> CitationFields:
     )
 
 
-def has_year(publish_date: Optional[str]) -> bool:
+def has_year(publish_date: str | None) -> bool:
     """Whether a 4-digit year can be extracted from the date string."""
     if not publish_date:
         return False

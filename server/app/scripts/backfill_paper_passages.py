@@ -25,17 +25,21 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
     db = SessionLocal()
     try:
         # Count papers that still need indexing (skip already-indexed ones)
-        total = db.execute(
-            text(
-                """
-                SELECT COUNT(*) FROM scholens.papers p
-                WHERE p.raw_content IS NOT NULL
-                  AND NOT EXISTS (
-                    SELECT 1 FROM scholens.paper_passages pp WHERE pp.paper_id = p.id
-                  )
-            """
-            )
-        ).scalar()
+        total = int(
+            db.execute(
+                text(
+                    """
+                    SELECT COUNT(*) FROM scholens.papers p
+                    WHERE p.raw_content IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM scholens.paper_passages pp
+                        WHERE pp.paper_id = p.id
+                      )
+                    """
+                )
+            ).scalar()
+            or 0
+        )
         logger.info(f"Found {total} papers to backfill (skipping already-indexed)")
 
         indexed = 0
@@ -153,7 +157,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 {"batch_size": ts_batch_size},
             )
             db.commit()
-            updated = result.rowcount
+            updated = int(getattr(result, "rowcount", 0) or 0)
             if updated == 0:
                 break
             ts_updated += updated

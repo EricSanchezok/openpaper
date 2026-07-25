@@ -1,7 +1,7 @@
 """CRUD for first-party artifacts (citations today; charts/images later)."""
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import (
@@ -13,19 +13,20 @@ from app.database.models import (
 )
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
 class ArtifactCreate(BaseModel):
     kind: ArtifactKind
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     message_id: uuid.UUID
     scope_type: str  # ConversableType value
-    scope_id: Optional[uuid.UUID] = None
+    scope_id: uuid.UUID | None = None
 
 
 class ArtifactUpdate(BaseModel):
-    payload: Optional[Dict[str, Any]] = None
+    payload: dict[str, Any] | None = None
 
 
 class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
@@ -38,16 +39,16 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
         message: Message,
         conversation: Conversation,
         kind: ArtifactKind,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         user: CurrentUser,
-    ) -> Optional[Artifact]:
+    ) -> Artifact | None:
         """Insert a single artifact, copying scope from the parent conversation."""
         obj_in = ArtifactCreate(
             kind=kind,
             payload=payload,
-            message_id=message.id,  # type: ignore[arg-type]
+            message_id=message.id,
             scope_type=str(conversation.conversable_type),
-            scope_id=conversation.conversable_id,  # type: ignore[arg-type]
+            scope_id=conversation.conversable_id,
         )
         return self.create(db, obj_in=obj_in, user=user)
 
@@ -57,11 +58,11 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
         *,
         message: Message,
         conversation: Conversation,
-        items: List[tuple[ArtifactKind, Dict[str, Any]]],
+        items: list[tuple[ArtifactKind, dict[str, Any]]],
         user: CurrentUser,
-    ) -> List[Artifact]:
+    ) -> list[Artifact]:
         """Insert several artifacts for one assistant message in a single commit."""
-        created: List[Artifact] = []
+        created: list[Artifact] = []
         for kind, payload in items:
             obj = self.create_for_message(
                 db,
@@ -80,38 +81,41 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
         db: Session,
         *,
         scope_type: str,
-        scope_id: Optional[uuid.UUID],
+        scope_id: uuid.UUID | None,
         user: CurrentUser,
-        kind: Optional[ArtifactKind] = None,
+        kind: ArtifactKind | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Artifact]:
+    ) -> list[Artifact]:
         """List artifacts in a given scope (e.g. project panel feed).
 
         Returns every occurrence; callers attach conversation breadcrumbs.
         Ownership is enforced via user_id.
         """
-        q = db.query(Artifact).filter(
+        statement = select(Artifact).where(
             Artifact.user_id == user.id,
             Artifact.scope_type == scope_type,
         )
         if scope_id is not None:
-            q = q.filter(Artifact.scope_id == scope_id)
+            statement = statement.where(Artifact.scope_id == scope_id)
         else:
-            q = q.filter(Artifact.scope_id.is_(None))
+            statement = statement.where(Artifact.scope_id.is_(None))
         if kind is not None:
-            q = q.filter(Artifact.kind == kind.value)
-        return q.order_by(Artifact.created_at.desc()).offset(offset).limit(limit).all()
+            statement = statement.where(Artifact.kind == kind.value)
+        statement = (
+            statement.order_by(Artifact.created_at.desc()).offset(offset).limit(limit)
+        )
+        return list(db.scalars(statement).all())
 
     def list_for_project(
         self,
         db: Session,
         *,
         project_id: uuid.UUID,
-        kind: Optional[ArtifactKind] = None,
+        kind: ArtifactKind | None = None,
         limit: int = 200,
         offset: int = 0,
-    ) -> List[tuple[Artifact, uuid.UUID, Optional[str]]]:
+    ) -> list[tuple[Artifact, uuid.UUID, str | None]]:
         """List artifacts across ALL members' conversations in a project.
 
         Deliberately no user_id filter: project conversations are visible to
@@ -121,18 +125,21 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
         Returns (artifact, conversation_id, conversation_title) so the panel
         can attach a breadcrumb back to the source conversation.
         """
-        q = (
-            db.query(Artifact, Conversation.id, Conversation.title)
+        statement = (
+            select(Artifact, Conversation.id, Conversation.title)
             .join(Message, Artifact.message_id == Message.id)
             .join(Conversation, Message.conversation_id == Conversation.id)
-            .filter(
+            .where(
                 Artifact.scope_type == ConversableType.PROJECT.value,
                 Artifact.scope_id == project_id,
             )
         )
         if kind is not None:
-            q = q.filter(Artifact.kind == kind.value)
-        return q.order_by(Artifact.created_at.desc()).offset(offset).limit(limit).all()
+            statement = statement.where(Artifact.kind == kind.value)
+        statement = (
+            statement.order_by(Artifact.created_at.desc()).offset(offset).limit(limit)
+        )
+        return list(db.execute(statement).tuples().all())
 
 
 artifact_crud = ArtifactCRUD(Artifact)

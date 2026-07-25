@@ -5,6 +5,7 @@ from app.database.crud.paper_image_crud import paper_image_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.s3 import s3_service
+from app.schemas.orm_responses import serialize_paper_image
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -37,7 +38,7 @@ async def get_paper_images_with_presigned_urls(
         # Convert images to dict format and add presigned URLs
         image_list = []
         for image in images:
-            image_dict = image.to_dict()
+            image_dict = serialize_paper_image(image)
 
             # Generate presigned URL for the image
             presigned_url = s3_service.generate_presigned_url(
@@ -96,7 +97,7 @@ async def get_paper_image_by_id(
 
         return JSONResponse(
             status_code=200,
-            content=image.to_dict(),
+            content=serialize_paper_image(image),
         )
     except Exception as e:
         logger.error(f"Error fetching paper image: {e}")
@@ -122,7 +123,7 @@ async def get_paper_image_with_presigned_url(
                 content={"message": f"Image with ID {image_id} not found"},
             )
 
-        image_dict = image.to_dict()
+        image_dict = serialize_paper_image(image)
 
         # Generate presigned URL for the image
         presigned_url = s3_service.generate_presigned_url(

@@ -3,7 +3,6 @@
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import stripe
 from app.database.crud.referral_crud import referral_code_crud, referral_crud
@@ -49,8 +48,8 @@ def build_share_url(code: str) -> str:
     return f"{CLIENT_DOMAIN}/?r={code}"
 
 
-def get_summary_payload(db: Session, user: AuthUser) -> dict:
-    code, newly_created = referral_code_crud.get_or_create_for_user(db, user.id)  # type: ignore[arg-type]
+def get_summary_payload(db: Session, user: AuthUser) -> dict[str, object]:
+    code, newly_created = referral_code_crud.get_or_create_for_user(db, user.id)
     if newly_created:
         track_event(
             "referral_code_generated",
@@ -58,7 +57,7 @@ def get_summary_payload(db: Session, user: AuthUser) -> dict:
             properties={"code": code.code},
             db=db,
         )
-    summary = referral_crud.get_summary_for_referrer(db, user.id)  # type: ignore[arg-type]
+    summary = referral_crud.get_summary_for_referrer(db, user.id)
     # Round up so that sub-day test windows (e.g. 180s) don't show as "0 days".
     credit_hold_days = max(1, (CREDIT_HOLD_SECONDS + 86399) // 86400)
     return {
@@ -72,7 +71,7 @@ def get_summary_payload(db: Session, user: AuthUser) -> dict:
     }
 
 
-def _create_referee_coupon(referral: Referral) -> Optional[str]:
+def _create_referee_coupon(referral: Referral) -> str | None:
     """
     Create a one-time Stripe coupon bound to this specific referee.
 
@@ -113,7 +112,7 @@ def attribute_referral(
     referee: AuthUser,
     code: str,
     attribution_method: ReferralAttributionMethod,
-) -> Optional[Referral]:
+) -> Referral | None:
     """
     Record that `referee` was referred via `code`. Idempotent — if the referee
     already has any referral row (in any state) we return it unchanged.
@@ -124,11 +123,11 @@ def attribute_referral(
     if not code:
         raise ReferralAttributionError("Referral code is required")
 
-    existing = referral_crud.get_by_referee(db, referee.id)  # type: ignore[arg-type]
+    existing = referral_crud.get_by_referee(db, referee.id)
     if existing:
         return existing
 
-    if referee.created_at is None or referee.created_at < datetime.now(  # type: ignore[operator]
+    if referee.created_at is None or referee.created_at < datetime.now(
         timezone.utc
     ) - timedelta(seconds=REFEREE_FRESHNESS_SECONDS):
         raise ReferralAttributionError(
@@ -209,7 +208,7 @@ def handle_referee_converted(db: Session, referee_user_id: int) -> None:
         send_referral_converted_email(
             to_email=str(referrer.email),
             referee_email=str(referee.email),
-            credit_cents=int(referral.referrer_credit_cents),  # type: ignore[arg-type]
+            credit_cents=int(referral.referrer_credit_cents),
             available_at=credit_available_at,
         )
     except Exception as e:
@@ -237,7 +236,7 @@ def handle_referee_converted(db: Session, referee_user_id: int) -> None:
 
 def get_active_attributed_referral(
     db: Session, referee_user_id: int
-) -> Optional[Referral]:
+) -> Referral | None:
     """
     Return the referee's attributed (un-converted) referral if it's still
     within the attribution window. Used at checkout to apply the coupon.
@@ -247,7 +246,7 @@ def get_active_attributed_referral(
         return None
 
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ATTRIBUTION_WINDOW_SECONDS)
-    if referral.created_at and referral.created_at < cutoff:  # type: ignore[operator]
+    if referral.created_at and referral.created_at < cutoff:
         return None
 
     return referral

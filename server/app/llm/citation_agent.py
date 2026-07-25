@@ -14,7 +14,7 @@ without an import cycle.
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
@@ -28,7 +28,12 @@ from app.helpers.citations import (
 )
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.llm.citation_recovery import MetadataRecoveryAgent
-from app.schemas.citation import CitationData, CitationResult, CitationStep
+from app.schemas.citation import (
+    CitationData,
+    CitationMethod,
+    CitationResult,
+    CitationStep,
+)
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 
@@ -76,7 +81,7 @@ class CitationFinder(MetadataRecoveryAgent):
         paper_id: str,
         style: str,
         current_user: CurrentUser,
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
     ) -> CitationResult:
         canonical = normalize_style(style)
         display = STYLE_DISPLAY_NAMES[canonical]
@@ -153,7 +158,7 @@ class CitationFinder(MetadataRecoveryAgent):
         )
         fields = fields_from_paper(paper)
         missing = missing_required_fields(fields, canonical)
-        method = "agentic" if filled else "partial"
+        method: CitationMethod = "agentic" if filled else "partial"
         return self._finalize(
             paper_id,
             canonical,
@@ -171,8 +176,8 @@ class CitationFinder(MetadataRecoveryAgent):
         db: Session,
         paper_id: str,
         current_user: CurrentUser,
-        project_id: Optional[str],
-    ) -> Optional[Paper]:
+        project_id: str | None,
+    ) -> Paper | None:
         try:
             if project_id:
                 return project_paper_crud.get_paper_by_project(
@@ -192,10 +197,10 @@ class CitationFinder(MetadataRecoveryAgent):
         canonical: str,
         display: str,
         fields: CitationFields,
-        method: str,
+        method: CitationMethod,
         missing: list[str],
         filled: dict[str, Any],
-        confidence: Optional[float],
+        confidence: float | None,
         steps: list[CitationStep],
     ) -> CitationResult:
         data = CitationData(
@@ -219,7 +224,7 @@ class CitationFinder(MetadataRecoveryAgent):
             preferred_style=canonical,
             style_display=display,
             data=data,
-            method=method,  # type: ignore[arg-type]
+            method=method,
             missing_fields=missing,
             filled_fields=filled,
             confidence=confidence,
@@ -227,7 +232,7 @@ class CitationFinder(MetadataRecoveryAgent):
         )
 
 
-_finder: Optional[CitationFinder] = None
+_finder: CitationFinder | None = None
 
 
 def _get_finder() -> CitationFinder:
@@ -242,8 +247,8 @@ def run_find_citation(
     current_user: CurrentUser,
     db: Session,
     style: str = "APA",
-    project_id: Optional[str] = None,
-    restrict_to_paper_ids: Optional[list[str]] = None,
+    project_id: str | None = None,
+    restrict_to_paper_ids: list[str] | None = None,
 ) -> CitationResult:
     """Tool entry point matching the multi-paper evidence loop's call signature."""
     if restrict_to_paper_ids is not None and paper_id not in restrict_to_paper_ids:

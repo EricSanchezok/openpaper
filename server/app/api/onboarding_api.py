@@ -6,6 +6,7 @@ from app.database.crud.onboarding_crud import OnboardingCreate, onboarding_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.email import send_profile_email
+from app.schemas.orm_responses import serialize_onboarding
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -67,7 +68,7 @@ async def create_onboarding(
                 content={"message": "Onboarding not found"},
             )
 
-        prepared_onboarding = {
+        prepared_onboarding: dict[str, object] = {
             "name": request.name,
             "email": request.email,
             "company": request.company,
@@ -102,7 +103,7 @@ async def create_onboarding(
 
         return JSONResponse(
             status_code=201,
-            content=onboarding.to_dict(),
+            content=serialize_onboarding(onboarding),
         )
     except Exception as e:
         logger.error(f"Error creating/updating onboarding: {e}")

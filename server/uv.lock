@@ -2131,6 +2131,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "stripe" },
     { name = "types-boto3" },
+    { name = "types-boto3-s3" },
     { name = "types-psycopg2" },
     { name = "types-requests" },
     { name = "uvicorn" },
@@ -2172,6 +2173,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.39" },
     { name = "stripe", specifier = ">=12.3.0" },
     { name = "types-boto3", specifier = ">=1.37.33" },
+    { name = "types-boto3-s3", specifier = ">=1.37.33" },
     { name = "types-psycopg2", specifier = ">=2.9.21.20250318" },
     { name = "types-requests", specifier = ">=2.32.0.20250306" },
     { name = "uvicorn", specifier = ">=0.34" },
@@ -2343,6 +2345,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/45/bd/65cfd8e176911d82bc25d1f70ad3a5204a10d4f1c547f7710f0827b1ebdb/types_boto3-1.37.33.tar.gz", hash = "sha256:4bee345ce2a599082cdf703c037b71811e0afa3e96a5a239850688187e2ba822", size = 99488, upload-time = "2025-04-11T19:47:35.755Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c9/8a/31559e11ddfef0ac88b22215149967ee2720a4796102bf599d3a864caf91/types_boto3-1.37.33-py3-none-any.whl", hash = "sha256:3432e6aa98dcc8c96aea9c61db004be8acbe26600550585d38db0c3240b878aa", size = 68555, upload-time = "2025-04-11T19:47:28.138Z" },
+]
+
+[[package]]
+name = "types-boto3-s3"
+version = "1.43.50"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/b0/c44b0ef40cb0a6fa898ec40f218e65888779d2eba6230152c7f5823ff182/types_boto3_s3-1.43.50.tar.gz", hash = "sha256:9037c7203ad27ebaf84f191688bbac9d0cdf36207c57c7eef7cd8fd71b0b12ce", size = 78625, upload-time = "2026-07-16T19:56:19.769Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/b9/f1b4e1ec2cc705dc4bd7839a35801e0397963fae08ff130c9f780d4dea4e/types_boto3_s3-1.43.50-py3-none-any.whl", hash = "sha256:b2a3231aec1bd0e2ba0521c57a541a0cafae0bbb1f97538f382745b4db45cda6", size = 86005, upload-time = "2026-07-16T19:56:17.549Z" },
 ]
 
 [[package]]

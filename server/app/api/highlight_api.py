@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.highlight_crud import (
@@ -11,6 +11,7 @@ from app.database.crud.highlight_crud import (
 from app.database.database import get_db
 from app.database.models import RoleType
 from app.database.telemetry import track_event
+from app.schemas.orm_responses import serialize_highlight
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -26,21 +27,21 @@ highlight_router = APIRouter()
 class CreateHighlightRequest(BaseModel):
     paper_id: str
     raw_text: str
-    position: Optional[dict[str, Any]] = None  # ScaledPosition JSON
-    color: Optional[str] = None  # Highlight color: yellow, green, blue, pink, purple
+    position: dict[str, Any] | None = None  # ScaledPosition JSON
+    color: str | None = None  # Highlight color: yellow, green, blue, pink, purple
     # Text offsets support text-mode highlights; page_number supports PDF navigation.
-    start_offset: Optional[int] = None
-    end_offset: Optional[int] = None
-    page_number: Optional[int] = None
+    start_offset: int | None = None
+    end_offset: int | None = None
+    page_number: int | None = None
 
 
 class UpdateHighlightRequest(BaseModel):
     raw_text: str
-    position: Optional[dict[str, Any]] = None  # ScaledPosition JSON
-    color: Optional[str] = None  # Highlight color: yellow, green, blue, pink, purple
+    position: dict[str, Any] | None = None  # ScaledPosition JSON
+    color: str | None = None  # Highlight color: yellow, green, blue, pink, purple
     # Text offsets support text-mode highlights.
-    start_offset: Optional[int] = None
-    end_offset: Optional[int] = None
+    start_offset: int | None = None
+    end_offset: int | None = None
 
 
 @highlight_router.post("")
@@ -73,7 +74,7 @@ async def create_highlight(
 
         return JSONResponse(
             status_code=201,
-            content=highlight.to_dict(),
+            content=serialize_highlight(highlight),
         )
     except Exception as e:
         logger.error(f"Error creating highlight: {e}")
@@ -96,7 +97,7 @@ async def get_document_highlights(
         )
         return JSONResponse(
             status_code=200,
-            content=[highlight.to_dict() for highlight in highlights],
+            content=[serialize_highlight(highlight) for highlight in highlights],
         )
     except Exception as e:
         logger.error(f"Error fetching highlights: {e}")
@@ -164,7 +165,7 @@ async def update_highlight(
             db,
             db_obj=existing_highlight,
             obj_in=HighlightUpdate(
-                paper_id=existing_highlight.paper_id.uuid,
+                paper_id=existing_highlight.paper_id,
                 raw_text=request.raw_text,
                 start_offset=request.start_offset,
                 end_offset=request.end_offset,
@@ -178,7 +179,7 @@ async def update_highlight(
 
         track_event("highlight_updated", user_id=str(current_user.id), db=db)
 
-        return JSONResponse(status_code=200, content=highlight.to_dict())
+        return JSONResponse(status_code=200, content=serialize_highlight(highlight))
     except ValueError as e:
         logger.error(f"Highlight not found or invalid data: {e}")
         return JSONResponse(status_code=404, content={"code": "request_failed"})

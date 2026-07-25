@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Subscription, SubscriptionPlan, SubscriptionStatus
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
@@ -12,27 +13,27 @@ class SubscriptionCreate(BaseModel):
     """Schema for creating a subscription"""
 
     user_id: int
-    stripe_customer_id: Optional[str] = None
-    stripe_subscription_id: Optional[str] = None
-    stripe_price_id: Optional[str] = None
-    stripe_schedule_id: Optional[str] = None
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
+    stripe_price_id: str | None = None
+    stripe_schedule_id: str | None = None
     status: str = SubscriptionStatus.INCOMPLETE.value
-    current_period_start: Optional[datetime] = None
-    current_period_end: Optional[datetime] = None
+    current_period_start: datetime | None = None
+    current_period_end: datetime | None = None
     cancel_at_period_end: bool = False
 
 
 class SubscriptionUpdate(BaseModel):
     """Schema for updating a subscription"""
 
-    stripe_customer_id: Optional[str] = None
-    stripe_subscription_id: Optional[str] = None
-    stripe_price_id: Optional[str] = None
-    stripe_schedule_id: Optional[str] = None
-    status: Optional[str] = None
-    current_period_start: Optional[datetime] = None
-    current_period_end: Optional[datetime] = None
-    cancel_at_period_end: Optional[bool] = None
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
+    stripe_price_id: str | None = None
+    stripe_schedule_id: str | None = None
+    status: str | None = None
+    current_period_start: datetime | None = None
+    current_period_end: datetime | None = None
+    cancel_at_period_end: bool | None = None
 
 
 class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUpdate]):
@@ -47,34 +48,34 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
         if not subscription or not subscription.current_period_end:
             return False
         # User is active if `current_period_end` is in the future
-        return subscription.current_period_end > datetime.now(tz=timezone.utc)  # type: ignore
+        return subscription.current_period_end > datetime.now(tz=timezone.utc)
 
-    def get_by_user_id(self, db: Session, user_id: int) -> Optional[Subscription]:
+    def get_by_user_id(self, db: Session, user_id: int) -> Subscription | None:
         """Get subscription by user_id"""
-        return db.query(self.model).filter(self.model.user_id == user_id).first()
+        return db.scalars(
+            select(Subscription).where(Subscription.user_id == user_id)
+        ).first()
 
     def get_by_stripe_subscription_id(
         self, db: Session, subscription_id: str
-    ) -> Optional[Subscription]:
+    ) -> Subscription | None:
         """Get subscription by stripe_subscription_id"""
-        return (
-            db.query(self.model)
-            .filter(self.model.stripe_subscription_id == subscription_id)
-            .first()
-        )
+        return db.scalars(
+            select(Subscription).where(
+                Subscription.stripe_subscription_id == subscription_id
+            )
+        ).first()
 
     def get_by_stripe_customer_id(
         self, db: Session, customer_id: str
-    ) -> Optional[Subscription]:
+    ) -> Subscription | None:
         """Get subscription by stripe_customer_id"""
-        return (
-            db.query(self.model)
-            .filter(self.model.stripe_customer_id == customer_id)
-            .first()
-        )
+        return db.scalars(
+            select(Subscription).where(Subscription.stripe_customer_id == customer_id)
+        ).first()
 
     def create_or_update(
-        self, db: Session, user_id: int, subscription_data: Dict[str, Any]
+        self, db: Session, user_id: int, subscription_data: dict[str, Any]
     ) -> Subscription:
         """Create a subscription or update if exists"""
         subscription = self.get_by_user_id(db, user_id)
@@ -89,19 +90,22 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
 
         # Create new subscription
         create_data = SubscriptionCreate(user_id=user_id, **subscription_data)
-        return self.create(db, obj_in=create_data)
+        created = self.create(db, obj_in=create_data)
+        if created is None:
+            raise RuntimeError("Failed to create subscription")
+        return created
 
     def update_subscription_status(
         self,
         db: Session,
         subscription_id: str,
         status: str,
-        stripe_price_id: Optional[str] = None,
-        plan: Optional[SubscriptionPlan] = None,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
-        cancel_at_period_end: Optional[bool] = None,
-    ) -> Optional[Subscription]:
+        stripe_price_id: str | None = None,
+        plan: SubscriptionPlan | None = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+        cancel_at_period_end: bool | None = None,
+    ) -> Subscription | None:
         """Update subscription status and period dates"""
         subscription = self.get_by_stripe_subscription_id(db, subscription_id)
         if not subscription:

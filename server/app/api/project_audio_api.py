@@ -1,3 +1,4 @@
+from app.api.types import ApiResponse
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -44,7 +45,7 @@ async def create_project_audio_overview(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Create audio overview for a project by ID
     """
@@ -92,7 +93,7 @@ async def create_project_audio_overview(
         obj_in=AudioOverviewJobCreate(
             conversable_id=project_uuid, conversable_type=ConversableType.PROJECT
         ),
-        current_user=current_user,
+        user=current_user,
     )
 
     if not audio_overview_job:
@@ -165,7 +166,7 @@ async def get_project_audio_overviews(
     id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all audio overviews for a specific project by ID
     """
@@ -199,7 +200,7 @@ async def get_audio_overview_jobs_by_project_id(
     all: bool = False,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all audio overview jobs for a specific project by ID
     """
@@ -221,7 +222,11 @@ async def get_audio_overview_jobs_by_project_id(
         audio_overview_jobs = [
             job
             for job in audio_overview_jobs
-            if (job.status != JobStatus.COMPLETED and job.started_at >= one_hour_ago)
+            if (
+                job.status != JobStatus.COMPLETED
+                and job.started_at is not None
+                and job.started_at >= one_hour_ago
+            )
         ]
 
     # Convert the audio overview jobs to a list of dictionaries
@@ -242,7 +247,7 @@ async def get_audio_overview_by_id(
     audio_overview_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get a specific audio overview by ID
     """

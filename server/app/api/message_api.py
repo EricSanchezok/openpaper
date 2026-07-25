@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import AsyncGenerator, List, Optional, Union, cast
+from typing import Any, AsyncGenerator, TypedDict
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.artifact_crud import artifact_crud
@@ -17,7 +17,6 @@ from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import (
-    Annotation,
     ArtifactKind,
     ConversableType,
     ReasoningLevel,
@@ -55,7 +54,18 @@ END_DELIMITER = "END_OF_STREAM"
 MAX_REASONING_TRACE_CHARS = 100_000
 
 
-def _append_status(messages: Optional[List[str]], message: str) -> None:
+class EvidenceState(TypedDict):
+    evidence: dict[str, Any] | None
+
+
+class HighlightGroup(TypedDict):
+    paper_id: str
+    paper_title: str | None
+    paper_abstract: str | None
+    highlights: list[dict[str, object]]
+
+
+def _append_status(messages: list[str] | None, message: str) -> None:
     """Append a status message, collapsing consecutive duplicates (e.g. heartbeats)."""
     if messages is None or not message:
         return
@@ -64,12 +74,12 @@ def _append_status(messages: Optional[List[str]], message: str) -> None:
 
 
 async def _stream_chat_chunks(
-    chunk_generator: AsyncGenerator[Union[dict, str], None],
-    content_chunks: List[str],
-    evidence_container: dict,
-    artifacts: Optional[List] = None,
-    status_messages: Optional[List[str]] = None,
-    reasoning_chunks: Optional[List[str]] = None,
+    chunk_generator: AsyncGenerator[dict[str, object] | str, None],
+    content_chunks: list[str],
+    evidence_container: EvidenceState,
+    artifacts: list[dict[str, object]] | None = None,
+    status_messages: list[str] | None = None,
+    reasoning_chunks: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Helper to stream chat chunks and handle common logic."""
     async for chunk in chunk_generator:
@@ -81,7 +91,7 @@ async def _stream_chat_chunks(
         chunk_content = chunk.get("content", "")
 
         if chunk_type == "artifact":
-            if artifacts is not None:
+            if artifacts is not None and isinstance(chunk_content, dict):
                 artifacts.append(chunk_content)
             try:
                 yield f"{json.dumps({'type': 'artifact', 'content': chunk_content})}{END_DELIMITER}"
@@ -90,21 +100,25 @@ async def _stream_chat_chunks(
             continue
 
         if chunk_type == "reasoning":
-            if reasoning_chunks is not None and chunk_content:
+            reasoning_content = (
+                chunk_content if isinstance(chunk_content, str) else str(chunk_content)
+            )
+            if reasoning_chunks is not None and reasoning_content:
                 remaining = MAX_REASONING_TRACE_CHARS - sum(
                     len(part) for part in reasoning_chunks
                 )
                 if remaining > 0:
-                    reasoning_chunks.append(chunk_content[:remaining])
-            yield f"{json.dumps({'type': 'reasoning', 'content': chunk_content})}{END_DELIMITER}"
+                    reasoning_chunks.append(reasoning_content[:remaining])
+            yield f"{json.dumps({'type': 'reasoning', 'content': reasoning_content})}{END_DELIMITER}"
             continue
 
         if chunk_type == "content":
-            content_chunks.append(chunk_content)
+            text_content = (
+                chunk_content if isinstance(chunk_content, str) else str(chunk_content)
+            )
+            content_chunks.append(text_content)
             try:
-                json_response = json.dumps(
-                    {"type": "content", "content": chunk_content}
-                )
+                json_response = json.dumps({"type": "content", "content": text_content})
                 yield f"{json_response}{END_DELIMITER}"
             except (TypeError, ValueError) as json_error:
                 logger.warning(f"Failed to serialize chunk content: {json_error}")
@@ -115,7 +129,9 @@ async def _stream_chat_chunks(
                 yield f"{json_response}{END_DELIMITER}"
 
         elif chunk_type == "references":
-            evidence_container["evidence"] = chunk_content
+            evidence_container["evidence"] = (
+                chunk_content if isinstance(chunk_content, dict) else None
+            )
             try:
                 json_response = json.dumps(
                     {"type": "references", "content": chunk_content}
@@ -125,12 +141,15 @@ async def _stream_chat_chunks(
                 logger.warning(f"Failed to serialize references: {json_error}")
                 yield f"{json.dumps({'type': 'error', 'content': 'Failed to serialize references'})}{END_DELIMITER}"
         elif chunk_type == "status":
-            _append_status(status_messages, chunk_content)
-            yield f"{json.dumps({'type': 'status', 'content': chunk_content})}{END_DELIMITER}"
+            status_content = (
+                chunk_content if isinstance(chunk_content, str) else str(chunk_content)
+            )
+            _append_status(status_messages, status_content)
+            yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
 
 
 @message_router.get("/capabilities")
-async def get_chat_capabilities() -> dict:
+async def get_chat_capabilities() -> dict[str, object]:
     return {
         "reasoning_levels": [
             {
@@ -153,15 +172,15 @@ class MultiPaperChatRequest(BaseModel):
 
     conversation_id: str
     user_query: str = Field(min_length=1, max_length=20_000)
-    user_references: Optional[List[str]] = Field(default=None, max_length=50)
+    user_references: list[str] | None = Field(default=None, max_length=50)
     reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
-    project_id: Optional[str] = None
+    project_id: str | None = None
     # @-mention scoping: when any of these are set, the chat's search space is
     # hard-limited to the union of the mentioned papers, the papers in the
     # mentioned projects, and the parent papers of the mentioned highlights.
-    mentioned_paper_ids: Optional[List[str]] = Field(default=None, max_length=50)
-    mentioned_project_ids: Optional[List[str]] = Field(default=None, max_length=20)
-    mentioned_highlight_ids: Optional[List[str]] = Field(default=None, max_length=50)
+    mentioned_paper_ids: list[str] | None = Field(default=None, max_length=50)
+    mentioned_project_ids: list[str] | None = Field(default=None, max_length=20)
+    mentioned_highlight_ids: list[str] | None = Field(default=None, max_length=50)
 
     @field_validator("conversation_id", "project_id")
     @classmethod
@@ -194,7 +213,11 @@ def _resolve_mention_scope(
     db: Session,
     current_user: CurrentUser,
     request: "MultiPaperChatRequest",
-) -> tuple[Optional[List[str]], Optional[List[dict]], Optional[List[dict]]]:
+) -> tuple[
+    list[str] | None,
+    list[dict[str, object]] | None,
+    list[dict[str, object]] | None,
+]:
     """Resolve @-mentions into (scoped_paper_ids, scope_snapshot, highlights).
 
     - scoped_paper_ids: the flat, user-scoped set of paper ids the search is
@@ -220,7 +243,7 @@ def _resolve_mention_scope(
         return None, None, None
 
     scoped: set[str] = set()
-    snapshot: List[dict] = []
+    snapshot: list[dict[str, object]] = []
 
     for paper_id in request.mentioned_paper_ids or []:
         # In a project chat, resolve via project access (papers may be shared,
@@ -255,7 +278,7 @@ def _resolve_mention_scope(
     # Mentioned highlights are grouped by parent paper so each highlighted
     # passage is delivered with that paper's title + abstract for grounding,
     # rather than a bare paper id the model would have to cross-reference.
-    highlights_by_paper: dict[str, dict] = {}
+    highlights_by_paper: dict[str, HighlightGroup] = {}
     for highlight_id in request.mentioned_highlight_ids or []:
         highlight = highlight_crud.get(db, id=highlight_id, user=current_user)
         if not highlight:
@@ -275,10 +298,9 @@ def _resolve_mention_scope(
             }
             highlights_by_paper[paper_id_str] = group
 
-        highlight_annotations = cast(list[Annotation], highlight.annotations)
         annotation_contents = [
             annotation.content
-            for annotation in highlight_annotations
+            for annotation in highlight.annotations
             if annotation.content
         ]
 
@@ -301,7 +323,11 @@ def _resolve_mention_scope(
             }
         )
 
-    return list(scoped), snapshot, list(highlights_by_paper.values())
+    return (
+        list(scoped),
+        snapshot,
+        [dict(group) for group in highlights_by_paper.values()],
+    )
 
 
 @message_router.post("/chat/everything")
@@ -341,15 +367,15 @@ async def chat_message_multipaper(
 
     try:
 
-        async def run_response_generator():
+        async def run_response_generator() -> AsyncGenerator[str, None]:
             try:
-                content_chunks = []
-                artifacts_collected: List[dict] = []
-                status_messages: List[str] = []
-                reasoning_chunks: List[str] = []
+                content_chunks: list[str] = []
+                artifacts_collected: list[dict[str, object]] = []
+                status_messages: list[str] = []
+                reasoning_chunks: list[str] = []
                 start_time = datetime.now(timezone.utc)
-                evidence_container = {"evidence": None}
-                evidence_collection: Optional[EvidenceCollection] = None
+                evidence_container: EvidenceState = {"evidence": None}
+                evidence_collection: EvidenceCollection | None = None
 
                 # Ensure conversation is valid
                 if request.project_id:
@@ -518,7 +544,11 @@ async def chat_message_multipaper(
                         conversation_id=uuid.UUID(request.conversation_id),
                         role="user",
                         content=request.user_query,
-                        references=formatted_references,
+                        references=(
+                            dict(formatted_references)
+                            if formatted_references is not None
+                            else None
+                        ),
                         scope=scope_snapshot,
                     ),
                     user=current_user,
@@ -614,7 +644,7 @@ async def chat_message_multipaper(
                 logger.exception("Error in multi-paper streaming response")
                 yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{END_DELIMITER}"
 
-        async def response_generator():
+        async def response_generator() -> AsyncGenerator[str, None]:
             try:
                 with llm_usage_context(
                     user_id=int(current_user.id),
@@ -641,8 +671,8 @@ class ChatMessageRequest(BaseModel):
     paper_id: str
     conversation_id: str
     user_query: str = Field(min_length=1, max_length=20_000)
-    user_references: Optional[List[str]] = Field(default=None, max_length=50)
-    style: Optional[ResponseStyle] = ResponseStyle.NORMAL
+    user_references: list[str] | None = Field(default=None, max_length=50)
+    style: ResponseStyle | None = ResponseStyle.NORMAL
     reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
 
     @field_validator("paper_id", "conversation_id")
@@ -698,12 +728,12 @@ async def chat_message_stream(
 
     try:
 
-        async def run_response_generator():
+        async def run_response_generator() -> AsyncGenerator[str, None]:
             try:
-                content_chunks = []
-                reasoning_chunks: List[str] = []
+                content_chunks: list[str] = []
+                reasoning_chunks: list[str] = []
                 start_time = datetime.now(timezone.utc)
-                evidence_container = {"evidence": None}
+                evidence_container: EvidenceState = {"evidence": None}
 
                 chat_generator = paper_operations.chat_with_paper(
                     paper_id=request.paper_id,
@@ -751,7 +781,11 @@ async def chat_message_stream(
                         conversation_id=uuid.UUID(request.conversation_id),
                         role="user",
                         content=request.user_query,
-                        references=formatted_references,
+                        references=(
+                            dict(formatted_references)
+                            if formatted_references is not None
+                            else None
+                        ),
                     ),
                     user=current_user,
                 )
@@ -805,7 +839,7 @@ async def chat_message_stream(
                 logger.exception("Error in paper streaming response")
                 yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{END_DELIMITER}"
 
-        async def response_generator():
+        async def response_generator() -> AsyncGenerator[str, None]:
             try:
                 with llm_usage_context(
                     user_id=int(current_user.id),

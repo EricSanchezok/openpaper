@@ -3,7 +3,6 @@ import ipaddress
 import logging
 import socket
 from datetime import datetime
-from typing import Tuple
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -22,7 +21,7 @@ ALLOWED_PDF_CONTENT_TYPES = {
 }
 
 
-def get_start_page_from_offset(offsets: dict[int, Tuple[int, int]], offset: int) -> int:
+def get_start_page_from_offset(offsets: dict[int, tuple[int, int]], offset: int) -> int:
     """
     Get the starting page number for a given text offset.
     """

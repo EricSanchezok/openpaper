@@ -19,7 +19,7 @@ router = APIRouter()
 def create_customer_portal_session(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> dict[str, str | None]:
     """Create a Stripe customer portal session for the current user"""
     try:
         subscription = subscription_crud.get_by_user_id(db, current_user.id)
@@ -48,7 +48,7 @@ def create_customer_portal_session(
 def resubscribe(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> dict[str, str | bool]:
     """
     Reactivate a canceled subscription or reverse a scheduled cancellation.
 
@@ -135,7 +135,7 @@ def resubscribe(
                         "redirect_to_checkout": True,
                     }
 
-                subscription_params = {
+                subscription_params: stripe.Subscription.CreateParams = {
                     "customer": str(subscription.stripe_customer_id),
                     "items": [{"price": stripe_price_id}],
                     "metadata": {"user_id": str(current_user.id)},

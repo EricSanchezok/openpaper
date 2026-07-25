@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from app.database.database import get_db
 from app.database.models import JobsWebhookNonce
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -51,9 +52,11 @@ async def verify_jobs_webhook(
         raise HTTPException(status_code=401, detail="invalid_jobs_signature")
 
     try:
-        db.query(JobsWebhookNonce).filter(
-            JobsWebhookNonce.created_at < datetime.now(UTC) - timedelta(minutes=10)
-        ).delete(synchronize_session=False)
+        db.execute(
+            delete(JobsWebhookNonce).where(
+                JobsWebhookNonce.created_at < datetime.now(UTC) - timedelta(minutes=10)
+            )
+        )
         db.add(JobsWebhookNonce(nonce=nonce))
         db.commit()
     except IntegrityError as exc:

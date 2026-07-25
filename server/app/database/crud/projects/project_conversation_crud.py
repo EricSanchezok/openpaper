@@ -1,19 +1,19 @@
 import logging
 import uuid
-from typing import List, Optional
 
 from app.database.crud.projects.project_base_crud import ProjectBaseCRUD
 from app.database.crud.projects.project_crud import project_crud
 from app.database.models import ConversableType, Conversation, ProjectRole, ProjectRoles
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
 class ProjectConversationBase(BaseModel):
-    title: Optional[str] = None
+    title: str | None = None
 
 
 class ProjectConversationCreate(ProjectConversationBase):
@@ -32,9 +32,9 @@ class ProjectConversationCRUD(
         db: Session,
         *,
         obj_in: ProjectConversationCreate,
-        user: Optional[CurrentUser] = None,
-        project_id: Optional[uuid.UUID] = None,
-    ) -> Optional[Conversation]:
+        user: CurrentUser | None = None,
+        project_id: uuid.UUID | None = None,
+    ) -> Conversation | None:
         # Validate required parameters for this implementation
         if user is None:
             raise ValueError(
@@ -47,15 +47,13 @@ class ProjectConversationCRUD(
 
         try:
             # Check if the user has permission to create in this project
-            project_role = (
-                db.query(ProjectRole)
-                .filter(
+            project_role = db.scalars(
+                select(ProjectRole).where(
                     ProjectRole.project_id == project_id,
                     ProjectRole.user_id == user.id,
                     ProjectRole.role.in_([ProjectRoles.ADMIN, ProjectRoles.EDITOR]),
                 )
-                .first()
-            )
+            ).first()
             if not project_role:
                 return None
 
@@ -82,27 +80,26 @@ class ProjectConversationCRUD(
 
     def get_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> List[Conversation]:
+    ) -> list[Conversation]:
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return []
 
-        return (
-            db.query(self.model)
-            .filter(
-                self.model.conversable_id == project_id,
-                self.model.conversable_type == ConversableType.PROJECT,
-            )
-            .order_by(self.model.updated_at.desc())
-            .all()
+        return list(
+            db.scalars(
+                select(Conversation)
+                .where(
+                    Conversation.conversable_id == project_id,
+                    Conversation.conversable_type == ConversableType.PROJECT,
+                )
+                .order_by(Conversation.updated_at.desc())
+            ).all()
         )
 
     def get_by_conversation_id(
@@ -112,27 +109,23 @@ class ProjectConversationCRUD(
         project_id: uuid.UUID,
         conversation_id: uuid.UUID,
         user: CurrentUser,
-    ) -> Optional[Conversation]:
+    ) -> Conversation | None:
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return None
 
-        return (
-            db.query(self.model)
-            .filter(
-                self.model.id == conversation_id,
-                self.model.conversable_type == ConversableType.PROJECT,
+        return db.scalars(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.conversable_type == ConversableType.PROJECT,
             )
-            .first()
-        )
+        ).first()
 
 
 project_conversation_crud = ProjectConversationCRUD(Conversation)

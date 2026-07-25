@@ -13,7 +13,7 @@ external APIs on every read; pass force=True to bypass the cache window.
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.models import Paper
@@ -42,10 +42,10 @@ def hydrate_paper_metadata(
     *,
     db: Session,
     paper: Paper,
-    user: Optional[CurrentUser] = None,
+    user: CurrentUser | None = None,
     force: bool = False,
     agentic: bool = False,
-    agentic_steps: Optional[list[Any]] = None,
+    agentic_steps: list[Any] | None = None,
 ) -> Paper:
     """Resolve DOI + enrich journal/publisher/publish_date for a paper.
 

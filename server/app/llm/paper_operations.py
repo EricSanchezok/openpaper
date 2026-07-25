@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import AsyncGenerator, Literal, Optional, Sequence, Union
+from typing import AsyncGenerator, Literal, Sequence
 
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
@@ -33,8 +33,8 @@ class PaperOperations(BaseLLMClient):
         self,
         paper_id: str,
         user: CurrentUser,
-        length: Optional[Literal["short", "medium", "long"]] = "medium",
-        additional_instructions: Optional[str] = None,
+        length: Literal["short", "medium", "long"] | None = "medium",
+        additional_instructions: str | None = None,
         db: Session = Depends(get_db),
     ) -> AudioOverviewForLLM:
         """
@@ -84,10 +84,10 @@ class PaperOperations(BaseLLMClient):
         question: str,
         current_user: CurrentUser,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
-        user_references: Optional[Sequence[str]] = None,
-        response_style: Optional[str] = "normal",
+        user_references: Sequence[str] | None = None,
+        response_style: str | None = "normal",
         db: Session = Depends(get_db),
-    ) -> AsyncGenerator[Union[str, dict[str, object]], None]:
+    ) -> AsyncGenerator[str | dict[str, object], None]:
         """
         Chat with the paper using the specified model
         """

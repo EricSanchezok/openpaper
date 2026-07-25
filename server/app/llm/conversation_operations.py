@@ -1,6 +1,5 @@
 import logging
 import uuid
-from typing import Optional, Union
 
 from app.database.crud.conversation_crud import ConversationUpdate, conversation_crud
 from app.database.crud.message_crud import message_crud
@@ -38,12 +37,12 @@ class ConversationOperations(BaseLLMClient):
         conversation_id: str,
         user: CurrentUser,
         db: Session = Depends(get_db),
-    ) -> Union[str, None]:
+    ) -> str | None:
         """
         Rename a conversation based on its chat history
         """
         casted_uuid = uuid.UUID(conversation_id)
-        conversation: Optional[Conversation] = conversation_crud.get_conversation_by_id(
+        conversation: Conversation | None = conversation_crud.get_conversation_by_id(
             db, conversation_id=casted_uuid, user_id=user.id
         )
 

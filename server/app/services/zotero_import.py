@@ -4,7 +4,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union, cast
+from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
 from app.database.crud.annotation_crud import AnnotationCreate, annotation_crud
@@ -41,6 +41,7 @@ from app.helpers.subscription_limits import (
 from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
 from app.schemas.user import CurrentUser
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -60,15 +61,15 @@ class ImportProcessingResult(TypedDict):
     paper_id: str
     upload_job_id: str
     import_source: str
-    title: Optional[str]
+    title: str | None
     imported_via_url: bool
 
 
 # Discriminated on `status` so success-only keys (paper_id, etc.) narrow safely.
-ImportOneResult = Union[ImportErrorResult, ImportProcessingResult]
+ImportOneResult = ImportErrorResult | ImportProcessingResult
 
 
-def _parse_zotero_date_added(date_str: str | datetime | None) -> Optional[datetime]:
+def _parse_zotero_date_added(date_str: str | datetime | None) -> datetime | None:
     """Parse Zotero item.data.dateAdded (ISO 8601) for auto-import window checks."""
     if not date_str:
         return None
@@ -86,7 +87,7 @@ def _parse_zotero_date_added(date_str: str | datetime | None) -> Optional[dateti
         return None
 
 
-def _parse_zotero_date(date_str: Optional[str]) -> Optional[str]:
+def _parse_zotero_date(date_str: str | None) -> str | None:
     if not date_str:
         return None
     try:
@@ -110,7 +111,7 @@ def _parse_zotero_date(date_str: Optional[str]) -> Optional[str]:
     return None
 
 
-def _has_importable_metadata(item_data: Dict[str, Any]) -> bool:
+def _has_importable_metadata(item_data: dict[str, Any]) -> bool:
     """True if a Zotero item has enough metadata to be importable.
 
     An item must have at least a title, DOI, or URL — the import pipeline
@@ -124,8 +125,8 @@ def _has_importable_metadata(item_data: Dict[str, Any]) -> bool:
     )
 
 
-def _zotero_creators_to_authors(creators: List[Dict[str, Any]]) -> List[str]:
-    authors: List[str] = []
+def _zotero_creators_to_authors(creators: list[dict[str, Any]]) -> list[str]:
+    authors: list[str] = []
     for creator in creators:
         if creator.get("creatorType") not in ("author", None):
             continue
@@ -139,7 +140,7 @@ def _zotero_creators_to_authors(creators: List[Dict[str, Any]]) -> List[str]:
     return authors
 
 
-def _map_zotero_color(hex_color: Optional[str]) -> str:
+def _map_zotero_color(hex_color: str | None) -> str:
     if not hex_color:
         return "yellow"
     hex_color = hex_color.lower().lstrip("#")
@@ -168,7 +169,7 @@ def _map_zotero_color(hex_color: Optional[str]) -> str:
     return best
 
 
-def _page_from_annotation(data: Dict[str, Any]) -> Optional[int]:
+def _page_from_annotation(data: dict[str, Any]) -> int | None:
     """PDF page for viewer placement. Prefer pageIndex from annotationPosition over
     annotationPageLabel, which is often the journal's printed page number."""
     position_raw = data.get("annotationPosition")
@@ -193,7 +194,7 @@ def _page_from_annotation(data: Dict[str, Any]) -> Optional[int]:
     return None
 
 
-def _convert_zotero_position(ann_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _convert_zotero_position(ann_data: dict[str, Any]) -> dict[str, Any] | None:
     """
     Convert a Zotero annotationPosition (PDF-point coordinate space) into the
     ScaledPosition dict that react-pdf-highlighter-extended consumes.
@@ -229,14 +230,14 @@ def _convert_zotero_position(ann_data: Dict[str, Any]) -> Optional[Dict[str, Any
     page_w = float(ann_data.get("_page_width") or 0)
     page_h = float(ann_data.get("_page_height") or 0)
 
-    rects: List[Dict[str, Any]] = []
+    rects: list[dict[str, Any]] = []
     for r in raw_rects:
         try:
             if isinstance(r, (list, tuple)) and len(r) >= 4:
                 x1, y1, x2, y2 = float(r[0]), float(r[1]), float(r[2]), float(r[3])
             elif isinstance(r, dict):
-                x1 = float(r.get("x", r.get("x1", 0)))
-                y1 = float(r.get("y", r.get("y1", 0)))
+                x1 = float(r.get("x", r.get("x1", 0)) or 0)
+                y1 = float(r.get("y", r.get("y1", 0)) or 0)
                 x2 = (
                     x1 + float(r.get("width", 0))
                     if "width" in r
@@ -279,8 +280,8 @@ def _convert_zotero_position(ann_data: Dict[str, Any]) -> Optional[Dict[str, Any
 
 
 def _serialize_annotations_payload(
-    annotations: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    annotations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     return [
         {"key": ann.get("key", ""), "data": ann.get("data", {})}
         for ann in annotations
@@ -289,8 +290,8 @@ def _serialize_annotations_payload(
 
 
 def _normalize_payload_item(
-    item: Dict[str, Any],
-) -> Optional[Tuple[str, Dict[str, Any]]]:
+    item: dict[str, Any],
+) -> tuple[str, dict[str, Any]] | None:
     if not isinstance(item, dict):
         return None
     if "data" in item and item.get("key"):
@@ -305,8 +306,8 @@ def _normalize_payload_item(
 
 
 def _embed_page_dims_in_annotation_data(
-    ann_data: Dict[str, Any],
-    page_dims: Dict[int, Tuple[float, float]],
+    ann_data: dict[str, Any],
+    page_dims: dict[int, tuple[float, float]],
 ) -> None:
     pos_raw = ann_data.get("annotationPosition")
     if not pos_raw:
@@ -321,7 +322,7 @@ def _embed_page_dims_in_annotation_data(
     ann_data["_page_height"] = h
 
 
-def _get_page_dims_for_paper(paper: Paper) -> Dict[int, Tuple[float, float]]:
+def _get_page_dims_for_paper(paper: Paper) -> dict[int, tuple[float, float]]:
     if not paper.s3_object_key:
         return {}
     try:
@@ -342,9 +343,9 @@ def _apply_single_zotero_annotation(
     paper_id: UUID,
     user: CurrentUser,
     zotero_annotation_key: str,
-    ann_data: Dict[str, Any],
+    ann_data: dict[str, Any],
     raw_content: str,
-    page_offsets: Optional[Dict[int, Tuple[int, int]]],
+    page_offsets: dict[int, tuple[int, int]] | None,
 ) -> bool:
     """Create a highlight (+ optional comment) for one Zotero annotation. Returns True if created."""
     ann_type = (ann_data.get("annotationType") or "highlight").lower()
@@ -365,8 +366,8 @@ def _apply_single_zotero_annotation(
     elif is_text_annotation and not raw_text and not comment:
         return False
 
-    start_offset: Optional[int] = None
-    end_offset: Optional[int] = None
+    start_offset: int | None = None
+    end_offset: int | None = None
     if raw_text and raw_content:
         so, eo = find_offsets(raw_text, raw_content)
         if so >= 0 and eo >= 0:
@@ -419,9 +420,9 @@ def _try_backfill_or_apply_annotation(
     paper_id: UUID,
     user: CurrentUser,
     zotero_annotation_key: str,
-    ann_data: Dict[str, Any],
+    ann_data: dict[str, Any],
     raw_content: str,
-    page_offsets: Optional[Dict[int, Tuple[int, int]]],
+    page_offsets: dict[int, tuple[int, int]] | None,
 ) -> bool:
     """
     Backfill an existing highlight's Zotero key when possible; otherwise create a new one.
@@ -470,14 +471,14 @@ def _try_backfill_or_apply_annotation(
 
 async def _resolve_pdf_bytes(
     client: ZoteroApiClient,
-    item: Dict[str, Any],
-) -> Tuple[
-    Optional[bytes],
+    item: dict[str, Any],
+) -> tuple[
+    bytes | None,
     str,
-    Optional[str],
-    Optional[str],
-    List[Dict[str, Any]],
-    Optional[str],
+    str | None,
+    str | None,
+    list[dict[str, Any]],
+    str | None,
 ]:
     """
     Returns (pdf_bytes, import_source, attachment_key, source_url, annotations, failure_reason).
@@ -488,7 +489,7 @@ async def _resolve_pdf_bytes(
     children = await asyncio.to_thread(client.get_children, item_key)
     pdf_attachment = client.find_pdf_attachment(children)
 
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
 
     if pdf_attachment:
         attachment_key = pdf_attachment.get("key", "")
@@ -556,8 +557,8 @@ async def _resolve_pdf_bytes(
 
 def _resolve_zotero_attachment_info(
     client: ZoteroApiClient,
-    item: Dict[str, Any],
-) -> Tuple[str, Optional[str], Optional[str], List[Dict[str, Any]]]:
+    item: dict[str, Any],
+) -> tuple[str, str | None, str | None, list[dict[str, Any]]]:
     """Return attachment metadata and annotations without downloading the PDF."""
     item_key = item.get("key", "")
     data = item.get("data", {})
@@ -584,7 +585,7 @@ async def _link_zotero_item_to_existing_paper(
     db: Session,
     *,
     client: ZoteroApiClient,
-    item: Dict[str, Any],
+    item: dict[str, Any],
     item_key: str,
     paper: Paper,
     user: CurrentUser,
@@ -621,7 +622,7 @@ def _apply_zotero_tags(
     db: Session,
     *,
     paper_id: UUID,
-    tags_data: List[Dict[str, Any]],
+    tags_data: list[dict[str, Any]],
     user: "CurrentUser",
 ) -> None:
     for tag_entry in tags_data:
@@ -636,6 +637,8 @@ def _apply_zotero_tags(
                 tag = paper_tag_crud.create(
                     db, obj_in=PaperTagCreate(name=tag_name), user=user
                 )
+            if tag is None:
+                raise RuntimeError("Failed to create Zotero paper tag")
             paper_tag_crud.add_tag_to_paper(
                 db, paper_id=paper_id, tag_id=UUID(str(tag.id)), user=user
             )
@@ -650,7 +653,7 @@ def _apply_zotero_tags(
 
 def _compute_max_new_imports(
     db: Session, user: CurrentUser, limit: int
-) -> Tuple[int, Optional[str]]:
+) -> tuple[int, str | None]:
     """Return how many new papers can be imported and an error if at upload limit."""
     can_upload, upload_err = can_user_upload_paper(db, user)
     if not can_upload:
@@ -666,11 +669,11 @@ async def _discover_import_candidates(
     client: ZoteroApiClient,
     user: CurrentUser,
     limit: int,
-) -> Tuple[
-    List[Dict[str, Any]],
-    List[Tuple[Dict[str, Any], str, str]],
+) -> tuple[
+    list[dict[str, Any]],
+    list[tuple[dict[str, Any], str, str]],
     int,
-    List[Dict[str, str]],
+    list[dict[str, str]],
 ]:
     """
     Sequential scan of Zotero items: skip/link/dedup, then collect import candidates.
@@ -678,11 +681,11 @@ async def _discover_import_candidates(
     Returns (candidates, deferred_links, skipped_already_imported, errors).
     deferred_links entries are (item, item_key, first_item_key_in_batch).
     """
-    candidates: List[Dict[str, Any]] = []
-    deferred_links: List[Tuple[Dict[str, Any], str, str]] = []
-    errors: List[Dict[str, str]] = []
+    candidates: list[dict[str, Any]] = []
+    deferred_links: list[tuple[dict[str, Any], str, str]] = []
+    errors: list[dict[str, str]] = []
     skipped_already_imported = 0
-    batch_doi_claimed: Dict[str, str] = {}
+    batch_doi_claimed: dict[str, str] = {}
     start = 0
     page_size = 25
     upload_limit_hit = False
@@ -787,7 +790,7 @@ def _apply_metadata_from_zotero(
     db: Session,
     *,
     paper: Paper,
-    item_data: Dict[str, Any],
+    item_data: dict[str, Any],
     user: CurrentUser,
 ) -> None:
     """
@@ -812,7 +815,7 @@ def _apply_metadata_from_zotero(
 
 
 async def _import_one_paper(
-    item: Dict[str, Any],
+    item: dict[str, Any],
     *,
     user: CurrentUser,
     zotero_user_id: str,
@@ -831,9 +834,9 @@ async def _import_one_paper(
     item_key = item.get("key", "")
     db = SessionLocal()
     client = ZoteroApiClient(zotero_user_id=zotero_user_id, api_key=api_key)
-    upload_job_id: Optional[str] = None
-    import_row: Optional[ZoteroImportedItem] = None
-    created_paper_id: Optional[str] = None
+    upload_job_id: str | None = None
+    import_row: ZoteroImportedItem | None = None
+    created_paper_id: str | None = None
 
     try:
         import_row = zotero_import_crud.create(
@@ -1004,7 +1007,7 @@ async def _import_one_paper(
         db.close()
 
 
-def _upload_pdf_to_s3(pdf_bytes: bytes, safe_filename: str) -> Tuple[str, str]:
+def _upload_pdf_to_s3(pdf_bytes: bytes, safe_filename: str) -> tuple[str, str]:
     """Run async S3 upload from a worker thread (boto3 blocks the event loop)."""
     loop = asyncio.new_event_loop()
     try:
@@ -1020,7 +1023,7 @@ def list_library(
     *,
     user: CurrentUser,
     limit: int = 100,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Fetch and annotate importable items from the user's Zotero library.
 
@@ -1036,7 +1039,7 @@ def list_library(
         api_key=str(connection.api_key),
     )
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     page_size = 25
     start = 0
     while len(items) < limit:
@@ -1048,33 +1051,33 @@ def list_library(
             break
         start += page_size
 
-    imported_keys: set = set(
-        row.zotero_item_key
-        for row in db.query(ZoteroImportedItem.zotero_item_key)
-        .join(Paper, ZoteroImportedItem.paper_id == Paper.id)
-        .filter(
-            ZoteroImportedItem.user_id == user.id,
-            ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
-            ZoteroImportedItem.paper_id.isnot(None),
-        )
-        .all()
+    imported_keys = set(
+        db.scalars(
+            select(ZoteroImportedItem.zotero_item_key)
+            .join(Paper, ZoteroImportedItem.paper_id == Paper.id)
+            .where(
+                ZoteroImportedItem.user_id == user.id,
+                ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
+                ZoteroImportedItem.paper_id.isnot(None),
+            )
+        ).all()
     )
 
     # Determine which top-level items have a stored PDF attachment so the modal
     # can surface only the papers the import pipeline can actually download a PDF
     # for (the same stored-PDF predicate find_pdf_attachment uses at import time).
     # A single bulk attachment scan avoids a per-item children call.
-    pdf_parent_keys: set = client.get_pdf_parent_item_keys()
+    pdf_parent_keys: set[str] = client.get_pdf_parent_item_keys()
 
     # Map collection keys -> names so the modal can offer a collection filter.
-    collection_names: Dict[str, str] = client.get_collections()
+    collection_names: dict[str, str] = client.get_collections()
 
     result = []
     for item in items:
         data = item.get("data", {})
         item_key = item.get("key", "")
         creators = data.get("creators") or []
-        authors: List[str] = []
+        authors: list[str] = []
         for c in creators:
             if c.get("creatorType") not in ("author", None):
                 continue
@@ -1131,12 +1134,12 @@ async def _discover_candidates_by_keys(
     *,
     client: ZoteroApiClient,
     user: CurrentUser,
-    item_keys: List[str],
-) -> Tuple[
-    List[Dict[str, Any]],
-    List[Tuple[Dict[str, Any], str, str]],
+    item_keys: list[str],
+) -> tuple[
+    list[dict[str, Any]],
+    list[tuple[dict[str, Any], str, str]],
     int,
-    List[Dict[str, str]],
+    list[dict[str, str]],
 ]:
     """
     Resolve specific Zotero item keys into import candidates.
@@ -1145,11 +1148,11 @@ async def _discover_candidates_by_keys(
     only the caller-specified keys instead of scanning the full library.
     Returns (candidates, deferred_links, skipped_already_imported, errors).
     """
-    candidates: List[Dict[str, Any]] = []
-    deferred_links: List[Tuple[Dict[str, Any], str, str]] = []
-    errors: List[Dict[str, str]] = []
+    candidates: list[dict[str, Any]] = []
+    deferred_links: list[tuple[dict[str, Any], str, str]] = []
+    errors: list[dict[str, str]] = []
     skipped_already_imported = 0
-    batch_doi_claimed: Dict[str, str] = {}
+    batch_doi_claimed: dict[str, str] = {}
 
     max_new, upload_err = _compute_max_new_imports(db, user, len(item_keys))
     if max_new == 0:
@@ -1226,8 +1229,8 @@ async def import_batch(
     db: Session,
     *,
     user: CurrentUser,
-    item_keys: List[str],
-) -> Dict[str, Any]:
+    item_keys: list[str],
+) -> dict[str, Any]:
     """
     Import the specified Zotero items by key.
 
@@ -1257,13 +1260,13 @@ async def import_batch(
         db, client=client, user=user, item_keys=item_keys
     )
 
-    imported: List[Dict[str, Any]] = []
+    imported: list[dict[str, Any]] = []
     imported_via_url = 0
 
     if candidates:
         sem = asyncio.Semaphore(ZOTERO_IMPORT_CONCURRENCY)
 
-        async def run_one(item: Dict[str, Any]) -> ImportOneResult:
+        async def run_one(item: dict[str, Any]) -> ImportOneResult:
             async with sem:
                 return await _import_one_paper(
                     item,
@@ -1277,7 +1280,7 @@ async def import_batch(
             return_exceptions=True,
         )
 
-        item_key_to_paper_id: Dict[str, str] = {}
+        item_key_to_paper_id: dict[str, str] = {}
         for i, raw in enumerate(raw_results):
             if isinstance(raw, BaseException):
                 item_key = candidates[i].get("key", "")
@@ -1381,7 +1384,7 @@ def apply_zotero_annotations(
         page_dims = _get_page_dims_for_paper(paper) if paper else {}
 
         annotations_payload = cast(
-            List[Dict[str, Any]], import_row.annotations_payload or []
+            list[dict[str, Any]], import_row.annotations_payload or []
         )
         for payload_item in annotations_payload:
             normalized = _normalize_payload_item(payload_item)
@@ -1427,7 +1430,7 @@ def _sync_item(
     client: ZoteroApiClient,
     import_row: ZoteroImportedItem,
     user: CurrentUser,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     paper_id = import_row.paper_id
     if not paper_id or not import_row.zotero_attachment_key:
         raise ValueError("Import row is missing paper or attachment key")
@@ -1491,7 +1494,7 @@ async def sync_batch(
     *,
     user: CurrentUser,
     limit: int = 50,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Append-only sync of new Zotero annotations for already-imported PDF papers."""
     connection = zotero_crud.get_by_user_id(db, user_id=user.id)
     if not connection:
@@ -1506,8 +1509,8 @@ async def sync_batch(
         db, user_id=user.id, limit=limit
     )
 
-    synced: List[Dict[str, Any]] = []
-    errors: List[Dict[str, str]] = []
+    synced: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
     new_annotations_count = 0
 
     for import_row in syncable:
@@ -1544,7 +1547,7 @@ async def auto_import_new_papers(
     db: Session,
     *,
     user: CurrentUser,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     For Researcher-plan users: detect Zotero library items not yet tracked in
     zotero_imported_items and import them automatically, subject to the user's

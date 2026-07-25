@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -12,7 +12,7 @@ from app.database.models import (
 )
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 
@@ -20,10 +20,10 @@ class MessageBase(BaseModel):
     conversation_id: UUID
     role: str
     content: str
-    references: Optional[Dict[str, Any]] = None
-    trace: Optional[Dict[str, Any]] = None
+    references: dict[str, Any] | None = None
+    trace: dict[str, Any] | None = None
     # Denormalized @-mention context snapshot: [{kind, id, title}].
-    scope: Optional[List[Dict[str, Any]]] = None
+    scope: list[dict[str, Any]] | None = None
 
 
 class MessageCreate(MessageBase):
@@ -31,28 +31,33 @@ class MessageCreate(MessageBase):
 
 
 class MessageUpdate(BaseModel):
-    role: Optional[str] = None
-    content: Optional[str] = None
-    references: Optional[Dict[str, Any]] = None
-    trace: Optional[Dict[str, Any]] = None
-    scope: Optional[List[Dict[str, Any]]] = None
+    role: str | None = None
+    content: str | None = None
+    references: dict[str, Any] | None = None
+    trace: dict[str, Any] | None = None
+    scope: list[dict[str, Any]] | None = None
 
 
 class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
     """CRUD operations specifically for Message model"""
 
     def create(
-        self, db: Session, *, obj_in: MessageCreate, user: CurrentUser
-    ) -> Message:
+        self,
+        db: Session,
+        *,
+        obj_in: MessageCreate,
+        user: CurrentUser | None = None,
+        auto_commit: bool = True,
+    ) -> Message | None:
         """Create a new message with auto-incrementing sequence number"""
+        if user is None:
+            raise ValueError("User must be provided to create a message")
         # Get the next sequence number for this conversation
-        max_sequence = (
-            db.query(func.max(Message.sequence))
-            .filter(
+        max_sequence = db.scalar(
+            select(func.max(Message.sequence)).where(
                 Message.conversation_id == obj_in.conversation_id,
                 Message.user_id == user.id,
             )
-            .scalar()
         )
         next_sequence = (max_sequence or 0) + 1
 
@@ -66,8 +71,11 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
 
         try:
             db.add(db_obj)
-            db.commit()
-            db.refresh(db_obj)
+            if auto_commit:
+                db.commit()
+                db.refresh(db_obj)
+            else:
+                db.flush()
         except Exception:
             # Roll back so a failed flush doesn't leave the session in a
             # PendingRollbackError state for every later operation.
@@ -90,17 +98,16 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         2. Apply offset and limit
         3. Reverse final results for chronological display
         """
-        messages = (
-            db.query(Message)
-            .filter(
+        messages = db.scalars(
+            select(Message)
+            .where(
                 Message.conversation_id == conversation_id,
                 Message.user_id == current_user.id,
             )
             .order_by(desc(Message.sequence))  # newest first for pagination
             .offset((page - 1) * page_size)
             .limit(page_size)
-            .all()
-        )
+        ).all()
 
         # Reverse the results to get chronological order
         return list(reversed(messages))
@@ -122,41 +129,36 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         3. Reverse final results for chronological display
         """
         # First, check if the user has access to the project.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == current_user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return []
 
         # Ensure that the target conversation belongs to the project
-        conversation = (
-            db.query(Conversation)
-            .filter(
+        conversation = db.scalars(
+            select(Conversation).where(
                 Conversation.id == conversation_id,
                 Conversation.conversable_id == project_id,
                 Conversation.conversable_type == ConversableType.PROJECT,
             )
-            .first()
-        )
+        ).first()
 
         if not conversation:
             return []
 
-        messages = (
-            db.query(Message)
-            .filter(
+        messages = db.scalars(
+            select(Message)
+            .where(
                 Message.conversation_id == conversation_id,
             )
             .order_by(desc(Message.sequence))  # newest first for pagination
             .offset((page - 1) * page_size)
             .limit(page_size)
-            .all()
-        )
+        ).all()
 
         # Reverse the results to get chronological order
         return list(reversed(messages))
@@ -177,14 +179,14 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         3. Reverse final results for chronological display
         """
         # First, let's verify the conversation exists and get its details
-        conversation = (
-            db.query(Conversation).filter(Conversation.id == conversation_id).first()
-        )
+        conversation = db.get(Conversation, conversation_id)
         if not conversation:
             return []
 
         # Check if there's a paper with the given share_id
-        paper = db.query(Paper).filter(Paper.share_id == share_paper_id).first()
+        paper = db.scalars(
+            select(Paper).where(Paper.share_id == share_paper_id)
+        ).first()
         if not paper:
             return []
 
@@ -192,22 +194,21 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         if conversation.conversable_id != paper.id:
             return []
 
-        messages = (
-            db.query(Message)
-            .filter(
+        messages = db.scalars(
+            select(Message)
+            .where(
                 Message.conversation_id == conversation_id,
                 # Remove the joins and just check the conversation directly
             )
             .order_by(desc(Message.sequence))  # newest first for pagination
             .offset((page - 1) * page_size)
             .limit(page_size)
-            .all()
-        )
+        ).all()
 
         # Reverse the results to get chronological order
         return list(reversed(messages))
 
-    def messages_to_dict(self, messages: list[Message]) -> list[Dict[str, Any]]:
+    def messages_to_dict(self, messages: list[Message]) -> list[dict[str, Any]]:
         """
         Convert a list of Message objects to a list of dictionaries
         """
@@ -243,7 +244,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
             db, conversation_id=conversation_id, current_user=current_user
         )
         for i, message in enumerate(messages):
-            message.sequence = (i + 1) * gap  # type: ignore
+            message.sequence = (i + 1) * gap
         db.commit()
 
 

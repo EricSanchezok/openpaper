@@ -4,7 +4,13 @@ import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, AsyncGenerator, Dict, List, Mapping, Optional, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Mapping,
+    cast,
+)
 
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
@@ -104,12 +110,12 @@ class EvidenceOperations(BaseLLMClient):
         self,
         question: str,
         current_user: CurrentUser,
-        conversation_id: Optional[str] = None,
-        project_id: Optional[str] = None,
-        restrict_to_paper_ids: Optional[List[str]] = None,
+        conversation_id: str | None = None,
+        project_id: str | None = None,
+        restrict_to_paper_ids: list[str] | None = None,
         db: Session = Depends(get_db),
     ) -> AsyncGenerator[
-        Mapping[str, Union[str, Dict[str, List[str]], EvidenceCollection]], None
+        Mapping[str, str | dict[str, list[str]] | EvidenceCollection], None
     ]:
         """
         Gather evidence from multiple papers based on the user's question.
@@ -304,9 +310,14 @@ class EvidenceOperations(BaseLLMClient):
 
                         # Run the tool call in a thread so we can yield
                         # heartbeats and keep the streaming connection alive.
-                        def _run_tool(_fn=function_maps[fn_name], _args=fn_args):
-                            return _fn(
-                                **_args,
+                        selected_fn = cast(
+                            Callable[..., object], function_maps[fn_name]
+                        )
+                        selected_args: Mapping[str, Any] = fn_args
+
+                        def _run_tool() -> object:
+                            return selected_fn(
+                                **selected_args,
                                 current_user=current_user,
                                 project_id=project_id,
                                 restrict_to_paper_ids=restrict_to_paper_ids,
@@ -341,8 +352,14 @@ class EvidenceOperations(BaseLLMClient):
                                 fn_selected, _summarize_citation(result)
                             )
                         else:
+                            tool_result = (
+                                result
+                                if isinstance(result, (str, list, dict))
+                                or result is None
+                                else str(result)
+                            )
                             evidence_collection.add_tool_call_result(
-                                fn_selected, result
+                                fn_selected, tool_result
                             )
 
                             preserve_line_numbers = fn_name in [
@@ -490,7 +507,7 @@ class EvidenceOperations(BaseLLMClient):
         evidence_collection: EvidenceCollection,
         original_question: str,
         current_user: CurrentUser,
-        db: Optional[Session] = None,
+        db: Session | None = None,
     ) -> None:
         """
         Compact tool call results by summarizing them to reduce context size.
@@ -560,8 +577,8 @@ class EvidenceOperations(BaseLLMClient):
         evidence_collection: EvidenceCollection,
         original_question: str,
         current_user: CurrentUser,
-        db: Optional[Session] = None,
-    ) -> AsyncGenerator[Dict[str, Union[str, Dict[str, List[str]]]], None]:
+        db: Session | None = None,
+    ) -> AsyncGenerator[dict[str, str | dict[str, list[str]]], None]:
         """
         Compact evidence to reduce context size for chat response.
         Modifies the evidence_collection in place.
@@ -603,7 +620,7 @@ class EvidenceOperations(BaseLLMClient):
                 )
 
         # Format evidence with indexed snippets for LLM
-        evidence_for_compaction: List[Dict[str, Any]] = []
+        evidence_for_compaction: list[dict[str, Any]] = []
         total_chars = 0
         for paper_id, snippets in papers_by_evidence:
             # Build indexed snippets for this paper
@@ -645,7 +662,7 @@ class EvidenceOperations(BaseLLMClient):
             response_model=EvidenceSummaryResponse,
         )
 
-        all_compacted: Dict[str, List[str]] = {}
+        all_compacted: dict[str, list[str]] = {}
 
         try:
             if llm_response and llm_response.text:
@@ -702,7 +719,7 @@ class EvidenceOperations(BaseLLMClient):
     async def _extract_search_keywords(
         self,
         question: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract search keywords from a question using LLM."""
         formatted_prompt = KEYWORD_EXTRACTION_PROMPT.format(question=question)
 

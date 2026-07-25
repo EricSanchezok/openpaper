@@ -1,3 +1,4 @@
+from app.api.types import ApiData as ApiResponse
 import logging
 import uuid
 
@@ -8,7 +9,7 @@ from app.database.telemetry import track_event
 from app.schemas.paper import BulkTagRequest
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -23,11 +24,13 @@ def create_tag(
     tag_in: PaperTagCreate,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Create a new tag for the current user.
     """
     tag = paper_tag_crud.create(db, obj_in=tag_in, user=current_user)
+    if tag is None:
+        raise HTTPException(status_code=500, detail="tag_create_failed")
 
     track_event(
         "tag_created",
@@ -47,7 +50,7 @@ def create_tag(
 def get_all_tags(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all tags for the current user.
     """
@@ -60,7 +63,7 @@ def bulk_add_tags(
     request: BulkTagRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Apply multiple tags to multiple papers.
     """
@@ -96,7 +99,7 @@ def remove_tag_from_paper(
     tag_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> Response:
     """
     Remove a tag from a specific paper.
     """
@@ -114,7 +117,7 @@ def remove_tag_from_paper(
         db=db,
     )
 
-    return
+    return Response(status_code=204)
 
 
 @paper_tag_router.get("/papers/{paper_id}/tags")
@@ -122,7 +125,7 @@ def get_tags_for_paper(
     paper_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all tags for a specific paper.
     """
@@ -137,7 +140,7 @@ def get_papers_for_tag(
     tag_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> ApiResponse:
     """
     Get all papers associated with a specific tag.
     """

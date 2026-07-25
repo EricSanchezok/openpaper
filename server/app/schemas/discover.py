@@ -1,11 +1,18 @@
 """Schemas for the Discover feature."""
 
-from typing import Optional
+from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+
 # Available search backends for Discover.
-DISCOVER_SOURCES = {
+class DiscoverSource(TypedDict):
+    label: str
+    description: str
+    domains: list[str] | None
+
+
+DISCOVER_SOURCES: dict[str, DiscoverSource] = {
     "openalex": {
         "label": "Academic Databases",
         "description": "OpenAlex scholarly index",
@@ -68,14 +75,12 @@ class DiscoverSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=10_000)
-    sources: Optional[list[str]] = Field(default=None, max_length=10)
-    sort: Optional[str] = Field(
+    sources: list[str] | None = Field(default=None, max_length=10)
+    sort: str | None = Field(
         default=None, pattern="^(cited_by_count:desc|publication_date:desc)$"
     )
     only_open_access: bool = False
-    year_filter: Optional[str] = Field(
-        default=None, pattern="^(last_year|last_5_years)$"
-    )
+    year_filter: str | None = Field(default=None, pattern="^(last_year|last_5_years)$")
 
     @field_validator("sources")
     @classmethod

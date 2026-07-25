@@ -3,7 +3,7 @@ import os
 import re
 import time
 from enum import Enum
-from typing import List, Optional
+from typing import Any
 from urllib.parse import quote, unquote
 
 import requests
@@ -68,7 +68,9 @@ def _request_with_retry(
                     f"OpenAlex API request failed after {max_retries} attempts: {e}"
                 )
 
-    raise last_exception  # type: ignore
+    if last_exception is not None:
+        raise last_exception
+    raise RuntimeError("OpenAlex request did not run")
 
 
 SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
@@ -102,37 +104,37 @@ class BaseOpenAlexModel(BaseModel):
 
 class OpenAccess(BaseOpenAlexModel):
     is_oa: bool
-    oa_status: Optional[OAStatus] = None
-    oa_url: Optional[str] = None
+    oa_status: OAStatus | None = None
+    oa_url: str | None = None
 
 
 class Keyword(BaseOpenAlexModel):
     id: str
     display_name: str
-    score: Optional[float] = None
+    score: float | None = None
 
 
 class PrimaryLocationSource(BaseOpenAlexModel):
-    id: Optional[str] = None
-    display_name: Optional[str] = None
-    type: Optional[str] = None
-    issn_l: Optional[str] = None
-    issn: Optional[List[str]] = None
-    host_organization: Optional[str] = None
+    id: str | None = None
+    display_name: str | None = None
+    type: str | None = None
+    issn_l: str | None = None
+    issn: list[str] | None = None
+    host_organization: str | None = None
 
 
 class PrimaryLocation(BaseOpenAlexModel):
-    is_oa: Optional[bool] = None
-    landing_page_url: Optional[str] = None
-    pdf_url: Optional[str] = None
-    source: Optional[PrimaryLocationSource] = None
+    is_oa: bool | None = None
+    landing_page_url: str | None = None
+    pdf_url: str | None = None
+    source: PrimaryLocationSource | None = None
 
 
 class Biblio(BaseOpenAlexModel):
-    volume: Optional[str] = None
-    issue: Optional[str] = None
-    first_page: Optional[str] = None
-    last_page: Optional[str] = None
+    volume: str | None = None
+    issue: str | None = None
+    first_page: str | None = None
+    last_page: str | None = None
 
 
 class SubTopic(BaseOpenAlexModel):
@@ -142,54 +144,54 @@ class SubTopic(BaseOpenAlexModel):
 
 class Topic(BaseOpenAlexModel):
     id: str
-    display_name: Optional[str] = None
-    score: Optional[float] = None
-    subfield: Optional[SubTopic] = None
-    field: Optional[SubTopic] = None
-    domain: Optional[SubTopic] = None
+    display_name: str | None = None
+    score: float | None = None
+    subfield: SubTopic | None = None
+    field: SubTopic | None = None
+    domain: SubTopic | None = None
 
 
 class Author(BaseOpenAlexModel):
-    id: Optional[str] = None
-    display_name: Optional[str] = None
-    orcid: Optional[str] = None
+    id: str | None = None
+    display_name: str | None = None
+    orcid: str | None = None
 
 
 class Institution(BaseOpenAlexModel):
-    id: Optional[str] = None
-    display_name: Optional[str] = None
-    ror: Optional[str] = None
-    country_code: Optional[str] = None
-    type: Optional[str] = None
+    id: str | None = None
+    display_name: str | None = None
+    ror: str | None = None
+    country_code: str | None = None
+    type: str | None = None
 
 
 class Authorship(BaseOpenAlexModel):
-    author_position: Optional[str] = None
-    author: Optional[Author] = None
-    institutions: Optional[List[Institution]] = None
+    author_position: str | None = None
+    author: Author | None = None
+    institutions: list[Institution] | None = None
 
 
 class OpenAlexWork(BaseOpenAlexModel):
     id: str
     title: str
-    doi: Optional[str] = None
-    display_name: Optional[str] = None
-    publication_year: Optional[int] = None
-    publication_date: Optional[str] = None
-    type: Optional[str] = None
-    open_access: Optional[OpenAccess] = None
-    keywords: Optional[List[Keyword]] = None
-    primary_location: Optional[PrimaryLocation] = None
-    biblio: Optional[Biblio] = None
-    topics: Optional[List[Topic]] = None
-    authorships: Optional[List[Authorship]] = None
-    cited_by_count: Optional[int] = None
-    abstract_inverted_index: Optional[dict] = None
-    abstract: Optional[str] = None
+    doi: str | None = None
+    display_name: str | None = None
+    publication_year: int | None = None
+    publication_date: str | None = None
+    type: str | None = None
+    open_access: OpenAccess | None = None
+    keywords: list[Keyword] | None = None
+    primary_location: PrimaryLocation | None = None
+    biblio: Biblio | None = None
+    topics: list[Topic] | None = None
+    authorships: list[Authorship] | None = None
+    cited_by_count: int | None = None
+    abstract_inverted_index: dict[str, list[int]] | None = None
+    abstract: str | None = None
 
     @model_validator(mode="before")
     @classmethod
-    def validate_work(_cls, data):
+    def validate_work(_cls, data: Any) -> Any:
         if "abstract_inverted_index" in data and data["abstract_inverted_index"]:
             data["abstract"] = build_abstract_from_inverted_index(
                 data["abstract_inverted_index"]
@@ -198,12 +200,12 @@ class OpenAlexWork(BaseOpenAlexModel):
 
 
 class OpenAlexResponse(BaseModel):
-    meta: dict
-    results: List[OpenAlexWork]
+    meta: dict[str, object]
+    results: list[OpenAlexWork]
 
     @model_validator(mode="before")
     @classmethod
-    def validate_results(_cls, data):
+    def validate_results(_cls, data: Any) -> Any:
         if "results" in data:
             valid_results = []
             for item in data["results"]:
@@ -223,7 +225,7 @@ class OpenAlexCitationGraph(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_citation_graph(_cls, data):
+    def validate_citation_graph(_cls, data: Any) -> Any:
         if "cites" in data:
             data["cites"] = OpenAlexResponse(**data["cites"])
         if "cited_by" in data:
@@ -232,11 +234,11 @@ class OpenAlexCitationGraph(BaseModel):
 
 
 class OpenAlexFilter(BaseModel):
-    authors: Optional[List[str]] = None
-    institutions: Optional[List[str]] = None
+    authors: list[str] | None = None
+    institutions: list[str] | None = None
     only_oa: bool = False
-    from_publication_date: Optional[str] = None  # ISO date format: YYYY-MM-DD
-    min_cited_by_count: Optional[int] = None
+    from_publication_date: str | None = None  # ISO date format: YYYY-MM-DD
+    min_cited_by_count: int | None = None
 
 
 def construct_open_alex_filter_url(filter: OpenAlexFilter) -> str:
@@ -267,10 +269,10 @@ def construct_open_alex_filter_url(filter: OpenAlexFilter) -> str:
 # Utility functions for searching the OpenAlex API
 # For documentation, see https://docs.openalex.org/api-entities/works/search-works
 def search_open_alex(
-    search_term: Optional[str],
-    filter: Optional[OpenAlexFilter] = None,
+    search_term: str | None,
+    filter: OpenAlexFilter | None = None,
     page: int = 1,
-    sort: Optional[str] = None,  # e.g. "cited_by_count:desc" or "publication_year:desc"
+    sort: str | None = None,  # e.g. "cited_by_count:desc" or "publication_year:desc"
 ) -> OpenAlexResponse:
     """
     Search the OpenAlex API for papers based on a search term and optional filter.
@@ -307,7 +309,7 @@ def search_open_alex(
     return OpenAlexResponse(**response.json())
 
 
-def get_host_organization_name(host_organization_url: str) -> Optional[str]:
+def get_host_organization_name(host_organization_url: str) -> str | None:
     """
     Retrieve the host organization name from OpenAlex given a host_organization URL.
 
@@ -343,7 +345,8 @@ def get_host_organization_name(host_organization_url: str) -> Optional[str]:
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                return data.get("display_name")
+                display_name = data.get("display_name")
+                return display_name if isinstance(display_name, str) else None
             elif response.status_code == 404:
                 return None
             else:
@@ -360,7 +363,9 @@ def get_host_organization_name(host_organization_url: str) -> Optional[str]:
     return None
 
 
-def build_abstract_from_inverted_index(inverted_index: dict) -> str:
+def build_abstract_from_inverted_index(
+    inverted_index: dict[str, list[int]],
+) -> str:
     """
     Build an abstract from the inverted index of a paper.
 
@@ -380,7 +385,7 @@ def build_abstract_from_inverted_index(inverted_index: dict) -> str:
     return " ".join(abstract).strip() if abstract else ""
 
 
-def get_paper_by_open_alex_id(open_alex_id: str) -> Optional[OpenAlexWork]:
+def get_paper_by_open_alex_id(open_alex_id: str) -> OpenAlexWork | None:
     """
     Retrieve a paper from OpenAlex by its OpenAlex ID.
 
@@ -411,7 +416,7 @@ def get_paper_by_open_alex_id(open_alex_id: str) -> Optional[OpenAlexWork]:
     return None
 
 
-def get_work_by_doi(doi: str) -> Optional[OpenAlexWork]:
+def get_work_by_doi(doi: str) -> OpenAlexWork | None:
     """
     Retrieve a work from OpenAlex by its DOI.
 
@@ -515,7 +520,7 @@ def normalize_doi(raw: str | None) -> str | None:
     return None
 
 
-def get_doi(title: str, authors: Optional[List[str]] = None) -> Optional[str]:
+def get_doi(title: str, authors: list[str] | None = None) -> str | None:
     """
     Retrieve the DOI for a paper given its title and optional author using a series of external APIs.
 
@@ -530,7 +535,7 @@ def get_doi(title: str, authors: Optional[List[str]] = None) -> Optional[str]:
         Optional[str]: The DOI of the paper if found, otherwise None.
     """
 
-    def get_openalex_doi(title: str) -> Optional[str]:
+    def get_openalex_doi(title: str) -> str | None:
         try:
             open_alex_results = search_open_alex(title)
             target_authors = set(a.lower() for a in authors) if authors else set()
@@ -563,11 +568,9 @@ def get_doi(title: str, authors: Optional[List[str]] = None) -> Optional[str]:
             return None
         return None
 
-    def get_crossref_doi(
-        title: str, authors: Optional[List[str]] = None
-    ) -> Optional[str]:
+    def get_crossref_doi(title: str, authors: list[str] | None = None) -> str | None:
         base_url = "https://api.crossref.org/works"
-        params = {"query.title": quote(title), "rows": 1}
+        params: dict[str, str | int] = {"query.title": quote(title), "rows": 1}
         if authors:
             params["query.author"] = ", ".join(authors)
 
@@ -580,28 +583,34 @@ def get_doi(title: str, authors: Optional[List[str]] = None) -> Optional[str]:
             if "title" in top_match and title.lower() in [
                 t.lower() for t in top_match["title"]
             ]:
-                return top_match.get("DOI")
+                doi = top_match.get("DOI")
+                return doi if isinstance(doi, str) else None
         return None
 
-    def search_semantic_scholar_doi(title: str) -> Optional[str]:
+    def search_semantic_scholar_doi(title: str) -> str | None:
         # Not working currently - hitting 403 errors with every request. TODO fix once we have a resolution.
 
         if DISABLE_SEMANTIC_SCHOLAR:
             return None
 
         base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
-        headers = {}
+        headers: dict[str, str] = {}
         if SEMANTIC_SCHOLAR_API_KEY:
             headers["x-api-key"] = SEMANTIC_SCHOLAR_API_KEY
 
-        params = {"query": title, "limit": 1, "fields": "doi"}
+        params: dict[str, str | int] = {
+            "query": title,
+            "limit": 1,
+            "fields": "doi",
+        }
         response = requests.get(base_url, headers=headers, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
         if data.get("data"):
             top_match = data["data"][0]
             if "title" in top_match and title.lower() in top_match["title"].lower():
-                return top_match.get("doi")
+                doi = top_match.get("doi")
+                return doi if isinstance(doi, str) else None
         return None
 
     if not title:
@@ -643,7 +652,7 @@ def get_doi(title: str, authors: Optional[List[str]] = None) -> Optional[str]:
     return crossref_doi or openalex_doi or semantic_scholar_doi
 
 
-def get_enriched_data(doi: str) -> Optional[EnrichedData]:
+def get_enriched_data(doi: str) -> EnrichedData | None:
     """
     Retrieve enriched data for a paper given its DOI using the OpenAlex API or CrossRef API.
 
@@ -653,7 +662,7 @@ def get_enriched_data(doi: str) -> Optional[EnrichedData]:
         Optional[EnrichedData]: The enriched data of the paper if found, otherwise None.
     """
 
-    def get_openalex_enriched_data(doi: str) -> Optional[EnrichedData]:
+    def get_openalex_enriched_data(doi: str) -> EnrichedData | None:
         try:
             result = get_work_by_doi(doi)
             if result:
@@ -687,7 +696,7 @@ def get_enriched_data(doi: str) -> Optional[EnrichedData]:
             return None
         return None
 
-    def get_crossref_enriched_data(doi: str) -> Optional[EnrichedData]:
+    def get_crossref_enriched_data(doi: str) -> EnrichedData | None:
         base_url = f"https://api.crossref.org/works/{quote(doi)}"
         response = requests.get(base_url, timeout=10)
         if response.status_code == 404:

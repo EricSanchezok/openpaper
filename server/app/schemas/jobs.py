@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from app.schemas.responses import PaperMetadataExtraction
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -16,7 +16,7 @@ class TokenUsageEventPayload(BaseModel):
     feature: str = Field(min_length=1, max_length=64)
     model: str = Field(min_length=1, max_length=128)
     reasoning_level: str = Field(pattern="^(standard|deep)$")
-    provider_request_id: Optional[str] = Field(default=None, max_length=160)
+    provider_request_id: str | None = Field(default=None, max_length=160)
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
     reasoning_tokens: int = Field(default=0, ge=0)
@@ -31,21 +31,21 @@ class PDFProcessingResult(BaseModel):
 
     success: bool
     job_id: str
-    raw_content: Optional[str] = None
-    page_offset_map: Optional[dict[int, list[int]]] = None
-    metadata: Optional[PaperMetadataExtraction] = None
-    s3_object_key: Optional[str] = None
-    file_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    preview_object_key: Optional[str] = None
-    parser_markdown_s3_key: Optional[str] = None
-    parser_archive_s3_key: Optional[str] = None
-    parser_backend: Optional[Literal["mineru", "pymupdf"]] = None
-    parser_quality: Optional[Literal["full", "text_only"]] = None
-    parser_version: Optional[str] = None
-    parser_warning_code: Optional[str] = None
-    error: Optional[str] = None
-    duration: Optional[float] = None
+    raw_content: str | None = None
+    page_offset_map: dict[int, list[int]] | None = None
+    metadata: PaperMetadataExtraction | None = None
+    s3_object_key: str | None = None
+    file_url: str | None = None
+    preview_url: str | None = None
+    preview_object_key: str | None = None
+    parser_markdown_s3_key: str | None = None
+    parser_archive_s3_key: str | None = None
+    parser_backend: Literal["mineru", "pymupdf"] | None = None
+    parser_quality: Literal["full", "text_only"] | None = None
+    parser_version: str | None = None
+    parser_warning_code: str | None = None
+    error: str | None = None
+    duration: float | None = None
 
     @model_validator(mode="after")
     def validate_result_state(self) -> "PDFProcessingResult":
@@ -69,5 +69,5 @@ class PdfProcessingWebhookData(BaseModel):
     task_id: str
     status: Literal["completed", "failed"]
     result: PDFProcessingResult
-    error: Optional[str] = None
+    error: str | None = None
     usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)

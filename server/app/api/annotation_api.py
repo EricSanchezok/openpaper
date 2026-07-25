@@ -10,6 +10,7 @@ from app.database.crud.annotation_crud import (
 from app.database.database import get_db
 from app.database.models import RoleType
 from app.database.telemetry import track_event
+from app.schemas.orm_responses import serialize_annotation
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -63,7 +64,7 @@ async def create_annotation(
 
         return JSONResponse(
             status_code=201,
-            content=annotation.to_dict(),
+            content=serialize_annotation(annotation),
         )
     except Exception as e:
         logger.error(f"Error creating annotation: {e}", exc_info=True)
@@ -86,7 +87,7 @@ async def get_document_annotations(
         )
         return JSONResponse(
             status_code=200,
-            content=[annotation.to_dict() for annotation in annotations],
+            content=[serialize_annotation(annotation) for annotation in annotations],
         )
     except Exception as e:
         logger.error(f"Error fetching annotations: {e}")
@@ -175,7 +176,7 @@ async def update_annotation(
             db=db,
         )
 
-        return JSONResponse(status_code=200, content=annotation.to_dict())
+        return JSONResponse(status_code=200, content=serialize_annotation(annotation))
     except ValueError:
         return JSONResponse(status_code=404, content={"code": "request_failed"})
     except Exception as e:

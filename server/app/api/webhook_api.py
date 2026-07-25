@@ -2,10 +2,11 @@
 Webhook handlers for PDF processing service integration.
 """
 
+from app.api.types import ApiData as ApiResponse
+
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 import stripe
 from app.database.crud.conversation_crud import ConversationCreate, conversation_crud
@@ -96,8 +97,8 @@ def _finalize_zotero_import(
     job_id: str,
     job_user: CurrentUser,
     result: "PDFProcessingResult",
-    error_message: Optional[str] = None,
-) -> Optional[str]:
+    error_message: str | None = None,
+) -> str | None:
     """
     Finalize a Zotero-imported paper from a jobs-worker result.
 
@@ -126,27 +127,21 @@ def _finalize_zotero_import(
         else None
     )
 
-    update_payload: dict = {"upload_job_id": job_id}
-    if result.preview_url:
-        update_payload["preview_url"] = result.preview_url
-    if result.raw_content:
-        update_payload["raw_content"] = result.raw_content
-    if result.parser_markdown_s3_key:
-        update_payload["parser_markdown_s3_key"] = result.parser_markdown_s3_key
-    if result.parser_archive_s3_key:
-        update_payload["parser_archive_s3_key"] = result.parser_archive_s3_key
-    update_payload["parser_backend"] = result.parser_backend
-    update_payload["parser_quality"] = result.parser_quality
-    update_payload["parser_version"] = result.parser_version
-    update_payload["parser_warning_code"] = result.parser_warning_code
-    if result.page_offset_map:
-        update_payload["page_offset_map"] = result.page_offset_map
-    if size_in_kb is not None:
-        update_payload["size_in_kb"] = size_in_kb
-
     paper = paper_crud.update(
         db=db,
-        obj_in=PaperUpdate(**update_payload),
+        obj_in=PaperUpdate(
+            upload_job_id=job_id,
+            preview_url=result.preview_url,
+            raw_content=result.raw_content,
+            parser_markdown_s3_key=result.parser_markdown_s3_key,
+            parser_archive_s3_key=result.parser_archive_s3_key,
+            parser_backend=result.parser_backend,
+            parser_quality=result.parser_quality,
+            parser_version=result.parser_version,
+            parser_warning_code=result.parser_warning_code,
+            page_offset_map=result.page_offset_map,
+            size_in_kb=size_in_kb,
+        ),
         db_obj=existing_paper,
         user=job_user,
     )
@@ -301,7 +296,7 @@ def post_process_paper(
             db.rollback()
             logger.exception("Error indexing passages for paper %s", paper_id)
 
-        doi: Optional[str] = None
+        doi: str | None = None
         try:
             paper = paper_crud.get(db=db, id=paper_id, user=job_user)
             if paper:
@@ -329,7 +324,7 @@ async def handle_paper_processing_webhook(
     webhook_data: PdfProcessingWebhookData,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """Handle webhook from paper processing jobs service."""
 
     # Get the job from your database (without user filtering since this is a webhook)
@@ -468,6 +463,8 @@ async def handle_paper_processing_webhook(
             )
 
             # Create paper record
+            if existing_paper is None:
+                raise HTTPException(status_code=404, detail="paper_not_found")
             paper = paper_crud.update(
                 db=db,
                 obj_in=PaperUpdate(
@@ -552,7 +549,7 @@ async def handle_paper_processing_webhook(
                                 conversation_id=uuid.UUID(str(conversation.id)),
                                 role="assistant",
                                 content=metadata.summary,
-                                references=citations_dict,
+                                references=dict(citations_dict),
                             ),
                             user=job_user,
                         )
@@ -664,8 +661,8 @@ class DataTableProcessingResultWebhookData(BaseModel):
 
     task_id: str
     status: str
-    result: Optional[DataTableResult] = None
-    error: Optional[str] = None
+    result: DataTableResult | None = None
+    error: str | None = None
     usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
 
 
@@ -674,7 +671,7 @@ async def handle_data_table_processing_webhook(
     job_id: str,
     webhook_data: DataTableProcessingResultWebhookData,
     db: Session = Depends(get_db),
-):
+) -> ApiResponse:
     """Handle webhook from data table processing jobs service."""
 
     logger.info(
@@ -795,7 +792,7 @@ async def handle_data_table_processing_webhook(
                             table_title=title,
                             columns=result.columns,
                             row_count=len(result.rows),
-                            project_name=job.project.title,
+                            project_name=job.project.title or "Untitled project",
                             project_id=str(job.project.id),
                             result_id=str(table_result.id),
                         )
@@ -842,7 +839,9 @@ async def handle_data_table_processing_webhook(
 
 
 @webhook_router.post("/internal/referral-settle/{referral_id}")
-async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
+async def settle_referral(
+    referral_id: str, db: Session = Depends(get_db)
+) -> ApiResponse:
     """
     Internal callback fired by the jobs service when a referral credit hold
     has elapsed. Idempotent — re-runs on the same referral are no-ops.
@@ -869,7 +868,7 @@ async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Referrer not found")
 
     sub = subscription_crud.get_by_user_id(db, referrer.id)
-    customer_id: Optional[str] = (
+    customer_id: str | None = (
         str(sub.stripe_customer_id) if sub and sub.stripe_customer_id else None
     )
 
@@ -896,7 +895,7 @@ async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
             {"stripe_customer_id": customer_id},
         )
 
-    credit_cents: int = int(referral.referrer_credit_cents)  # type: ignore[arg-type]
+    credit_cents: int = int(referral.referrer_credit_cents)
 
     try:
         txn = stripe.Customer.create_balance_transaction(
@@ -945,7 +944,9 @@ async def settle_referral(referral_id: str, db: Session = Depends(get_db)):
 
 
 @webhook_router.post("/internal/zotero-sync-all")
-async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db)):
+async def trigger_zotero_sync_all(
+    request: Request, db: Session = Depends(get_db)
+) -> ApiResponse:
     """
     Internal endpoint called by the Celery Beat periodic task to sync new Zotero
     annotations for all users whose items haven't been synced in the past 24 hours.
@@ -971,7 +972,8 @@ async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db
             skipped.append({"user_id": str(user_id), "reason": "user_not_found"})
             continue
 
-        if not can_user_auto_sync_zotero(db, user):
+        current_user = CurrentUser.from_auth_user(user)
+        if not can_user_auto_sync_zotero(db, current_user):
             logger.info(
                 f"Skipping Zotero auto-sync for {user_id}: not eligible for auto-sync (basic plan)"
             )
@@ -991,7 +993,7 @@ async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db
             continue
 
         try:
-            result = await sync_batch(db, user=user, limit=50)
+            result = await sync_batch(db, user=current_user, limit=50)
             results.append({"user_id": str(user_id), **result})
             if result.get("new_annotations_count", 0) > 0:
                 track_event(
@@ -1008,7 +1010,7 @@ async def trigger_zotero_sync_all(request: Request, db: Session = Depends(get_db
             # shouldn't fail the user's sync (which already succeeded above), but
             # we still log it so the error is visible rather than swallowed.
             try:
-                import_result = await auto_import_new_papers(db, user=user)
+                import_result = await auto_import_new_papers(db, user=current_user)
                 if import_result.get("auto_imported_count", 0) > 0:
                     track_event(
                         "zotero_auto_import_new_papers",

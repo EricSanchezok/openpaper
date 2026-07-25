@@ -7,11 +7,8 @@ from typing import (
     Any,
     AsyncGenerator,
     Iterator,
-    List,
     Literal,
-    Optional,
     Sequence,
-    Union,
 )
 
 from app.database.crud.message_crud import message_crud
@@ -48,13 +45,13 @@ class MultiPaperOperations(EvidenceOperations):
         conversation_id: str,
         question: str,
         current_user: CurrentUser,
-        all_papers: List[Paper],
+        all_papers: list[Paper],
         evidence_gathered: EvidenceCollection,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
-        user_references: Optional[Sequence[str]] = None,
-        mentioned_highlights: Optional[List[dict[str, Any]]] = None,
+        user_references: Sequence[str] | None = None,
+        mentioned_highlights: list[dict[str, Any]] | None = None,
         db: Session = Depends(get_db),
-    ) -> AsyncGenerator[Union[str, dict[str, Any]], None]:
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         """
         Chat with everything in the user's knowledge base using the specified model
         """
@@ -322,15 +319,15 @@ class MultiPaperOperations(EvidenceOperations):
     async def create_multi_paper_narrative_summary(
         self,
         current_user: CurrentUser,
-        additional_instructions: Optional[str] = None,
-        length: Optional[Literal["short", "medium", "long"]] = "medium",
-        project_id: Optional[str] = None,
+        additional_instructions: str | None = None,
+        length: Literal["short", "medium", "long"] | None = "medium",
+        project_id: str | None = None,
         db: Session = Depends(get_db),
     ) -> AudioOverviewForLLM:
         """
         Create a narrative summary across multiple papers using evidence gathering
         """
-        evidence_collection: Optional[EvidenceCollection] = None
+        evidence_collection: EvidenceCollection | None = None
 
         summary_request = (
             additional_instructions

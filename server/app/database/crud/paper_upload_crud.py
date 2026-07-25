@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import (
@@ -12,6 +11,7 @@ from app.database.models import (
 )
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 # In-progress upload jobs older than this are treated as dead — a worker that
@@ -24,10 +24,10 @@ STALE_UPLOAD_JOB_CUTOFF = timedelta(minutes=30)
 
 # Define Pydantic models for type safety
 class PaperUploadJobBase(BaseModel):
-    status: Optional[JobStatus] = JobStatus.PENDING
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    task_id: Optional[str] = None
+    status: JobStatus | None = JobStatus.PENDING
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    task_id: str | None = None
 
 
 class PaperUploadJobCreate(PaperUploadJobBase):
@@ -36,8 +36,8 @@ class PaperUploadJobCreate(PaperUploadJobBase):
 
 
 class PaperUploadJobUpdate(PaperUploadJobBase):
-    status: Optional[JobStatus] = None
-    task_id: Optional[str] = None
+    status: JobStatus | None = None
+    task_id: str | None = None
 
 
 # PaperUploadJob CRUD that inherits from the base CRUD
@@ -48,7 +48,7 @@ class PaperUploadJobCRUD(
 
     def mark_as_running(
         self, db: Session, *, job_id: str, user: CurrentUser
-    ) -> Optional[PaperUploadJob]:
+    ) -> PaperUploadJob | None:
         """Mark a job as running and set started_at timestamp"""
         job = self.get(db, id=job_id, user=user)
         if job:
@@ -64,7 +64,7 @@ class PaperUploadJobCRUD(
 
     def mark_as_completed(
         self, db: Session, *, job_id: str, user: CurrentUser
-    ) -> Optional[PaperUploadJob]:
+    ) -> PaperUploadJob | None:
         """Mark a job as completed and set completed_at timestamp"""
         job = self.get(db, id=job_id, user=user)
         if job:
@@ -80,7 +80,7 @@ class PaperUploadJobCRUD(
 
     def mark_as_failed(
         self, db: Session, *, job_id: str, user: CurrentUser
-    ) -> Optional[PaperUploadJob]:
+    ) -> PaperUploadJob | None:
         """Mark a job as failed and set completed_at timestamp"""
         job = self.get(db, id=job_id, user=user)
         if job:
@@ -96,7 +96,7 @@ class PaperUploadJobCRUD(
 
     def mark_as_cancelled(
         self, db: Session, *, job_id: str, user: CurrentUser
-    ) -> Optional[PaperUploadJob]:
+    ) -> PaperUploadJob | None:
         """Mark a job as cancelled and set completed_at timestamp"""
         job = self.get(db, id=job_id, user=user)
         if job:
@@ -114,13 +114,14 @@ class PaperUploadJobCRUD(
         self, db: Session, *, user: CurrentUser, skip: int = 0, limit: int = 100
     ) -> list[PaperUploadJob]:
         """Get all paper upload jobs for a specific user"""
-        return (
-            db.query(PaperUploadJob)
-            .filter(PaperUploadJob.user_id == user.id)
-            .order_by(PaperUploadJob.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
+        return list(
+            db.scalars(
+                select(PaperUploadJob)
+                .where(PaperUploadJob.user_id == user.id)
+                .order_by(PaperUploadJob.created_at.desc())
+                .offset(skip)
+                .limit(limit)
+            ).all()
         )
 
     def get_in_progress_jobs_for_user(
@@ -136,17 +137,17 @@ class PaperUploadJobCRUD(
         out via STALE_UPLOAD_JOB_CUTOFF so they don't resurface on every load.
         """
         stale_cutoff = datetime.now(timezone.utc) - STALE_UPLOAD_JOB_CUTOFF
-        return (
-            db.query(PaperUploadJob, Paper)
+        statement = (
+            select(PaperUploadJob, Paper)
             .join(Paper, Paper.upload_job_id == PaperUploadJob.id)
-            .filter(
+            .where(
                 PaperUploadJob.user_id == user.id,
                 PaperUploadJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
                 PaperUploadJob.created_at >= stale_cutoff,
             )
             .order_by(PaperUploadJob.created_at.asc())
-            .all()
         )
+        return list(db.execute(statement).tuples().all())
 
     def get_in_progress_jobs_for_project(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
@@ -162,14 +163,12 @@ class PaperUploadJobCRUD(
         after a page refresh.
         """
         # Only members of the project may see its in-progress uploads.
-        project_role = (
-            db.query(ProjectRole)
-            .filter(
+        project_role = db.scalars(
+            select(ProjectRole).where(
                 ProjectRole.project_id == project_id,
                 ProjectRole.user_id == user.id,
             )
-            .first()
-        )
+        ).first()
         if not project_role:
             return []
 
@@ -177,18 +176,18 @@ class PaperUploadJobCRUD(
         # the project opens. See STALE_UPLOAD_JOB_CUTOFF.
         stale_cutoff = datetime.now(timezone.utc) - STALE_UPLOAD_JOB_CUTOFF
 
-        return (
-            db.query(PaperUploadJob, Paper)
+        statement = (
+            select(PaperUploadJob, Paper)
             .join(Paper, Paper.upload_job_id == PaperUploadJob.id)
             .join(ProjectPaper, ProjectPaper.paper_id == Paper.id)
-            .filter(
+            .where(
                 ProjectPaper.project_id == project_id,
                 PaperUploadJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
                 PaperUploadJob.created_at >= stale_cutoff,
             )
             .order_by(PaperUploadJob.created_at.asc())
-            .all()
         )
+        return list(db.execute(statement).tuples().all())
 
 
 # Create a single instance to use throughout the application

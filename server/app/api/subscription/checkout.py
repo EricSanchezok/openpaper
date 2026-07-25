@@ -27,14 +27,14 @@ def create_checkout_session(
     interval: SubscriptionInterval,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-):
+) -> dict[str, str | None]:
     if interval not in SubscriptionInterval:
         raise HTTPException(status_code=400, detail="Invalid subscription interval")
 
     try:
         # Get or initialize customer ID
         subscription = subscription_crud.get_by_user_id(db, current_user.id)
-        customer_id = None
+        customer_id: str | None = None
 
         # Prevent duplicate subscriptions - if user already has an active or past_due subscription,
         # they should use the customer portal to manage it instead of creating a new one
@@ -93,8 +93,8 @@ def create_checkout_session(
             raise HTTPException(status_code=500, detail="Price ID not configured")
 
         # Create session parameters
-        session_params = {
-            "ui_mode": "embedded_page",
+        session_params: stripe.checkout.Session.CreateParams = {
+            "ui_mode": "embedded",
             "client_reference_id": str(current_user.id),
             "line_items": [{"quantity": 1, "price": price_id}],
             "mode": "subscription",
@@ -120,13 +120,16 @@ def create_checkout_session(
         # rare case in the Session.create try/except below.
         attributed_referral = get_active_attributed_referral(db, current_user.id)
         is_monthly = interval == SubscriptionInterval.MONTHLY
-        applied_referral_discount = bool(
-            attributed_referral and attributed_referral.referee_coupon_id and is_monthly
+        referral_coupon_id = (
+            str(attributed_referral.referee_coupon_id)
+            if attributed_referral
+            and attributed_referral.referee_coupon_id
+            and is_monthly
+            else None
         )
-        if applied_referral_discount:
-            session_params["discounts"] = [
-                {"coupon": str(attributed_referral.referee_coupon_id)}  # type: ignore[union-attr]
-            ]
+        applied_referral_discount = referral_coupon_id is not None
+        if referral_coupon_id:
+            session_params["discounts"] = [{"coupon": referral_coupon_id}]
             session_params.pop("allow_promotion_codes", None)
 
         # Add telemetry
@@ -151,7 +154,7 @@ def create_checkout_session(
 
         try:
             session = stripe.checkout.Session.create(**session_params)
-        except stripe.InvalidRequestError as e:  # type: ignore[attr-defined]
+        except stripe.InvalidRequestError as e:
             # Most common cause: the referral coupon expired between
             # attribution and checkout (Stripe enforces redeem_by independently
             # of our DB window). Drop the discount and retry once so checkout
@@ -181,6 +184,8 @@ def create_checkout_session(
 
         return {"client_secret": session.client_secret}
 
+    except HTTPException:
+        raise
     except Exception:
         logger.error("Error creating checkout session", exc_info=True)
         raise HTTPException(status_code=500, detail="internal_error")
@@ -190,7 +195,7 @@ def create_checkout_session(
 async def session_status(
     session_id: str,
     db: Session = Depends(get_db),
-):
+) -> dict[str, str | bool | None]:
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         customer_email = None

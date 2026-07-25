@@ -134,15 +134,21 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
     # References from the paper. Key 'citations' maps to list of ResponseCitation dicts
-    references: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    references: Mapped[dict[str, JsonValue] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     # Agent trajectory (tool calls / thinking / subagent steps) for this turn,
     # so the user can inspect what the model did. See schemas for shape.
-    trace: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    trace: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     # @-mention context the user attached to this (user) turn: a denormalized
     # snapshot list of [{kind, id, title}] so it renders faithfully even if the
     # mentioned paper/project is later renamed or deleted.
-    scope: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    scope: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     sequence: Mapped[int] = mapped_column(
         Integer, nullable=False
     )  # To maintain message order
@@ -239,7 +245,7 @@ class Artifact(Base):
     )
 
     kind: Mapped[str] = mapped_column(String, nullable=False)  # ArtifactKind value
-    payload: Mapped[JsonValue] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict[str, JsonValue]] = mapped_column(JSONB, nullable=False)
 
     # Provenance: which assistant message produced this artifact.
     message_id: Mapped[uuid.UUID] = mapped_column(
@@ -339,7 +345,9 @@ class Paper(Base):
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
     institutions: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary_citations: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    summary_citations: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     publish_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     starter_questions: Mapped[list[str] | None] = mapped_column(
         ARRAY(String), nullable=True
@@ -352,7 +360,7 @@ class Paper(Base):
     parser_version: Mapped[str | None] = mapped_column(String, nullable=True)
     parser_warning_code: Mapped[str | None] = mapped_column(String, nullable=True)
     ts_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
-    page_offset_map: Mapped[JsonValue | None] = mapped_column(
+    page_offset_map: Mapped[dict[int, list[int]] | None] = mapped_column(
         JSONB, nullable=True
     )  # Maps page numbers to text offsets. Useful for re-annotation.
     user_id: Mapped[int | None] = mapped_column(
@@ -390,7 +398,9 @@ class Paper(Base):
     )
     # Per-field provenance for agent-filled metadata:
     # {field: {source_url, filled_by, confidence, filled_at}}
-    field_provenance: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    field_provenance: Mapped[dict[str, JsonValue] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     size_in_kb: Mapped[int | None] = mapped_column(
         Integer, nullable=True
@@ -672,9 +682,6 @@ class PaperNote(Base):
         unique=True,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
     user_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("auth.users.id"), nullable=True
     )
@@ -703,7 +710,7 @@ class Highlight(Base):
     end_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    position: Mapped[JsonValue | None] = mapped_column(JSONB, nullable=True)
+    position: Mapped[dict[str, JsonValue] | None] = mapped_column(JSONB, nullable=True)
 
     # Role
     # This can be user for user-created highlights or assistant for AI-generated highlights
@@ -835,7 +842,7 @@ class AudioOverview(Base):
 
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    citations: Mapped[JsonValue | None] = mapped_column(
+    citations: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
         JSONB, nullable=True
     )  # Store citations in a JSONB format for flexibility. Typically, it would be a list of dicts with keys like `index` and `text`.
 

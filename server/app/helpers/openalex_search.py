@@ -3,7 +3,6 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
 
 from app.helpers.paper_search import OpenAlexFilter, search_open_alex
 
@@ -15,16 +14,16 @@ class OpenAlexResult:
     title: str
     url: str
     authors: list[str] = field(default_factory=list)
-    published_date: Optional[str] = None
-    text: Optional[str] = None  # Abstract
+    published_date: str | None = None
+    text: str | None = None  # Abstract
     highlights: list[str] = field(default_factory=list)
     highlight_scores: list[float] = field(default_factory=list)
-    favicon: Optional[str] = None
-    cited_by_count: Optional[int] = None
-    source: Optional[str] = None  # Publication venue/journal
+    favicon: str | None = None
+    cited_by_count: int | None = None
+    source: str | None = None  # Publication venue/journal
     institutions: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         return {
             "title": self.title,
             "url": self.url,
@@ -43,9 +42,9 @@ class OpenAlexResult:
 def search_openalex(
     query: str,
     num_results: int = 10,
-    sort: Optional[str] = None,
+    sort: str | None = None,
     only_open_access: bool = False,
-    year_filter: Optional[str] = None,
+    year_filter: str | None = None,
 ) -> list[OpenAlexResult]:
     """Search OpenAlex for research papers matching the query.
 

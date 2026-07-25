@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from app.schemas.citation import CitationResult
 from app.schemas.responses import ToolCall, ToolCallResult
@@ -20,15 +20,15 @@ class Evidence(BaseModel):
         ...,
         description="Unique identifier for the paper. Not to be used for user-facing responses. Only for internal tracking.",
     )
-    content: List[str] = Field(
+    content: list[str] = Field(
         default_factory=list, description="List of evidence content strings"
     )
-    metadata: Dict[str, List[str]] = Field(
+    metadata: dict[str, list[str]] = Field(
         default_factory=dict, description="Metadata associated with the evidence"
     )
 
     def add_content(
-        self, content: Union[str, List[str]], with_line_numbers: bool = False
+        self, content: str | list[str], with_line_numbers: bool = False
     ) -> None:
         """Add content to the evidence"""
         if isinstance(content, str):
@@ -48,11 +48,11 @@ class Evidence(BaseModel):
             for item in content:
                 self.add_content(item, with_line_numbers)
 
-    def get_clean_content(self) -> List[str]:
+    def get_clean_content(self) -> list[str]:
         """Get content without line number prefixes"""
         return self.content
 
-    def get_line_numbers(self) -> List[str]:
+    def get_line_numbers(self) -> list[str]:
         """Get associated line numbers"""
         return self.metadata.get("line_numbers", [])
 
@@ -62,7 +62,7 @@ class OriginalSnippet(BaseModel):
 
     paper_id: str = Field(description="The paper ID this snippet came from")
     text: str = Field(description="The original snippet text")
-    line_number: Optional[str] = Field(
+    line_number: str | None = Field(
         default=None, description="Line number in source paper"
     )
 
@@ -71,7 +71,7 @@ class CitationIndex(BaseModel):
     """Maps compaction citation markers to original evidence snippets."""
 
     # Key: "{paper_id}:{snippet_index}" e.g., "abc123:0"
-    index: Dict[str, OriginalSnippet] = Field(
+    index: dict[str, OriginalSnippet] = Field(
         default_factory=dict,
         description="Mapping of paper_id:index keys to original snippets",
     )
@@ -80,14 +80,14 @@ class CitationIndex(BaseModel):
 class EvidenceCollection(BaseModel):
     """Collection of evidence from multiple papers"""
 
-    evidence: Dict[str, Evidence] = Field(
+    evidence: dict[str, Evidence] = Field(
         default_factory=dict, description="Mapping of paper IDs to their evidence"
     )
-    previous_tool_calls: List[ToolCall] = Field(
+    previous_tool_calls: list[ToolCall] = Field(
         default_factory=list,
         description="List of previous tool calls made during evidence gathering",
     )
-    tool_call_results: List[ToolCallResult] = Field(
+    tool_call_results: list[ToolCallResult] = Field(
         default_factory=list,
         description="List of tool call results for proper multi-turn function calling",
     )
@@ -99,7 +99,7 @@ class EvidenceCollection(BaseModel):
         default=False,
         description="Whether evidence has been compacted (citations need resolution)",
     )
-    artifacts: List[CitationResult] = Field(
+    artifacts: list[CitationResult] = Field(
         default_factory=list,
         description="First-party artifacts produced during gathering (e.g. citations)",
     )
@@ -108,10 +108,10 @@ class EvidenceCollection(BaseModel):
         """Record a first-party artifact (e.g. a resolved citation)."""
         self.artifacts.append(artifact)
 
-    def get_artifacts(self) -> List[CitationResult]:
+    def get_artifacts(self) -> list[CitationResult]:
         return self.artifacts
 
-    def to_trace_dict(self) -> Optional[Dict[str, Any]]:
+    def to_trace_dict(self) -> dict[str, Any] | None:
         """Compact trajectory of this turn for user-facing inspection: the tool
         calls made and, for any citation subagent runs, their internal steps."""
         tool_calls = [
@@ -130,7 +130,7 @@ class EvidenceCollection(BaseModel):
             return None
         return {"tool_calls": tool_calls, "citations": citations}
 
-    def load_from_dict(self, evidence_dict: Dict[str, List[str]]) -> None:
+    def load_from_dict(self, evidence_dict: dict[str, list[str]]) -> None:
         """Load evidence from a dictionary format"""
         for paper_id, content in evidence_dict.items():
             self.evidence[paper_id] = Evidence(paper_id=paper_id, content=content)
@@ -138,7 +138,7 @@ class EvidenceCollection(BaseModel):
     def add_evidence(
         self,
         paper_id: str,
-        content: Union[str, List[str]],
+        content: str | list[str],
         preserve_line_numbers: bool = False,
     ) -> None:
         """Add evidence for a specific paper"""
@@ -153,7 +153,9 @@ class EvidenceCollection(BaseModel):
         self.previous_tool_calls.append(tool_call)
 
     def add_tool_call_result(
-        self, tool_call: ToolCall, result: Union[str, List, Dict, None]
+        self,
+        tool_call: ToolCall,
+        result: str | list[Any] | dict[str, Any] | None,
     ) -> None:
         """Add a tool call result for proper multi-turn function calling"""
         self.tool_call_results.append(
@@ -165,11 +167,11 @@ class EvidenceCollection(BaseModel):
             )
         )
 
-    def get_tool_call_results(self) -> List[ToolCallResult]:
+    def get_tool_call_results(self) -> list[ToolCallResult]:
         """Get all tool call results for passing to LLM"""
         return self.tool_call_results
 
-    def get_evidence_dict(self) -> Dict[str, List[str]]:
+    def get_evidence_dict(self) -> dict[str, list[str]]:
         """Return clean evidence content without line numbers."""
         return {
             paper_id: evidence.get_clean_content()
@@ -178,7 +180,7 @@ class EvidenceCollection(BaseModel):
 
     def get_evidence_dict_with_metadata(
         self,
-    ) -> Dict[str, Dict[str, Union[List[str], Dict]]]:
+    ) -> dict[str, dict[str, list[str] | dict[str, list[str]]]]:
         """Get evidence with metadata for agent context"""
         return {
             paper_id: {"content": evidence.content, "metadata": evidence.metadata}
@@ -206,7 +208,7 @@ class EvidenceCollection(BaseModel):
                 total_size += len(str(result_value))
         return total_size
 
-    def get_tool_results_for_compaction(self) -> List[Dict[str, Any]]:
+    def get_tool_results_for_compaction(self) -> list[dict[str, Any]]:
         """Get tool results in a format suitable for LLM compaction"""
         import json
 
@@ -232,7 +234,7 @@ class EvidenceCollection(BaseModel):
         return results
 
     def apply_compacted_results(
-        self, compacted_results: List["CompactedToolResult"]
+        self, compacted_results: list["CompactedToolResult"]
     ) -> None:
         """Replace tool call results with compacted versions, preserving original args"""
         # Build a lookup of original args by id
@@ -257,7 +259,7 @@ class EvidenceCollection(BaseModel):
         return total_size
 
     def apply_compacted_evidence(
-        self, compacted_evidence: Dict[str, List[str]]
+        self, compacted_evidence: dict[str, list[str]]
     ) -> None:
         """Replace evidence with compacted versions from LLM compaction"""
         # Clear existing evidence and load compacted version
@@ -279,7 +281,7 @@ class CompactedToolResult(BaseModel):
 class ToolResultCompactionResponse(BaseModel):
     """Response structure for tool result compaction"""
 
-    compacted_results: List[CompactedToolResult] = Field(
+    compacted_results: list[CompactedToolResult] = Field(
         default_factory=list,
         description="List of compacted tool results with summaries",
     )
@@ -301,7 +303,7 @@ class PaperEvidenceSummary(BaseModel):
     summary: str = Field(
         description="Concise summary with [@n] markers referencing original snippets"
     )
-    citations: List[SummaryCitationMarker] = Field(
+    citations: list[SummaryCitationMarker] = Field(
         default_factory=list,
         description="Mapping of [@n] markers to original snippet indices",
     )
@@ -310,7 +312,7 @@ class PaperEvidenceSummary(BaseModel):
 class EvidenceSummaryResponse(BaseModel):
     """Response for evidence compaction - one summary per paper."""
 
-    papers: List[PaperEvidenceSummary] = Field(
+    papers: list[PaperEvidenceSummary] = Field(
         default_factory=list,
         description="List of paper summaries. You may omit papers with no relevant evidence.",
     )
@@ -323,7 +325,7 @@ class EvidenceCompactionResponse(BaseModel):
     Dict[str, List[str]] mapping paper_id to list of evidence strings.
     """
 
-    compacted_evidence: Dict[str, List[str]] = Field(
+    compacted_evidence: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Mapping of paper IDs to their compacted evidence snippets. Each paper should have a reduced list of summarized evidence strings that preserve key findings, quotes, and data points.",
     )

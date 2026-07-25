@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -34,10 +34,10 @@ class ZoteroApiClient:
         method: str,
         url: str,
         *,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         stream: bool = False,
     ) -> requests.Response:
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         for attempt in range(MAX_RETRIES):
             try:
                 response = self._session.request(
@@ -100,7 +100,7 @@ class ZoteroApiClient:
 
     def get_top_importable_items(
         self, *, limit: int = 25, start: int = 0
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         url = f"{self._user_base}/items/top"
         params = {
             "limit": min(limit, 100),
@@ -119,14 +119,14 @@ class ZoteroApiClient:
             if item.get("data", {}).get("itemType") in IMPORTABLE_ITEM_TYPES
         ]
 
-    def get_items_by_keys(self, item_keys: List[str]) -> List[Dict[str, Any]]:
+    def get_items_by_keys(self, item_keys: list[str]) -> list[dict[str, Any]]:
         """Fetch specific Zotero items by their item keys.
 
         Zotero supports up to 50 keys per request via the itemKey query param.
         """
         if not item_keys:
             return []
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         batch_size = 50
         for i in range(0, len(item_keys), batch_size):
             batch = item_keys[i : i + batch_size]
@@ -142,13 +142,13 @@ class ZoteroApiClient:
                 )
         return results
 
-    def get_children(self, item_key: str) -> List[Dict[str, Any]]:
+    def get_children(self, item_key: str) -> list[dict[str, Any]]:
         url = f"{self._user_base}/items/{item_key}/children"
         response = self._request("GET", url, params={"limit": 100})
         children = response.json()
         return children if isinstance(children, list) else []
 
-    def get_collections(self, *, max_items: int = 3000) -> Dict[str, str]:
+    def get_collections(self, *, max_items: int = 3000) -> dict[str, str]:
         """Return a ``{collection_key: name}`` map for the user's library.
 
         Used to translate the collection keys carried on each item into
@@ -156,7 +156,7 @@ class ZoteroApiClient:
         ``max_items`` caps pagination as a safety bound for unusually large
         libraries.
         """
-        result: Dict[str, str] = {}
+        result: dict[str, str] = {}
         url = f"{self._user_base}/collections"
         start = 0
         page_size = 100
@@ -178,7 +178,7 @@ class ZoteroApiClient:
             start += page_size
         return result
 
-    def get_pdf_parent_item_keys(self, *, max_items: int = 3000) -> set:
+    def get_pdf_parent_item_keys(self, *, max_items: int = 3000) -> set[str]:
         """Return the set of top-level item keys that have a stored PDF attachment.
 
         Fetches attachment items in bulk via a single paginated query rather than
@@ -193,7 +193,7 @@ class ZoteroApiClient:
         pathologically large libraries; if hit, some items may be reported as
         lacking a PDF.
         """
-        parents: set = set()
+        parents: set[str] = set()
         url = f"{self._user_base}/items"
         start = 0
         page_size = 100
@@ -232,14 +232,14 @@ class ZoteroApiClient:
         return parents
 
     @staticmethod
-    def _attachment_is_pdf(data: Dict[str, Any]) -> bool:
+    def _attachment_is_pdf(data: dict[str, Any]) -> bool:
         """True if an attachment's ``data`` describes a PDF (by content type or filename)."""
         content_type = (data.get("contentType") or "").lower()
         filename = (data.get("filename") or "").lower()
         return content_type == "application/pdf" or filename.endswith(".pdf")
 
     @staticmethod
-    def _attachment_is_stored(data: Dict[str, Any]) -> bool:
+    def _attachment_is_stored(data: dict[str, Any]) -> bool:
         """True if the attachment's file is stored in Zotero's cloud (downloadable via API).
 
         ``linkMode`` ``"imported_file"`` / ``"imported_url"`` are stored copies;
@@ -249,7 +249,7 @@ class ZoteroApiClient:
         return (data.get("linkMode") or "").lower() in ("imported_file", "imported_url")
 
     @staticmethod
-    def find_pdf_attachment(children: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def find_pdf_attachment(children: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Return the best PDF attachment child, preferring stored files over linked URLs.
 
         Zotero attachments have a ``linkMode`` field:
@@ -259,8 +259,8 @@ class ZoteroApiClient:
 
         We do two passes: first for stored PDFs, then as a fallback for linked ones.
         """
-        stored_pdf: Optional[Dict[str, Any]] = None
-        linked_pdf: Optional[Dict[str, Any]] = None
+        stored_pdf: dict[str, Any] | None = None
+        linked_pdf: dict[str, Any] | None = None
 
         for child in children:
             data = child.get("data", {})
@@ -284,8 +284,8 @@ class ZoteroApiClient:
 
     @staticmethod
     def get_annotations_for_attachment(
-        children: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        children: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         return [
             child
             for child in children
@@ -293,8 +293,8 @@ class ZoteroApiClient:
         ]
 
     @staticmethod
-    def resolve_item_urls(item_data: Dict[str, Any]) -> List[str]:
-        urls: List[str] = []
+    def resolve_item_urls(item_data: dict[str, Any]) -> list[str]:
+        urls: list[str] = []
         url = (item_data.get("url") or "").strip()
         if url:
             urls.append(url)

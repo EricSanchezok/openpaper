@@ -10,6 +10,7 @@ from typing import Iterator
 from app.database.database import SessionLocal
 from app.database.models import TokenUsageEvent, TokenWeeklyUsage
 from app.schemas.user import CurrentUser
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -135,13 +136,11 @@ def settle_token_usage(
 
 
 def get_token_usage(db: Session, *, user_id: int) -> int:
-    value = (
-        db.query(TokenWeeklyUsage.used_tokens)
-        .filter(
+    value = db.scalar(
+        select(TokenWeeklyUsage.used_tokens).where(
             TokenWeeklyUsage.user_id == user_id,
             TokenWeeklyUsage.week_start == utc_week_start(),
         )
-        .scalar()
     )
     return int(value or 0)
 

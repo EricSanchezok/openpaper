@@ -2,7 +2,6 @@ import re
 import uuid
 from logging import getLogger
 from time import time
-from typing import Dict, List, Optional
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
@@ -14,7 +13,7 @@ logger = getLogger(__name__)
 
 
 def _ensure_paper_in_scope(
-    paper_id: str, restrict_to_paper_ids: Optional[List[str]]
+    paper_id: str, restrict_to_paper_ids: list[str] | None
 ) -> None:
     """Hard-fence a per-paper tool call to the @-mention scope when one is set.
 
@@ -124,14 +123,14 @@ def read_file(
     paper_id: str,
     current_user: CurrentUser,
     db: Session,
-    project_id: Optional[str] = None,
-    restrict_to_paper_ids: Optional[List[str]] = None,
+    project_id: str | None = None,
+    restrict_to_paper_ids: list[str] | None = None,
 ) -> str:
     """
     Read the content of a file associated with a paper.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Optional[Paper] = None
+    paper: Paper | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,
@@ -157,15 +156,15 @@ def search_file(
     query: str,
     current_user: CurrentUser,
     db: Session,
-    project_id: Optional[str] = None,
-    restrict_to_paper_ids: Optional[List[str]] = None,
+    project_id: str | None = None,
+    restrict_to_paper_ids: list[str] | None = None,
 ) -> list[str]:
     """
     Search for a specific query (as regex) in the file content of a paper.
     Returns matching lines with line numbers.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Optional[Paper] = None
+    paper: Paper | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,
@@ -202,9 +201,9 @@ def search_all_files(
     query: str,
     current_user: CurrentUser,
     db: Session,
-    project_id: Optional[str] = None,
-    restrict_to_paper_ids: Optional[List[str]] = None,
-) -> Dict[str, list[str]]:
+    project_id: str | None = None,
+    restrict_to_paper_ids: list[str] | None = None,
+) -> dict[str, list[str]]:
     """
     Search for a specific query in the file content of all papers using full-text search.
     Returns a list of matching lines with paper IDs and line numbers.
@@ -214,7 +213,7 @@ def search_all_files(
     """
     start_time = time()
 
-    paper_ids: Optional[List[uuid.UUID]] = None
+    paper_ids: list[uuid.UUID] | None = None
     if project_id:
         paper_ids = project_paper_crud.get_project_paper_ids_by_project_id(
             db, project_id=uuid.UUID(project_id), user=current_user
@@ -242,7 +241,7 @@ def search_all_files(
         f"Database search for matching lines completed in {elapsed_time:.2f} seconds"
     )
 
-    results: Dict[str, list[str]] = {}
+    results: dict[str, list[str]] = {}
 
     for paper_id, line_num, line in matching_lines_tuples:
         if paper_id not in results:
@@ -259,14 +258,14 @@ def view_file(
     range_end: int,
     current_user: CurrentUser,
     db: Session,
-    project_id: Optional[str] = None,
-    restrict_to_paper_ids: Optional[List[str]] = None,
+    project_id: str | None = None,
+    restrict_to_paper_ids: list[str] | None = None,
 ) -> str:
     """
     View a specific range of lines from the file content of a paper.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Optional[Paper] = None
+    paper: Paper | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,
@@ -301,14 +300,14 @@ def read_abstract(
     paper_id: str,
     current_user: CurrentUser,
     db: Session,
-    project_id: Optional[str] = None,
-    restrict_to_paper_ids: Optional[List[str]] = None,
+    project_id: str | None = None,
+    restrict_to_paper_ids: list[str] | None = None,
 ) -> str:
     """
     Read the abstract of a paper.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Optional[Paper] = None
+    paper: Paper | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,

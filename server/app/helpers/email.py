@@ -1,11 +1,12 @@
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from html import escape
 from pathlib import Path
-from typing import Union
 
 import resend
 from app.database.models import Onboarding
+from app.schemas.orm_responses import serialize_onboarding
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def load_email_template(template_name: str) -> str:
         )
 
 
-def add_to_default_audience(email: str, name: Union[str, None] = None) -> None:
+def add_to_default_audience(email: str, name: str | None = None) -> None:
     """
     Add a user to the default audience in Resend.
 
@@ -60,24 +61,28 @@ def add_to_default_audience(email: str, name: Union[str, None] = None) -> None:
         email (str): The email address of the user.
         name (str): The name of the user.
     """
+    if not RESEND_MAIN_AUDIENCE_ID:
+        logger.warning("Skipping audience sync: RESEND_MAIN_AUDIENCE_ID is not set")
+        return
+
     try:
         split_name = name.split() if name else []
         fname = split_name[0] if len(split_name) > 0 else ""
         lname = " ".join(split_name[1:]) if len(split_name) > 1 else ""
-        payload = resend.Contacts.CreateParams = {  # type: ignore
+        payload: resend.Contacts.CreateParams = {
             "email": email,
             "first_name": fname,
             "last_name": lname,
             "unsubscribed": False,
             "audience_id": RESEND_MAIN_AUDIENCE_ID,
         }
-        resend.Contacts.create(payload)  # type: ignore
+        resend.Contacts.create(payload)
 
     except Exception as e:
         logger.error(f"Failed to add user to audience: {e}", exc_info=True)
 
 
-def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
+def send_onboarding_email(email: str, name: str | None = None) -> None:
     """
     Send an onboarding email to a new user.
 
@@ -93,7 +98,7 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
         split_name = name.split() if name else []
         fname = split_name[0] if split_name else ""
         formatted_name = f", {fname}" if fname else ""
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "to": [email],
             "subject": "Welcome to Scholens!",
@@ -104,11 +109,11 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
         }
 
-        first_email = resend.Emails.send(payload)  # type: ignore
+        first_email = resend.Emails.send(payload)
 
         two_days_from_now = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload = {
             "from": DEFAULT_FROM,
             "to": [email],
             "subject": "How Researchers are Using AI to Read Papers",
@@ -117,7 +122,7 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
         }
 
-        second_email = resend.Emails.send(payload)  # type: ignore
+        second_email = resend.Emails.send(payload)
 
         four_days_from_now = (
             datetime.now(timezone.utc) + timedelta(days=4)
@@ -125,7 +130,7 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
 
         formatted_name = f" {fname}" if fname else ""
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload = {
             "from": DEFAULT_FROM,
             "to": [email],
             "subject": "Design Principles by Scholens",
@@ -136,7 +141,7 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
         }
 
-        third_email = resend.Emails.send(payload)  # type: ignore
+        third_email = resend.Emails.send(payload)
 
         logger.info(
             f"Onboarding emails sent successfully: {first_email['id'] if first_email else ''}, {second_email['id'] if second_email else ''}, {third_email['id'] if third_email else ''}"
@@ -149,7 +154,7 @@ def send_onboarding_email(email: str, name: Union[str, None] = None) -> None:
 def notify_converted_billing_interval(
     email: str,
     new_interval: str,
-    name: Union[str, None] = None,
+    name: str | None = None,
 ) -> None:
     """
     Notify user about their billing interval change.
@@ -161,7 +166,7 @@ def notify_converted_billing_interval(
     """
     try:
         subject = f"{new_interval.zfill(1).capitalize()} Cycle Activated - Scholens"
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [email],
@@ -169,13 +174,13 @@ def notify_converted_billing_interval(
             "text": f"Hello {name},\n\nYour cycle has been successfully changed to {new_interval}. Thank you for your continued support for open research!\n\nScholens Team",
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
 
     except Exception as e:
         logger.error(f"Failed to notify billing interval change: {e}", exc_info=True)
 
 
-def notify_billing_issue(email: str, issue: str, name: Union[str, None] = None) -> None:
+def notify_billing_issue(email: str, issue: str, name: str | None = None) -> None:
     """
     Notify user about a billing issue.
 
@@ -186,7 +191,7 @@ def notify_billing_issue(email: str, issue: str, name: Union[str, None] = None) 
     """
     try:
         manage_url = f"{CLIENT_DOMAIN}/pricing"
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [email],
@@ -194,7 +199,7 @@ def notify_billing_issue(email: str, issue: str, name: Union[str, None] = None) 
             "text": f"Hello {name},\n\nWe have detected an issue with your account. {issue}.\n\nVisit {manage_url} for assistance.\n\n- Scholens",
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
 
     except Exception as e:
         logger.error(f"Failed to notify billing issue: {e}", exc_info=True)
@@ -205,7 +210,7 @@ def send_subscription_welcome_email(
 ) -> None:
     """Send a welcome email to a new subscriber."""
     try:
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [email],
@@ -213,7 +218,7 @@ def send_subscription_welcome_email(
             "html": load_email_template("subscription_welcome.html"),
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
 
     except Exception as e:
         logger.error(f"Failed to send subscription welcome email: {e}", exc_info=True)
@@ -221,13 +226,13 @@ def send_subscription_welcome_email(
 
 def send_profile_email(
     profile: Onboarding,
-):
+) -> None:
     """
     An internal email to send the developer with the user profile information
     """
     try:
         # Format profile data with alternating background colors
-        profile_dict = profile.to_dict()
+        profile_dict = serialize_onboarding(profile)
         formatted_data = ""
 
         excluded_keys = ["id", "created_at", "updated_at"]
@@ -240,7 +245,7 @@ def send_profile_email(
             formatted_data += f"""
             <div style="background-color:{bg_color};padding:12px;margin:2px 0;border-radius:6px">
                 <div style="font-weight:600;color:#2c3e50;margin-bottom:4px">{key.replace("_", " ").title()}:</div>
-                <div style="color:#34495e;word-wrap:break-word">{value}</div>
+                <div style="color:#34495e;word-wrap:break-word">{escape(str(value))}</div>
             </div>
             """
 
@@ -248,7 +253,7 @@ def send_profile_email(
             "{{profile_data}}", formatted_data
         )
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": PROFILE_NOTIFICATION_EMAIL,
@@ -256,7 +261,7 @@ def send_profile_email(
             "html": html_content,
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
 
     except Exception as e:
         logger.error(f"Failed to send profile email: {e}", exc_info=True)
@@ -285,14 +290,14 @@ def send_general_invite_email(
             .replace("{{signup_link}}", signup_link)
         )
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "to": to_email,
             "subject": subject,
             "html": html_content,
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         return True
 
     except Exception as e:
@@ -326,14 +331,14 @@ def send_project_invite_email(
             .replace("{{invite_link}}", invite_link)
         )
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "to": to_email,
             "subject": subject,
             "html": html_content,
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         return True
 
     except Exception as e:
@@ -343,7 +348,7 @@ def send_project_invite_email(
 
 def send_confirmation_cancellation_email(
     to_email: str,
-    name: Union[str, None] = None,
+    name: str | None = None,
 ) -> bool:
     """
     Send a confirmation email when user has cancelled their paid subscription.
@@ -360,7 +365,7 @@ def send_confirmation_cancellation_email(
 
         subject = f"Sorry to see you go{user_name_str} - Scholens"
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": to_email,
@@ -368,7 +373,7 @@ def send_confirmation_cancellation_email(
             "text": f"Hello{user_name_str},\n\nThis email is to confirm that your subscription has been successfully cancelled. We're sorry to see you go!\n\nIf you have any feedback or if there's anything we can do to improve your experience, please reply to this email.\n\nThank you for being a part of Scholens.\n\nHappy researching!\n- Scholens Team",
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         return True
 
     except Exception as e:
@@ -428,14 +433,14 @@ def send_referral_converted_email(
             f"Thanks for spreading the word!\n\n"
             f"- Scholens Team"
         )
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [to_email],
             "subject": f"Someone you referred just upgraded - ${dollars:.0f} credit pending",
             "text": text,
         }
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         return True
     except Exception as e:
         logger.error(f"Failed to send referral_converted email: {e}", exc_info=True)
@@ -460,14 +465,14 @@ def send_referral_credit_available_email(
             f"Thanks again!\n\n"
             f"- Scholens Team"
         )
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "reply_to": REPLY_TO_DEFAULT_EMAIL,
             "to": [to_email],
             "subject": f"Your ${dollars:.0f} referral credit is ready",
             "text": text,
         }
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         return True
     except Exception as e:
         logger.error(
@@ -514,14 +519,14 @@ def send_data_table_complete_email(
             .replace("{{view_url}}", view_url)
         )
 
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": DEFAULT_FROM,
             "to": to_email,
             "subject": subject,
             "html": html_content,
         }
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         logger.info(f"Data table complete email sent to {to_email}")
         return True
 
@@ -556,7 +561,7 @@ def send_email(
         bool: True if email was sent successfully, False otherwise
     """
     try:
-        payload = resend.Emails.SendParams = {  # type: ignore
+        payload: resend.Emails.SendParams = {
             "from": f"{from_name} <{from_address}>",
             "to": to_email,
             "subject": subject,
@@ -567,7 +572,7 @@ def send_email(
         if text_content:
             payload["text"] = text_content
 
-        resend.Emails.send(payload)  # type: ignore
+        resend.Emails.send(payload)
         logger.info(f"Email sent successfully to {to_email}")
         return True
 
