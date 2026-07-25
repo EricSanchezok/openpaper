@@ -7,7 +7,7 @@ import {
     MessageTrace,
     Reference,
 } from '@/lib/schema';
-import { RenderedHighlightPosition } from './PdfHighlighterViewer';
+import type { RenderedHighlightPosition } from './PdfHighlighterViewer';
 import {
     X,
     Loader,

@@ -1,3 +1,5 @@
+"use client";
+
 import { PaperItem } from "@/lib/schema";
 import { Button } from "./ui/button";
 import { toast } from "sonner";

@@ -12,7 +12,7 @@ import {
 	getAssistantHighlightBackgroundRgba,
 	getUserHighlightBackgroundRgba,
 } from "./highlightColors";
-import { ExtendedHighlight } from "./types";
+import type { ExtendedHighlight } from "./types";
 
 interface HighlightContainerProps {
 	onHighlightClick: (highlight: ViewportHighlight<ExtendedHighlight>, event: MouseEvent) => void;

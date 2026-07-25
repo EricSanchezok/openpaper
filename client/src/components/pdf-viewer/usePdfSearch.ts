@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, MutableRefObject } from "react";
-import { PdfHighlighterUtils } from "react-pdf-highlighter-extended";
+import type { PdfHighlighterUtils } from "react-pdf-highlighter-extended";
 import {
 	normalizeForSearch,
 	ligatureMap,

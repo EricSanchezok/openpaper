@@ -84,7 +84,15 @@ jobs:
       - name: Production build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
-        run: yarn build
+        run: |
+          set -o pipefail
+          yarn build 2>&1 | tee production-build.log
+          if grep -Eiq \
+            'window is not defined|document is not defined|please use (the )?legacy build' \
+            production-build.log; then
+            printf 'Browser-only PDF.js code leaked into the server build\n' >&2
+            exit 1
+          fi
 
   jobs:
     runs-on: ubuntu-latest

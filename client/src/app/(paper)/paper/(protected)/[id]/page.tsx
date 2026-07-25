@@ -1,6 +1,7 @@
 'use client';
 
-import { PdfHighlighterViewer, RenderedHighlightPosition } from '@/components/PdfHighlighterViewer';
+import { PdfHighlighterViewer } from '@/components/PdfHighlighterViewer';
+import type { RenderedHighlightPosition } from '@/components/PdfHighlighterViewer';
 import { Button } from '@/components/ui/button';
 import { fetchFromApi } from '@/lib/api';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';

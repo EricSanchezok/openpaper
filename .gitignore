@@ -23,6 +23,7 @@ client/coverage
 client/.next/
 client/out/
 client/public/blog-latest.json
+client/public/pdf.worker.mjs
 
 # production
 client/build

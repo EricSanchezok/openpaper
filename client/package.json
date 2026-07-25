@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/sync-pdf-worker.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/generate-blog-metadata.mjs",
+    "prebuild": "node scripts/sync-pdf-worker.mjs && node scripts/generate-blog-metadata.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
