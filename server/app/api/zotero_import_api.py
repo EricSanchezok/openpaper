@@ -20,7 +20,7 @@ from app.schemas.zotero import (
     ZoteroLibraryResponse,
     ZoteroSyncResponse,
 )
-from app.services.zotero_import import import_batch, list_library, sync_batch
+from app.services.zotero.service import import_batch, list_library, sync_batch
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 

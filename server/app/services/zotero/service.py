@@ -1,3 +1,5 @@
+"""Zotero import and synchronization orchestration."""
+
 import asyncio
 import json
 import logging

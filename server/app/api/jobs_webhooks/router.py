@@ -1,6 +1,4 @@
-"""
-Webhook handlers for PDF processing service integration.
-"""
+"""Signed webhook handlers for Scholens Jobs service integrations."""
 
 from app.api.types import ApiData as ApiResponse
 
@@ -56,7 +54,7 @@ from app.schemas.jobs import (
 )
 from app.schemas.responses import DataTableResult
 from app.schemas.user import CurrentUser
-from app.services.zotero_import import (
+from app.services.zotero.service import (
     apply_zotero_annotations,
     auto_import_new_papers,
     sync_batch,

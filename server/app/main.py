@@ -28,7 +28,7 @@ from app.api.projects.projects_invitation_api import (
 from app.api.referral import referral_router
 from app.api.search_api import search_router
 from app.api.subscription import subscription_router
-from app.api.webhook_api import webhook_router
+from app.api.jobs_webhooks import webhook_router
 from app.api.zotero_import_api import zotero_router
 from app.auth.runtime import auth_lifespan, cloud_auth_router, cloud_user_router
 from app.database.admin import setup_admin

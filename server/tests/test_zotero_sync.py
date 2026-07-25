@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.services import zotero_import as zotero_import_module
-from app.services.zotero_import import (
+from app.services.zotero import service as zotero_import_module
+from app.services.zotero.service import (
     _normalize_payload_item,
     _page_from_annotation,
     _serialize_annotations_payload,

@@ -20,7 +20,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from app.api.webhook_api import handle_failed_upload
+from app.api.jobs_webhooks.router import handle_failed_upload
 from app.auth.dependencies import get_required_user
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.paper_upload_crud import (

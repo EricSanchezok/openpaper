@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app.database.models import SubscriptionPlan
-from app.services import zotero_import as zotero_import_module
-from app.services.zotero_import import _compute_max_new_imports
+from app.services.zotero import service as zotero_import_module
+from app.services.zotero.service import _compute_max_new_imports
 
 
 class TestComputeMaxNewImports(unittest.TestCase):
