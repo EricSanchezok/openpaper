@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -216,21 +215,6 @@ class AudioOverviewJobCRUD(
         db.refresh(job)
         return job
 
-    def job_to_dict(self, job: AudioOverviewJob) -> dict[str, Any]:
-        """Convert AudioOverviewJob object to dictionary"""
-        return {
-            "id": str(job.id),
-            "conversable_id": str(job.conversable_id),
-            "conversable_type": job.conversable_type,
-            "status": job.status,
-            "status_message": job.status_message,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-        }
-
-
 class AudioOverviewCRUD(
     CRUDBase[AudioOverview, AudioOverviewCreate, AudioOverviewUpdate]
 ):
@@ -388,28 +372,6 @@ class AudioOverviewCRUD(
         db.commit()
         db.refresh(overview)
         return overview
-
-    def overview_to_dict(self, overview: AudioOverview) -> dict[str, Any]:
-        """Convert AudioOverview object to dictionary"""
-        return {
-            "id": str(overview.id),
-            "conversable_id": str(overview.conversable_id),
-            "conversable_type": overview.conversable_type,
-            "s3_object_key": overview.s3_object_key,
-            "transcript": overview.transcript,
-            "created_at": (
-                overview.created_at.isoformat() if overview.created_at else None
-            ),
-            "updated_at": (
-                overview.updated_at.isoformat() if overview.updated_at else None
-            ),
-            "title": overview.title,
-            "citations": [
-                ResponseCitation.model_validate(citation).model_dump()
-                for citation in overview.citations or []
-            ],
-        }
-
 
 # Create single instances to use throughout the application
 audio_overview_job_crud = AudioOverviewJobCRUD(AudioOverviewJob)

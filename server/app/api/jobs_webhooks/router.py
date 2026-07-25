@@ -1,7 +1,5 @@
 """Signed webhook handlers for Scholens Jobs service integrations."""
 
-from app.api.types import ApiData as ApiResponse
-
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -322,7 +320,7 @@ async def handle_paper_processing_webhook(
     webhook_data: PdfProcessingWebhookData,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Handle webhook from paper processing jobs service."""
 
     # Get the job from your database (without user filtering since this is a webhook)
@@ -669,7 +667,7 @@ async def handle_data_table_processing_webhook(
     job_id: str,
     webhook_data: DataTableProcessingResultWebhookData,
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Handle webhook from data table processing jobs service."""
 
     logger.info(
@@ -839,7 +837,7 @@ async def handle_data_table_processing_webhook(
 @webhook_router.post("/internal/referral-settle/{referral_id}")
 async def settle_referral(
     referral_id: str, db: Session = Depends(get_db)
-) -> ApiResponse:
+) -> dict[str, object]:
     """
     Internal callback fired by the jobs service when a referral credit hold
     has elapsed. Idempotent — re-runs on the same referral are no-ops.
@@ -944,7 +942,7 @@ async def settle_referral(
 @webhook_router.post("/internal/zotero-sync-all")
 async def trigger_zotero_sync_all(
     request: Request, db: Session = Depends(get_db)
-) -> ApiResponse:
+) -> dict[str, object]:
     """
     Internal endpoint called by the Celery Beat periodic task to sync new Zotero
     annotations for all users whose items haven't been synced in the past 24 hours.

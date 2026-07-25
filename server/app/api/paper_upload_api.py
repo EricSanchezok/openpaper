@@ -14,7 +14,7 @@ PDF processing microservice. The architecture is:
 The client can poll the job status using the same job_id throughout the process.
 """
 
-from app.api.types import ApiResponse
+from starlette.responses import Response as ApiResponse
 
 import logging
 from datetime import datetime, timezone

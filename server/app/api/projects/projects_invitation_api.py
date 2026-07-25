@@ -1,4 +1,4 @@
-from app.api.types import ApiResponse
+from starlette.responses import Response as ApiResponse
 import logging
 import uuid
 

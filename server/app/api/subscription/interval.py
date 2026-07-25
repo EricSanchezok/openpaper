@@ -1,4 +1,3 @@
-from app.api.types import ApiData as ApiResponse
 import logging
 from datetime import datetime, timezone
 
@@ -27,7 +26,7 @@ def change_subscription_interval(
     new_interval: SubscriptionInterval,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> dict[str, object]:
     """
     Schedule a billing interval change at the end of the current billing period
     using Stripe Subscription Schedules. No immediate charge or proration.
@@ -171,7 +170,7 @@ def change_subscription_interval(
 def cancel_scheduled_change(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> dict[str, object]:
     """
     Cancel a previously scheduled billing interval change.
     Releases the Stripe Subscription Schedule so the subscription continues as-is.

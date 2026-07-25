@@ -1,4 +1,3 @@
-from app.api.types import ApiData as ApiResponse
 import logging
 
 from app.auth.dependencies import get_required_user
@@ -33,7 +32,7 @@ zotero_router = APIRouter()
 def zotero_library(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> ZoteroLibraryResponse:
     """List importable journal articles, conference papers, and preprints from the user's Zotero library."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
@@ -61,7 +60,7 @@ async def zotero_import(
     request: ZoteroImportRequest,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> ZoteroImportResponse:
     """Import selected journal articles, conference papers, and preprints from Zotero (PDF or URL fallback)."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
@@ -112,7 +111,7 @@ async def zotero_import(
 async def zotero_sync(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> ZoteroSyncResponse:
     """Manually trigger annotation sync for all already-imported Zotero PDF papers. Available to all plan tiers."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
@@ -171,7 +170,7 @@ async def zotero_import_status_list(
     item_keys: list[str] | None = Query(None),
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> ZoteroImportStatusListResponse:
     """List recent Zotero import records for the current user."""
     if item_keys:
         rows = zotero_import_crud.list_by_item_keys(

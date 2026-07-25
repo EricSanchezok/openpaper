@@ -1,4 +1,4 @@
-from app.api.types import ApiResponse
+from starlette.responses import Response as ApiResponse
 from app.auth.dependencies import get_required_user
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv

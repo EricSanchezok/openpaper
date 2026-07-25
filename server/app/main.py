@@ -32,6 +32,12 @@ from app.api.jobs_webhooks import webhook_router
 from app.api.zotero_import_api import zotero_router
 from app.auth.runtime import auth_lifespan, cloud_auth_router, cloud_user_router
 from app.database.admin import setup_admin
+from app.errors import (
+    AppError,
+    app_error_handler,
+    http_error_handler,
+    unhandled_error_handler,
+)
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi import Depends
@@ -39,6 +45,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.database.database import get_db
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,6 +61,11 @@ app = FastAPI(
     description="A web application for uploading and annotating papers.",
     version="1.0.0",
     lifespan=auth_lifespan,
+    exception_handlers={
+        AppError: app_error_handler,
+        StarletteHTTPException: http_error_handler,
+        Exception: unhandled_error_handler,
+    },
 )
 
 client_domain = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")

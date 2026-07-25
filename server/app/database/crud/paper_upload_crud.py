@@ -104,7 +104,8 @@ class PaperUploadJobCRUD(
                 db=db,
                 db_obj=job,
                 obj_in=PaperUploadJobUpdate(
-                    status=JobStatus.CANCELLED, completed_at=datetime.utcnow()
+                    status=JobStatus.CANCELLED,
+                    completed_at=datetime.now(timezone.utc),
                 ),
                 user=user,
             )

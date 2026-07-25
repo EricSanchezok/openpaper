@@ -11,6 +11,7 @@ from app.database.database import get_db
 from app.database.models import Conversation
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
+from app.schemas.orm_responses import serialize_messages
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -142,7 +143,7 @@ async def get_project_conversation(
             page=page,
             page_size=page_size,
         )
-        formatted_messages = message_crud.messages_to_dict(messages)
+        formatted_messages = serialize_messages(messages)
 
         return JSONResponse(
             status_code=200,

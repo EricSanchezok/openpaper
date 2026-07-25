@@ -44,7 +44,7 @@ class AudioOverviewForLLM(BaseModel):
         description="The helpful summary of the research. This should include key findings, contributions, and implications of the paper. Include inline citations, which are to be documented separately in the citations field, which directly back up your claims. The format should include the citation index (e.g., [^1], [^2]) in the summary."
     )
     citations: list[ResponseCitation] = Field(
-        default=[],
+        default_factory=list,
         description="List of the raw text citations from the paper that are relevant to the summary. These should be direct quotes or paraphrases from the paper(s) that support the summary provided. These should not be extracted references from the references of the paper. Rather, they are references from the raw documents relevant to your summary.",
     )
     title: str = Field(description="The title of the narrative overview.")
@@ -52,13 +52,14 @@ class AudioOverviewForLLM(BaseModel):
 
 class PaperMetadataExtraction(BaseModel):
     title: str = Field(description="Title of the paper in normal case")
-    authors: list[str] = Field(default=[], description="List of authors")
+    authors: list[str] = Field(default_factory=list, description="List of authors")
     abstract: str = Field(default="", description="Abstract of the paper")
     institutions: list[str] = Field(
-        default=[], description="List of institutions involved in the publication."
+        default_factory=list,
+        description="List of institutions involved in the publication.",
     )
     keywords: list[str] = Field(
-        default=[],
+        default_factory=list,
         description=(
             "3-8 concise topical keywords in normal case (not Title Case or ALL "
             "CAPS); capitalize only proper nouns and acronyms."
@@ -90,14 +91,14 @@ The summary should be accessible to readers with basic domain knowledge while ma
                          """,
     )
     summary_citations: list[ResponseCitation] = Field(
-        default=[],
+        default_factory=list,
         description="List of citations that are relevant to the summary. These should be direct quotes or paraphrases from the paper that support the summary provided. Remember to include the citation index (e.g., [^1], [^2]) in the summary.",
     )
     publish_date: str | None = Field(
         default=None, description="Publishing date of the paper in YYYY-MM-DD format"
     )
     highlights: list[AIHighlight] = Field(
-        default=[],
+        default_factory=list,
         description="List of key highlights from the paper. These should be significant quotes that are must-reads of the paper's findings and contributions. Each highlight should include the text of the highlight and an annotation explaining its significance or relevance to the paper's content. Particularly drill into interesting, novel findings, methodologies, or implications that are worth noting. Pay special attention to tables, figures, and diagrams that may contain important information.",
     )
 
@@ -125,7 +126,7 @@ class DataTableCellValue(BaseModel):
 
     value: str = Field(description="The extracted value for this column")
     citations: list[ResponseCitation] = Field(
-        default=[],
+        default_factory=list,
         description="List of citations that support this specific value. These should be direct quotes or paraphrases from the paper.",
     )
 
@@ -144,9 +145,11 @@ class DataTableResult(BaseModel):
 
     success: bool = Field(description="Whether the extraction was successful")
     columns: list[str] = Field(description="List of column names in the data table.")
-    rows: list[DataTableRow] = Field(default=[], description="Row data per paper")
+    rows: list[DataTableRow] = Field(
+        default_factory=list, description="Row data per paper"
+    )
     row_failures: list[str] = Field(
-        default=[], description="List of paper IDs that failed extraction"
+        default_factory=list, description="List of paper IDs that failed extraction"
     )
 
 

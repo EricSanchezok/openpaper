@@ -1,7 +1,5 @@
 """API routes for the Discover feature."""
 
-from app.api.types import ApiData as ApiResponse
-
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -155,7 +153,7 @@ async def discover_search(
 async def discover_history(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> list[dict[str, object]]:
     """Get the user's past discover searches."""
     searches = discover_search_crud.get_history(db, user=current_user, limit=20)
     return [
@@ -171,7 +169,7 @@ async def discover_history(
 
 
 @discover_router.get("/sources")
-async def discover_sources() -> ApiResponse:
+async def discover_sources() -> list[dict[str, object]]:
     """Get the list of available source filters for discover search."""
     return [
         {"key": key, "label": info["label"], "description": info["description"]}
@@ -184,7 +182,7 @@ async def discover_get(
     search_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Get a single discover search by ID."""
     search = discover_search_crud.get_by_id(db, search_id=search_id, user=current_user)
     if not search:

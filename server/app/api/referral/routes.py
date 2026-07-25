@@ -1,7 +1,5 @@
 """User-facing referral API routes."""
 
-from app.api.types import ApiData as ApiResponse
-
 import logging
 from datetime import datetime, timezone
 
@@ -37,7 +35,7 @@ class AttributeRequest(BaseModel):
 async def get_my_referral_info(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     user = user_repository.get(db, id=current_user.id)
     assert user is not None  # get_required_user already guarantees existence
     return get_summary_payload(db, user)
@@ -48,7 +46,7 @@ async def attribute(
     request: AttributeRequest,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     user = user_repository.get(db, id=current_user.id)
     assert user is not None  # get_required_user already guarantees existence
 
@@ -88,7 +86,7 @@ async def attribute(
 async def get_balance(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Read-only referral standing for the current user.
 
     Used by surfaces that want to show "you have $X waiting" or "50% off
@@ -110,7 +108,7 @@ async def get_balance(
 async def get_toast_status(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Lightweight check for whether the milestone toast should be considered.
 
     Distinct from /me — does not lazy-create a referral code, so calling it on
@@ -124,7 +122,7 @@ async def get_toast_status(
 async def mark_toast_seen(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Idempotent: stamp the user as having seen the referral milestone toast."""
     profile = user_repository.get_or_create_profile(db, user_id=current_user.id)
     if profile.referral_toast_seen_at is None:

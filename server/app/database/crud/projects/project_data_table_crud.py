@@ -339,24 +339,6 @@ class DataTableJobCRUD(
         db.refresh(job)
         return job
 
-    def job_to_dict(self, job: DataTableExtractionJob) -> dict[str, Any]:
-        """Convert DataTableExtractionJob object to dictionary"""
-        return {
-            "id": str(job.id),
-            "project_id": str(job.project_id) if job.project_id else None,
-            "columns": job.columns,
-            "task_id": job.task_id,
-            "title": job.result.title if job.result else None,
-            "status": job.status,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-            "error_message": job.error_message,
-            "result_id": str(job.result.id) if job.result else None,
-        }
-
-
 # ================================
 # Result CRUD
 # ================================
@@ -457,34 +439,6 @@ class DataTableResultCRUD(
                 .order_by(DataTableExtractionResult.created_at.desc())
             ).all()
         )
-
-    def result_to_dict(
-        self, result: DataTableExtractionResult, include_rows: bool = True
-    ) -> dict[str, Any]:
-        """Convert DataTableExtractionResult object to dictionary"""
-        data: dict[str, Any] = {
-            "id": str(result.id),
-            "job_id": str(result.job_id),
-            "title": result.title,
-            "success": result.success,
-            "columns": result.columns,
-            "row_failures": (
-                [str(pid) for pid in result.row_failures] if result.row_failures else []
-            ),
-            "created_at": result.created_at.isoformat() if result.created_at else None,
-            "updated_at": result.updated_at.isoformat() if result.updated_at else None,
-        }
-        if include_rows and result.rows:
-            data["rows"] = [
-                {
-                    "id": str(row.id),
-                    "paper_id": str(row.paper_id),
-                    "values": row.values,
-                }
-                for row in result.rows
-            ]
-        return data
-
 
 # ================================
 # Row CRUD

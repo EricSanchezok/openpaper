@@ -208,26 +208,6 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         # Reverse the results to get chronological order
         return list(reversed(messages))
 
-    def messages_to_dict(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """
-        Convert a list of Message objects to a list of dictionaries
-        """
-
-        formatted_messages = []
-        for message in messages:
-            message_dict = {
-                "id": str(message.id),
-                "role": message.role,
-                "content": message.content,
-                "references": message.references,
-                "artifacts": [a.payload for a in message.artifacts] or None,
-                "trace": message.trace,
-                "scope": message.scope,
-                "sequence": message.sequence,
-            }
-            formatted_messages.append(message_dict)
-        return formatted_messages
-
     def resequence_messages(
         self,
         db: Session,

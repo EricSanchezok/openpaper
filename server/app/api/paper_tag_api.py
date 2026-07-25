@@ -1,4 +1,3 @@
-from app.api.types import ApiData as ApiResponse
 import logging
 import uuid
 
@@ -24,7 +23,7 @@ def create_tag(
     tag_in: PaperTagCreate,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> dict[str, object]:
     """
     Create a new tag for the current user.
     """
@@ -50,7 +49,7 @@ def create_tag(
 def get_all_tags(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> list[dict[str, object]]:
     """
     Get all tags for the current user.
     """
@@ -63,7 +62,7 @@ def bulk_add_tags(
     request: BulkTagRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> dict[str, object]:
     """
     Apply multiple tags to multiple papers.
     """
@@ -125,7 +124,7 @@ def get_tags_for_paper(
     paper_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> list[dict[str, object]]:
     """
     Get all tags for a specific paper.
     """
@@ -140,7 +139,7 @@ def get_papers_for_tag(
     tag_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> list[dict[str, object]]:
     """
     Get all papers associated with a specific tag.
     """

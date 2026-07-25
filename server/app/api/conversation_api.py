@@ -14,6 +14,7 @@ from app.database.models import ConversableType, Conversation
 from app.database.telemetry import track_event
 from app.llm.conversation_operations import conversation_operations
 from app.schemas.user import CurrentUser
+from app.schemas.orm_responses import serialize_messages
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -121,7 +122,7 @@ async def get_shared_paper_conversation(
             page_size=page_size,
         )
 
-        formatted_messages = message_crud.messages_to_dict(messages)
+        formatted_messages = serialize_messages(messages)
 
         return JSONResponse(
             status_code=200,
@@ -167,7 +168,7 @@ async def get_conversation(
             page=page,
             page_size=page_size,
         )
-        formatted_messages = message_crud.messages_to_dict(messages)
+        formatted_messages = serialize_messages(messages)
 
         return JSONResponse(
             status_code=200,

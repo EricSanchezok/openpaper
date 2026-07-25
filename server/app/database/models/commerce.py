@@ -233,8 +233,8 @@ class DataTableExtractionResult(Base):
     columns: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False
     )  # List of column names
-    row_failures: Mapped[list[str] | None] = mapped_column(
-        ARRAY(UUID(as_uuid=True)), nullable=True, default=[]
+    row_failures: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True, default=list
     )  # List of paper IDs that failed
 
     job: Mapped["DataTableExtractionJob"] = relationship(
@@ -350,7 +350,7 @@ class DataTableRow(Base):
         nullable=False,
     )
     values: Mapped[dict[str, JsonValue]] = mapped_column(
-        JSONB, nullable=False, default={}
+        JSONB, nullable=False, default=dict
     )
     # values schema: {
     #   "column_name": {

@@ -1,4 +1,4 @@
-from app.api.types import ApiResponse
+from starlette.responses import Response as ApiResponse
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -23,6 +23,7 @@ from app.helpers.ai_limits import (
 from app.helpers.s3 import s3_service
 from app.llm.token_credits import has_token_credits
 from app.schemas.user import CurrentUser
+from app.schemas.orm_responses import serialize_audio_overview
 from app.tasks.audio_overview import generate_audio_overview_async
 from dotenv import load_dotenv
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -230,7 +231,7 @@ async def get_audio_overviews_by_paper_id(
 
     # Convert the audio overviews to a list of dictionaries
     audio_overview_list = [
-        audio_overview_crud.overview_to_dict(overview) for overview in audio_overviews
+        serialize_audio_overview(overview) for overview in audio_overviews
     ]
 
     return JSONResponse(
@@ -268,7 +269,7 @@ async def get_audio_overview_by_id(
         return JSONResponse(status_code=404, content={"message": "File not found"})
 
     # Convert the audio overview to a dictionary
-    audio_overview_dict = audio_overview_crud.overview_to_dict(audio_overview)
+    audio_overview_dict = serialize_audio_overview(audio_overview)
 
     audio_overview_dict["audio_url"] = signed_url
 
@@ -321,7 +322,7 @@ async def get_mrc_audio_overview_file(
     if not signed_url:
         return JSONResponse(status_code=404, content={"message": "File not found"})
 
-    obj = audio_overview_crud.overview_to_dict(audio_overview)
+    obj = serialize_audio_overview(audio_overview)
 
     obj["audio_url"] = signed_url
     obj["job_id"] = str(audio_overview_job.id)

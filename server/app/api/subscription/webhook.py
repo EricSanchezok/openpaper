@@ -1,4 +1,3 @@
-from app.api.types import ApiData as ApiResponse
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -66,7 +65,7 @@ async def handle_stripe_webhook(
     request: Request,
     stripe_signature: str = Header(None),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> dict[str, object]:
     """Handle Stripe webhook events for subscription management"""
 
     if not STRIPE_WEBHOOK_SECRET:

@@ -23,6 +23,10 @@ from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.responses import DataTableSchema, DocumentMapping
 from app.schemas.user import CurrentUser
+from app.schemas.orm_responses import (
+    serialize_data_table_job,
+    serialize_data_table_result,
+)
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -345,7 +349,7 @@ async def list_data_table_jobs(
                 )
             ]
 
-        job_list = [data_table_job_crud.job_to_dict(job) for job in jobs]
+        job_list = [serialize_data_table_job(job) for job in jobs]
 
         return JSONResponse(
             status_code=200,
@@ -490,7 +494,7 @@ async def get_data_table_job_results(
                 content={"message": "Data table results not found"},
             )
 
-        data = data_table_result_crud.result_to_dict(result)
+        data = serialize_data_table_result(result)
 
         return JSONResponse(
             status_code=200,

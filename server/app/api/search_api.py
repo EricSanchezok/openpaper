@@ -1,4 +1,4 @@
-from app.api.types import ApiResponse
+from starlette.responses import Response as ApiResponse
 import logging
 
 from app.auth.dependencies import get_required_user
