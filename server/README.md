@@ -58,21 +58,28 @@ FastAPI automatically generates API documentation. Once the application is runni
 
 # Migrations
 
-This project uses Alembic for database migrations. To create a new migration, run:
+This project uses Alembic for database migrations. Commands are run through the
+locked `uv` environment:
 
 ```bash
-alembic revision --autogenerate -m "migration message"
+uv run alembic revision --autogenerate -m "migration message"
 ```
 To apply the migration, run:
 
 ```bash
-alembic upgrade head
+uv run alembic upgrade head
 ```
 To downgrade the migration, run:
 
 ```bash
-alembic downgrade -1
+uv run alembic downgrade -1
 ```
+
+Before committing a migration, run `uv run alembic check`. Alembic compares
+only the `scholens` schema; `auth` belongs to cloud-auth and other product
+schemas are deliberately outside this migration environment. The local
+product-only reset procedure is documented in
+[`DEVELOPMENT.md`](../DEVELOPMENT.md#reset-only-the-local-product-schema).
 
 # Tests
 

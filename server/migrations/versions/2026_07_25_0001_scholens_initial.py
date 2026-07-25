@@ -1,4 +1,4 @@
-"""scholens baseline
+"""Create the complete Scholens product schema.
 
 Revision ID: 59636e6aa2f2
 Revises:
@@ -6,7 +6,7 @@ Create Date: 2026-07-23 03:38:19.539316+00:00
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 import sqlalchemy as sa
@@ -14,9 +14,9 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "59636e6aa2f2"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -29,13 +29,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.PrimaryKeyConstraint("nonce"),
         schema="scholens",
@@ -49,13 +49,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id", "week_start"),
@@ -92,13 +92,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -127,13 +127,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.CheckConstraint(
             "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR (conversable_type = 'project' AND conversable_id IS NOT NULL) OR (conversable_type = 'everything' AND conversable_id IS NULL)",
@@ -157,13 +157,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.CheckConstraint(
             "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR (conversable_type = 'project' AND conversable_id IS NOT NULL) OR (conversable_type = 'everything' AND conversable_id IS NULL)",
@@ -184,13 +184,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.CheckConstraint(
             "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR (conversable_type = 'project' AND conversable_id IS NOT NULL) OR (conversable_type = 'everything' AND conversable_id IS NULL)",
@@ -214,13 +214,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -244,13 +244,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -266,13 +266,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -290,13 +290,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -312,13 +312,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["admin_id"],
@@ -336,13 +336,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -374,13 +374,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.CheckConstraint(
             "referrer_user_id <> referee_user_id",
@@ -428,13 +428,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -462,13 +462,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id"),
@@ -484,13 +484,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -508,13 +508,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -542,13 +542,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
@@ -572,13 +572,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"
@@ -610,6 +610,10 @@ def upgrade() -> None:
         sa.Column("raw_content", sa.Text(), nullable=True),
         sa.Column("parser_markdown_s3_key", sa.String(), nullable=True),
         sa.Column("parser_archive_s3_key", sa.String(), nullable=True),
+        sa.Column("parser_backend", sa.String(), nullable=True),
+        sa.Column("parser_quality", sa.String(), nullable=True),
+        sa.Column("parser_version", sa.String(), nullable=True),
+        sa.Column("parser_warning_code", sa.String(), nullable=True),
         sa.Column("ts_vector", postgresql.TSVECTOR(), nullable=True),
         sa.Column(
             "page_offset_map", postgresql.JSONB(astext_type=sa.Text()), nullable=True
@@ -641,13 +645,21 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
+            name="ck_papers_parser_backend",
+        ),
+        sa.CheckConstraint(
+            "parser_quality IS NULL OR parser_quality IN ('full', 'text_only')",
+            name="ck_papers_parser_quality",
         ),
         sa.ForeignKeyConstraint(
             ["parent_paper_id"], ["scholens.papers.id"], ondelete="SET NULL"
@@ -686,13 +698,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["audio_overview_id"], ["scholens.audio_overviews.id"], ondelete="CASCADE"
@@ -713,13 +725,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
@@ -756,13 +768,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["invited_by"],
@@ -787,13 +799,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["message_id"], ["scholens.messages.id"], ondelete="CASCADE"
@@ -835,13 +847,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["job_id"], ["scholens.data_table_extraction_jobs.id"], ondelete="CASCADE"
@@ -868,13 +880,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
@@ -912,13 +924,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
@@ -935,14 +947,14 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
@@ -967,13 +979,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
@@ -1005,13 +1017,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
@@ -1031,13 +1043,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="RESTRICT"
@@ -1084,13 +1096,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.papers.id"], ondelete="SET NULL"
@@ -1117,13 +1129,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["highlight_id"],
@@ -1149,13 +1161,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["data_table_id"],

@@ -127,3 +127,26 @@ Use separate terminals, in this order:
 | 3   | `client/` | `corepack yarn dev`                                                                      |
 
 Check: [localhost:8000/docs](http://localhost:8000/docs), [localhost:3000](http://localhost:3000), worker log shows `celery@... ready`.
+
+## Reset only the local product schema
+
+Scholens owns `scholens`; cloud-auth independently owns `auth`. During this
+pre-release phase you may reset local product data, but never drop `auth`:
+
+```sql
+DROP SCHEMA IF EXISTS scholens CASCADE;
+CREATE SCHEMA scholens AUTHORIZATION scholens_migrator;
+```
+
+Run those statements with a local database administrator, substitute the
+actual local product migration role, then rebuild and verify the schema:
+
+```bash
+cd server
+uv run alembic upgrade head
+uv run alembic upgrade head  # intentional no-op/idempotency check
+uv run alembic check         # must report no new upgrade operations
+```
+
+The migration role must own `scholens` and have read/write access required by
+product foreign keys, but it must not own or have `CREATE` on `auth`.

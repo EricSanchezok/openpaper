@@ -48,10 +48,21 @@ def include_object(
     )
 
 
+def include_name(
+    name: str | None,
+    type_: str,
+    parent_names: dict[str, str | None],
+) -> bool:
+    """Do not reflect schemas owned by cloud-auth or other local products."""
+    del parent_names
+    return type_ != "schema" or name == SCHOLENS_SCHEMA
+
+
 def _configure(**kwargs: Any) -> None:
     context.configure(
         target_metadata=target_metadata,
         include_schemas=True,
+        include_name=include_name,
         include_object=include_object,
         version_table=MIGRATION_TABLE,
         version_table_schema=SCHOLENS_SCHEMA,
