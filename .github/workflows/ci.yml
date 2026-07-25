@@ -52,9 +52,9 @@ jobs:
           GIT_CONFIG_VALUE_0: https://github.com/
         run: uv sync --frozen --group dev
       - name: Ruff
-        run: uv run ruff check app tests
-      - name: Strict type check for auth and migration boundary
-        run: uv run mypy app/auth app/database/admin_auth.py app/cli.py app/scripts/migrate_product.py
+        run: uv run ruff check app tests migrations
+      - name: Strict type check
+        run: uv run mypy app
       - name: Tests
         run: uv run pytest -q
 
@@ -256,6 +256,9 @@ jobs:
                   -e DATABASE_URL="postgresql+psycopg2://scholens_migrator:${MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
                   scholens-api:ci python -m app.scripts.migrate_product
               done
+              docker run --rm --network host \
+                -e DATABASE_URL="postgresql+psycopg2://scholens_migrator:${MIGRATOR_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
+                scholens-api:ci alembic check
             fi
           done
 
@@ -315,12 +318,94 @@ jobs:
                  1,
                  'retrieval augmented generation'
                );
+             INSERT INTO scholens.project
+               (id, title, description, admin_id)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000002',
+                 'CI project',
+                 'relationship test',
+                 currval('auth.users_id_seq')
+               );
+             INSERT INTO scholens.project_role
+               (id, project_id, user_id, role)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000003',
+                 '00000000-0000-0000-0000-000000000002',
+                 currval('auth.users_id_seq'),
+                 'admin'
+               );
+             INSERT INTO scholens.project_paper
+               (id, paper_id, project_id)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000004',
+                 '00000000-0000-0000-0000-000000000001',
+                 '00000000-0000-0000-0000-000000000002'
+               );
+             INSERT INTO scholens.token_weekly_usage
+               (user_id, week_start, used_tokens)
+               VALUES (
+                 currval('auth.users_id_seq'),
+                 date_trunc('week', now())::date,
+                 17
+               );
+             INSERT INTO scholens.token_usage_events
+               (id, user_id, week_start, idempotency_key, operation_id,
+                feature, provider, model, reasoning_level, total_tokens, status)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000005',
+                 currval('auth.users_id_seq'),
+                 date_trunc('week', now())::date,
+                 'ci-token-event',
+                 'ci-operation',
+                 'chat',
+                 'deepseek',
+                 'fixture-model',
+                 'standard',
+                 17,
+                 'settled'
+               );
+             INSERT INTO scholens.subscriptions
+               (id, user_id, plan, status, cancel_at_period_end)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000006',
+                 currval('auth.users_id_seq'),
+                 'basic',
+                 'active',
+                 false
+               );
              SELECT 1 / (
                (SELECT ts_vector IS NOT NULL FROM scholens.papers
                 WHERE id = '00000000-0000-0000-0000-000000000001')::int
                *
                (SELECT ts_vector IS NOT NULL FROM scholens.paper_passages
                 WHERE paper_id = '00000000-0000-0000-0000-000000000001')::int
+               *
+               (SELECT count(*) = 1 FROM scholens.project_paper
+                WHERE project_id = '00000000-0000-0000-0000-000000000002')::int
+               *
+               (SELECT used_tokens = 17 FROM scholens.token_weekly_usage
+                WHERE user_id = currval('auth.users_id_seq'))::int
+               *
+               (SELECT count(*) = 1 FROM scholens.subscriptions
+                WHERE user_id = currval('auth.users_id_seq'))::int
+             );
+             DELETE FROM scholens.project
+               WHERE id = '00000000-0000-0000-0000-000000000002';
+             SELECT 1 / (
+               (NOT EXISTS (
+                 SELECT 1 FROM scholens.project_role
+                 WHERE project_id = '00000000-0000-0000-0000-000000000002'
+               ))::int
+               *
+               (NOT EXISTS (
+                 SELECT 1 FROM scholens.project_paper
+                 WHERE project_id = '00000000-0000-0000-0000-000000000002'
+               ))::int
+               *
+               (EXISTS (
+                 SELECT 1 FROM scholens.papers
+                 WHERE id = '00000000-0000-0000-0000-000000000001'
+               ))::int
              );
              ROLLBACK;"
 

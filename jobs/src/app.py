@@ -56,7 +56,7 @@ async def get_task_status(task_id: str):
     """
     try:
         # Get task result from Celery
-        task_result = celery_app.AsyncResult(task_id)  # type: ignore
+        task_result = celery_app.AsyncResult(task_id)
 
         if task_result.state == "PENDING":
             # Task is waiting or doesn't exist
@@ -111,7 +111,7 @@ async def cancel_task(task_id: str):
     Cancel a pending or running task.
     """
     try:
-        celery_app.control.revoke(task_id, terminate=True)  # type: ignore
+        celery_app.control.revoke(task_id, terminate=True)
         logger.info(f"Cancelled task {task_id}")
         return {"message": f"Task {task_id} has been cancelled"}
 

@@ -83,7 +83,7 @@ async def _no_backoff(_attempt: int, _error: ParserTransientError) -> None:
 
 
 def test_archive_requires_safe_canonical_artifacts() -> None:
-    client = MinerUClient(_config(), MemoryStateStore())  # type: ignore[arg-type]
+    client = MinerUClient(_config(), MemoryStateStore())
     result = client.read_archive(_archive())
 
     assert result.backend.value == "mineru"
@@ -104,7 +104,7 @@ def test_archive_rejects_unsafe_compression_ratio() -> None:
         archive.writestr("full.md", "# Paper")
         archive.writestr("content_list.json", "0" * 100_000)
 
-    client = MinerUClient(_config(), MemoryStateStore())  # type: ignore[arg-type]
+    client = MinerUClient(_config(), MemoryStateStore())
     with pytest.raises(ParserSecurityError, match="compression ratio"):
         client.read_archive(output.getvalue())
 
@@ -158,7 +158,7 @@ def test_resumes_existing_task_without_resubmitting(
     )
     client = MinerUClient(
         _config(),
-        MemoryStateStore("existing-task"),  # type: ignore[arg-type]
+        MemoryStateStore("existing-task"),
         transport=httpx.MockTransport(handler),
     )
 
@@ -208,7 +208,7 @@ def test_download_retry_refreshes_task_without_resubmitting(
     monkeypatch.setattr(MinerUClient, "_backoff", staticmethod(_no_backoff))
     client = MinerUClient(
         _config(),
-        MemoryStateStore(),  # type: ignore[arg-type]
+        MemoryStateStore(),
         transport=httpx.MockTransport(handler),
     )
 
@@ -230,7 +230,7 @@ def test_submit_transport_failure_is_not_blindly_retried() -> None:
 
     client = MinerUClient(
         _config(),
-        MemoryStateStore(),  # type: ignore[arg-type]
+        MemoryStateStore(),
         transport=httpx.MockTransport(handler),
     )
     with pytest.raises(ParserTransientError, match="submit"):
@@ -249,7 +249,7 @@ def test_authorization_failure_is_configuration_error() -> None:
 
     client = MinerUClient(
         _config(),
-        MemoryStateStore(),  # type: ignore[arg-type]
+        MemoryStateStore(),
         transport=httpx.MockTransport(handler),
     )
     with pytest.raises(ParserConfigurationError, match="authorization"):

@@ -1,4 +1,4 @@
-import fitz  # type: ignore
+import fitz
 import xml.etree.ElementTree as ET
 import argparse
 import os

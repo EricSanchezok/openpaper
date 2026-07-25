@@ -83,18 +83,12 @@ product-only reset procedure is documented in
 
 # Tests
 
-Tests live in the `tests/` folder and use Python's built-in `unittest`. Run them from the `server` directory:
+Run the complete Server quality gate from the `server` directory:
 
 ```bash
-# All tests
-uv run python -m unittest discover -s tests
-
-# A single test file
-uv run python -m unittest tests.test_zotero_sync
-
-# A single test case or method
-uv run python -m unittest tests.test_zotero_sync.TestZoteroAnnotationPayload
-uv run python -m unittest tests.test_zotero_sync.TestZoteroAnnotationPayload.test_serialize_annotations_payload_keeps_keys
+uv run ruff check app tests migrations
+uv run mypy app
+uv run pytest -q
 ```
 
 ## Chat with Knowledge Base

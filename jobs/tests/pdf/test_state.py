@@ -43,7 +43,7 @@ class MemoryRedis:
 def test_state_checkpoint_and_submit_lock_are_namespaced() -> None:
     async def scenario() -> None:
         redis = MemoryRedis()
-        store = ParserStateStore(redis_client=redis)  # type: ignore[arg-type]
+        store = ParserStateStore(redis_client=redis)
 
         await store.save_task_id("job-1", "mineru-task")
         assert await store.get_task_id("job-1") == "mineru-task"

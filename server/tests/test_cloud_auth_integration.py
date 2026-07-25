@@ -8,6 +8,7 @@ from app.database.models import AuthUser, Base
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy.orm import configure_mappers
 
 
 def _cloud_user() -> UserRecord:
@@ -23,6 +24,7 @@ def _cloud_user() -> UserRecord:
 
 def test_every_orm_table_has_an_explicit_owner_schema() -> None:
     assert Base.metadata.schema == "scholens"
+    assert not hasattr(Base, "to_dict")
     assert AuthUser.__table__.schema == "auth"
     assert "deleted_at" not in AuthUser.__table__.columns
     assert {
@@ -30,6 +32,13 @@ def test_every_orm_table_has_an_explicit_owner_schema() -> None:
         for table in Base.metadata.tables.values()
         if table is not AuthUser.__table__
     } == {"scholens"}
+
+
+def test_all_orm_mappers_and_relationships_configure() -> None:
+    configure_mappers()
+
+    assert len(Base.registry.mappers) > 0
+    assert all(mapper.persist_selectable is not None for mapper in Base.registry.mappers)
 
 
 @pytest.mark.asyncio

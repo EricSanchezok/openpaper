@@ -1031,8 +1031,6 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "redis" },
     { name = "requests" },
-    { name = "types-psutil" },
-    { name = "types-requests" },
     { name = "uvicorn" },
 ]
 
@@ -1040,6 +1038,8 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "ruff" },
+    { name = "types-psutil" },
+    { name = "types-requests" },
 ]
 
 [package.metadata]
@@ -1059,8 +1059,6 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "redis", specifier = ">=5.2.0" },
     { name = "requests", specifier = ">=2.33.0" },
-    { name = "types-psutil", specifier = ">=7.0.0.20250601" },
-    { name = "types-requests", specifier = ">=2.32.4.20250611" },
     { name = "uvicorn", specifier = ">=0.34" },
 ]
 
@@ -1068,6 +1066,8 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.5" },
+    { name = "types-psutil", specifier = ">=7.0.0.20250601" },
+    { name = "types-requests", specifier = ">=2.32.4.20250611" },
 ]
 
 [[package]]

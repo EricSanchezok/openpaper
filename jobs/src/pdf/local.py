@@ -7,8 +7,8 @@ import math
 import re
 from io import BytesIO
 
-import pymupdf  # type: ignore
-from PIL import Image  # type: ignore
+import pymupdf
+from PIL import Image
 
 from src.pdf.models import (
     LocalPDFAnalysis,

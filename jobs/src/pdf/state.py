@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from typing import Awaitable, cast
+from typing import Awaitable, Protocol, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -16,6 +16,43 @@ STATE_TTL_SECONDS = 24 * 60 * 60
 SUBMIT_LOCK_TTL_SECONDS = 60
 SUBMIT_LOCK_WAIT_SECONDS = 15
 SUBMIT_LOCK_POLL_SECONDS = 0.25
+
+
+class RedisStateClient(Protocol):
+    async def get(self, key: str) -> object: ...
+
+    async def set(
+        self,
+        key: str,
+        value: str,
+        *,
+        ex: int,
+        nx: bool = False,
+    ) -> object: ...
+
+    async def delete(self, key: str) -> object: ...
+
+    async def eval(
+        self, script: str, count: int, key: str, token: str
+    ) -> object: ...
+
+    async def aclose(self) -> None: ...
+
+
+class ParserTaskState(Protocol):
+    async def get_task_id(self, job_id: str) -> str | None: ...
+
+    async def save_task_id(self, job_id: str, task_id: str) -> None: ...
+
+    async def clear(self, job_id: str) -> None: ...
+
+    async def acquire_submit_lock(self, job_id: str) -> str | None: ...
+
+    async def wait_for_task_id(self, job_id: str) -> str | None: ...
+
+    async def release_submit_lock(self, job_id: str, token: str) -> None: ...
+
+    async def close(self) -> None: ...
 
 
 def parser_state_redis_url() -> str:
@@ -36,11 +73,14 @@ class ParserStateStore:
         self,
         redis_url: str | None = None,
         *,
-        redis_client: Redis | None = None,
+        redis_client: RedisStateClient | None = None,
     ) -> None:
-        self._redis = redis_client or Redis.from_url(
-            redis_url or parser_state_redis_url(),
-            decode_responses=True,
+        self._redis: RedisStateClient = redis_client or cast(
+            RedisStateClient,
+            Redis.from_url(
+                redis_url or parser_state_redis_url(),
+                decode_responses=True,
+            ),
         )
 
     @staticmethod

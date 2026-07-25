@@ -6,7 +6,7 @@ import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from celery import Celery  # type: ignore
+from celery import Celery
 from src.pdf import validate_pdf_runtime_configuration
 
 load_dotenv()  # Load environment variables from .env file

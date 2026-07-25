@@ -1,6 +1,6 @@
 "use client";
 
-import { PaperItem } from "@/lib/schema";
+import type { PaperItem } from "@/lib/schema";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 import { FilePlus2 } from "lucide-react";

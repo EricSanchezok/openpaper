@@ -2,6 +2,9 @@
   "name": "scholens-client",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
   "scripts": {
     "predev": "node scripts/sync-pdf-worker.mjs",
     "dev": "next dev",

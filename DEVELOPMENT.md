@@ -4,7 +4,10 @@ Three services run locally: **server** (API), **client** (Next.js), and **jobs**
 
 ## Prerequisites
 
-Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js + Yarn, PostgreSQL, and Docker (RabbitMQ + Redis for jobs).
+Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js 22 LTS + Yarn,
+PostgreSQL, and Docker (RabbitMQ + Redis for jobs). Avoid odd-numbered Node
+releases; the frontend dependency graph follows the active/LTS Node support
+window enforced in `client/package.json`.
 
 ## Ports
 

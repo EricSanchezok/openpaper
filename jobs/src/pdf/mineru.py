@@ -27,7 +27,7 @@ from src.pdf.models import (
     ParserSecurityError,
     ParserTransientError,
 )
-from src.pdf.state import ParserStateStore
+from src.pdf.state import ParserStateStore, ParserTaskState
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +208,7 @@ class MinerUClient:
     def __init__(
         self,
         config: MinerUConfig | None = None,
-        state_store: ParserStateStore | None = None,
+        state_store: ParserTaskState | None = None,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:

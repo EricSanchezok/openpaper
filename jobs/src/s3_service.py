@@ -7,9 +7,9 @@ import os
 import uuid
 from typing import Tuple
 
-import boto3  # type: ignore
-from botocore.config import Config  # type: ignore
-from botocore.exceptions import ClientError  # type: ignore
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 

@@ -185,6 +185,42 @@ def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     assert "ON scholens.paper_passages" in baseline
 
 
+def test_server_keeps_the_typed_sqlalchemy_two_mainline() -> None:
+    app_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "server" / "app").rglob("*.py")
+    )
+    model_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "server" / "app" / "database" / "models").glob("*.py")
+    )
+    pyproject = (ROOT / "server" / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "db.query(" not in app_sources
+    assert "type: ignore" not in app_sources
+    assert re.search(r"\bColumn\(", model_sources) is None
+    assert "sqlalchemy.ext.mypy.plugin" not in pyproject
+
+
+def test_pdf_viewer_has_one_browser_only_loading_boundary() -> None:
+    wrapper = (
+        ROOT / "client" / "src" / "components" / "PdfHighlighterViewer.tsx"
+    ).read_text(encoding="utf-8")
+    implementation = (
+        ROOT / "client" / "src" / "components" / "PdfHighlighterViewerClient.tsx"
+    ).read_text(encoding="utf-8")
+    package = (ROOT / "client" / "package.json").read_text(encoding="utf-8")
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert 'import("./PdfHighlighterViewerClient")' in wrapper
+    assert "ssr: false" in wrapper
+    assert "react-pdf-highlighter-extended" not in wrapper
+    assert "react-pdf-highlighter-extended" in implementation
+    assert '"predev": "node scripts/sync-pdf-worker.mjs"' in package
+    assert "sync-pdf-worker.mjs && node scripts/generate-blog-metadata.mjs" in package
+    assert "client/public/pdf.worker.mjs" in ignore
+
+
 def test_caddy_contract_hides_internal_health_and_routes_same_origin_api() -> None:
     caddy = (PRODUCTION / "Caddyfile.snippet").read_text(encoding="utf-8")
 
@@ -201,6 +237,9 @@ def test_ci_builds_images_and_runs_independent_migrations_twice() -> None:
     assert "for _ in 1 2; do" in workflow
     assert "cloud-auth migrate" in workflow
     assert "python -m app.scripts.migrate_product" in workflow
+    assert "uv run mypy app" in workflow
+    assert "scholens-api:ci alembic check" in workflow
+    assert "window is not defined|document is not defined" in workflow
     assert "CREATE TABLE auth.product_migrator_must_not_create" in workflow
     assert "CREATE TABLE scholens.auth_migrator_must_not_create" in workflow
 
