@@ -3,7 +3,7 @@ Pydantic schemas for PDF processing.
 """
 
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -52,9 +52,9 @@ class TitleAuthorsAbstract(BaseModel):
     """Schema for title, authors, and abstract extraction."""
 
     title: str = Field(description="Title of the paper **in normal case**")
-    authors: List[str] = Field(default=[], description="List of authors")
+    authors: list[str] = Field(default_factory=list, description="List of authors")
     abstract: str = Field(default="", description="Abstract of the paper")
-    publish_date: Optional[str] = Field(
+    publish_date: str | None = Field(
         default="", description="Publishing date of the paper in YYYY-MM-DD format"
     )
 
@@ -62,11 +62,12 @@ class TitleAuthorsAbstract(BaseModel):
 class InstitutionsKeywords(BaseModel):
     """Schema for institutions and keywords extraction."""
 
-    institutions: List[str] = Field(
-        default=[], description="List of institutions involved in the publication."
+    institutions: list[str] = Field(
+        default_factory=list,
+        description="List of institutions involved in the publication.",
     )
-    keywords: List[str] = Field(
-        default=[],
+    keywords: list[str] = Field(
+        default_factory=list,
         description=(
             "3-8 concise topical keywords describing the paper's subject. "
             "Write each in title case (e.g. 'Machine Learning', 'Protein Folding'), "
@@ -81,7 +82,7 @@ class InstitutionsKeywords(BaseModel):
 class SummaryAndCitations(BaseModel):
     """Schema for summary and citations extraction."""
 
-    summary_citations: List[ResponseCitation] = Field(
+    summary_citations: list[ResponseCitation] = Field(
         description="List of citations supporting the summary. Include direct quotes or paraphrases with the citation index. The index should match the inline citations used in the summary. Only include citations that are directly relevant to the summary content. Use sequential numbering starting from 1."
     )
     summary: str = Field(
@@ -112,8 +113,8 @@ class SummaryAndCitations(BaseModel):
 class Highlights(BaseModel):
     """Schema for highlights extraction."""
 
-    highlights: List[AIHighlight] = Field(
-        default=[],
+    highlights: list[AIHighlight] = Field(
+        default_factory=list,
         description="""
 Extract 3-5 standout highlights that capture the most compelling and unique aspects of this research paper. Focus on what makes this paper distinctive rather than summarizing standard content.
 
@@ -158,13 +159,14 @@ class PaperMetadataExtraction(BaseModel):
     """Extracted metadata from a paper"""
 
     title: str = Field(description="Title of the paper in normal case")
-    authors: List[str] = Field(default=[], description="List of authors")
+    authors: list[str] = Field(default_factory=list, description="List of authors")
     abstract: str = Field(default="", description="Abstract of the paper")
-    institutions: List[str] = Field(
-        default=[], description="List of institutions involved in the publication."
+    institutions: list[str] = Field(
+        default_factory=list,
+        description="List of institutions involved in the publication.",
     )
-    keywords: List[str] = Field(
-        default=[],
+    keywords: list[str] = Field(
+        default_factory=list,
         description=(
             "3-8 concise topical keywords describing the paper's subject. "
             "Write each in title case (e.g. 'Machine Learning', 'Protein Folding'), "
@@ -199,15 +201,15 @@ Citation guidelines:
 The summary should be accessible to readers with basic domain knowledge while maintaining scientific integrity.
                          """,
     )
-    summary_citations: List[ResponseCitation] = Field(
-        default=[],
+    summary_citations: list[ResponseCitation] = Field(
+        default_factory=list,
         description="List of citations that are relevant to the summary. These should be direct quotes or paraphrases from the paper that support the summary provided. Remember to include the citation index (e.g., [^1], [^2]) in the summary.",
     )
-    publish_date: Optional[str] = Field(
+    publish_date: str | None = Field(
         default=None, description="Publishing date of the paper in YYYY-MM-DD format"
     )
-    highlights: List[AIHighlight] = Field(
-        default=[],
+    highlights: list[AIHighlight] = Field(
+        default_factory=list,
         description="List of key highlights from the paper. These should be significant quotes that are must-reads of the paper's findings and contributions. Each highlight should include the text of the highlight and an annotation explaining its significance or relevance to the paper's content. Particularly drill into interesting, novel findings, methodologies, or implications that are worth noting. Pay special attention to tables, figures, and diagrams that may contain important information.",
     )
 
@@ -219,21 +221,21 @@ class PDFProcessingResult(BaseModel):
 
     success: bool
     job_id: str
-    raw_content: Optional[str] = None
-    page_offset_map: Optional[dict[int, list[int]]] = None
-    metadata: Optional[PaperMetadataExtraction] = None
-    s3_object_key: Optional[str] = None
-    file_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    preview_object_key: Optional[str] = None
-    parser_markdown_s3_key: Optional[str] = None
-    parser_archive_s3_key: Optional[str] = None
-    parser_backend: Optional[Literal["mineru", "pymupdf"]] = None
-    parser_quality: Optional[Literal["full", "text_only"]] = None
-    parser_version: Optional[str] = None
-    parser_warning_code: Optional[str] = None
-    error: Optional[str] = None
-    duration: Optional[float] = None  # Duration in seconds
+    raw_content: str | None = None
+    page_offset_map: dict[int, list[int]] | None = None
+    metadata: PaperMetadataExtraction | None = None
+    s3_object_key: str | None = None
+    file_url: str | None = None
+    preview_url: str | None = None
+    preview_object_key: str | None = None
+    parser_markdown_s3_key: str | None = None
+    parser_archive_s3_key: str | None = None
+    parser_backend: Literal["mineru", "pymupdf"] | None = None
+    parser_quality: Literal["full", "text_only"] | None = None
+    parser_version: str | None = None
+    parser_warning_code: str | None = None
+    error: str | None = None
+    duration: float | None = None
 
     @model_validator(mode="after")
     def validate_result_state(self) -> "PDFProcessingResult":
@@ -258,8 +260,8 @@ class DocumentMapping(BaseModel):
 
 
 class DataTableSchema(BaseModel):
-    columns: List[str] = Field(description="List of column names in the data table.")
-    papers: List[DocumentMapping] = Field(
+    columns: list[str] = Field(description="List of column names in the data table.")
+    papers: list[DocumentMapping] = Field(
         description="List of papers included in the data table."
     )
 
@@ -268,8 +270,8 @@ class DataTableCellValue(BaseModel):
     """Value for a single cell in the data table with supporting citations."""
 
     value: str = Field(description="The extracted value for this column")
-    citations: List[ResponseCitation] = Field(
-        default=[],
+    citations: list[ResponseCitation] = Field(
+        default_factory=list,
         description="List of citations that support this specific value. These should be direct quotes or paraphrases from the paper.",
     )
 
@@ -281,8 +283,10 @@ class DataTableRow(BaseModel):
 
 class DataTableResult(BaseModel):
     success: bool
-    columns: List[str] = Field(description="List of column names in the data table.")
-    rows: List[DataTableRow] = Field(default=[], description="Row data per paper")
-    row_failures: List[str] = Field(
-        default=[], description="List of paper_ids that failed to process"
+    columns: list[str] = Field(description="List of column names in the data table.")
+    rows: list[DataTableRow] = Field(
+        default_factory=list, description="Row data per paper"
+    )
+    row_failures: list[str] = Field(
+        default_factory=list, description="List of paper_ids that failed to process"
     )

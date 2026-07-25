@@ -241,43 +241,6 @@ class JobsClient:
                 "error": "task_status_failed",
             }
 
-    def cancel_celery_task(self, task_id: str) -> dict[str, Any]:
-        """
-        Cancel a Celery task using the HTTP API.
-
-        Args:
-            task_id: The Celery task ID to cancel
-
-        Returns:
-            Dict containing cancellation result
-        """
-        try:
-            response = requests.delete(
-                f"{self.celery_api_url}/task/{task_id}", timeout=10
-            )
-            response.raise_for_status()
-
-            return {
-                "task_id": task_id,
-                "status": "cancelled",
-                "message": response.json().get(
-                    "message", "Task cancelled successfully"
-                ),
-            }
-
-        except requests.exceptions.RequestException as e:
-            return {
-                "task_id": task_id,
-                "status": "CANCEL_ERROR",
-                "error": f"Failed to cancel task via API: {str(e)}",
-            }
-        except Exception as e:
-            return {
-                "task_id": task_id,
-                "status": "ERROR",
-                "error": f"Unexpected error cancelling task: {str(e)}",
-            }
-
     async def submit_pdf_processing_job_with_upload(
         self,
         pdf_bytes: bytes,

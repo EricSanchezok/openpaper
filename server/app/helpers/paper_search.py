@@ -293,10 +293,6 @@ def search_open_alex(
     if sort:
         params["sort"] = quote(sort)
 
-    constructed_url = f"{base_url}?"
-    for key, value in params.items():
-        constructed_url += f"{key}={value}&"
-
     constructed_url = base_url + "?" + "&".join(f"{k}={v}" for k, v in params.items())
 
     logger.debug(f"Constructed URL: {constructed_url}")

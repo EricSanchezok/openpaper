@@ -111,6 +111,8 @@ def track_event(
                 properties=event_properties,
             )
     else:
-        print(
-            f"PostHog tracking disabled. Event: {event_name}, Properties: {event_properties}"
+        logger.debug(
+            "PostHog tracking disabled for event %s with properties %s",
+            event_name,
+            event_properties,
         )

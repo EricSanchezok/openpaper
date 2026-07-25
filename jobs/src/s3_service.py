@@ -5,8 +5,6 @@ S3 service for file uploads and management.
 import logging
 import os
 import uuid
-from typing import Tuple
-
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -76,7 +74,7 @@ class S3Service:
         file_bytes: bytes,
         original_filename: str,
         content_type: str,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """Upload a file from bytes to S3
 
         Args:

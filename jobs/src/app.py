@@ -1,13 +1,13 @@
 """
 FastAPI application for the Celery PDF processing service.
-Provides endpoints for submitting tasks and checking status.
+Provides health and task-status endpoints for the Server service.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.celery_app import celery_app
 
@@ -22,35 +22,23 @@ app = FastAPI(
 )
 
 
-class TaskSubmission(BaseModel):
-    pdf_base64: str
-    webhook_url: str
-    processing_options: Dict[str, Any] = Field(default_factory=dict)
-
-
-class TaskResponse(BaseModel):
-    task_id: str
-    status: str
-    message: str
-
-
 class TaskStatus(BaseModel):
     task_id: str
     status: str
-    result: Optional[Dict[str, Any]] = None
-    meta: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    progress_message: Optional[str] = None  # Human-readable progress message
+    result: dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None
+    error: str | None = None
+    progress_message: str | None = None
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "service": "pdf-processing"}
 
 
 @app.get("/task/{task_id}/status", response_model=TaskStatus)
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str) -> TaskStatus:
     """
     Get the status of a processing task by ID.
     """
@@ -100,48 +88,13 @@ async def get_task_status(task_id: str):
 
         return status_response
 
-    except Exception as e:
-        logger.error(f"Failed to get task status for {task_id}: {e}")
-        raise HTTPException(status_code=500, detail="task_status_failed") from e
-
-
-@app.delete("/task/{task_id}")
-async def cancel_task(task_id: str):
-    """
-    Cancel a pending or running task.
-    """
-    try:
-        celery_app.control.revoke(task_id, terminate=True)
-        logger.info(f"Cancelled task {task_id}")
-        return {"message": f"Task {task_id} has been cancelled"}
-
-    except Exception as e:
-        logger.error(f"Failed to cancel task {task_id}: {e}")
-        raise HTTPException(status_code=500, detail="task_cancel_failed") from e
-
-
-@app.get("/worker/status")
-async def get_worker_status():
-    """
-    Get status of Celery workers.
-    """
-    try:
-        # Inspect active tasks and worker status
-        inspect = celery_app.control.inspect()
-
-        active_tasks = inspect.active()
-        registered_tasks = inspect.registered()
-        worker_stats = inspect.stats()
-
-        return {
-            "active_tasks": active_tasks,
-            "registered_tasks": registered_tasks,
-            "worker_stats": worker_stats,
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to get worker status: {e}")
-        raise HTTPException(status_code=500, detail="worker_status_failed") from e
+    except Exception as exc:
+        logger.error(
+            "Failed to read task status for %s (%s)",
+            task_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=500, detail="task_status_failed") from exc
 
 
 if __name__ == "__main__":
