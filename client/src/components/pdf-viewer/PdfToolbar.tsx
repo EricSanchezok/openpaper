@@ -116,6 +116,7 @@ export function PdfToolbar({
 			<div className="flex items-center gap-1">
 				<Button
 					onClick={goToPreviousPage}
+					aria-label="Previous page"
 					size="sm"
 					variant="ghost"
 					className="h-8 w-8 p-0"
@@ -128,6 +129,7 @@ export function PdfToolbar({
 				</span>
 				<Button
 					onClick={goToNextPage}
+					aria-label="Next page"
 					size="sm"
 					variant="ghost"
 					className="h-8 w-8 p-0"
@@ -289,6 +291,7 @@ export function PdfToolbar({
 				<div className="flex items-center gap-1">
 					<Button
 						onClick={zoomOut}
+						aria-label="Zoom out"
 						size="sm"
 						variant="ghost"
 						className="h-8 w-8 p-0"
@@ -300,6 +303,7 @@ export function PdfToolbar({
 					</span>
 					<Button
 						onClick={zoomIn}
+						aria-label="Zoom in"
 						size="sm"
 						variant="ghost"
 						className="h-8 w-8 p-0"

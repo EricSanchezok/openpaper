@@ -198,7 +198,7 @@ interface UseMentionAutocompleteArgs {
 	onValueChange: (value: string) => void;
 	selection: MentionSelection;
 	onSelectionChange: (selection: MentionSelection) => void;
-	textareaRef: RefObject<HTMLTextAreaElement>;
+	textareaRef: RefObject<HTMLTextAreaElement | null>;
 	// Project chat scopes mentions to papers only, so highlight search is off.
 	enableHighlights?: boolean;
 }

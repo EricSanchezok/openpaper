@@ -79,21 +79,25 @@ export function useConversationHistory({
 
 		let cancelled = false;
 		async function loadConversation() {
-			let id: string | null = null;
 			try {
+				let id: string | null = null;
 				const existing = (await fetchFromApi(
 					`/api/paper/conversation?paper_id=${paperId}`,
 					{ method: "GET" },
 				)) as ConversationResponse;
 				id = existing.id || null;
+				if (!cancelled) setConversationId(id);
 			} catch {
-				const created = (await fetchFromApi(
-					`/api/conversation/paper/${paperId}`,
-					{ method: "POST" },
-				)) as ConversationResponse;
-				id = created.id;
+				try {
+					const created = (await fetchFromApi(
+						`/api/conversation/paper/${paperId}`,
+						{ method: "POST" },
+					)) as ConversationResponse;
+					if (!cancelled) setConversationId(created.id);
+				} catch {
+					if (!cancelled) setIsFetchingHistory(false);
+				}
 			}
-			if (!cancelled) setConversationId(id);
 		}
 
 		void loadConversation();

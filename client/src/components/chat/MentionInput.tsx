@@ -31,7 +31,7 @@ interface MentionInputProps {
 	busy?: boolean;
 	autoFocus?: boolean;
 	// Optional external ref (e.g. for focus effects); an internal one is used otherwise.
-	textareaRef?: RefObject<HTMLTextAreaElement>;
+	textareaRef?: RefObject<HTMLTextAreaElement | null>;
 	minHeightClass?: string;
 }
 

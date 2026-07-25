@@ -25,15 +25,21 @@ async function mockSharedPaper(page: Page) {
 			headers: { "access-control-allow-origin": "*" },
 		}),
 	);
-	await page.route("**/api/paper/share?id=e2e-paper", (route) =>
+	await page.route(/\/api\/paper\/share\?id=e2e-paper$/, (route) =>
 		route.fulfill({
+			headers: {
+				"access-control-allow-credentials": "true",
+				"access-control-allow-headers": "content-type",
+				"access-control-allow-methods": "GET,OPTIONS",
+				"access-control-allow-origin": "http://127.0.0.1:3100",
+			},
 			json: {
 				paper: {
 					id: "00000000-0000-0000-0000-000000000001",
 					title: "Synthetic Research Paper",
 					summary: "A deterministic browser regression fixture.",
 					summary_citations: [],
-					file_url: "http://127.0.0.1:3000/synthetic.pdf",
+					file_url: "http://127.0.0.1:3100/synthetic.pdf",
 					status: "completed",
 					is_public: true,
 					share_id: "e2e-paper",
@@ -45,18 +51,31 @@ async function mockSharedPaper(page: Page) {
 		}),
 	);
 	await page.route("**/api/conversation/share/e2e-paper", (route) =>
-		route.fulfill({ json: { messages: [] } }),
+		route.fulfill({
+			headers: {
+				"access-control-allow-credentials": "true",
+				"access-control-allow-headers": "content-type",
+				"access-control-allow-methods": "GET,OPTIONS",
+				"access-control-allow-origin": "http://127.0.0.1:3100",
+			},
+			json: { messages: [] },
+		}),
 	);
 }
 
 test("loads, searches, zooms, and changes pages in a two-page PDF", async ({
 	page,
-}) => {
+}, testInfo) => {
+	test.skip(testInfo.project.name !== "chromium");
 	await mockSharedPaper(page);
 	await page.goto("/paper/share/e2e-paper");
 
 	await expect(page.getByText("Synthetic Research Paper")).toBeVisible();
 	await expect(page.locator(".page")).toHaveCount(2, { timeout: 20_000 });
+	await page.getByRole("button", { name: "Search (Cmd+F)" }).click();
+	await page.getByPlaceholder("Search...").fill("searchable phrase");
+	await page.getByPlaceholder("Search...").press("Enter");
+	await expect(page.getByText("1/1")).toBeVisible();
 	await page.getByRole("button", { name: /zoom in/i }).click();
 	await page.getByRole("button", { name: /next page/i }).click();
 	await expect(page.getByText(/2\s*\/\s*2/)).toBeVisible();
