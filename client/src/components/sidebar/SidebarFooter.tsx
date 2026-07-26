@@ -24,7 +24,6 @@ import { User } from "@/lib/auth";
 import { SubscriptionData } from "@/lib/schema";
 import { UserAvatar, UserMenuContent } from "./UserMenuContent";
 import { UsageLimitCard } from "./UsageLimitCard";
-import { ReferralEntry } from "./referralEntry";
 import { SubscriptionWarning } from "./subscriptionWarning";
 
 interface AppSidebarFooterProps {
@@ -38,7 +37,6 @@ interface AppSidebarFooterProps {
     darkMode: boolean;
     onToggleDarkMode: () => void;
     onLogout: () => void;
-    referralEntry: ReferralEntry | null;
 }
 
 export function AppSidebarFooter({
@@ -51,7 +49,6 @@ export function AppSidebarFooter({
     darkMode,
     onToggleDarkMode,
     onLogout,
-    referralEntry,
 }: AppSidebarFooterProps) {
     return (
         <SidebarFooter>
@@ -123,7 +120,7 @@ export function AppSidebarFooter({
                                 </SidebarMenuButton>
                             </SheetTrigger>
                             <SheetContent side="bottom">
-                                <UserMenuContent user={user} handleLogout={onLogout} toggleDarkMode={onToggleDarkMode} darkMode={darkMode} referralEntry={referralEntry} />
+                                <UserMenuContent user={user} handleLogout={onLogout} toggleDarkMode={onToggleDarkMode} darkMode={darkMode} />
                             </SheetContent>
                         </Sheet>
                     ) : (
@@ -138,7 +135,7 @@ export function AppSidebarFooter({
                                 </SidebarMenuButton>
                             </PopoverTrigger>
                             <PopoverContent className="w-60 p-1" align="start">
-                                <UserMenuContent user={user} handleLogout={onLogout} toggleDarkMode={onToggleDarkMode} darkMode={darkMode} referralEntry={referralEntry} />
+                                <UserMenuContent user={user} handleLogout={onLogout} toggleDarkMode={onToggleDarkMode} darkMode={darkMode} />
                             </PopoverContent>
                         </Popover>
                     )}

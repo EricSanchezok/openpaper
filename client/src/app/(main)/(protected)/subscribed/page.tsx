@@ -4,11 +4,10 @@ import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { fetchFromApi } from '@/lib/api'
-import { CheckCircle, XCircle, Upload, MessageSquare, Sparkles, ArrowLeft, Gift } from 'lucide-react'
+import { CheckCircle, XCircle, Upload, MessageSquare, Sparkles, ArrowLeft } from 'lucide-react'
 import confetti from 'canvas-confetti'
 import LoadingIndicator from '@/components/utils/Loading'
 import Link from 'next/link'
-import { ReferralDialog } from '@/components/ReferralDialog'
 
 interface SessionStatusResponse {
     status: string
@@ -26,7 +25,6 @@ function SubscribedPageContent() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>('')
     const [confettiTriggered, setConfettiTriggered] = useState(false)
-    const [referralOpen, setReferralOpen] = useState(false)
 
     const triggerConfetti = () => {
         const duration = 5 * 1000;
@@ -306,31 +304,11 @@ function SubscribedPageContent() {
                     </Button>
                 </div>
 
-                <div className="mt-6 w-full max-w-md rounded-xl border bg-card p-4 flex items-center gap-3">
-                    <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary shrink-0">
-                        <Gift className="h-5 w-5" />
-                    </div>
-                    <div className="text-left flex-1 min-w-0">
-                        <p className="text-sm font-semibold leading-tight">Loving it? Share with a friend</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Give $6, get $6 toward your subscription.</p>
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setReferralOpen(true)}
-                        className="shrink-0"
-                    >
-                        Share
-                    </Button>
-                </div>
-
                 <div className="mt-6">
                     <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                         or go to your library →
                     </Link>
                 </div>
-
-                <ReferralDialog open={referralOpen} onOpenChange={setReferralOpen} />
             </div>
         )
     }

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-    Gift,
     LogOut,
     MessageCircleQuestion,
     Moon,
@@ -20,7 +19,6 @@ import {
 } from "@/components/ui/tooltip";
 import { User } from "@/lib/auth";
 import { getAlphaHashToBackgroundColor, getInitials } from "@/lib/utils";
-import { ReferralEntry } from "./referralEntry";
 
 export const UserAvatar = ({ user, className, iconSize }: { user: User, className: string, iconSize: number }) => {
     const displayName = user.display_name || user.email;
@@ -39,13 +37,11 @@ export const UserMenuContent = ({
     handleLogout,
     toggleDarkMode,
     darkMode,
-    referralEntry,
 }: {
     user: User,
     handleLogout: () => void,
     toggleDarkMode: () => void,
     darkMode: boolean,
-    referralEntry: ReferralEntry | null,
 }) => (
     <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3 p-3">
@@ -91,23 +87,6 @@ export const UserMenuContent = ({
                 Plans
             </Button>
         </Link>
-        {referralEntry && (
-            <Button
-                variant="ghost"
-                className="w-full justify-start h-auto py-2"
-                onClick={referralEntry.onClick}
-            >
-                <Gift size={16} className="mr-2" />
-                <span className="flex flex-col items-start">
-                    <span>{referralEntry.label}</span>
-                    {referralEntry.sublabel && (
-                        <span className="text-xs text-muted-foreground font-normal">
-                            {referralEntry.sublabel}
-                        </span>
-                    )}
-                </span>
-            </Button>
-        )}
         {/* Dark Mode Toggle */}
         <Button onClick={toggleDarkMode} variant="ghost" className="w-full justify-start">
             {darkMode ? <Sun size={16} className="mr-2" /> : <Moon size={16} className="mr-2" />}

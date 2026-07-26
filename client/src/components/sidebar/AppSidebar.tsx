@@ -9,13 +9,9 @@ import { useIsDarkMode } from "@/hooks/useDarkMode";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useActivePapers } from "@/hooks/useActivePapers";
-import { useReferralBalance } from "@/hooks/useReferralBalance";
 import { Conversation, Project } from "@/lib/schema";
-import { ReferralDialog } from "@/components/ReferralDialog";
-import { MilestoneReferralToast } from "@/components/MilestoneReferralToast";
 import { SidebarNav } from "./SidebarNav";
 import { AppSidebarFooter } from "./SidebarFooter";
-import { buildReferralEntry } from "./referralEntry";
 import { getSubscriptionWarning } from "./subscriptionWarning";
 
 export function AppSidebar() {
@@ -27,17 +23,7 @@ export function AppSidebar() {
     const { darkMode, toggleDarkMode } = useIsDarkMode();
     const { subscription, loading: subscriptionLoading } = useSubscription();
     const [dismissedWarning, setDismissedWarning] = useState<string | null>(null);
-    const [referralOpen, setReferralOpen] = useState(false);
     const isMobile = useIsMobile();
-    const isPaid = subscription?.plan === "researcher";
-    const { balance: referralBalance } = useReferralBalance(!!user);
-
-    const referralEntry = buildReferralEntry({
-        referralBalance,
-        isPaid,
-        onNavigateToPricing: () => router.push("/pricing"),
-        onOpenReferral: () => setReferralOpen(true),
-    });
 
     useEffect(() => {
         if (!user) {
@@ -100,15 +86,7 @@ export function AppSidebar() {
                 darkMode={darkMode}
                 onToggleDarkMode={toggleDarkMode}
                 onLogout={handleLogout}
-                referralEntry={referralEntry}
             />
-            <ReferralDialog open={referralOpen} onOpenChange={setReferralOpen} />
-            {user && (
-                <MilestoneReferralToast
-                    subscription={subscription}
-                    onOpenReferral={() => setReferralOpen(true)}
-                />
-            )}
         </Sidebar>
     )
 }

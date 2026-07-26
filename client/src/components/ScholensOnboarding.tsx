@@ -35,7 +35,6 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchFromApi } from "@/lib/api";
 import { ShimmerButton } from "./magicui/shimmer-button";
 import { useAuth } from "@/lib/auth";
@@ -82,20 +81,9 @@ const colorPalettes = {
 		'bg-yellow-100 text-yellow-800 border-yellow-200',
 		'bg-gray-100 text-gray-800 border-gray-200',
 	],
-	referral: [
-		'bg-emerald-100 text-emerald-800 border-emerald-200',
-		'bg-blue-100 text-blue-800 border-blue-200',
-		'bg-purple-100 text-purple-800 border-purple-200',
-		'bg-orange-100 text-orange-800 border-orange-200',
-		'bg-teal-100 text-teal-800 border-teal-200',
-		'bg-pink-100 text-pink-800 border-pink-200',
-		'bg-indigo-100 text-indigo-800 border-indigo-200',
-		'bg-amber-100 text-amber-800 border-amber-200',
-		'bg-gray-100 text-gray-800 border-gray-200',
-	]
 };
 
-function getColorForIndex(index: number, type: 'research' | 'job' | 'referral'): string {
+function getColorForIndex(index: number, type: 'research' | 'job'): string {
 	const palette = colorPalettes[type];
 	return palette[index % palette.length];
 }
@@ -131,19 +119,6 @@ const jobTitles = [
 	color: getColorForIndex(index, 'job')
 }));
 
-const referralSourceOptions = [
-	"Recommendation from Friend / Colleague", "Search Engine (Google, Bing)",
-	"Social Media (LinkedIn, Twitter)", "Social Media (Reddit)", "Social Media (TikTok)", "Social Media (YouTube)", "Blog Post or Article",
-	"Conference / Webinar / Workshop", "University / Institution Resource",
-	"AI Recommendation (Copilot, ChatGPT)", "Other"
-].map((option, index) => ({
-	value: option,
-	label: option,
-	color: getColorForIndex(index, 'referral')
-}));
-
-
-
 const readingFrequencyOptions = ["0", "1-5 papers", "6-10 papers", "11-20 papers", "21+ papers"];
 
 const formSchema = z.object({
@@ -159,8 +134,6 @@ const formSchema = z.object({
 	jobTitles: z.array(z.string()).min(1),
 	jobTitlesOther: z.string().optional(),
 	readingFrequency: z.string(),
-	referralSource: z.string().min(1),
-	referralSourceOther: z.string().optional(),
 });
 
 export function ScholensOnboarding() {
@@ -179,14 +152,11 @@ export function ScholensOnboarding() {
 			jobTitles: [],
 			jobTitlesOther: "",
 			readingFrequency: "",
-			referralSource: "",
-			referralSourceOther: "",
 		},
 	});
 
 	const researchFieldsValues = form.watch("researchFields");
 	const jobTitlesValues = form.watch("jobTitles");
-	const referralSourceValue = form.watch("referralSource");
 
 	async function onSubmit(values: z.infer<typeof formSchema>) {
 		setIsLoading(true);
@@ -200,8 +170,6 @@ export function ScholensOnboarding() {
 				job_titles: values.jobTitles?.join(", "),
 				job_titles_other: values.jobTitlesOther,
 				reading_frequency: values.readingFrequency,
-				referral_source: values.referralSource,
-				referral_source_other: values.referralSourceOther,
 			};
 
 			await fetchFromApi("/api/onboarding", {
@@ -515,51 +483,6 @@ export function ScholensOnboarding() {
 						</FormItem>
 					)}
 				/>
-				<FormField
-					control={form.control}
-					name="referralSource"
-					render={({ field }) => (
-						<FormItem>
-							<FormLabel>How did you hear about Scholens?</FormLabel>
-							<Select onValueChange={field.onChange} defaultValue={field.value}>
-								<FormControl>
-									<SelectTrigger>
-										<SelectValue placeholder="Select a source" />
-									</SelectTrigger>
-								</FormControl>
-								<SelectContent>
-									{referralSourceOptions.map((option) => (
-										<SelectItem key={option.value} value={option.value}>
-											<div className="flex items-center">
-												<div className={cn(
-													"w-3 h-3 rounded-full mr-2 border",
-													option.color
-												)} />
-												{option.label}
-											</div>
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-				{referralSourceValue === "Other" && (
-					<FormField
-						control={form.control}
-						name="referralSourceOther"
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>If other, please specify</FormLabel>
-								<FormControl>
-									<Input placeholder="Your source" {...field} />
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-				)}
 				<ShimmerButton type="submit" disabled={isLoading} className="text-white dark:text-white float-right py-2">
 					{isLoading ? "Booting up..." : "Ready"}
 				</ShimmerButton>

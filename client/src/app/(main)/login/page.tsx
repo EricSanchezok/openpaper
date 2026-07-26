@@ -11,16 +11,11 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { fetchFromApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { AlertCircle, ArrowLeft, Check, Loader2, Tag } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
-
-const REFERRAL_STORAGE_KEY = "op_ref";
-const REFERRAL_MANUAL_FLAG_KEY = "op_ref_via_manual";
-const REFERRAL_CODE_PATTERN = /^[A-Z0-9]{4,16}$/;
 
 type Mode = "signin" | "register" | "verify" | "forgot" | "reset";
 
@@ -51,23 +46,6 @@ function safeReturnTo(value: string | null): string {
     return value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 }
 
-async function attributeStoredReferral(): Promise<void> {
-    const code = localStorage.getItem(REFERRAL_STORAGE_KEY);
-    if (!code) return;
-    const viaLink = localStorage.getItem(REFERRAL_MANUAL_FLAG_KEY) !== "true";
-    try {
-        await fetchFromApi("/api/referral/attribute", {
-            method: "POST",
-            body: JSON.stringify({ code, via_link: viaLink }),
-        });
-    } catch {
-        // Referral failure must not block account access.
-    } finally {
-        localStorage.removeItem(REFERRAL_STORAGE_KEY);
-        localStorage.removeItem(REFERRAL_MANUAL_FLAG_KEY);
-    }
-}
-
 function LoginContent() {
     const auth = useAuth();
     const router = useRouter();
@@ -89,17 +67,6 @@ function LoginContent() {
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [newAccount, setNewAccount] = useState(false);
-    const [referralCode, setReferralCode] = useState("");
-    const [referralOpen, setReferralOpen] = useState(false);
-    const [referralApplied, setReferralApplied] = useState(false);
-
-    useEffect(() => {
-        const storedCode = localStorage.getItem(REFERRAL_STORAGE_KEY);
-        if (!storedCode) return;
-        setReferralCode(storedCode);
-        setReferralApplied(true);
-        setReferralOpen(true);
-    }, []);
 
     useEffect(() => {
         if (actionToken) window.history.replaceState({}, "", "/login");
@@ -124,19 +91,6 @@ function LoginContent() {
         setConfirmPassword("");
     };
 
-    const applyReferralCode = () => {
-        const normalized = referralCode.trim().toUpperCase();
-        if (!REFERRAL_CODE_PATTERN.test(normalized)) {
-            setError("That referral code does not look right.");
-            return;
-        }
-        localStorage.setItem(REFERRAL_STORAGE_KEY, normalized);
-        localStorage.setItem(REFERRAL_MANUAL_FLAG_KEY, "true");
-        setReferralCode(normalized);
-        setReferralApplied(true);
-        setError(null);
-    };
-
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         setBusy(true);
@@ -145,7 +99,6 @@ function LoginContent() {
         try {
             if (mode === "signin") {
                 await auth.login(email, password);
-                await attributeStoredReferral();
                 router.replace(returnTo);
             } else if (mode === "register") {
                 if (password.length < 12) throw new Error("Password must be at least 12 characters.");
@@ -159,7 +112,6 @@ function LoginContent() {
                 setNotice(message);
                 if (password) {
                     await auth.login(email, password);
-                    await attributeStoredReferral();
                     router.replace(newAccount ? "/onboarding" : returnTo);
                 } else {
                     setMode("signin");
@@ -288,25 +240,6 @@ function LoginContent() {
                         </div>
                     )}
 
-                    {(mode === "signin" || mode === "register") && (
-                        <div className="rounded-md border p-3">
-                            <button
-                                className="flex w-full items-center gap-2 text-sm font-medium"
-                                onClick={() => setReferralOpen((open) => !open)}
-                                type="button"
-                            >
-                                <Tag className="h-4 w-4" />
-                                Have a referral code?
-                                {referralApplied && <Check className="ml-auto h-4 w-4 text-green-600" />}
-                            </button>
-                            {referralOpen && (
-                                <div className="mt-3 flex gap-2">
-                                    <Input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="Referral code" />
-                                    <Button type="button" variant="secondary" onClick={applyReferralCode}>Apply</Button>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </CardContent>
                 <CardFooter className="justify-center text-xs text-muted-foreground">
                     Review our <Link href="/privacy" className="ml-1 underline">Privacy Policy</Link>.
