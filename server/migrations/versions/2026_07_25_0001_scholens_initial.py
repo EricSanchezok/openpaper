@@ -239,29 +239,6 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "discover_searches",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column("question", sa.Text(), nullable=False),
-        sa.Column("subqueries", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("results", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        schema="scholens",
-    )
-    op.create_table(
         "onboarding",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
@@ -1400,7 +1377,6 @@ def downgrade() -> None:
     op.drop_table("paper_upload_jobs", schema="scholens")
     op.drop_table("paper_tags", schema="scholens")
     op.drop_table("onboarding", schema="scholens")
-    op.drop_table("discover_searches", schema="scholens")
     op.drop_table("conversations", schema="scholens")
     op.drop_table("audio_overviews", schema="scholens")
     op.drop_table("audio_overview_jobs", schema="scholens")
