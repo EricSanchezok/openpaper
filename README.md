@@ -37,10 +37,6 @@ Architecture boundaries are documented in
 
 Ask a research question and get a synthesized answer drawing on the papers in your library, so your accumulated reading actually compounds.
 
-### Discover new papers
-
-Search the open-access literature to find relevant papers, and pull them into your library with one click.
-
 ### Import from Zotero
 
 Connect your Zotero account to import your existing library and keep it automatically in sync.

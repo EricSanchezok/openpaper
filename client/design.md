@@ -361,7 +361,7 @@ Instead, protected routes live in a nested **`(protected)` route group** whose l
 app/(main)/
 ├── layout.tsx              # shell: sidebar, providers, AuthProvider
 ├── (protected)/layout.tsx  # <RequireAuth> — gates everything below
-│   └── page.tsx, papers/, projects/, settings/, discover/, finder/, graph/, …
+│   └── page.tsx, papers/, projects/, settings/, graph/, …
 ├── login/  pricing/  about/  auth/        # public, outside the group
 
 app/(paper)/paper/

@@ -13,13 +13,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
             changeFrequency: 'daily' as const,
             priority: 1,
         },
-        // Add other static pages here
-        {
-            url: `${baseUrl}/finder`,
-            lastModified: new Date(),
-            changeFrequency: 'monthly' as const,
-            priority: 0.8,
-        },
     ]
 
     // Get blog posts dynamically

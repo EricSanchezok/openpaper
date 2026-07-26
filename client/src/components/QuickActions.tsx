@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, FolderPlus, Globe2 } from "lucide-react";
+import { Upload, FolderPlus } from "lucide-react";
 import { UploadModal } from "@/components/UploadModal";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { fetchFromApi } from "@/lib/api";
@@ -105,13 +105,9 @@ export function QuickActions({ onUploadComplete, onProjectCreated, onUploadStart
         }
     };
 
-    const handleFindPapers = () => {
-        router.push("/discover");
-    };
-
     return (
         <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <QuickActionCard
                     icon={<Upload className="h-5 w-5" />}
                     title="Upload Paper"
@@ -124,12 +120,6 @@ export function QuickActions({ onUploadComplete, onProjectCreated, onUploadStart
                     title="New Project"
                     description="Organize your research"
                     onClick={() => setCreateProjectOpen(true)}
-                />
-                <QuickActionCard
-                    icon={<Globe2 className="h-5 w-5" />}
-                    title="Discover Research"
-                    description="Find relevant research from academic sources"
-                    onClick={handleFindPapers}
                 />
             </div>
 

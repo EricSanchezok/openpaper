@@ -1,4 +1,4 @@
-import { Compass, FileText, FolderKanban, Home, TelescopeIcon } from "lucide-react";
+import { FileText, FolderKanban, Home, TelescopeIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface SidebarNavItem {
@@ -33,12 +33,5 @@ export const navItems: SidebarNavItem[] = [
         url: "/understand",
         icon: TelescopeIcon,
         requiresAuth: true,
-    },
-    {
-        title: "Discover",
-        url: "/discover",
-        icon: Compass,
-        requiresAuth: true,
-        isNew: true,
     },
 ];
