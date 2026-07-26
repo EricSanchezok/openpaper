@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from src.app import app
+from src.celery_app import celery_app
 
 
 def test_jobs_api_exposes_only_health_and_status(monkeypatch) -> None:
@@ -58,3 +60,13 @@ def test_task_success_rejects_non_object_result(monkeypatch) -> None:
     response = TestClient(app).get("/task/task-3/status")
     assert response.status_code == 500
     assert response.json()["detail"] == "task_status_failed"
+
+
+def test_worker_has_no_referral_task_or_queue() -> None:
+    task_routes = celery_app.conf.task_routes
+    worker_script = (
+        Path(__file__).parents[1] / "scripts" / "start_worker.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "delayed_referral_settlement_callback" not in task_routes
+    assert "user_processing" not in worker_script
