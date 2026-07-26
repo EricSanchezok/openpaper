@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
 if TYPE_CHECKING:
-    from .commerce import Onboarding, Referral, ReferralCode, Subscription
+    from .commerce import Onboarding, Subscription
     from .content import (
         Annotation,
         AudioOverviewJob,
@@ -100,25 +100,6 @@ class AuthUser(Base):
         "ProjectRoleInvitation", back_populates="inviter", cascade="all, delete-orphan"
     )
 
-    referral_code: Mapped["ReferralCode | None"] = relationship(
-        "ReferralCode",
-        back_populates="user",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-    referrals_made: Mapped[list["Referral"]] = relationship(
-        "Referral",
-        foreign_keys="Referral.referrer_user_id",
-        back_populates="referrer",
-        cascade="all, delete-orphan",
-    )
-    referral_received: Mapped["Referral | None"] = relationship(
-        "Referral",
-        foreign_keys="Referral.referee_user_id",
-        back_populates="referee",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
     zotero_oauth_pending: Mapped[list["ZoteroOAuthPending"]] = relationship(
         "ZoteroOAuthPending",
         back_populates="user",
@@ -158,8 +139,4 @@ class UserProfile(Base):
         server_default="false",
         nullable=False,
     )
-    referral_toast_seen_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
     user: Mapped[AuthUser] = relationship("AuthUser", back_populates="profile")

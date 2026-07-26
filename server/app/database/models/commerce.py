@@ -24,8 +24,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, JsonValue
 from .enums import (
     JobStatus,
-    ReferralAttributionMethod,
-    ReferralStatus,
     SubscriptionPlan,
     SubscriptionStatus,
     StripeWebhookEventStatus,
@@ -140,10 +138,6 @@ class Onboarding(Base):
     # Reading frequency
     reading_frequency: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # Referral source
-    referral_source: Mapped[str | None] = mapped_column(String, nullable=True)
-    referral_source_other: Mapped[str | None] = mapped_column(String, nullable=True)
-
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="onboarding")
 
 
@@ -226,87 +220,6 @@ class DataTableExtractionResult(Base):
         "DataTableRow",
         back_populates="data_table",
         cascade="all, delete-orphan",
-    )
-
-
-class ReferralCode(Base):
-    __tablename__ = "referral_codes"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-    )
-    code: Mapped[str] = mapped_column(
-        String(16), nullable=False, unique=True, index=True
-    )
-
-    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="referral_code")
-
-
-class Referral(Base):
-    __tablename__ = "referrals"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    referrer_user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    referee_user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-    )
-
-    code_used: Mapped[str] = mapped_column(String(16), nullable=False)
-    attribution_method: Mapped[str] = mapped_column(
-        String, nullable=False, default=ReferralAttributionMethod.LINK
-    )
-    status: Mapped[str] = mapped_column(
-        String, nullable=False, default=ReferralStatus.ATTRIBUTED, index=True
-    )
-
-    converted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    credit_available_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    referrer_credit_cents: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=600
-    )
-
-    # Stripe coupon issued to the referee for 50% off their first month.
-    referee_coupon_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    # Stripe Customer balance transaction created when credit becomes spendable.
-    stripe_balance_transaction_id: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )
-
-    fraud_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    referrer: Mapped["AuthUser"] = relationship(
-        "AuthUser", foreign_keys=[referrer_user_id], back_populates="referrals_made"
-    )
-    referee: Mapped["AuthUser"] = relationship(
-        "AuthUser", foreign_keys=[referee_user_id], back_populates="referral_received"
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "referrer_user_id <> referee_user_id",
-            name="check_referral_no_self_referral",
-        ),
     )
 
 

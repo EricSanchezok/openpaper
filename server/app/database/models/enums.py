@@ -37,19 +37,6 @@ class ProjectRoles(str, Enum):
     VIEWER = "viewer"
 
 
-class ReferralStatus(str, Enum):
-    ATTRIBUTED = "attributed"
-    CREDIT_PENDING = "credit_pending"
-    CREDIT_AVAILABLE = "credit_available"
-    REJECTED_FRAUD = "rejected_fraud"
-    CLAWED_BACK = "clawed_back"
-
-
-class ReferralAttributionMethod(str, Enum):
-    LINK = "link"
-    MANUAL_CODE = "manual_code"
-
-
 class ZoteroImportSource(str, Enum):
     PDF_ATTACHMENT = "pdf_attachment"
     URL = "url"

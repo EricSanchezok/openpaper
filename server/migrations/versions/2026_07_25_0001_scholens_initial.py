@@ -246,8 +246,6 @@ def upgrade() -> None:
         sa.Column("job_titles", sa.String(), nullable=True),
         sa.Column("job_titles_other", sa.String(), nullable=True),
         sa.Column("reading_frequency", sa.String(), nullable=True),
-        sa.Column("referral_source", sa.String(), nullable=True),
-        sa.Column("referral_source_other", sa.String(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -336,89 +334,6 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "referral_codes",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column("code", sa.String(length=16), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id"),
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_referral_codes_code"),
-        "referral_codes",
-        ["code"],
-        unique=True,
-        schema="scholens",
-    )
-    op.create_table(
-        "referrals",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("referrer_user_id", sa.BigInteger(), nullable=False),
-        sa.Column("referee_user_id", sa.BigInteger(), nullable=False),
-        sa.Column("code_used", sa.String(length=16), nullable=False),
-        sa.Column("attribution_method", sa.String(), nullable=False),
-        sa.Column("status", sa.String(), nullable=False),
-        sa.Column("converted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("credit_available_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("referrer_credit_cents", sa.Integer(), nullable=False),
-        sa.Column("referee_coupon_id", sa.String(), nullable=True),
-        sa.Column("stripe_balance_transaction_id", sa.String(), nullable=True),
-        sa.Column("fraud_reason", sa.Text(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.CheckConstraint(
-            "referrer_user_id <> referee_user_id",
-            name="check_referral_no_self_referral",
-        ),
-        sa.ForeignKeyConstraint(
-            ["referee_user_id"], ["auth.users.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["referrer_user_id"], ["auth.users.id"], ondelete="CASCADE"
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("referee_user_id"),
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_referrals_referrer_user_id"),
-        "referrals",
-        ["referrer_user_id"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_referrals_status"),
-        "referrals",
-        ["status"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_table(
         "subscriptions",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
@@ -465,7 +380,6 @@ def upgrade() -> None:
             server_default=sa.text("false"),
             nullable=False,
         ),
-        sa.Column("referral_toast_seen_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1352,23 +1266,6 @@ def downgrade() -> None:
     op.drop_table("zotero_connections", schema="scholens")
     op.drop_table("user_profiles", schema="scholens")
     op.drop_table("subscriptions", schema="scholens")
-    op.drop_index(
-        op.f("ix_scholens_referrals_status"),
-        table_name="referrals",
-        schema="scholens",
-    )
-    op.drop_index(
-        op.f("ix_scholens_referrals_referrer_user_id"),
-        table_name="referrals",
-        schema="scholens",
-    )
-    op.drop_table("referrals", schema="scholens")
-    op.drop_index(
-        op.f("ix_scholens_referral_codes_code"),
-        table_name="referral_codes",
-        schema="scholens",
-    )
-    op.drop_table("referral_codes", schema="scholens")
     op.drop_table("project", schema="scholens")
     op.drop_table("paper_upload_jobs", schema="scholens")
     op.drop_table("paper_tags", schema="scholens")
