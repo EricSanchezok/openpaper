@@ -30,7 +30,6 @@ celery_app.conf.update(
     result_expires=3600,  # Results expire after 1 hour
     task_routes={
         "upload_and_process_file": {"queue": "pdf_processing"},
-        "delayed_referral_settlement_callback": {"queue": "user_processing"},
         "periodic_zotero_sync": {"queue": "zotero_sync"},
     },
     worker_prefetch_multiplier=1,  # Process one task at a time
