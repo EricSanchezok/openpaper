@@ -5,9 +5,11 @@ S3 service for file uploads and management.
 import logging
 import os
 import uuid
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from mypy_boto3_s3 import S3Client
 
 logger = logging.getLogger(__name__)
 
@@ -15,17 +17,24 @@ logger = logging.getLogger(__name__)
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
-CLOUDFLARE_BUCKET_NAME = os.environ.get("CLOUDFLARE_BUCKET_NAME")
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+
+
+def _required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"{name} must be configured")
+    return value
 
 
 class S3Service:
     """Service for handling S3 operations"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize S3 client"""
-        self.s3_client = boto3.client(
+        self.bucket_name = _required_env("S3_BUCKET_NAME")
+        self.cloudflare_bucket_name = _required_env("CLOUDFLARE_BUCKET_NAME")
+        self.s3_client: S3Client = boto3.client(
             "s3",
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
@@ -35,8 +44,6 @@ class S3Service:
                 s3={"addressing_style": "virtual"},
             ),
         )
-        self.bucket_name = S3_BUCKET_NAME
-        self.cloudflare_bucket_name = CLOUDFLARE_BUCKET_NAME
 
     def download_file_to_bytes(self, object_key: str) -> bytes:
         """Download a file from S3 and return its content as bytes

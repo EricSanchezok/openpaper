@@ -266,6 +266,9 @@ def test_ci_builds_images_and_runs_independent_migrations_twice() -> None:
     assert "cloud-auth migrate" in workflow
     assert "python -m app.scripts.migrate_product" in workflow
     assert "uv run mypy app" in workflow
+    assert "uv run mypy src" in workflow
+    assert "uv run ruff format --check app tests migrations" in workflow
+    assert "uv run ruff format --check src tests" in workflow
     assert "scholens-api:ci alembic check" in workflow
     assert "window is not defined|document is not defined" in workflow
     assert "CREATE TABLE auth.product_migrator_must_not_create" in workflow

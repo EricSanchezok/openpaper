@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+from importlib.metadata import version
 from io import BytesIO
 
 import pymupdf
@@ -77,13 +78,16 @@ def analyze_pdf(pdf_bytes: bytes) -> LocalPDFAnalysis:
                 raise ParserContentError("PDF has no pages")
 
             pages = [
-                (page_number, page.get_text("text", sort=True))
-                for page_number, page in enumerate(document, start=1)
+                (
+                    page_index + 1,
+                    document[page_index].get_text("text", sort=True),
+                )
+                for page_index in range(len(document))
             ]
             preview_bytes = _render_preview(document)
     except ParserContentError:
         raise
-    except (pymupdf.FileDataError, RuntimeError, ValueError) as exc:
+    except (RuntimeError, ValueError) as exc:
         raise ParserContentError("PDF could not be opened locally") from exc
 
     markdown, page_offset_map = _canonical_page_text(pages)
@@ -96,7 +100,7 @@ def analyze_pdf(pdf_bytes: bytes) -> LocalPDFAnalysis:
             count >= MIN_PAGE_CHARACTERS for count in page_character_counts
         ),
         non_whitespace_characters=sum(page_character_counts),
-        parser_version=f"pymupdf-{pymupdf.VersionBind}",
+        parser_version=f"pymupdf-{version('PyMuPDF')}",
         preview_bytes=preview_bytes,
     )
 

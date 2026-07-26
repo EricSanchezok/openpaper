@@ -51,6 +51,8 @@ jobs:
           GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.CLOUD_AUTH_READ_TOKEN }}@github.com/.insteadOf
           GIT_CONFIG_VALUE_0: https://github.com/
         run: uv sync --frozen --group dev
+      - name: Ruff format
+        run: uv run ruff format --check app tests migrations
       - name: Ruff
         run: uv run ruff check app tests migrations
       - name: Strict type check
@@ -127,8 +129,12 @@ jobs:
           enable-cache: true
       - name: Install locked dependencies
         run: uv sync --frozen --group dev
+      - name: Ruff format
+        run: uv run ruff format --check src tests
       - name: Ruff
         run: uv run ruff check src tests
+      - name: Strict type check
+        run: uv run mypy src
       - name: Tests
         run: uv run pytest -q
 

@@ -6,6 +6,7 @@ Provides health and task-status endpoints for the Server service.
 import logging
 from typing import Any
 
+from celery.result import AsyncResult
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -44,7 +45,10 @@ async def get_task_status(task_id: str) -> TaskStatus:
     """
     try:
         # Get task result from Celery
-        task_result = celery_app.AsyncResult(task_id)
+        task_result: AsyncResult[dict[str, Any]] = AsyncResult(
+            task_id,
+            app=celery_app,
+        )
 
         if task_result.state == "PENDING":
             # Task is waiting or doesn't exist
@@ -64,10 +68,13 @@ async def get_task_status(task_id: str) -> TaskStatus:
             )
         elif task_result.state == "SUCCESS":
             # Task completed successfully
+            result = task_result.result
+            if not isinstance(result, dict):
+                raise TypeError("Celery task returned a non-object result")
             status_response = TaskStatus(
                 task_id=task_id,
                 status="completed",
-                result=task_result.result,
+                result=result,
                 meta={"completed_at": str(task_result.date_done)},
             )
         elif task_result.state == "FAILURE":

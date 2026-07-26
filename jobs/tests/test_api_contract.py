@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from src.app import app, celery_app
+from src.app import app
 
 
 def test_jobs_api_exposes_only_health_and_status(monkeypatch) -> None:
@@ -12,7 +12,7 @@ def test_jobs_api_exposes_only_health_and_status(monkeypatch) -> None:
         info=None,
         date_done=datetime.now(timezone.utc),
     )
-    monkeypatch.setattr(celery_app, "AsyncResult", lambda _task_id: result)
+    monkeypatch.setattr("src.app.AsyncResult", lambda _task_id, **_kwargs: result)
     client = TestClient(app)
 
     health = client.get("/health")
@@ -38,9 +38,23 @@ def test_task_failure_uses_stable_error_code(monkeypatch) -> None:
         info=RuntimeError("redis://secret@internal-host:6379"),
         date_done=datetime.now(timezone.utc),
     )
-    monkeypatch.setattr(celery_app, "AsyncResult", lambda _task_id: result)
+    monkeypatch.setattr("src.app.AsyncResult", lambda _task_id, **_kwargs: result)
 
     response = TestClient(app).get("/task/task-2/status")
     assert response.status_code == 200
     assert response.json()["error"] == "task_failed"
     assert "internal-host" not in response.text
+
+
+def test_task_success_rejects_non_object_result(monkeypatch) -> None:
+    result = SimpleNamespace(
+        state="SUCCESS",
+        result="unexpected",
+        info=None,
+        date_done=datetime.now(timezone.utc),
+    )
+    monkeypatch.setattr("src.app.AsyncResult", lambda _task_id, **_kwargs: result)
+
+    response = TestClient(app).get("/task/task-3/status")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "task_status_failed"
