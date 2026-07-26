@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
-
 import jwt
 import pytest
-from app.helpers.scholight_search import search_scholight
 from app.integrations.mcp import (
     MCPToolError,
     RemoteMCPServer,
@@ -102,54 +98,3 @@ def test_tool_router_requires_one_unique_server() -> None:
     assert server_for_tool("search_papers", (anysearch, scholight)) is scholight
     with pytest.raises(MCPToolError):
         server_for_tool("unknown", (anysearch, scholight))
-
-
-@pytest.mark.asyncio
-async def test_scholight_mcp_response_maps_to_discover_result() -> None:
-    response = {
-        "query": "retrieval",
-        "hits": [
-            {
-                "title": "A Retrieval Paper",
-                "authors": ["Ada Researcher"],
-                "abstract": "A ranked abstract.",
-                "submitted_at": "2026-07-01T00:00:00Z",
-                "arxiv_url": "https://arxiv.org/abs/2607.00001",
-            }
-        ],
-    }
-
-    call = AsyncMock(return_value=response)
-    with patch(
-        "app.helpers.scholight_search.SCHOLIGHT_MCP",
-        new=SimpleNamespace(call_tool=call),
-    ):
-        results = await search_scholight(
-            "retrieval",
-            num_results=5,
-            date_from="2025-07-01",
-        )
-
-    call.assert_awaited_once_with(
-        "search_papers",
-        {
-            "query": "retrieval",
-            "strength": "standard",
-            "limit": 5,
-            "date_from": "2025-07-01",
-        },
-    )
-    assert [result.to_dict() for result in results] == [
-        {
-            "title": "A Retrieval Paper",
-            "url": "https://arxiv.org/abs/2607.00001",
-            "authors": ["Ada Researcher"],
-            "published_date": "2026-07-01T00:00:00Z",
-            "text": "A ranked abstract.",
-            "highlights": [],
-            "highlight_scores": [],
-            "favicon": None,
-            "summary": "A ranked abstract.",
-            "source": "Scholight",
-        }
-    ]

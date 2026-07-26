@@ -6,7 +6,6 @@ from app.api.annotation_api import annotation_router
 from app.api.api import router
 from app.api.auth_api import auth_router
 from app.api.conversation_api import conversation_router
-from app.api.discover_api import discover_router
 from app.api.highlight_api import highlight_router
 from app.api.message_api import message_router
 from app.api.onboarding_api import onboarding_router
@@ -109,7 +108,6 @@ app.include_router(
 )  # Subscription routes
 app.include_router(webhook_router, prefix="/api/webhooks")  # Webhook routes
 app.include_router(onboarding_router, prefix="/api/onboarding")
-app.include_router(discover_router, prefix="/api/discover")
 app.include_router(referral_router, prefix="/api/referral")
 app.include_router(zotero_router, prefix="/api/zotero")
 

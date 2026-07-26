@@ -1,21 +1,20 @@
 from starlette.responses import Response as ApiResponse
 import logging
 
-from app.auth.dependencies import get_current_user, get_required_user
+from app.auth.dependencies import get_required_user
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import AILimitExceeded, enforce_rate_limit
 from app.helpers.paper_search import (
     OpenAlexFilter,
-    PaperSort,
     construct_citation_graph,
     get_doi,
     get_work_by_doi,
     search_open_alex,
 )
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -23,51 +22,6 @@ logger = logging.getLogger(__name__)
 # API routes for effectively searching and retrieving papers from external sources
 
 paper_search_router = APIRouter()
-
-
-@paper_search_router.post("/search")
-async def search_papers(
-    request: Request,
-    query: str = Query(min_length=1, max_length=1_000),
-    page: int = Query(default=1, ge=1, le=100),
-    # Accept filter in the body for more complex queries
-    filter: OpenAlexFilter | None = None,
-    sort: PaperSort | None = None,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser | None = Depends(get_current_user),
-) -> ApiResponse:
-    """
-    Search for papers based on the provided query.
-    """
-    try:
-        await enforce_rate_limit(
-            user_id=int(current_user.id) if current_user else 0,
-            ip_address=request.client.host if request.client else "unknown",
-            feature="external_search",
-        )
-        # Perform the search operation
-        results = search_open_alex(
-            query, filter=filter, page=page, sort=sort.value if sort else None
-        )
-        track_event(
-            "paper_search",
-            user_id=str(current_user.id) if current_user else None,
-            properties={
-                "query": query,
-                "page": page,
-                "sort": sort.value if sort else None,
-                "results_count": len(results.results),
-            },
-            db=db,
-        )
-        return Response(
-            content=results.model_dump_json(), media_type="application/json"
-        )
-    except AILimitExceeded as exc:
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
-    except Exception as e:
-        logger.error(f"Error searching papers: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="internal_error")
 
 
 @paper_search_router.post("/match")

@@ -147,24 +147,6 @@ class Onboarding(Base):
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="onboarding")
 
 
-class DiscoverSearch(Base):
-    __tablename__ = "discover_searches"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
-    )
-    question: Mapped[str] = mapped_column(Text, nullable=False)
-    subqueries: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
-    results: Mapped[dict[str, list[dict[str, JsonValue]]] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-
-    user: Mapped["AuthUser"] = relationship("AuthUser")
-
-
 class DataTableExtractionJob(Base):
     __tablename__ = "data_table_extraction_jobs"
 
