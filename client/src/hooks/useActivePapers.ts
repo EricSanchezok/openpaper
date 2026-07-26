@@ -5,20 +5,13 @@ import { PaperItem } from "@/lib/schema";
 export const ACTIVE_PAPERS_KEY = "/api/paper/active";
 
 async function fetchActivePapers(): Promise<PaperItem[]> {
-	try {
-		const data = await fetchFromApi(ACTIVE_PAPERS_KEY);
-		const papers: PaperItem[] = data?.papers ?? [];
-		return papers.sort(
-			(a, b) =>
-				new Date(b.created_at || "").getTime() -
-				new Date(a.created_at || "").getTime(),
-		);
-	} catch (error) {
-		if (error instanceof Error && error.message.includes("404")) {
-			return [];
-		}
-		throw error;
-	}
+	const data = await fetchFromApi(ACTIVE_PAPERS_KEY);
+	const papers: PaperItem[] = data?.papers ?? [];
+	return papers.sort(
+		(a, b) =>
+			new Date(b.created_at || "").getTime() -
+			new Date(a.created_at || "").getTime(),
+	);
 }
 
 export function useActivePapers(enabled = true) {

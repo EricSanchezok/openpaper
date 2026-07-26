@@ -1,35 +1,43 @@
-import { useState, useEffect, useCallback } from 'react';
-import { fetchFromApi } from '@/lib/api';
-import { SubscriptionData, UseSubscriptionReturn } from '@/lib/schema';
+import { useCallback } from "react";
+import useSWR from "swr";
+
+import { useAuth } from "@/lib/auth";
+import { fetchFromApi } from "@/lib/api";
+import { SubscriptionData, UseSubscriptionReturn } from "@/lib/schema";
+
+const SUBSCRIPTION_USAGE_KEY = "/api/subscription/usage";
+
+async function fetchSubscriptionUsage(): Promise<SubscriptionData> {
+    return fetchFromApi(SUBSCRIPTION_USAGE_KEY);
+}
 
 export const useSubscription = (): UseSubscriptionReturn => {
-    const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
+    const { user, loading: authLoading } = useAuth();
+    const enabled = !authLoading && user !== null;
+    const {
+        data,
+        error,
+        isLoading,
+        mutate,
+    } = useSWR<SubscriptionData>(
+        enabled ? SUBSCRIPTION_USAGE_KEY : null,
+        fetchSubscriptionUsage,
+    );
 
-    const fetchSubscription = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const response = await fetchFromApi("/api/subscription/usage");
-            setSubscription(response);
-        } catch (err) {
-            console.error("Error fetching subscription:", err);
-            setError(err instanceof Error ? err.message : "Failed to fetch subscription data");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchSubscription();
-    }, [fetchSubscription]);
+    const refetch = useCallback(async (): Promise<void> => {
+        if (!enabled) return;
+        await mutate();
+    }, [enabled, mutate]);
 
     return {
-        subscription,
-        loading,
-        error,
-        refetch: fetchSubscription
+        subscription: enabled ? data ?? null : null,
+        loading: authLoading || (enabled && isLoading),
+        error: enabled && error
+            ? error instanceof Error
+                ? error.message
+                : "Failed to fetch subscription data"
+            : null,
+        refetch,
     };
 };
 

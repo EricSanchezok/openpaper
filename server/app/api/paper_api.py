@@ -131,10 +131,6 @@ async def get_active_paper_ids(
     papers: list[Paper] = paper_crud.get_multi_uploads_completed(
         db, user=current_user, status=PaperStatus.reading
     )
-    if not papers:
-        return JSONResponse(
-            status_code=404, content={"message": "No active papers found"}
-        )
 
     data = [
         {
@@ -399,10 +395,6 @@ async def get_relevant_papers(
     Get the most relevant papers uploaded by the user
     """
     papers: list[Paper] = paper_crud.get_top_relevant_papers(db, user=current_user)
-    if not papers:
-        return JSONResponse(
-            status_code=404, content={"message": "No relevant papers found"}
-        )
 
     return JSONResponse(
         status_code=200,
