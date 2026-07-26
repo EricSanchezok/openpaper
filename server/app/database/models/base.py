@@ -23,5 +23,6 @@ class Base(DeclarativeBase):
         identity = getattr(self, "id", None)
         return f"<{self.__class__.__name__} id={identity}>"
 
+
 # BASIC plans are not considered active subscriptions.
 # They are used for users who have not yet subscribed.

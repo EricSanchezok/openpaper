@@ -253,7 +253,8 @@ def serialize_messages(messages: list[Message]) -> list[dict[str, JsonValue]]:
                 "role": message.role,
                 "content": message.content,
                 "references": message.references,
-                "artifacts": [artifact.payload for artifact in message.artifacts] or None,
+                "artifacts": [artifact.payload for artifact in message.artifacts]
+                or None,
                 "trace": message.trace,
                 "scope": message.scope,
                 "sequence": message.sequence,

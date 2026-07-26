@@ -45,9 +45,7 @@ def upgrade() -> None:
         sa.Column("event_id", sa.String(length=255), nullable=False),
         sa.Column("event_type", sa.String(length=128), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
-        sa.Column(
-            "attempt_count", sa.Integer(), server_default="1", nullable=False
-        ),
+        sa.Column("attempt_count", sa.Integer(), server_default="1", nullable=False),
         sa.Column("last_error_code", sa.String(length=64), nullable=True),
         sa.Column(
             "received_at",
@@ -137,9 +135,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "idempotency_key", name="uq_token_usage_idempotency_key"
-        ),
+        sa.UniqueConstraint("idempotency_key", name="uq_token_usage_idempotency_key"),
         schema="scholens",
     )
     op.create_index(

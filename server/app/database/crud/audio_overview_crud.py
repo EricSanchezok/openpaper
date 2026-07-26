@@ -215,6 +215,7 @@ class AudioOverviewJobCRUD(
         db.refresh(job)
         return job
 
+
 class AudioOverviewCRUD(
     CRUDBase[AudioOverview, AudioOverviewCreate, AudioOverviewUpdate]
 ):
@@ -372,6 +373,7 @@ class AudioOverviewCRUD(
         db.commit()
         db.refresh(overview)
         return overview
+
 
 # Create single instances to use throughout the application
 audio_overview_job_crud = AudioOverviewJobCRUD(AudioOverviewJob)

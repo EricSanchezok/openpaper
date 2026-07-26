@@ -30,7 +30,9 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
             celery_broker_url="amqp://user:password@rabbitmq:5672//",
             celery_api_url="http://jobs-api:8001",
         )
-        assert client.submit_pdf_processing_job("papers/test.pdf", "job-pdf") == "task_pdf"
+        assert (
+            client.submit_pdf_processing_job("papers/test.pdf", "job-pdf") == "task_pdf"
+        )
 
         table = DataTableSchema(columns=[], papers=[])
         assert (

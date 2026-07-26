@@ -339,6 +339,7 @@ class DataTableJobCRUD(
         db.refresh(job)
         return job
 
+
 # ================================
 # Result CRUD
 # ================================
@@ -439,6 +440,7 @@ class DataTableResultCRUD(
                 .order_by(DataTableExtractionResult.created_at.desc())
             ).all()
         )
+
 
 # ================================
 # Row CRUD

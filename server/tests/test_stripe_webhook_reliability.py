@@ -107,7 +107,9 @@ async def test_unsupported_event_is_recorded_as_ignored() -> None:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_delivery_returns_retryable_error_without_failing_owner() -> None:
+async def test_concurrent_delivery_returns_retryable_error_without_failing_owner() -> (
+    None
+):
     db = MagicMock(spec=Session)
     lock = _lock(acquired=False)
     with (

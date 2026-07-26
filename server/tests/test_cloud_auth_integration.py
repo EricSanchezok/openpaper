@@ -38,7 +38,9 @@ def test_all_orm_mappers_and_relationships_configure() -> None:
     configure_mappers()
 
     assert len(Base.registry.mappers) > 0
-    assert all(mapper.persist_selectable is not None for mapper in Base.registry.mappers)
+    assert all(
+        mapper.persist_selectable is not None for mapper in Base.registry.mappers
+    )
 
 
 @pytest.mark.asyncio
