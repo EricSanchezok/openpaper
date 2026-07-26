@@ -15,8 +15,6 @@ from app.database.models import (
     ProjectPaper,
     ProjectRole,
     ProjectRoleInvitation,
-    Referral,
-    ReferralCode,
     Subscription,
     AuthUser,
     UserProfile,
@@ -222,68 +220,6 @@ class DataTableRowAdmin(ModelView, model=DataTableRow):
     ]
 
 
-class ReferralCodeAdmin(ModelView, model=ReferralCode):
-    name = "Referral Code"
-    name_plural = "Referral Codes"
-    icon = "fa-solid fa-tag"
-    column_list = [
-        ReferralCode.id,
-        ReferralCode.user_id,
-        ReferralCode.code,
-        ReferralCode.created_at,
-    ]
-    column_searchable_list = [ReferralCode.code, ReferralCode.user_id]
-    column_sortable_list = [ReferralCode.created_at]
-    column_default_sort = [(ReferralCode.created_at, True)]
-
-
-class ReferralAdmin(ModelView, model=Referral):
-    name = "Referral"
-    name_plural = "Referrals"
-    icon = "fa-solid fa-gift"
-    column_list = [
-        Referral.id,
-        Referral.referrer_user_id,
-        Referral.referee_user_id,
-        Referral.code_used,
-        Referral.status,
-        Referral.referrer_credit_cents,
-        Referral.converted_at,
-        Referral.credit_available_at,
-        Referral.fraud_reason,
-        Referral.created_at,
-    ]
-    column_searchable_list = [
-        Referral.referrer_user_id,
-        Referral.referee_user_id,
-        Referral.code_used,
-        Referral.status,
-    ]
-    column_sortable_list = [
-        Referral.created_at,
-        Referral.converted_at,
-        Referral.credit_available_at,
-        Referral.status,
-    ]
-    column_default_sort = [(Referral.created_at, True)]
-    column_details_list = [
-        Referral.id,
-        Referral.referrer_user_id,
-        Referral.referee_user_id,
-        Referral.code_used,
-        Referral.attribution_method,
-        Referral.status,
-        Referral.referrer_credit_cents,
-        Referral.converted_at,
-        Referral.credit_available_at,
-        Referral.referee_coupon_id,
-        Referral.stripe_balance_transaction_id,
-        Referral.fraud_reason,
-        Referral.created_at,
-        Referral.updated_at,
-    ]
-
-
 class ProjectRoleInvitationAdmin(ModelView, model=ProjectRoleInvitation):
     column_list = [
         ProjectRoleInvitation.id,
@@ -397,8 +333,6 @@ def setup_admin(app: FastAPI) -> None:
     admin.add_view(DataTableExtractionJobAdmin)
     admin.add_view(DataTableExtractionResultAdmin)
     admin.add_view(DataTableRowAdmin)
-    admin.add_view(ReferralAdmin)
-    admin.add_view(ReferralCodeAdmin)
     admin.add_view(ZoteroConnectionAdmin)
     admin.add_view(ZoteroImportedItemAdmin)
     admin.add_view(ZoteroOAuthPendingAdmin)

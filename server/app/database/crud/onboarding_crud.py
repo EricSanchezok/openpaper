@@ -12,8 +12,6 @@ class OnboardingBase(BaseModel):
     job_titles: str | None = None
     job_titles_other: str | None = None
     reading_frequency: str | None = None
-    referral_source: str | None = None
-    referral_source_other: str | None = None
 
 
 class OnboardingCreate(OnboardingBase):

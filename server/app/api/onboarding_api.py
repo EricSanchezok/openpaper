@@ -28,8 +28,6 @@ class CreateOnboardingRequest(BaseModel):
     job_titles: str | None = None
     job_titles_other: str | None = None
     reading_frequency: str | None = None
-    referral_source: str | None = None
-    referral_source_other: str | None = None
 
 
 @onboarding_router.post("")
@@ -74,7 +72,6 @@ async def create_onboarding(
             "company": request.company,
             "job_titles_other": request.job_titles_other,
             "research_fields_other": request.research_fields_other,
-            "referral_source": request.referral_source,
             "reading_frequency": request.reading_frequency,
         }
 

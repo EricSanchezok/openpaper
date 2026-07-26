@@ -85,7 +85,7 @@ module = ["app.integrations.stripe_webhooks"]
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
-module = ["app.helpers.pdf_jobs", "app.helpers.referral_jobs"]
+module = ["app.helpers.pdf_jobs"]
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]

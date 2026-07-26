@@ -4,7 +4,6 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-import stripe
 from app.database.crud.conversation_crud import ConversationCreate, conversation_crud
 from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
@@ -18,8 +17,6 @@ from app.database.crud.projects.project_data_table_crud import (
     data_table_row_crud,
 )
 from app.database.crud.projects.project_paper_crud import project_paper_crud
-from app.database.crud.referral_crud import referral_crud
-from app.database.crud.subscription_crud import subscription_crud
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -28,15 +25,11 @@ from app.database.models import (
     ConversableType,
     Conversation,
     JobStatus,
-    ReferralStatus,
     ZoteroImportStatus,
 )
 from app.database.telemetry import track_event
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
-from app.helpers.email import (
-    send_data_table_complete_email,
-    send_referral_credit_available_email,
-)
+from app.helpers.email import send_data_table_complete_email
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.jobs_webhooks import verify_jobs_webhook
 from app.helpers.ai_limits import release_concurrency_by_id
@@ -832,111 +825,6 @@ async def handle_data_table_processing_webhook(
         "success": result.success,
         "rows_count": len(result.rows),
     }
-
-
-@webhook_router.post("/internal/referral-settle/{referral_id}")
-async def settle_referral(
-    referral_id: str, db: Session = Depends(get_db)
-) -> dict[str, object]:
-    """
-    Internal callback fired by the jobs service when a referral credit hold
-    has elapsed. Idempotent — re-runs on the same referral are no-ops.
-
-    Auth: the referral_id is an unguessable UUID. This matches the pattern of
-    /api/webhooks/paper-processing/{job_id}.
-    """
-    try:
-        referral_uuid = uuid.UUID(referral_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid referral id")
-
-    referral = referral_crud.get_by_id(db, referral_uuid)
-    if referral is None:
-        raise HTTPException(status_code=404, detail="Referral not found")
-
-    if str(referral.status) != ReferralStatus.CREDIT_PENDING.value:
-        # Already settled, refunded inside the hold window, or fraud-rejected.
-        return {"success": True, "status": str(referral.status), "no_op": True}
-
-    referrer = user_repository.get(db, id=referral.referrer_user_id)
-    if referrer is None:
-        logger.error(f"Referrer {referral.referrer_user_id} missing during settlement")
-        raise HTTPException(status_code=500, detail="Referrer not found")
-
-    sub = subscription_crud.get_by_user_id(db, referrer.id)
-    customer_id: str | None = (
-        str(sub.stripe_customer_id) if sub and sub.stripe_customer_id else None
-    )
-
-    if not customer_id:
-        # Referrer is on Basic and has never gone through checkout. Lazily
-        # create their Stripe customer so we have a place for the credit.
-        try:
-            customer = stripe.Customer.create(
-                email=str(referrer.email),
-                name=str(referrer.display_name or referrer.email),
-                metadata={"user_id": str(referrer.id)},
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to create Stripe customer for referrer {referrer.id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(status_code=502, detail="Stripe customer create failed")
-
-        customer_id = customer.id
-        subscription_crud.create_or_update(
-            db,
-            referrer.id,
-            {"stripe_customer_id": customer_id},
-        )
-
-    credit_cents: int = int(referral.referrer_credit_cents)
-
-    try:
-        txn = stripe.Customer.create_balance_transaction(
-            customer_id,
-            amount=-credit_cents,  # negative = credit
-            currency="usd",
-            description=f"Referral credit (referral {referral.id})",
-            metadata={
-                "referral_id": str(referral.id),
-                "referrer_user_id": str(referrer.id),
-            },
-        )
-    except Exception as e:
-        logger.error(
-            f"Failed to push Stripe balance transaction for referral {referral.id}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=502, detail="Stripe balance txn failed")
-
-    referral_crud.mark_credit_available(
-        db, referral, stripe_balance_transaction_id=str(txn.id)
-    )
-
-    try:
-        send_referral_credit_available_email(
-            to_email=str(referrer.email),
-            credit_cents=credit_cents,
-        )
-    except Exception as e:
-        logger.error(
-            f"Failed to send credit_available email for referral {referral.id}: {e}",
-            exc_info=True,
-        )
-
-    track_event(
-        "referral_credit_available",
-        user_id=str(referrer.id),
-        properties={
-            "referral_id": str(referral.id),
-            "credit_cents": credit_cents,
-        },
-        db=db,
-    )
-
-    return {"success": True, "referral_id": str(referral.id)}
 
 
 @webhook_router.post("/internal/zotero-sync-all")

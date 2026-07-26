@@ -24,7 +24,6 @@ from app.api.projects.projects_data_table_api import projects_data_table_router
 from app.api.projects.projects_invitation_api import (
     router as projects_invitation_router,
 )
-from app.api.referral import referral_router
 from app.api.search_api import search_router
 from app.api.subscription import subscription_router
 from app.api.jobs_webhooks import webhook_router
@@ -108,7 +107,6 @@ app.include_router(
 )  # Subscription routes
 app.include_router(webhook_router, prefix="/api/webhooks")  # Webhook routes
 app.include_router(onboarding_router, prefix="/api/onboarding")
-app.include_router(referral_router, prefix="/api/referral")
 app.include_router(zotero_router, prefix="/api/zotero")
 
 

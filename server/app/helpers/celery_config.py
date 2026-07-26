@@ -1,7 +1,7 @@
 """Shared connection defaults for the Celery jobs service.
 
 The server submits tasks to the jobs worker from a few places (PDF processing,
-referral settlement), all of which need the same broker / webhook / status-API
+PDF processing), all of which need the same broker / webhook / status-API
 endpoints. Keeping the defaults here avoids drift between those call sites.
 
 The broker default points at RabbitMQ, which is what the jobs worker consumes

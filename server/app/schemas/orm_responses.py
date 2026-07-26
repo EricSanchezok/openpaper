@@ -109,8 +109,6 @@ class OnboardingResponse(OrmResponse):
     job_titles: str | None
     job_titles_other: str | None
     reading_frequency: str | None
-    referral_source: str | None
-    referral_source_other: str | None
     created_at: datetime
     updated_at: datetime
 
