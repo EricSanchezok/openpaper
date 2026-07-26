@@ -286,6 +286,7 @@ jobs:
                  )
                  AND to_regclass('scholens.papers') IS NOT NULL
                  AND to_regclass('scholens.user_profiles') IS NOT NULL
+                 AND to_regclass('scholens.discover_searches') IS NULL
                  AND EXISTS (
                    SELECT 1
                    FROM pg_trigger

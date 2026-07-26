@@ -183,6 +183,34 @@ def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     assert "scholens.paper_passages_tsvector_trigger" in baseline
     assert "ON scholens.papers" in baseline
     assert "ON scholens.paper_passages" in baseline
+    assert "discover_searches" not in baseline
+
+
+def test_global_discovery_surfaces_are_absent_from_client_sources() -> None:
+    protected_routes = ROOT / "client" / "src" / "app" / "(main)" / "(protected)"
+    assert not (protected_routes / "discover").exists()
+    assert not (protected_routes / "finder").exists()
+
+    product_surfaces = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            ROOT / "README.md",
+            ROOT / "client" / "design.md",
+            ROOT / "client" / "src" / "app" / "sitemap.ts",
+            ROOT / "client" / "src" / "components" / "QuickActions.tsx",
+            ROOT / "client" / "src" / "components" / "sidebar" / "navItems.ts",
+            ROOT / "client" / "src" / "content" / "introducing.mdx",
+            ROOT / "client" / "src" / "content" / "systematic_review.mdx",
+            ROOT / "server" / "app" / "helpers" / "templates" / "onboarding.html",
+        )
+    )
+    for removed_identifier in (
+        "/discover",
+        "/finder",
+        "Discover Research",
+        "Paper Finder",
+    ):
+        assert removed_identifier not in product_surfaces
 
 
 def test_server_keeps_the_typed_sqlalchemy_two_mainline() -> None:

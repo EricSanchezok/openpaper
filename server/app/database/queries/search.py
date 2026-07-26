@@ -2,12 +2,14 @@ from datetime import datetime
 
 from app.database.models import Annotation, Highlight, Paper
 from app.schemas.user import CurrentUser
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 
 class HighlightResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     raw_text: str
     start_offset: int | None
@@ -16,22 +18,20 @@ class HighlightResult(BaseModel):
     role: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class AnnotationResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     content: str
     role: str
     created_at: datetime
     highlight: HighlightResult
 
-    class Config:
-        from_attributes = True
-
 
 class PaperResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     title: str | None
     authors: list[str] | None
@@ -43,9 +43,6 @@ class PaperResult(BaseModel):
     highlights: list[HighlightResult]
     annotations: list[AnnotationResult]
     preview_url: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class SearchResults(BaseModel):
