@@ -595,6 +595,19 @@ export default function PaperView() {
         [annotations, highlights, removeHighlight, setActiveHighlight]
     );
 
+    const onHighlightVisibilityChanged = useCallback(
+        (highlightId: string, shared: boolean) => {
+            setHighlights((current) =>
+                current.map((highlight) =>
+                    highlight.id === highlightId
+                        ? { ...highlight, is_shared: shared }
+                        : highlight,
+                ),
+            );
+        },
+        [setHighlights],
+    );
+
     if (loading) return <PaperViewSkeleton />;
 
     if (!paperData) return <div>Paper not found</div>;
@@ -622,6 +635,8 @@ export default function PaperView() {
         onComposeHighlightDismiss,
         addAnnotation,
         initialConversationId,
+        projectId,
+        onHighlightVisibilityChanged,
     };
 
     if (isMobile) {

@@ -12,6 +12,8 @@ import { BasicUser } from "@/lib/auth";
 import { cn, formatAnnotationDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { CollapsibleNoteText } from '@/components/CollapsibleNoteText';
+import { ResearchVisibilityButton } from '@/components/research/ResearchVisibilityButton';
+import { useProject } from '@/hooks/useProjects';
 
 const ITEM_BG_MAP: Record<HighlightColor, string> = {
 	yellow: "bg-yellow-50 dark:bg-yellow-950/20",
@@ -80,6 +82,8 @@ interface AnnotationsViewProps {
 	onComposeHighlightDismiss?: (cancelledHighlightId?: string | null) => void;
 	addAnnotation?: (highlightId: string, content: string) => Promise<PaperHighlightAnnotation>;
 	readonly?: boolean;
+	projectId?: string | null;
+	onVisibilityChanged?: (highlightId: string, shared: boolean) => void;
 }
 
 interface AnnotationThread {
@@ -98,7 +102,10 @@ export function AnnotationsView({
 	onComposeHighlightDismiss,
 	addAnnotation,
 	readonly = false,
+	projectId,
+	onVisibilityChanged,
 }: AnnotationsViewProps) {
+	const { project } = useProject(projectId ?? undefined);
 	const firstAnnotationRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const composeBlockRef = useRef<HTMLDivElement | null>(null);
@@ -364,6 +371,14 @@ export function AnnotationsView({
 						const visible =
 							!hasMulti || expanded ? threadAnns : threadAnns.slice(0, 1);
 						const moreCount = hasMulti && !expanded ? threadAnns.length - 1 : 0;
+						const canManageVisibility = Boolean(
+							projectId
+							&& onVisibilityChanged
+							&& (
+								project?.membership.kind === 'owner'
+								|| highlight.created_by_id === Number(user.id)
+							)
+						);
 
 						return (
 							<div
@@ -381,6 +396,19 @@ export function AnnotationsView({
 								}}
 							>
 								<div className="flex flex-col gap-3">
+									{projectId && onVisibilityChanged && (
+										<div className="flex justify-end">
+											<ResearchVisibilityButton
+												kind="highlight"
+												outputId={hid}
+												shared={Boolean(highlight.is_shared)}
+												canManage={canManageVisibility}
+												onChanged={(shared) =>
+													onVisibilityChanged(hid, shared)
+												}
+											/>
+										</div>
+									)}
 									{highlight.raw_text?.trim() ? (
 										<div
 											className={cn(

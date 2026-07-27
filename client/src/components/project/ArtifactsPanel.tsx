@@ -43,6 +43,8 @@ import {
     useSubscription,
 } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
+import { useAuth } from "@/lib/auth";
+import { ResearchVisibilityButton } from "@/components/research/ResearchVisibilityButton";
 
 const audioLengthOptions = [
     { label: "Short (5-10 mins)", value: "short" },
@@ -83,7 +85,8 @@ function CreateTile({ icon, label, sub, isNew, disabled, onClick }: CreateTilePr
 // Shares the right slot with the reader panel; kept mounted (CSS-hidden) while
 // inactive so in-progress polling and audio playback survive mode switches.
 export function ArtifactsPanel() {
-    const { projectId, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
+    const { projectId, project, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
+    const { user } = useAuth();
     const router = useRouter();
     const { subscription, refetch: refetchSubscription } = useSubscription();
     const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
@@ -117,6 +120,11 @@ export function ArtifactsPanel() {
     const [isCreatingDataTable, setIsCreatingDataTable] = useState(false);
     const [dataTableJobs, setDataTableJobs] = useState<DataTableJob[]>([]);
     const [projectArtifacts, setProjectArtifacts] = useState<ProjectArtifact[]>([]);
+    const canManageResearchOutput = useCallback(
+        (createdById: number | null) =>
+            project?.membership.kind === "owner" || createdById === user?.id,
+        [project?.membership.kind, user?.id],
+    );
 
     const fetchProjectArtifacts = useCallback(async () => {
         try {
@@ -355,35 +363,85 @@ export function ArtifactsPanel() {
                             padding from the scrollable overflow area. */}
                         <div className="space-y-3 pb-6">
                             {dataTableJobs.map((job) => (
-                                <DataTableGenerationJobCard key={job.id} job={job} projectId={projectId} />
+                                <div key={job.id} className="relative">
+                                    <ResearchVisibilityButton
+                                        kind="data_table"
+                                        outputId={job.id}
+                                        shared={job.is_shared}
+                                        canManage={canManageResearchOutput(job.created_by_id)}
+                                        onChanged={(shared) =>
+                                            setDataTableJobs((jobs) =>
+                                                jobs.map((item) =>
+                                                    item.id === job.id
+                                                        ? { ...item, is_shared: shared }
+                                                        : item,
+                                                ),
+                                            )
+                                        }
+                                        className="absolute right-9 top-2 z-10"
+                                    />
+                                    <DataTableGenerationJobCard job={job} projectId={projectId} />
+                                </div>
                             ))}
                             {audioJobs.map((job) => (
                                 <AudioOverviewGenerationJobCard key={job.id} job={job} />
                             ))}
                             {audioOverviews.map((overview) => (
-                                <AudioOverviewCard
-                                    key={overview.id}
-                                    overview={overview}
-                                    onOpenTranscript={() => router.push(`/projects/${projectId}/audio/${overview.id}`)}
-                                    isPlaying={playingAudioId === overview.id}
-                                    isLoading={loadingAudioId === overview.id}
-                                    isActivated={activatedAudioIds.includes(overview.id)}
-                                    progress={audioProgress[overview.id]}
-                                    volume={audioVolume[overview.id] || 1}
-                                    speed={audioSpeed[overview.id] || 1}
-                                    progressPercentage={getProgressPercentage(overview.id)}
-                                    onPlayPause={() => handlePlayAudio(overview.id)}
-                                    onSeek={(percentage) => handleSeek(overview.id, percentage)}
-                                    onVolumeChange={(volume) => handleVolumeChange(overview.id, volume)}
-                                    onSpeedChange={(speed) => handleSpeedChange(overview.id, speed)}
-                                    onSkipBackward={() => skipBackward(overview.id)}
-                                    onSkipForward={() => skipForward(overview.id)}
-                                    formatTime={formatTime}
-                                />
+                                <div key={overview.id} className="relative">
+                                    <ResearchVisibilityButton
+                                        kind="audio"
+                                        outputId={overview.id}
+                                        shared={overview.is_shared}
+                                        canManage={canManageResearchOutput(overview.created_by_id)}
+                                        onChanged={(shared) =>
+                                            setAudioOverviews((items) =>
+                                                items.map((item) =>
+                                                    item.id === overview.id
+                                                        ? { ...item, is_shared: shared }
+                                                        : item,
+                                                ),
+                                            )
+                                        }
+                                        className="absolute right-2 top-2 z-10"
+                                    />
+                                    <AudioOverviewCard
+                                        overview={overview}
+                                        onOpenTranscript={() => router.push(`/projects/${projectId}/audio/${overview.id}`)}
+                                        isPlaying={playingAudioId === overview.id}
+                                        isLoading={loadingAudioId === overview.id}
+                                        isActivated={activatedAudioIds.includes(overview.id)}
+                                        progress={audioProgress[overview.id]}
+                                        volume={audioVolume[overview.id] || 1}
+                                        speed={audioSpeed[overview.id] || 1}
+                                        progressPercentage={getProgressPercentage(overview.id)}
+                                        onPlayPause={() => handlePlayAudio(overview.id)}
+                                        onSeek={(percentage) => handleSeek(overview.id, percentage)}
+                                        onVolumeChange={(volume) => handleVolumeChange(overview.id, volume)}
+                                        onSpeedChange={(speed) => handleSpeedChange(overview.id, speed)}
+                                        onSkipBackward={() => skipBackward(overview.id)}
+                                        onSkipForward={() => skipForward(overview.id)}
+                                        formatTime={formatTime}
+                                    />
+                                </div>
                             ))}
                             {projectArtifacts.map((artifact) => (
                                 <div key={artifact.id} className="rounded-lg border p-3">
-                                    <div className="mb-2 flex items-center justify-end">
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <ResearchVisibilityButton
+                                            kind="artifact"
+                                            outputId={artifact.id}
+                                            shared={artifact.is_shared}
+                                            canManage={canManageResearchOutput(artifact.created_by_id)}
+                                            onChanged={(shared) =>
+                                                setProjectArtifacts((items) =>
+                                                    items.map((item) =>
+                                                        item.id === artifact.id
+                                                            ? { ...item, is_shared: shared }
+                                                            : item,
+                                                    ),
+                                                )
+                                            }
+                                        />
                                         {artifact.created_at && (
                                             <span className="shrink-0 text-xs text-muted-foreground">
                                                 {new Date(artifact.created_at).toLocaleDateString()}

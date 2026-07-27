@@ -76,6 +76,8 @@ interface SidePanelContentProps {
     onComposeHighlightDismiss?: (cancelledHighlightId?: string | null) => void;
     addAnnotation?: (highlightId: string, content: string) => Promise<PaperHighlightAnnotation>;
     initialConversationId?: string | null;
+    projectId?: string | null;
+    onHighlightVisibilityChanged?: (highlightId: string, shared: boolean) => void;
 }
 
 interface ChatRequestBody {
@@ -116,6 +118,8 @@ export function SidePanelContent({
     onComposeHighlightDismiss,
     addAnnotation,
     initialConversationId,
+    projectId,
+    onHighlightVisibilityChanged,
 }: SidePanelContentProps) {
     const { user } = useAuth();
     const [currentMessage, setCurrentMessage] = useState('');
@@ -680,6 +684,8 @@ export function SidePanelContent({
                                         composeHighlightId={composeHighlightId}
                                         onComposeHighlightDismiss={onComposeHighlightDismiss}
                                         addAnnotation={addAnnotation}
+                                        projectId={projectId}
+                                        onVisibilityChanged={onHighlightVisibilityChanged}
                                     />
                                 </div>
                             )
