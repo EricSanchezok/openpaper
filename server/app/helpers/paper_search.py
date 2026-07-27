@@ -73,13 +73,6 @@ def _request_with_retry(
     raise RuntimeError("OpenAlex request did not run")
 
 
-SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
-
-DISABLE_SEMANTIC_SCHOLAR = (
-    True  # Temporary flag to disable Semantic Scholar API calls due to 403 errors
-)
-
-
 class OAStatus(str, Enum):
     """
     Enum for OpenAlex OA status.
@@ -517,7 +510,6 @@ def get_doi(title: str, authors: list[str] | None = None) -> str | None:
 
     1. CrossRef API
     2. OpenAlex API (if CrossRef fails)
-    3. Semantic Scholar API (if OpenAlex fails)
 
     Args:
         title (str): The title of the paper.
@@ -527,41 +519,25 @@ def get_doi(title: str, authors: list[str] | None = None) -> str | None:
     """
 
     def get_openalex_doi(title: str) -> str | None:
-        try:
-            open_alex_results = search_open_alex(title)
-            target_authors = set(a.lower() for a in authors) if authors else set()
-            if open_alex_results.results:
-                for result in open_alex_results.results:
-                    # Check if title matches
-                    if not (result.title and title.lower() in result.title.lower()):
-                        continue
-
-                    # If no author provided, return first title match
-                    if not authors:
-                        return extract_doi_from_url(result.doi) if result.doi else None
-
-                    # Check if author matches any authorship
-                    if result.authorships:
-                        work_authors = set(
-                            a.author.display_name.lower()
-                            for a in result.authorships
-                            if a.author and a.author.display_name
-                        )
-                        for authorship in result.authorships:
-                            if authorship.author and authorship.author.display_name:
-                                if work_authors & target_authors:
-                                    return (
-                                        extract_doi_from_url(result.doi)
-                                        if result.doi
-                                        else None
-                                    )
-        except Exception:
-            return None
+        open_alex_results = search_open_alex(title)
+        target_authors = {author.casefold() for author in authors or []}
+        for result in open_alex_results.results:
+            if not (result.title and title.casefold() in result.title.casefold()):
+                continue
+            if not authors:
+                return extract_doi_from_url(result.doi) if result.doi else None
+            work_authors = {
+                authorship.author.display_name.casefold()
+                for authorship in result.authorships or []
+                if authorship.author and authorship.author.display_name
+            }
+            if work_authors & target_authors:
+                return extract_doi_from_url(result.doi) if result.doi else None
         return None
 
     def get_crossref_doi(title: str, authors: list[str] | None = None) -> str | None:
         base_url = "https://api.crossref.org/works"
-        params: dict[str, str | int] = {"query.title": quote(title), "rows": 1}
+        params: dict[str, str | int] = {"query.title": title, "rows": 1}
         if authors:
             params["query.author"] = ", ".join(authors)
 
@@ -575,32 +551,6 @@ def get_doi(title: str, authors: list[str] | None = None) -> str | None:
                 t.lower() for t in top_match["title"]
             ]:
                 doi = top_match.get("DOI")
-                return doi if isinstance(doi, str) else None
-        return None
-
-    def search_semantic_scholar_doi(title: str) -> str | None:
-        # Not working currently - hitting 403 errors with every request. TODO fix once we have a resolution.
-
-        if DISABLE_SEMANTIC_SCHOLAR:
-            return None
-
-        base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
-        headers: dict[str, str] = {}
-        if SEMANTIC_SCHOLAR_API_KEY:
-            headers["x-api-key"] = SEMANTIC_SCHOLAR_API_KEY
-
-        params: dict[str, str | int] = {
-            "query": title,
-            "limit": 1,
-            "fields": "doi",
-        }
-        response = requests.get(base_url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("data"):
-            top_match = data["data"][0]
-            if "title" in top_match and title.lower() in top_match["title"].lower():
-                doi = top_match.get("doi")
                 return doi if isinstance(doi, str) else None
         return None
 
@@ -623,24 +573,12 @@ def get_doi(title: str, authors: list[str] | None = None) -> str | None:
         )
         openalex_doi = None
 
-    try:
-        semantic_scholar_doi = search_semantic_scholar_doi(title)
-    except requests.RequestException:
-        logger.exception(
-            f"Error querying Semantic Scholar API for DOI - {title}", exc_info=True
-        )
-        semantic_scholar_doi = None
-
     if crossref_doi:
         logger.info(f"Found DOI from CrossRef: {crossref_doi} for title: {title}")
     elif openalex_doi:
         logger.info(f"Found DOI from OpenAlex: {openalex_doi} for title: {title}")
-    elif semantic_scholar_doi:
-        logger.info(
-            f"Found DOI from Semantic Scholar: {semantic_scholar_doi} for title: {title}"
-        )
 
-    return crossref_doi or openalex_doi or semantic_scholar_doi
+    return crossref_doi or openalex_doi
 
 
 def get_enriched_data(doi: str) -> EnrichedData | None:
