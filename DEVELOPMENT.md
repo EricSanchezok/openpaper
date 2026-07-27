@@ -107,7 +107,7 @@ cd server && uv sync
 # its own repository first, then apply only Scholens's migration:
 uv run --env-file .env --project ../../cloud-auth cloud-auth migrate
 psql postgresql://postgres:postgres@127.0.0.1:5432/sanchezcloud \
-  -c 'CREATE SCHEMA IF NOT EXISTS scholens'
+  -c 'CREATE SCHEMA IF NOT EXISTS scholens AUTHORIZATION openpaper_local'
 uv run python -m app.scripts.migrate_product
 
 # Jobs
@@ -120,6 +120,11 @@ cd ..
 touch client/.env.local
 cd client && corepack yarn install
 ```
+
+`openpaper_local` is the local product migration role. If `DATABASE_URL` uses
+a different role, substitute it in this one-time administrator command.
+Alembic intentionally refuses to migrate a `scholens` schema owned by another
+role.
 
 ## Start locally (daily)
 
