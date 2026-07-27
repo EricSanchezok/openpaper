@@ -11,10 +11,17 @@ import uuid
 from datetime import datetime, timezone
 
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.crud.subscription_crud import subscription_crud
-from app.database.models import AuthUser, Project, SubscriptionPlan, SubscriptionStatus
+from app.database.models import (
+    AuthUser,
+    Document,
+    Project,
+    ProjectPaper,
+    SubscriptionPlan,
+    SubscriptionStatus,
+)
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.policies.projects import get_project_access
 from app.schemas.user import CurrentUser
 from sqlalchemy import func, select
@@ -79,6 +86,136 @@ def get_user_subscription_plan(db: Session, user: CurrentUser) -> SubscriptionPl
 def get_plan_limits(plan: SubscriptionPlan) -> dict[str, int]:
     """Get the limits for a specific subscription plan."""
     return SUBSCRIPTION_LIMITS.get(plan, SUBSCRIPTION_LIMITS[SubscriptionPlan.BASIC])
+
+
+def lock_account_resource_quota(db: Session, *, user_id: int) -> None:
+    """Serialize resource grants for one account within the current transaction."""
+    db.execute(select(func.pg_advisory_xact_lock(user_id)))
+
+
+def _quota_user(db: Session, *, user_id: int) -> CurrentUser:
+    user = db.get(AuthUser, user_id)
+    if user is None:
+        raise AppError(
+            code="quota_owner_not_found",
+            message="The account that owns this resource no longer exists",
+            status_code=409,
+        )
+    return CurrentUser.from_auth_user(user)
+
+
+def _require_incremental_account_capacity(
+    db: Session,
+    *,
+    owner_id: int,
+    documents: list[Document],
+) -> None:
+    """Validate only documents that are newly billable to an account."""
+    if not documents:
+        return
+
+    unknown_size = next(
+        (document for document in documents if document.size_in_kb is None),
+        None,
+    )
+    if unknown_size is not None:
+        raise AppError(
+            code="document_not_ready",
+            message="A document is still being processed",
+            status_code=409,
+        )
+
+    owner = _quota_user(db, user_id=owner_id)
+    plan = get_user_subscription_plan(db, owner)
+    limits = get_plan_limits(plan)
+    current_count = paper_crud.get_total_paper_count(db=db, user=owner)
+    if current_count + len(documents) > limits[PAPER_UPLOAD_KEY]:
+        raise AppError(
+            code="paper_quota_exceeded",
+            message="The account's paper limit would be exceeded",
+            status_code=403,
+        )
+
+    if paper_crud.has_unknown_billed_document_size(db, user_id=owner_id):
+        raise AppError(
+            code="storage_usage_unavailable",
+            message="Storage usage is still being reconciled",
+            status_code=409,
+        )
+    current_size = paper_crud.get_size_of_knowledge_base(db, user=owner)
+    added_size = sum(document.size_in_kb or 0 for document in documents)
+    if current_size + added_size > limits[KB_SIZE_KEY]:
+        raise AppError(
+            code="storage_quota_exceeded",
+            message="The account's storage limit would be exceeded",
+            status_code=403,
+        )
+
+
+def require_project_document_capacity(
+    db: Session,
+    *,
+    owner_id: int,
+    project_id: uuid.UUID,
+    documents: list[Document],
+) -> None:
+    """Validate Project and owner quotas for a set of new associations."""
+    if not documents:
+        return
+    lock_account_resource_quota(db, user_id=owner_id)
+    owner = _quota_user(db, user_id=owner_id)
+    plan = get_user_subscription_plan(db, owner)
+    limits = get_plan_limits(plan)
+
+    current_project_count = int(
+        db.scalar(
+            select(func.count(ProjectPaper.id)).where(
+                ProjectPaper.project_id == project_id
+            )
+        )
+        or 0
+    )
+    if current_project_count + len(documents) > limits[PROJECT_PAPERS_KEY]:
+        raise AppError(
+            code="project_paper_quota_exceeded",
+            message="The Project's paper limit would be exceeded",
+            status_code=403,
+        )
+
+    newly_billed = list(
+        db.scalars(
+            select(Document).where(
+                Document.id.in_([document.id for document in documents]),
+                ~paper_crud.is_billed_to(owner_id),
+            )
+        ).all()
+    )
+    _require_incremental_account_capacity(
+        db,
+        owner_id=owner_id,
+        documents=newly_billed,
+    )
+
+
+def require_library_document_capacity(
+    db: Session,
+    *,
+    user: CurrentUser,
+    document: Document,
+) -> None:
+    """Validate the incremental cost of collecting one shared document."""
+    lock_account_resource_quota(db, user_id=user.id)
+    already_billed = db.scalar(
+        select(Document.id).where(
+            Document.id == document.id,
+            paper_crud.is_billed_to(user.id),
+        )
+    )
+    _require_incremental_account_capacity(
+        db,
+        owner_id=user.id,
+        documents=[] if already_billed is not None else [document],
+    )
 
 
 def get_remaining_paper_upload_slots(db: Session, user: CurrentUser) -> int:
@@ -162,8 +299,13 @@ def can_user_add_papers_to_project(
     limits = get_plan_limits(plan)
     project_paper_limit = limits[PROJECT_PAPERS_KEY]
 
-    current_project_paper_count = project_paper_crud.get_paper_count_by_project_id(
-        db, project_id=project_id, user=user
+    current_project_paper_count = int(
+        db.scalar(
+            select(func.count(ProjectPaper.id)).where(
+                ProjectPaper.project_id == project_id
+            )
+        )
+        or 0
     )
 
     if current_project_paper_count + paper_count > project_paper_limit:

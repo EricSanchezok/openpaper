@@ -107,7 +107,7 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
     """Persistence boundary for canonical documents and personal library entries."""
 
     @staticmethod
-    def _is_billed_to(user_id: int) -> ColumnElement[bool]:
+    def is_billed_to(user_id: int) -> ColumnElement[bool]:
         """SQL predicate for resources charged to one account.
 
         A document is billed once when it is either in the user's personal
@@ -418,47 +418,18 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
 
     def get_size_of_knowledge_base(self, db: Session, *, user: CurrentUser) -> int:
         """
-        Get unique completed document storage billed to the user in KB.
+        Get known unique completed document storage billed to the user in KB.
 
         Personal Library documents and documents in owned Projects count once;
         documents in Projects where the user is only a collaborator do not.
+        The query is intentionally side-effect free: quota checks must not
+        perform S3 I/O or commit an unrelated transaction.
         """
-        from app.helpers.s3 import s3_service
-
-        # First, get papers with missing size_in_kb and update them
-        papers_without_size = db.scalars(
-            select(Document)
-            .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
-            .where(
-                self._is_billed_to(user.id),
-                (
-                    Document.upload_job_id.is_(None)  # No upload job (direct uploads)
-                    | (
-                        PaperUploadJob.status == JobStatus.COMPLETED
-                    )  # Or job is completed
-                ),
-                Document.size_in_kb.is_(None),  # Only papers without size_in_kb
-                Document.s3_object_key.isnot(None),  # Must have S3 object key
-            )
-        ).all()
-
-        # Update papers that don't have size_in_kb set
-        for paper in papers_without_size:
-            if paper.s3_object_key:
-                paper_size_in_kb = s3_service.get_file_size_in_kb(
-                    str(paper.s3_object_key)
-                )
-                if paper_size_in_kb:
-                    # Update the paper's size_in_kb field in the database
-                    update_paper = PaperUpdate(size_in_kb=paper_size_in_kb)
-                    self.update(db, db_obj=paper, obj_in=update_paper)
-
-        # Now get all completed papers and sum their sizes
         total_size = db.scalar(
             select(func.coalesce(func.sum(Document.size_in_kb), 0))
             .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
             .where(
-                self._is_billed_to(user.id),
+                self.is_billed_to(user.id),
                 (
                     Document.upload_job_id.is_(None)  # No upload job (direct uploads)
                     | (
@@ -468,6 +439,35 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
             )
         )
         return int(total_size or 0)
+
+    def has_unknown_billed_document_size(
+        self,
+        db: Session,
+        *,
+        user_id: int,
+    ) -> bool:
+        """Whether a completed billed S3 document is missing stored size."""
+        completed = or_(
+            Document.upload_job_id.is_(None),
+            exists(
+                select(PaperUploadJob.id).where(
+                    PaperUploadJob.id == Document.upload_job_id,
+                    PaperUploadJob.status == JobStatus.COMPLETED,
+                )
+            ),
+        )
+        return bool(
+            db.scalar(
+                select(
+                    exists().where(
+                        self.is_billed_to(user_id),
+                        completed,
+                        Document.size_in_kb.is_(None),
+                        Document.s3_object_key.isnot(None),
+                    )
+                )
+            )
+        )
 
     def make_public(
         self, db: Session, *, paper_id: str, user: CurrentUser
@@ -546,7 +546,7 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
                 select(func.count(Document.id))
                 .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
                 .where(
-                    self._is_billed_to(user.id),
+                    self.is_billed_to(user.id),
                     (
                         Document.upload_job_id.is_(
                             None

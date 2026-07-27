@@ -38,10 +38,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database.crud.paper_crud import PaperCreate, paper_crud
-from app.database.crud.projects.project_paper_crud import (
-    ProjectPaperCreate,
-    project_paper_crud,
-)
+from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.crud.user_crud import user as user_crud
 from app.database.database import SessionLocal
@@ -152,14 +149,12 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
             description="Seeded by evals.run_data_table_eval (KHO-308)",
         )
 
-        linked = project_paper_crud.create(
+        project_paper_crud.attach_document(
             db=db,
-            obj_in=ProjectPaperCreate(paper_id=uuid.UUID(str(paper.id))),
+            document=paper,
             user=current_user,
             project_id=uuid.UUID(str(project.id)),
         )
-        if not linked:
-            raise RuntimeError(f"Failed to link paper to project for {key}")
 
         seed_state[key] = {
             "paper_id": str(paper.id),
