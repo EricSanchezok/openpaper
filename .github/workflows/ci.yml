@@ -290,7 +290,8 @@ jobs:
                  AND NOT has_table_privilege(
                    'scholens_app', 'auth.refresh_tokens', 'DELETE'
                  )
-                 AND to_regclass('scholens.papers') IS NOT NULL
+                 AND to_regclass('scholens.documents') IS NOT NULL
+                 AND to_regclass('scholens.library_papers') IS NOT NULL
                  AND to_regclass('scholens.user_profiles') IS NOT NULL
                  AND to_regclass('scholens.discover_searches') IS NULL
                  AND EXISTS (
@@ -315,18 +316,29 @@ jobs:
             -v ON_ERROR_STOP=1 -c \
             "BEGIN;
              INSERT INTO auth.users (email, password_hash)
-               VALUES ('ci@example.invalid', 'fixture') RETURNING id;
+               VALUES
+                 ('ci-owner@example.invalid', 'fixture'),
+                 ('ci-collaborator@example.invalid', 'fixture');
              INSERT INTO scholens.user_profiles (user_id)
-               VALUES (currval('auth.users_id_seq'));
-             INSERT INTO scholens.papers
-               (id, status, file_url, title, raw_content, user_id)
+               SELECT id FROM auth.users
+               WHERE email = 'ci-owner@example.invalid';
+             INSERT INTO scholens.documents
+               (id, file_url, title, raw_content, created_by_id)
                VALUES (
                  '00000000-0000-0000-0000-000000000001',
-                 'reading',
                  's3://fixture',
                  'Semantic search',
                  'retrieval augmented generation',
-                 currval('auth.users_id_seq')
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid')
+               );
+             INSERT INTO scholens.library_papers
+               (id, user_id, document_id)
+               VALUES (
+                 '00000000-0000-0000-0000-000000000007',
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid'),
+                 '00000000-0000-0000-0000-000000000001'
                );
              INSERT INTO scholens.paper_passages
                (paper_id, start_line, end_line, content)
@@ -336,33 +348,41 @@ jobs:
                  1,
                  'retrieval augmented generation'
                );
-             INSERT INTO scholens.project
-               (id, title, description, admin_id)
+             INSERT INTO scholens.projects
+               (id, title, description, owner_id)
                VALUES (
                  '00000000-0000-0000-0000-000000000002',
                  'CI project',
                  'relationship test',
-                 currval('auth.users_id_seq')
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid')
                );
-             INSERT INTO scholens.project_role
-               (id, project_id, user_id, role)
+             INSERT INTO scholens.project_collaborators
+               (id, project_id, user_id, can_edit_project,
+                can_manage_papers, can_manage_collaborators)
                VALUES (
                  '00000000-0000-0000-0000-000000000003',
                  '00000000-0000-0000-0000-000000000002',
-                 currval('auth.users_id_seq'),
-                 'admin'
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-collaborator@example.invalid'),
+                 true,
+                 true,
+                 false
                );
-             INSERT INTO scholens.project_paper
-               (id, paper_id, project_id)
+             INSERT INTO scholens.project_papers
+               (id, document_id, project_id, added_by_id)
                VALUES (
                  '00000000-0000-0000-0000-000000000004',
                  '00000000-0000-0000-0000-000000000001',
-                 '00000000-0000-0000-0000-000000000002'
+                 '00000000-0000-0000-0000-000000000002',
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-collaborator@example.invalid')
                );
              INSERT INTO scholens.token_weekly_usage
                (user_id, week_start, used_tokens)
                VALUES (
-                 currval('auth.users_id_seq'),
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid'),
                  date_trunc('week', now())::date,
                  17
                );
@@ -371,7 +391,8 @@ jobs:
                 feature, provider, model, reasoning_level, total_tokens, status)
                VALUES (
                  '00000000-0000-0000-0000-000000000005',
-                 currval('auth.users_id_seq'),
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid'),
                  date_trunc('week', now())::date,
                  'ci-token-event',
                  'ci-operation',
@@ -386,43 +407,58 @@ jobs:
                (id, user_id, plan, status, cancel_at_period_end)
                VALUES (
                  '00000000-0000-0000-0000-000000000006',
-                 currval('auth.users_id_seq'),
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid'),
                  'basic',
                  'active',
                  false
                );
              SELECT 1 / (
-               (SELECT ts_vector IS NOT NULL FROM scholens.papers
+               (SELECT ts_vector IS NOT NULL FROM scholens.documents
                 WHERE id = '00000000-0000-0000-0000-000000000001')::int
                *
                (SELECT ts_vector IS NOT NULL FROM scholens.paper_passages
                 WHERE paper_id = '00000000-0000-0000-0000-000000000001')::int
                *
-               (SELECT count(*) = 1 FROM scholens.project_paper
+               (SELECT count(*) = 1 FROM scholens.library_papers
+                WHERE document_id = '00000000-0000-0000-0000-000000000001')::int
+               *
+               (SELECT count(*) = 1 FROM scholens.project_papers
                 WHERE project_id = '00000000-0000-0000-0000-000000000002')::int
                *
                (SELECT used_tokens = 17 FROM scholens.token_weekly_usage
-                WHERE user_id = currval('auth.users_id_seq'))::int
+                WHERE user_id = (
+                  SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid'
+                ))::int
                *
                (SELECT count(*) = 1 FROM scholens.subscriptions
-                WHERE user_id = currval('auth.users_id_seq'))::int
+                WHERE user_id = (
+                  SELECT id FROM auth.users
+                  WHERE email = 'ci-owner@example.invalid'
+                ))::int
              );
-             DELETE FROM scholens.project
+             DELETE FROM scholens.projects
                WHERE id = '00000000-0000-0000-0000-000000000002';
              SELECT 1 / (
                (NOT EXISTS (
-                 SELECT 1 FROM scholens.project_role
+                 SELECT 1 FROM scholens.project_collaborators
                  WHERE project_id = '00000000-0000-0000-0000-000000000002'
                ))::int
                *
                (NOT EXISTS (
-                 SELECT 1 FROM scholens.project_paper
+                 SELECT 1 FROM scholens.project_papers
                  WHERE project_id = '00000000-0000-0000-0000-000000000002'
                ))::int
                *
                (EXISTS (
-                 SELECT 1 FROM scholens.papers
+                 SELECT 1 FROM scholens.documents
                  WHERE id = '00000000-0000-0000-0000-000000000001'
+               ))::int
+               *
+               (EXISTS (
+                 SELECT 1 FROM scholens.library_papers
+                 WHERE document_id = '00000000-0000-0000-0000-000000000001'
                ))::int
              );
              ROLLBACK;"

@@ -54,6 +54,7 @@ def test_release_images_are_required_and_runtime_containers_are_non_root() -> No
 def test_database_contract_shares_auth_and_isolates_scholens() -> None:
     runtime = (PRODUCTION / "runtime.env.example").read_text(encoding="utf-8")
     bootstrap = (PRODUCTION / "bootstrap-db.sql").read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert runtime.count("/sanchezcloud?") == 2
     assert "search_path" not in runtime
@@ -70,6 +71,21 @@ def test_database_contract_shares_auth_and_isolates_scholens() -> None:
         in bootstrap
     )
     assert "ALTER DEFAULT PRIVILEGES" in bootstrap
+    for current_table in (
+        "scholens.documents",
+        "scholens.library_papers",
+        "scholens.projects",
+        "scholens.project_collaborators",
+        "scholens.project_papers",
+    ):
+        assert current_table in ci
+    for removed_table in (
+        "scholens.papers",
+        "scholens.project",
+        "scholens.project_role",
+        "scholens.project_paper",
+    ):
+        assert not re.search(rf"{re.escape(removed_table)}(?![a-z_])", ci)
 
 
 def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:

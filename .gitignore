@@ -18,6 +18,7 @@ client/node_modules
 
 # testing
 client/coverage
+client/test-results/
 
 # next.js
 client/.next/

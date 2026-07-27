@@ -7,3 +7,4 @@ os.environ.setdefault(
     "CLOUDFLARE_BUCKET_NAME",
     "scholens-test.s3.example.invalid",
 )
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-deepseek-key")
