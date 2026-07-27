@@ -7,10 +7,17 @@ from unittest.mock import MagicMock
 import pytest
 from app.api.projects.project_papers_api import AddPaperToProjectRequest
 from app.database.crud.projects.project_paper_crud import project_paper_crud
-from app.database.models import Base, Document, Project, ProjectPaper
+from app.database.models import (
+    Base,
+    Document,
+    Project,
+    ProjectCollaborator,
+    ProjectPaper,
+)
 from app.errors import AppError
 from app.main import app
 from app.policies.projects import ProjectPermissions
+from app.repositories.projects import project_repository
 from app.schemas.projects import ProjectInvitationCreateRequest
 from app.schemas.user import CurrentUser
 from pydantic import ValidationError
@@ -134,6 +141,44 @@ def test_project_paper_batch_rejects_partial_library_matches(
     assert exc_info.value.code == "library_document_not_found"
     db.add_all.assert_not_called()
     db.commit.assert_not_called()
+
+
+def test_transfer_validates_and_reassigns_owner_quota(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project(id=uuid.uuid4(), owner_id=1, title="Project")
+    new_owner_membership = ProjectCollaborator(
+        project_id=project.id,
+        user_id=2,
+        can_manage_papers=True,
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.side_effect = [project, new_owner_membership]
+    monkeypatch.setattr(
+        "app.repositories.projects.require_project_permission",
+        lambda *_args, **_kwargs: None,
+    )
+    quota_reassignment = MagicMock()
+    monkeypatch.setattr(
+        "app.repositories.projects.reassign_project_quota_owner",
+        quota_reassignment,
+    )
+
+    transferred = project_repository.transfer(
+        db,
+        project_id=project.id,
+        owner_id=1,
+        new_owner_id=2,
+    )
+
+    quota_reassignment.assert_called_once_with(
+        db,
+        project=project,
+        new_owner_id=2,
+    )
+    assert transferred.owner_id == 2
+    db.delete.assert_called_once_with(new_owner_membership)
+    db.commit.assert_called_once()
 
 
 def test_project_api_exposes_capabilities_and_invitation_lifecycle() -> None:

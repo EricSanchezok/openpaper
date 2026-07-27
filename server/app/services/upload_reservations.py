@@ -18,6 +18,7 @@ from app.errors import AppError
 from app.helpers.subscription_limits import (
     KB_SIZE_KEY,
     PAPER_UPLOAD_KEY,
+    PROJECTS_KEY,
     PROJECT_PAPERS_KEY,
     get_plan_limits,
     get_quota_user,
@@ -26,7 +27,7 @@ from app.helpers.subscription_limits import (
 )
 from app.policies.projects import require_project_permission
 from app.schemas.user import CurrentUser
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 ACTIVE_UPLOAD_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
@@ -63,6 +64,140 @@ def _unattached_project_reservations(
             )
         )
         or 0
+    )
+
+
+def reassign_project_quota_owner(
+    db: Session,
+    *,
+    project: Project,
+    new_owner_id: int,
+) -> None:
+    """Validate a transfer and move every active reservation to the new owner.
+
+    The caller must hold a row lock on ``project``. Completed documents are
+    charged only when they are not already present in the new owner's Library
+    or another Project they own. In-progress uploads are represented solely by
+    their durable reservations, so they are not counted twice.
+    """
+    lock_account_resource_quota(db, user_id=new_owner_id)
+    owner = get_quota_user(db, user_id=new_owner_id)
+    limits = get_plan_limits(get_user_subscription_plan(db, owner))
+
+    owned_project_count = int(
+        db.scalar(
+            select(func.count(Project.id)).where(Project.owner_id == new_owner_id)
+        )
+        or 0
+    )
+    if owned_project_count + 1 > limits[PROJECTS_KEY]:
+        raise AppError(
+            code="project_transfer_quota_exceeded",
+            message="The new owner has reached their Project limit",
+            status_code=409,
+        )
+
+    project_document_count = int(
+        db.scalar(
+            select(func.count(ProjectPaper.id)).where(
+                ProjectPaper.project_id == project.id
+            )
+        )
+        or 0
+    )
+    if project_document_count > limits[PROJECT_PAPERS_KEY]:
+        raise AppError(
+            code="project_transfer_paper_quota_exceeded",
+            message="This Project exceeds the new owner's per-Project paper limit",
+            status_code=409,
+        )
+
+    project_active_count, project_active_size_kb = tuple(
+        int(value)
+        for value in db.execute(
+            select(
+                func.count(PaperUploadJob.id),
+                func.coalesce(func.sum(PaperUploadJob.reserved_size_kb), 0),
+            ).where(
+                PaperUploadJob.project_id == project.id,
+                PaperUploadJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+            )
+        ).one()
+    )
+    existing_active_count, existing_active_size_kb = _active_account_reservations(
+        db,
+        owner_id=new_owner_id,
+    )
+
+    incremental_documents = list(
+        db.scalars(
+            select(Document)
+            .join(ProjectPaper, ProjectPaper.document_id == Document.id)
+            .outerjoin(
+                PaperUploadJob,
+                PaperUploadJob.id == Document.upload_job_id,
+            )
+            .where(
+                ProjectPaper.project_id == project.id,
+                or_(
+                    Document.upload_job_id.is_(None),
+                    PaperUploadJob.status == JobStatus.COMPLETED,
+                ),
+                ~paper_crud.is_billed_to(new_owner_id),
+            )
+        ).all()
+    )
+    if any(document.size_in_kb is None for document in incremental_documents):
+        raise AppError(
+            code="project_transfer_storage_unavailable",
+            message="Project storage is still being reconciled",
+            status_code=409,
+        )
+
+    completed_count = paper_crud.get_total_paper_count(db=db, user=owner)
+    if (
+        completed_count
+        + existing_active_count
+        + len(incremental_documents)
+        + project_active_count
+        > limits[PAPER_UPLOAD_KEY]
+    ):
+        raise AppError(
+            code="project_transfer_paper_quota_exceeded",
+            message="The Project would exceed the new owner's paper limit",
+            status_code=409,
+        )
+
+    if paper_crud.has_unknown_billed_document_size(db, user_id=new_owner_id):
+        raise AppError(
+            code="project_transfer_storage_unavailable",
+            message="The new owner's storage usage is still being reconciled",
+            status_code=409,
+        )
+    completed_size_kb = paper_crud.get_size_of_knowledge_base(db, user=owner)
+    incremental_size_kb = sum(
+        document.size_in_kb or 0 for document in incremental_documents
+    )
+    if (
+        completed_size_kb
+        + existing_active_size_kb
+        + incremental_size_kb
+        + project_active_size_kb
+        > limits[KB_SIZE_KEY]
+    ):
+        raise AppError(
+            code="project_transfer_storage_quota_exceeded",
+            message="The Project would exceed the new owner's storage limit",
+            status_code=409,
+        )
+
+    db.execute(
+        update(PaperUploadJob)
+        .where(
+            PaperUploadJob.project_id == project.id,
+            PaperUploadJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+        )
+        .values(quota_owner_id=new_owner_id)
     )
 
 

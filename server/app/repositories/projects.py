@@ -22,6 +22,7 @@ from app.policies.projects import (
     require_project_permission,
 )
 from app.schemas.projects import ProjectPermissionSet
+from app.services.upload_reservations import reassign_project_quota_owner
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -310,6 +311,11 @@ class ProjectRepository:
                 status_code=409,
             )
 
+        reassign_project_quota_owner(
+            db,
+            project=project,
+            new_owner_id=new_owner_id,
+        )
         db.delete(new_owner_membership)
         db.add(
             ProjectCollaborator(

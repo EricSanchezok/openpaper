@@ -2,9 +2,12 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from app.database.models import JobStatus, Project, SubscriptionPlan
+from app.database.models import Document, JobStatus, Project, SubscriptionPlan
 from app.errors import AppError
-from app.services.upload_reservations import reserve_upload
+from app.services.upload_reservations import (
+    reassign_project_quota_owner,
+    reserve_upload,
+)
 
 
 def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
@@ -156,3 +159,78 @@ def test_empty_upload_is_rejected_before_any_reservation() -> None:
     assert error.value.code == "empty_upload"
     db.execute.assert_not_called()
     db.add.assert_not_called()
+
+
+def test_project_transfer_accounts_for_documents_and_active_reservations() -> None:
+    project = Project(id=uuid4(), title="Shared corpus", owner_id=10)
+    incremental = Document(
+        id=uuid4(),
+        file_url="s3://bucket/completed.pdf",
+        size_in_kb=100,
+    )
+    db = MagicMock()
+    db.scalar.side_effect = [1, 4]
+    project_active_usage = MagicMock()
+    project_active_usage.one.return_value = (2, 60)
+    reassignment_result = MagicMock()
+    db.execute.side_effect = [project_active_usage, reassignment_result]
+    documents = MagicMock()
+    documents.all.return_value = [incremental]
+    db.scalars.return_value = documents
+
+    with (
+        patch(
+            "app.services.upload_reservations.lock_account_resource_quota"
+        ) as quota_lock,
+        patch(
+            "app.services.upload_reservations.get_quota_user",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "app.services.upload_reservations.get_user_subscription_plan",
+            return_value=SubscriptionPlan.BASIC,
+        ),
+        patch(
+            "app.services.upload_reservations._active_account_reservations",
+            return_value=(1, 40),
+        ),
+        patch(
+            "app.services.upload_reservations.paper_crud.get_total_paper_count",
+            return_value=2,
+        ),
+        patch(
+            "app.services.upload_reservations.paper_crud.has_unknown_billed_document_size",
+            return_value=False,
+        ),
+        patch(
+            "app.services.upload_reservations.paper_crud.get_size_of_knowledge_base",
+            return_value=200,
+        ),
+    ):
+        reassign_project_quota_owner(db, project=project, new_owner_id=20)
+
+    quota_lock.assert_called_once_with(db, user_id=20)
+    assert db.execute.call_count == 2
+
+
+def test_project_transfer_rejects_new_owner_project_limit() -> None:
+    project = Project(id=uuid4(), title="Shared corpus", owner_id=10)
+    db = MagicMock()
+    db.scalar.return_value = 2
+
+    with (
+        patch("app.services.upload_reservations.lock_account_resource_quota"),
+        patch(
+            "app.services.upload_reservations.get_quota_user",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "app.services.upload_reservations.get_user_subscription_plan",
+            return_value=SubscriptionPlan.BASIC,
+        ),
+        pytest.raises(AppError) as error,
+    ):
+        reassign_project_quota_owner(db, project=project, new_owner_id=20)
+
+    assert error.value.code == "project_transfer_quota_exceeded"
+    db.execute.assert_not_called()
