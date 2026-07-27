@@ -22,6 +22,11 @@ from app.policies.projects import (
     require_project_permission,
 )
 from app.schemas.projects import ProjectPermissionSet
+from app.services.project_lifecycle import (
+    delete_orphan_documents,
+    delete_project_storage,
+    prepare_project_deletion,
+)
 from app.services.upload_reservations import reassign_project_quota_owner
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
@@ -145,14 +150,27 @@ class ProjectRepository:
         return access.project
 
     def delete(self, db: Session, *, project_id: uuid.UUID, user_id: int) -> None:
-        access = require_project_permission(
+        require_project_permission(
             db,
             project_id=project_id,
             user_id=user_id,
             permission="owner",
         )
-        db.delete(access.project)
+        project = db.scalar(
+            select(Project).where(Project.id == project_id).with_for_update()
+        )
+        if project is None:
+            raise AppError(
+                code="project_not_found",
+                message="Project not found",
+                status_code=404,
+            )
+        plan = prepare_project_deletion(db, project=project)
+        db.delete(project)
+        db.flush()
+        delete_orphan_documents(db, plan=plan)
         db.commit()
+        delete_project_storage(plan=plan)
 
     def list_members(
         self, db: Session, *, project_id: uuid.UUID, user_id: int
