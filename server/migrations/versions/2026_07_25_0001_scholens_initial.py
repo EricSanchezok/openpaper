@@ -574,7 +574,6 @@ def upgrade() -> None:
         sa.Column("trace", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("scope", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("sequence", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -590,11 +589,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"
         ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["auth.users.id"],
-        ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "conversation_id",
+            "sequence",
+            name="uq_messages_conversation_sequence",
+        ),
         schema="scholens",
     )
     op.create_table(

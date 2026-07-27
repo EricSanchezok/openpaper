@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         Conversation,
         Highlight,
         LibraryPaper,
-        Message,
         Document,
         PaperNote,
         PaperTag,
@@ -55,9 +54,6 @@ class AuthUser(Base):
     )
     library_papers: Mapped[list["LibraryPaper"]] = relationship(
         "LibraryPaper", back_populates="user", cascade="all, delete-orphan"
-    )
-    messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="user", cascade="all, delete-orphan"
     )
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="user", cascade="all, delete-orphan"

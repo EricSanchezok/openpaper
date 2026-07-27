@@ -163,6 +163,13 @@ class JobsWebhookNonce(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "sequence",
+            name="uq_messages_conversation_sequence",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -192,13 +199,6 @@ class Message(Base):
     sequence: Mapped[int] = mapped_column(
         Integer, nullable=False
     )  # To maintain message order
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=True
-    )
-
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="messages"
-    )
     conversation: Mapped["Conversation"] = relationship(
         "Conversation", back_populates="messages"
     )

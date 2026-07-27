@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.crud.sanitization import sanitize_for_postgres
-from app.database.models import Message
+from app.database.models import Conversation, Message
+from app.errors import AppError
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
@@ -46,11 +48,26 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         """Create a new message with auto-incrementing sequence number"""
         if user is None:
             raise ValueError("User must be provided to create a message")
-        # Get the next sequence number for this conversation
+        # Lock the owning conversation so concurrent streams cannot allocate the
+        # same sequence number or attach a message to another user's chat.
+        conversation = db.scalar(
+            select(Conversation)
+            .where(
+                Conversation.id == obj_in.conversation_id,
+                Conversation.user_id == user.id,
+            )
+            .with_for_update()
+        )
+        if conversation is None:
+            raise AppError(
+                code="conversation_not_found",
+                message="Conversation not found",
+                status_code=404,
+            )
+
         max_sequence = db.scalar(
             select(func.max(Message.sequence)).where(
                 Message.conversation_id == obj_in.conversation_id,
-                Message.user_id == user.id,
             )
         )
         next_sequence = (max_sequence or 0) + 1
@@ -61,7 +78,8 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         # mirrors the sanitization base_crud applies; without it, a NUL byte
         # fails the flush and poisons the shared session.
         obj_in_data = sanitize_for_postgres(obj_in.model_dump(exclude_unset=True))
-        db_obj = Message(**obj_in_data, sequence=next_sequence, user_id=user.id)
+        db_obj = Message(**obj_in_data, sequence=next_sequence)
+        conversation.updated_at = datetime.now(timezone.utc)
 
         try:
             db.add(db_obj)
@@ -94,9 +112,10 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         """
         messages = db.scalars(
             select(Message)
+            .join(Conversation, Conversation.id == Message.conversation_id)
             .where(
                 Message.conversation_id == conversation_id,
-                Message.user_id == current_user.id,
+                Conversation.user_id == current_user.id,
             )
             .order_by(desc(Message.sequence))  # newest first for pagination
             .offset((page - 1) * page_size)

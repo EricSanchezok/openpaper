@@ -176,7 +176,6 @@ class ConversationAdmin(ModelView, model=Conversation):
 class MessageAdmin(ModelView, model=Message):
     column_list = [
         Message.id,
-        Message.user_id,
         Message.conversation_id,
         Message.content,
         Message.role,
