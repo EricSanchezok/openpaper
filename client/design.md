@@ -118,7 +118,7 @@ trees; reach for Context only for genuinely cross-cutting state.
 **Size guideline.** A component over ~300 lines is a smell. Split presentational subsections
 into their own components and lift derived/data logic into helpers or a hook. `components/sidebar/`
 is the worked example: a `<300`-line `AppSidebar` orchestrator composes `SidebarNav` and
-`SidebarFooter`, with pure logic (`getSubscriptionWarning`, `buildReferralEntry`) and config
+`SidebarFooter`, with pure logic (`getSubscriptionWarning`) and config
 (`navItems`) pulled into sibling modules.
 
 ---

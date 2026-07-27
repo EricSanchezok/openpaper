@@ -203,8 +203,8 @@ class ProjectRepository:
         )
         if actor_id == target_user_id or actor.project.owner_id == target_user_id:
             raise AppError(
-                code="project_member_not_manageable",
-                message="This project member cannot be modified",
+                code="project_collaborator_not_manageable",
+                message="This Project collaborator cannot be modified",
                 status_code=409,
             )
         target = db.scalar(
@@ -215,8 +215,8 @@ class ProjectRepository:
         )
         if target is None:
             raise AppError(
-                code="project_member_not_found",
-                message="Project member not found",
+                code="project_collaborator_not_found",
+                message="Project collaborator not found",
                 status_code=404,
             )
 
@@ -225,8 +225,8 @@ class ProjectRepository:
         _require_grant_subset(actor, requested_permissions)
         if not actor.is_owner and not actor.permissions.contains(current_permissions):
             raise AppError(
-                code="project_member_not_manageable",
-                message="You cannot modify a member with permissions you do not have",
+                code="project_collaborator_not_manageable",
+                message="You cannot modify a collaborator with permissions you do not have",
                 status_code=403,
             )
 
@@ -253,8 +253,8 @@ class ProjectRepository:
         )
         if actor_id == target_user_id or actor.project.owner_id == target_user_id:
             raise AppError(
-                code="project_member_not_manageable",
-                message="This project member cannot be removed",
+                code="project_collaborator_not_manageable",
+                message="This Project collaborator cannot be removed",
                 status_code=409,
             )
         target = db.scalar(
@@ -265,16 +265,16 @@ class ProjectRepository:
         )
         if target is None:
             raise AppError(
-                code="project_member_not_found",
-                message="Project member not found",
+                code="project_collaborator_not_found",
+                message="Project collaborator not found",
                 status_code=404,
             )
         if not actor.is_owner and not actor.permissions.contains(
             collaborator_permissions(target)
         ):
             raise AppError(
-                code="project_member_not_manageable",
-                message="You cannot remove a member with permissions you do not have",
+                code="project_collaborator_not_manageable",
+                message="You cannot remove a collaborator with permissions you do not have",
                 status_code=403,
             )
         db.delete(target)
@@ -379,8 +379,8 @@ class ProjectRepository:
         if existing_user is not None:
             if existing_user.id == actor.project.owner_id:
                 raise AppError(
-                    code="project_member_exists",
-                    message="This user already belongs to the project",
+                    code="project_collaborator_exists",
+                    message="This user already belongs to the Project",
                     status_code=409,
                 )
             existing_member = db.scalar(
@@ -391,8 +391,8 @@ class ProjectRepository:
             )
             if existing_member is not None:
                 raise AppError(
-                    code="project_member_exists",
-                    message="This user already belongs to the project",
+                    code="project_collaborator_exists",
+                    message="This user already belongs to the Project",
                     status_code=409,
                 )
 
@@ -504,8 +504,8 @@ class ProjectRepository:
             )
         if project.owner_id == user_id:
             raise AppError(
-                code="project_member_exists",
-                message="This user already belongs to the project",
+                code="project_collaborator_exists",
+                message="This user already belongs to the Project",
                 status_code=409,
             )
         existing = db.scalar(

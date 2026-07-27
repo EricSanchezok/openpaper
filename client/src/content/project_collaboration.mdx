@@ -1,144 +1,84 @@
 export const metadata = {
     title: "Collaborate in Projects",
-    description: "Invite collaborators, set roles, and co-build chats + artifacts (with citations) inside Scholens Projects.",
+    description: "Share a paper collection and research outputs while keeping each person's AI conversations private.",
     date: "01-10-2026",
     image: "https://assets.khoj.dev/blue_long_textured_shapes.png",
 }
 
-Research rarely happens alone.
+Research often involves several people, but that does not mean every part of the workflow should become a group chat.
 
-A good literature review is a *team sport*: someone is collecting PDFs, someone is sanity-checking claims, someone is extracting key numbers, and someone is trying to turn it all into a coherent narrative.
+Scholens Projects use a deliberately small collaboration model: one owner invites collaborators into a shared paper collection. The Project is the common research context; each person's AI conversations remain private.
 
-That’s why **Projects** in Scholens aren’t just a way to bundle papers—they’re a shared workspace you can invite others into. If you haven’t tried Projects yet, start with the announcement post: [Projects: Your Research Hub](/blog/projects).
+## What a Project shares
 
-## Quick walkthrough (video)
+Collaborators can work from the same:
 
-<iframe
-  width="100%"
-  height="400"
-  src="https://www.youtube.com/embed/xBwzPyMO8ZM?start=134&end=220"
-  title="Scholens Projects walkthrough"
-  frameBorder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  referrerPolicy="strict-origin-when-cross-origin"
-  allowFullScreen
-/>
+- paper collection
+- highlights and annotations created in the Project
+- citation artifacts
+- Audio Overviews
+- Data Tables
 
-<p className="text-sm text-muted-foreground mt-2">
-  This segment covers Projects (2:14–3:40). Prefer the full video? Watch it on YouTube: <a href="https://www.youtube.com/watch?v=xBwzPyMO8ZM" target="_blank" rel="noreferrer">xBwzPyMO8ZM</a>.
-</p>
+Research outputs are shared with Project collaborators by default. Their creator can hide or reshare an output, and the Project owner can moderate any output. Annotations inherit the visibility of their parent highlight, so a note and its quoted evidence cannot disagree about who can see them.
 
-## What “collaboration” means in an OP Project
+## What stays private
 
-When you collaborate inside a Project, you’re collaborating on the *whole workflow*:
+Project conversations are personal workspaces. Other collaborators cannot open, list, or continue your chats, even though those chats use the same Project papers as context.
 
-- A shared set of papers (uploaded or added from your library)
-- Shared project chats (with grounded citations)
-- Shared artifacts like Audio Overviews and Data Tables
-- Lightweight coordination via **roles** and **ownership**
+This boundary is intentional:
 
-Instead of passing around PDFs and half-finished notes, your team can work in the same place—and keep the evidence trail intact.
+- the paper collection is shared evidence
+- research outputs are shareable results
+- prompts, drafts, and conversational history belong to the person who created them
 
-## Roles: keep the workspace open, without losing control
+When a chat produces a useful citation artifact, the artifact can appear in the shared Project without exposing the private conversation or message that produced it.
 
-Every Project collaborator has a role. Roles are designed to match how research teams actually operate: a small set of people who build and edit, and a wider set of people who review.
+## Permissions without roles
 
-| Attribute | Viewer | Editor |
-|---|---|---|
-| **Best for** | Advisors, stakeholders, “review-only” teammates | Active contributors |
-| **Can** | Read everything in the Project (papers, chats, artifacts) | Add papers<br />Start new project chats<br />Create artifacts (e.g., Audio Overviews, Data Tables) |
-| **Cannot** | Create new chats<br />Add papers<br />Create artifacts | — |
+Scholens does not assign collaborators broad Viewer, Editor, or Admin roles. The owner grants each collaborator only the abilities they need:
 
-*Note:* the Project creator is the only admin. They can invite collaborators, change roles, and manage access over time.
+| Ability | What it allows |
+|---|---|
+| **Edit Project** | Change the Project title and description |
+| **Manage papers** | Add and remove papers from the shared collection |
+| **Manage collaborators** | Invite, remove, and configure other collaborators |
 
+Every collaborator can read the Project and contribute private conversations and shared research outputs. Permissions only govern management actions.
 
-## How to invite collaborators (and why it’s faster than “just forwarding PDFs”)
+A collaborator who can manage access cannot grant powers they do not have or modify someone whose permissions exceed their own. Project deletion and ownership transfer remain owner-only actions.
 
-Inviting someone is intentionally lightweight:
+## Inviting a collaborator
 
-1. Go to your [Projects](/projects) and open the Project you want to share.
-2. In the top-right, click **Invite**.
-3. Enter one or more emails and choose **Viewer** or **Editor**.
-4. Send the invite.
+1. Open the Project.
+2. Open its collaborator settings.
+3. Enter the collaborator's email.
+4. Select the specific management abilities they need.
+5. Send the invitation.
 
-If your collaborator doesn’t already have an Scholens account, they’ll be prompted to create one first—then they can accept the Project invitation.
+An invitation expires after seven days. If the inviter loses the authority to grant those abilities before the invitation is accepted, Scholens rejects the invitation instead of silently escalating access.
 
-While the invite is still pending, it shows up as a **pending invite** in your collaborator list, so you can track what’s outstanding (and retract it if you need to).
+## Ownership and quotas
 
-## How your teammate accepts an invite
+The Project owner is responsible for shared Project resources:
 
-On the collaborator side:
+- papers and storage count against the owner's resource limits
+- Project-level background work reserves the owner's applicable resource capacity
+- transferring ownership verifies that the new owner can carry the Project before the transfer completes
 
-1. Go to the [Projects page](/projects).
-2. Click the **mail icon** to view pending invitations.
-3. Accept (or reject) the invite.
+AI conversations are different. Token Credits are charged to the person who actually triggers the model request because conversations are private and personal.
 
-Once accepted, the Project will appear in their Projects list like any other.
+If a collaborator leaves or is removed, the shared Project remains intact and stops appearing in that person's workspace. Their private conversations remain private and are detached from the Project if the Project itself is deleted.
 
-## Working together: a few collaboration patterns that actually work
+## A practical workflow
 
-Here are a few patterns we’ve seen work well for real teams.
+1. The owner creates a Project and adds the initial papers.
+2. Collaborators expand or curate the collection if they have paper-management access.
+3. Each person investigates the shared evidence through private conversations.
+4. Useful highlights, annotations, citations, audio, and tables become part of the shared research layer.
+5. A creator can hide an unfinished output until it is ready to share.
 
-### Pattern 1: “Two-pass” literature review (Editor + Viewer)
-
-- An **Editor** builds the Project: uploads papers, starts the first couple of chats.
-- A **Viewer** reads the chats and clicks through citations to verify claims.
-- The Viewer leaves feedback out-of-band (Slack / email / meeting), while the Project remains the single source of truth.
-
-This is a good fit when you want a fast first draft, but still want rigorous verification.
-
-### Pattern 2: Split extraction work (multiple Editors)
-
-If you’re doing anything systematic—method comparisons, limitations tracking, outcome extraction—assign multiple Editors.
-
-- Everyone adds papers they’re responsible for.
-- Everyone runs focused chats against the same Project context.
-- One person creates a **Data Table** to consolidate the extracted fields.
-
-Data Tables are purpose-built for “evidence that travels” across papers. If you haven’t used them yet, see: [Data Tables: From Reading to Writing](/blog/data_tables).
-
-### Pattern 3: One Project, many conversations (with attribution)
-
-When multiple people are in a Project, conversations become much easier to navigate because chats show who started them.
-
-That means a Project can naturally evolve into:
-- a “methods” thread
-- a “limitations” thread
-- a “background” thread
-- a “write-up outline” thread
-
-…and it’s still obvious who owns which thread.
-
-## Collaborators + artifacts: turning meetings into outputs
-
-Collaboration gets dramatically easier when your shared workspace produces shared outputs.
-
-Two artifact types are especially useful in a team:
-
-- **Audio Overviews**: quick briefings to align before a meeting, or to catch up after. (More: [Why Audio?](/blog/whyaudio))
-- **Data Tables**: structured comparisons you can export, audit, and cite.
-
-A simple workflow that works well:
-
-1. Before a sync, create an Audio Overview so everyone has the same baseline.
-2. During the sync, capture decisions as a new Project chat (“What did we agree on? What’s uncertain?”).
-3. After the sync, generate a Data Table for the exact fields your write-up needs.
-
-## Managing access over time (without breaking the project)
-
-Projects change as research evolves. A few tips:
-
-- Start broad: invite more **Viewers** than you think you need.
-- Keep Editors tight: give edit access to the people who will actively contribute.
-- Use role changes rather than “new projects” when the core question stays the same.
-- If someone is done contributing, remove them—your Project stays clean and focused.
-
-## What’s next
-
-This is the first step toward richer collaboration in Scholens. The goal is simple: **better ways for humans to work with humans**, without sacrificing citation integrity.
-
-If you have a collaboration workflow you’d like OP to support—lab meetings, systematic reviews, policy memos—tell us what you’re trying to do, and what breaks today.
+This keeps collaboration useful without turning Scholens into a heavy team-management system: share the evidence and the results, preserve the privacy of the thinking process.
 
 ---
 
-Ready to collaborate? Create a Project at [/projects/create](/projects/create) and invite your team.
+Ready to collaborate? Create a Project at [/projects/create](/projects/create) and invite a collaborator.
