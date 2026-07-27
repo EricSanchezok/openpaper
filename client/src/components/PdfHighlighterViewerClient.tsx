@@ -41,8 +41,8 @@ import {
 	PdfToolbar,
 	findTextPages,
 	createTextHighlightOverlays,
-	getAssistantHighlightBackgroundRgba,
-	getUserHighlightBackgroundRgba,
+	getAssistantHighlightBackground,
+	getUserHighlightBackground,
 	PDF_TEXT_SELECTION_FILL,
 } from "./pdf-viewer";
 import {
@@ -1246,8 +1246,8 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 					Boolean(highlight.id) && highlight.id === activeHighlightIdRef.current;
 				const backgroundColor =
 					highlight.role === "assistant"
-						? getAssistantHighlightBackgroundRgba(overlayIsActive)
-						: getUserHighlightBackgroundRgba(highlight.color, overlayIsActive);
+						? getAssistantHighlightBackground(overlayIsActive)
+						: getUserHighlightBackground(highlight.color, overlayIsActive);
 
 				const overlays = createTextHighlightOverlays(
 					textLayer,
@@ -1491,8 +1491,8 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 			const isActive = Boolean(hid) && hid === activeHighlight?.id;
 			el.style.backgroundColor =
 				el.getAttribute("data-role") === "assistant"
-					? getAssistantHighlightBackgroundRgba(isActive)
-					: getUserHighlightBackgroundRgba(
+					? getAssistantHighlightBackground(isActive)
+					: getUserHighlightBackground(
 						(el.getAttribute("data-color") as HighlightColor | null) ?? undefined,
 						isActive
 					);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { PaperHighlight, ScaledPosition, HighlightColor } from "@/lib/schema";
 import { fetchFromApi } from "@/lib/api";
 
@@ -17,7 +17,6 @@ export function useHighlighterHighlights(
 	const [isHighlightInteraction, setIsHighlightInteraction] = useState(false);
 	const [activeHighlight, setActiveHighlight] =
 		useState<PaperHighlight | null>(null);
-	const blockScrollOnNextHighlight = useRef(false);
 
 	// Fetch highlights from server
 	const fetchHighlights = useCallback(async () => {
@@ -144,7 +143,6 @@ export function useHighlighterHighlights(
 
 				if (savedHighlight) {
 					if (doAnnotate) {
-						blockScrollOnNextHighlight.current = true;
 						setActiveHighlight(savedHighlight);
 						setIsAnnotating(true);
 					}
@@ -169,39 +167,6 @@ export function useHighlighterHighlights(
 	const removeHighlight = useCallback((highlight: PaperHighlight) => {
 		removeHighlightFromServer(highlight);
 	}, []);
-
-	// Handle text selection (for compatibility, though not used with new viewer)
-	const handleTextSelection = useCallback(
-		(e: React.MouseEvent | MouseEvent) => {
-			const selection = window.getSelection();
-			if (selection && selection.toString()) {
-				let text = selection.toString();
-				setIsHighlightInteraction(false);
-
-				// Normalize the text
-				text = text.replace(/\s+/g, " ").trim();
-				setSelectedText(text);
-
-				setTooltipPosition({
-					x: e.clientX,
-					y: e.clientY,
-				});
-			} else {
-				if (!isHighlightInteraction && selectedText) {
-					setTimeout(() => {
-						if (!isHighlightInteraction) {
-							const currentSelection = window.getSelection();
-							if (!currentSelection?.toString()) {
-								setSelectedText("");
-							}
-							setTooltipPosition(null);
-						}
-					}, 200);
-				}
-			}
-		},
-		[isHighlightInteraction, selectedText]
-	);
 
 	// Clear highlights from state
 	const clearHighlights = useCallback(() => {
@@ -229,14 +194,6 @@ export function useHighlighterHighlights(
 		}
 	}, [selectedText]);
 
-	// Handle active highlight scrolling
-	useEffect(() => {
-		if (activeHighlight && !blockScrollOnNextHighlight.current) {
-			// Scrolling is handled by the PdfHighlighter component via utilsRef
-		}
-		blockScrollOnNextHighlight.current = false;
-	}, [activeHighlight]);
-
 	return {
 		highlights,
 		setHighlights,
@@ -250,7 +207,6 @@ export function useHighlighterHighlights(
 		setIsHighlightInteraction,
 		activeHighlight,
 		setActiveHighlight,
-		handleTextSelection,
 		clearHighlights,
 		addHighlight,
 		removeHighlight,

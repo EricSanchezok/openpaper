@@ -165,9 +165,7 @@ export default function PaperView() {
     // Capture the initial rsf from URL on first render
     useEffect(() => {
         if (initialRsfRef.current === null) {
-            let rsf = searchParams.get('rsf')?.toLowerCase() || null;
-            if (rsf === 'focus') rsf = 'read'; // legacy URL param when tool was named Focus
-            initialRsfRef.current = rsf;
+            initialRsfRef.current = searchParams.get('rsf')?.toLowerCase() || null;
         }
     }, [searchParams]);
 

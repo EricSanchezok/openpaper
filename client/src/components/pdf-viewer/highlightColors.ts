@@ -27,19 +27,16 @@ export const USER_HIGHLIGHT_FILL: Record<HighlightColor, [string, string]> = {
 	purple: ["#F3E8FF", "#C4B5FD"],
 };
 
-/** @deprecated Use USER_HIGHLIGHT_FILL — kept for re-exports */
-export const USER_HIGHLIGHT_RGBA = USER_HIGHLIGHT_FILL;
-
 const ASSISTANT_HIGHLIGHT_FILL = ["#EDE9FE", "#A78BFA"] as const;
 
-export function getUserHighlightBackgroundRgba(
+export function getUserHighlightBackground(
 	color: HighlightColor | undefined,
 	isActive: boolean
 ): string {
 	return USER_HIGHLIGHT_FILL[color || "blue"][isActive ? 1 : 0];
 }
 
-export function getAssistantHighlightBackgroundRgba(isActive: boolean): string {
+export function getAssistantHighlightBackground(isActive: boolean): string {
 	return ASSISTANT_HIGHLIGHT_FILL[isActive ? 1 : 0];
 }
 

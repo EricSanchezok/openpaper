@@ -7,9 +7,8 @@ export { usePdfSearch } from "./usePdfSearch";
 export { PdfToolbar } from "./PdfToolbar";
 export { findTextPages, createTextHighlightOverlays, removeHighlightOverlays, computeScaledPositionFromTextLayer } from "./findTextPosition";
 export {
-	getAssistantHighlightBackgroundRgba,
-	getUserHighlightBackgroundRgba,
+	getAssistantHighlightBackground,
+	getUserHighlightBackground,
 	PDF_TEXT_SELECTION_FILL,
 	USER_HIGHLIGHT_FILL,
-	USER_HIGHLIGHT_RGBA,
 } from "./highlightColors";

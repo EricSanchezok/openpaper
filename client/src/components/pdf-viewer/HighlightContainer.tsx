@@ -9,8 +9,8 @@ import {
 } from "react-pdf-highlighter-extended";
 import { activeHighlightStore } from "./activeHighlightStore";
 import {
-	getAssistantHighlightBackgroundRgba,
-	getUserHighlightBackgroundRgba,
+	getAssistantHighlightBackground,
+	getUserHighlightBackground,
 } from "./highlightColors";
 import type { ExtendedHighlight } from "./types";
 
@@ -38,8 +38,8 @@ export function HighlightContainer({ onHighlightClick }: HighlightContainerProps
 	// Solid hex fills from highlightColors.ts (inactive vs active).
 	const highlightColor =
 		highlight.role === "assistant"
-			? getAssistantHighlightBackgroundRgba(isActive)
-			: getUserHighlightBackgroundRgba(highlight.color, isActive);
+			? getAssistantHighlightBackground(isActive)
+			: getUserHighlightBackground(highlight.color, isActive);
 
 	if (isTextHighlight) {
 		return (
