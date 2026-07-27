@@ -70,8 +70,12 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
             )
             statement = statement.where(
                 Highlight.project_id == project_id,
-                (Highlight.is_shared.is_(True)) | (Highlight.user_id == access.user_id),
             )
+            if not access.is_owner:
+                statement = statement.where(
+                    (Highlight.is_shared.is_(True))
+                    | (Highlight.user_id == access.user_id),
+                )
 
         return list(db.scalars(statement.order_by(Highlight.created_at)).all())
 

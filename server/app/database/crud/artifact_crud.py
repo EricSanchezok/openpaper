@@ -11,6 +11,7 @@ from app.database.models import (
     Conversation,
     Message,
 )
+from app.policies.research import require_project_research_access
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -93,11 +94,19 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
         The originating conversation remains private and is intentionally not
         joined or returned.
         """
+        access = require_project_research_access(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+        )
         statement = select(Artifact).where(
             Artifact.scope_type == ConversableType.PROJECT.value,
             Artifact.scope_id == project_id,
-            (Artifact.is_shared.is_(True)) | (Artifact.user_id == user.id),
         )
+        if not access.is_owner:
+            statement = statement.where(
+                (Artifact.is_shared.is_(True)) | (Artifact.user_id == user.id),
+            )
         if kind is not None:
             statement = statement.where(Artifact.kind == kind.value)
         statement = (

@@ -1,17 +1,21 @@
 """Contracts for private conversations and selectively shared Project outputs."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import uuid
 
 import pytest
 from app.api.highlight_api import CreateHighlightRequest
 from app.database.crud.annotation_crud import annotation_crud
+from app.database.crud.artifact_crud import artifact_crud
+from app.database.crud.audio_overview_crud import audio_overview_crud
 from app.database.crud.highlight_crud import highlight_crud
+from app.database.crud.projects.project_data_table_crud import data_table_job_crud
 from app.database.models import (
     Annotation,
     Artifact,
     AudioOverview,
+    ConversableType,
     DataTableExtractionJob,
     Highlight,
     Project,
@@ -24,6 +28,7 @@ from app.policies.research import (
     can_view_research_item,
     require_research_item_manager,
 )
+from app.schemas.user import CurrentUser
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -78,6 +83,11 @@ def test_shared_items_are_visible_but_hidden_items_remain_creator_only() -> None
         created_by_id=creator.user_id,
         is_shared=False,
     )
+    assert can_view_research_item(
+        access=owner,
+        created_by_id=creator.user_id,
+        is_shared=False,
+    )
     assert can_manage_research_item(access=creator, created_by_id=creator.user_id)
     assert can_manage_research_item(access=owner, created_by_id=creator.user_id)
     assert not can_manage_research_item(
@@ -91,6 +101,71 @@ def test_shared_items_are_visible_but_hidden_items_remain_creator_only() -> None
             created_by_id=creator.user_id,
         )
     assert exc_info.value.code == "research_item_permission_denied"
+
+
+def test_owner_lists_include_hidden_project_outputs() -> None:
+    owner = _access(user_id=1, owner=True)
+    user = CurrentUser(
+        id=1,
+        email="owner@example.com",
+        display_name="Owner",
+        status="active",
+        email_verified=True,
+    )
+    db = MagicMock(spec=Session)
+    db.scalars.return_value.all.return_value = []
+    db.scalars.return_value.unique.return_value.all.return_value = []
+
+    with patch(
+        "app.database.crud.artifact_crud.require_project_research_access",
+        return_value=owner,
+    ):
+        artifact_crud.list_for_project(
+            db,
+            project_id=owner.project.id,
+            user=user,
+        )
+    assert "artifacts.is_shared IS true" not in str(db.scalars.call_args.args[0])
+
+    with patch(
+        "app.database.crud.audio_overview_crud.get_project_access",
+        return_value=owner,
+    ):
+        audio_overview_crud.get_by_conversable_and_user(
+            db,
+            conversable_id=owner.project.id,
+            conversable_type=ConversableType.PROJECT,
+            current_user=user,
+        )
+    assert "audio_overviews.is_shared IS true" not in str(db.scalars.call_args.args[0])
+
+    with patch(
+        "app.database.crud.projects.project_data_table_crud.get_project_access",
+        return_value=owner,
+    ):
+        data_table_job_crud.get_by_project(
+            db,
+            project_id=owner.project.id,
+            user=user,
+        )
+    assert "data_table_extraction_jobs.is_shared IS true" not in str(
+        db.scalars.call_args.args[0]
+    )
+
+    with (
+        patch("app.database.crud.highlight_crud.require_document_access"),
+        patch(
+            "app.database.crud.highlight_crud.require_project_research_access",
+            return_value=owner,
+        ),
+    ):
+        highlight_crud.get_highlights_by_paper_id(
+            db,
+            paper_id=uuid.uuid4(),
+            project_id=owner.project.id,
+            user=user,
+        )
+    assert "highlights.is_shared IS true" not in str(db.scalars.call_args.args[0])
 
 
 def test_personal_highlights_cannot_claim_shared_visibility() -> None:

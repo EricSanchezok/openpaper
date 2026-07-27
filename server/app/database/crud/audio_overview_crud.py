@@ -269,26 +269,24 @@ class AudioOverviewCRUD(
                 ).all()
             )
         elif conversable_type == ConversableType.PROJECT:
-            if (
-                get_project_access(
-                    db, project_id=conversable_id, user_id=current_user.id
-                )
-                is None
-            ):
+            access = get_project_access(
+                db,
+                project_id=conversable_id,
+                user_id=current_user.id,
+            )
+            if access is None:
                 return []
+            statement = select(AudioOverview).where(
+                AudioOverview.conversable_id == conversable_id,
+                AudioOverview.conversable_type == conversable_type,
+            )
+            if not access.is_owner:
+                statement = statement.where(
+                    AudioOverview.is_shared.is_(True)
+                    | (AudioOverview.user_id == current_user.id)
+                )
             return list(
-                db.scalars(
-                    select(AudioOverview)
-                    .where(
-                        AudioOverview.conversable_id == conversable_id,
-                        AudioOverview.conversable_type == conversable_type,
-                        (
-                            AudioOverview.is_shared.is_(True)
-                            | (AudioOverview.user_id == current_user.id)
-                        ),
-                    )
-                    .order_by(AudioOverview.created_at.desc())
-                ).all()
+                db.scalars(statement.order_by(AudioOverview.created_at.desc())).all()
             )
 
         # Fallback to direct ownership for other types
@@ -327,22 +325,24 @@ class AudioOverviewCRUD(
         self, db: Session, *, id: UUID, project_id: UUID, current_user: CurrentUser
     ) -> AudioOverview | None:
         """Get audio overview by ID, project ID and user - ensures user has project access"""
-        if (
-            get_project_access(db, project_id=project_id, user_id=current_user.id)
-            is None
-        ):
+        access = get_project_access(
+            db,
+            project_id=project_id,
+            user_id=current_user.id,
+        )
+        if access is None:
             return None
-        return db.scalars(
-            select(AudioOverview).where(
-                AudioOverview.id == id,
-                AudioOverview.conversable_id == project_id,
-                AudioOverview.conversable_type == ConversableType.PROJECT,
-                (
-                    AudioOverview.is_shared.is_(True)
-                    | (AudioOverview.user_id == current_user.id)
-                ),
+        statement = select(AudioOverview).where(
+            AudioOverview.id == id,
+            AudioOverview.conversable_id == project_id,
+            AudioOverview.conversable_type == ConversableType.PROJECT,
+        )
+        if not access.is_owner:
+            statement = statement.where(
+                AudioOverview.is_shared.is_(True)
+                | (AudioOverview.user_id == current_user.id)
             )
-        ).first()
+        return db.scalars(statement).first()
 
     def get_user_overviews(
         self,

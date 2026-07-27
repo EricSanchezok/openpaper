@@ -31,7 +31,7 @@ def can_view_research_item(
     created_by_id: int | None,
     is_shared: bool,
 ) -> bool:
-    return is_shared or created_by_id == access.user_id
+    return access.is_owner or is_shared or created_by_id == access.user_id
 
 
 def can_manage_research_item(

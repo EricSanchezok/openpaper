@@ -169,21 +169,22 @@ class DataTableJobCRUD(
         user: CurrentUser,
     ) -> list[DataTableExtractionJob]:
         """Get all data table jobs for a project with their associated results"""
-        # Check if user has access to the project
-        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None:
             return []
 
-        return list(
-            db.scalars(
-                select(DataTableExtractionJob)
-                .options(joinedload(DataTableExtractionJob.result))
-                .where(DataTableExtractionJob.project_id == project_id)
-                .where(
-                    DataTableExtractionJob.is_shared.is_(True)
-                    | (DataTableExtractionJob.user_id == user.id)
-                )
-                .order_by(DataTableExtractionJob.created_at.desc())
+        statement = (
+            select(DataTableExtractionJob)
+            .options(joinedload(DataTableExtractionJob.result))
+            .where(DataTableExtractionJob.project_id == project_id)
+        )
+        if not access.is_owner:
+            statement = statement.where(
+                DataTableExtractionJob.is_shared.is_(True)
+                | (DataTableExtractionJob.user_id == user.id)
             )
+        return list(
+            db.scalars(statement.order_by(DataTableExtractionJob.created_at.desc()))
             .unique()
             .all()
         )
@@ -196,22 +197,22 @@ class DataTableJobCRUD(
         user: CurrentUser,
     ) -> list[DataTableExtractionJob]:
         """Get all pending data table jobs for a project"""
-        # Check if user has access to the project
-        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None:
             return []
 
+        statement = select(DataTableExtractionJob).where(
+            DataTableExtractionJob.project_id == project_id,
+            DataTableExtractionJob.status == JobStatus.PENDING,
+        )
+        if not access.is_owner:
+            statement = statement.where(
+                DataTableExtractionJob.is_shared.is_(True)
+                | (DataTableExtractionJob.user_id == user.id)
+            )
         return list(
             db.scalars(
-                select(DataTableExtractionJob)
-                .where(
-                    DataTableExtractionJob.project_id == project_id,
-                    DataTableExtractionJob.status == JobStatus.PENDING,
-                    (
-                        DataTableExtractionJob.is_shared.is_(True)
-                        | (DataTableExtractionJob.user_id == user.id)
-                    ),
-                )
-                .order_by(DataTableExtractionJob.created_at.desc())
+                statement.order_by(DataTableExtractionJob.created_at.desc())
             ).all()
         )
 
@@ -224,19 +225,20 @@ class DataTableJobCRUD(
         user: CurrentUser,
     ) -> DataTableExtractionJob | None:
         """Get a specific job by ID within a project"""
-        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None:
             return None
 
-        return db.scalars(
-            select(DataTableExtractionJob).where(
-                DataTableExtractionJob.id == job_id,
-                DataTableExtractionJob.project_id == project_id,
-                (
-                    DataTableExtractionJob.is_shared.is_(True)
-                    | (DataTableExtractionJob.user_id == user.id)
-                ),
+        statement = select(DataTableExtractionJob).where(
+            DataTableExtractionJob.id == job_id,
+            DataTableExtractionJob.project_id == project_id,
+        )
+        if not access.is_owner:
+            statement = statement.where(
+                DataTableExtractionJob.is_shared.is_(True)
+                | (DataTableExtractionJob.user_id == user.id)
             )
-        ).first()
+        return db.scalars(statement).first()
 
     def get_by_task_id(
         self,
