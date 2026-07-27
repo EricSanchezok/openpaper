@@ -1087,75 +1087,6 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "paper_notes",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("paper_id", sa.UUID(), nullable=False),
-        sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("project_id", sa.UUID(), nullable=True),
-        sa.Column(
-            "is_shared",
-            sa.Boolean(),
-            server_default="false",
-            nullable=False,
-        ),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
-        ),
-        sa.CheckConstraint(
-            "NOT is_shared OR project_id IS NOT NULL",
-            name="ck_paper_notes_shared_project",
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
-        sa.PrimaryKeyConstraint("id"),
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_paper_notes_project_id"),
-        "paper_notes",
-        ["project_id"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_paper_notes_user_id"),
-        "paper_notes",
-        ["user_id"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_index(
-        "uq_paper_notes_private_owner",
-        "paper_notes",
-        ["paper_id", "user_id"],
-        unique=True,
-        schema="scholens",
-        postgresql_where=sa.text("project_id IS NULL"),
-    )
-    op.create_index(
-        "uq_paper_notes_project_owner",
-        "paper_notes",
-        ["paper_id", "project_id", "user_id"],
-        unique=True,
-        schema="scholens",
-        postgresql_where=sa.text("project_id IS NOT NULL"),
-    )
-    op.create_table(
         "paper_passages",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=True), nullable=False),
         sa.Column("paper_id", sa.UUID(), nullable=False),
@@ -1493,29 +1424,6 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("paper_passages", schema="scholens")
-    op.drop_index(
-        "uq_paper_notes_project_owner",
-        table_name="paper_notes",
-        schema="scholens",
-        postgresql_where=sa.text("project_id IS NOT NULL"),
-    )
-    op.drop_index(
-        "uq_paper_notes_private_owner",
-        table_name="paper_notes",
-        schema="scholens",
-        postgresql_where=sa.text("project_id IS NULL"),
-    )
-    op.drop_index(
-        op.f("ix_scholens_paper_notes_user_id"),
-        table_name="paper_notes",
-        schema="scholens",
-    )
-    op.drop_index(
-        op.f("ix_scholens_paper_notes_project_id"),
-        table_name="paper_notes",
-        schema="scholens",
-    )
-    op.drop_table("paper_notes", schema="scholens")
     op.drop_table("paper_images", schema="scholens")
     op.drop_index(
         op.f("ix_scholens_highlights_user_id"),

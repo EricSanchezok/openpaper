@@ -14,7 +14,6 @@ from app.database.models import (
     AudioOverview,
     DataTableExtractionJob,
     Highlight,
-    PaperNote,
     Project,
 )
 from app.errors import AppError
@@ -48,7 +47,6 @@ def test_project_outputs_share_one_visibility_contract() -> None:
         AudioOverview,
         DataTableExtractionJob,
         Highlight,
-        PaperNote,
     )
     for model in project_scoped_models:
         assert "is_shared" in model.__table__.c
@@ -127,7 +125,6 @@ def test_clean_baseline_contains_visibility_constraints() -> None:
         "ck_audio_overviews_shared_project",
         "ck_data_table_jobs_shared_project",
         "ck_highlights_shared_project",
-        "ck_paper_notes_shared_project",
     ):
         assert constraint in source
 

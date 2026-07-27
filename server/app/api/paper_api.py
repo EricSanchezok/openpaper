@@ -6,11 +6,6 @@ from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.annotation_crud import annotation_crud
 from app.database.crud.highlight_crud import highlight_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
-from app.database.crud.paper_note_crud import (
-    PaperNoteCreate,
-    PaperNoteUpdate,
-    paper_note_crud,
-)
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.database import get_db
 from app.database.models import (
@@ -29,14 +24,13 @@ from app.schemas.orm_responses import (
     serialize_annotation,
     serialize_highlight,
     serialize_paper,
-    serialize_paper_note,
 )
 from app.schemas.responses import ResponseCitation
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -52,26 +46,6 @@ class SharePaperSchemaResponse(BaseModel):
     paper_data: dict[str, object]
     highlight_data: dict[str, object]
     annotations_data: dict[str, object]
-
-
-class CreatePaperNoteSchema(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    content: str = Field(min_length=1, max_length=200_000)
-    project_id: uuid.UUID | None = None
-    shared: bool | None = None
-
-    @model_validator(mode="after")
-    def validate_visibility(self) -> "CreatePaperNoteSchema":
-        if self.project_id is None and self.shared:
-            raise ValueError("Personal notes cannot be shared")
-        return self
-
-
-class UpdatePaperNoteSchema(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    content: str = Field(min_length=1, max_length=200_000)
 
 
 class UpdatePaperFieldsSchema(BaseModel):
@@ -284,90 +258,6 @@ async def get_paper_file_url(
     return JSONResponse(status_code=200, content={"file_url": file_url})
 
 
-@paper_router.get("/note")
-async def get_paper_note(
-    paper_id: str,
-    project_id: uuid.UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
-    """
-    Get the paper note associated with this document.
-    """
-    target_paper = paper_crud.get(
-        db, id=paper_id, user=current_user, update_last_accessed=True
-    )
-
-    if not target_paper:
-        raise HTTPException(status_code=404, detail=f"No document with id {paper_id}")
-
-    paper_note = paper_note_crud.get_paper_note_by_paper_id(
-        db,
-        paper_id=paper_id,
-        user=current_user,
-        project_id=project_id,
-    )
-
-    if paper_note:
-        return JSONResponse(content=serialize_paper_note(paper_note), status_code=200)
-
-    raise HTTPException(
-        status_code=404, detail=f"Paper note does not exist for document {paper_id}"
-    )
-
-
-@paper_router.post("/note")
-async def create_paper_note(
-    paper_id: str,
-    request: CreatePaperNoteSchema,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
-    """
-    Create the paper note associated with this document
-    """
-    content = request.content
-    target_paper = paper_crud.get(
-        db, id=paper_id, user=current_user, update_last_accessed=True
-    )
-
-    if not target_paper:
-        raise HTTPException(status_code=404, detail=f"No document with id {paper_id}")
-
-    paper_note_to_create = PaperNoteCreate(
-        paper_id=uuid.UUID(paper_id),
-        content=content,
-        project_id=request.project_id,
-        is_shared=(
-            request.shared
-            if request.shared is not None
-            else request.project_id is not None
-        ),
-    )
-
-    paper_note = paper_note_crud.create_scoped(
-        db, obj_in=paper_note_to_create, user=current_user
-    )
-
-    if not paper_note:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create paper note for document ID {paper_id}",
-        )
-
-    track_event(
-        "paper_note_created",
-        properties={
-            "paper_id": str(paper_note.paper_id),
-            "note_id": str(paper_note.id),
-        },
-        user_id=str(current_user.id) if current_user else None,
-        db=db,
-    )
-
-    return JSONResponse(content=serialize_paper_note(paper_note), status_code=201)
-
-
 @paper_router.post("/status")
 async def set_paper_status(
     paper_id: str,
@@ -502,80 +392,6 @@ async def get_relevant_papers(
                 for paper in papers
             ]
         },
-    )
-
-
-@paper_router.put("/note")
-async def update_paper_note(
-    paper_id: str,
-    request: UpdatePaperNoteSchema,
-    project_id: uuid.UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
-    """
-    Update the paper note associated with this document
-    """
-    content = request.content
-    target_paper = paper_crud.get(
-        db, id=paper_id, user=current_user, update_last_accessed=True
-    )
-
-    if not target_paper:
-        raise HTTPException(status_code=404, detail=f"No document with id {paper_id}")
-
-    paper_note = paper_note_crud.get_paper_note_by_paper_id(
-        db,
-        paper_id=paper_id,
-        user=current_user,
-        project_id=project_id,
-    )
-
-    if not paper_note:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No paper note associated with document ID {paper_id}",
-        )
-
-    paper_note_to_update = PaperNoteUpdate(content=content)
-
-    editable_note = paper_note_crud.get_for_mutation(
-        db,
-        note_id=paper_note.id,
-        user=current_user,
-    )
-    if editable_note is None:
-        raise HTTPException(status_code=403, detail="Cannot edit this paper note")
-
-    updated_paper_note = paper_note_crud.update(
-        db=db,
-        db_obj=editable_note,
-        obj_in=paper_note_to_update,
-    )
-
-    if not updated_paper_note:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to update paper note for document ID {paper_id}",
-        )
-
-    track_event(
-        "paper_note_updated",
-        properties={
-            "paper_id": str(updated_paper_note.paper_id),
-            "note_id": str(updated_paper_note.id),
-            "content_length": (
-                len(str(updated_paper_note.content))
-                if updated_paper_note.content
-                else 0
-            ),
-        },
-        user_id=str(current_user.id) if current_user else None,
-        db=db,
-    )
-
-    return JSONResponse(
-        content=serialize_paper_note(updated_paper_note), status_code=200
     )
 
 

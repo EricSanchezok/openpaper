@@ -18,7 +18,6 @@ if TYPE_CHECKING:
         Highlight,
         LibraryPaper,
         Document,
-        PaperNote,
         PaperTag,
         PaperUploadJob,
     )
@@ -57,9 +56,6 @@ class AuthUser(Base):
     )
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="user", cascade="all, delete-orphan"
-    )
-    paper_notes: Mapped[list["PaperNote"]] = relationship(
-        "PaperNote", back_populates="user", passive_deletes=True
     )
     highlights: Mapped[list["Highlight"]] = relationship(
         "Highlight", back_populates="user", passive_deletes=True

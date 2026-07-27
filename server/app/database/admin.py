@@ -10,7 +10,6 @@ from app.database.models import (
     Message,
     Onboarding,
     Document,
-    PaperNote,
     Project,
     ProjectCollaborator,
     ProjectInvitation,
@@ -151,16 +150,6 @@ class AnnotationAdmin(ModelView, model=Annotation):
         Annotation.content,
     ]
     column_searchable_list = [Annotation.content]
-
-
-class PaperNoteAdmin(ModelView, model=PaperNote):
-    column_list = [
-        PaperNote.id,
-        PaperNote.user_id,
-        PaperNote.paper_id,
-        PaperNote.content,
-    ]
-    column_searchable_list = [PaperNote.content]
 
 
 class ConversationAdmin(ModelView, model=Conversation):
@@ -322,7 +311,6 @@ def setup_admin(app: FastAPI) -> None:
     admin.add_view(PaperAdmin)
     admin.add_view(HighlightAdmin)
     admin.add_view(AnnotationAdmin)
-    admin.add_view(PaperNoteAdmin)
     admin.add_view(ConversationAdmin)
     admin.add_view(MessageAdmin)
     admin.add_view(ProjectAdmin)

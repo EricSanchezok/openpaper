@@ -481,10 +481,6 @@ class Document(Base):
             Conversation.conversable_type == ConversableType.PAPER.value,
         ),
     )
-    paper_notes: Mapped[list["PaperNote"]] = relationship(
-        "PaperNote", back_populates="paper", cascade="all, delete-orphan"
-    )
-
     audio_overviews: Mapped[list["AudioOverview"]] = relationship(
         "AudioOverview",
         cascade="all, delete-orphan",
@@ -637,63 +633,6 @@ class PaperImage(Base):
     )  # Placeholder ID for the image
 
     paper: Mapped["Document"] = relationship("Document", back_populates="paper_images")
-
-
-class PaperNote(Base):
-    __tablename__ = "paper_notes"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
-    is_shared: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
-
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="paper_notes"
-    )
-
-    paper: Mapped["Document"] = relationship("Document", back_populates="paper_notes")
-
-    __table_args__ = (
-        Index(
-            "uq_paper_notes_private_owner",
-            "paper_id",
-            "user_id",
-            unique=True,
-            postgresql_where=(project_id.is_(None)),
-        ),
-        Index(
-            "uq_paper_notes_project_owner",
-            "paper_id",
-            "project_id",
-            "user_id",
-            unique=True,
-            postgresql_where=(project_id.isnot(None)),
-        ),
-        CheckConstraint(
-            "NOT is_shared OR project_id IS NOT NULL",
-            name="ck_paper_notes_shared_project",
-        ),
-    )
 
 
 class Highlight(Base):

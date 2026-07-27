@@ -19,7 +19,6 @@ from app.database.models import (
     Onboarding,
     Document,
     PaperImage,
-    PaperNote,
     Project,
 )
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,17 +35,6 @@ class ProjectResponse(OrmResponse):
     id: UUID
     title: str | None
     description: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class PaperNoteResponse(OrmResponse):
-    id: UUID
-    paper_id: UUID
-    content: str
-    project_id: UUID | None
-    is_shared: bool
-    created_by_id: int | None = Field(validation_alias="user_id")
     created_at: datetime
     updated_at: datetime
 
@@ -209,10 +197,6 @@ class DataTableResultResponse(OrmResponse):
 
 def serialize_project(project: Project) -> dict[str, JsonValue]:
     return ProjectResponse.model_validate(project).to_json()
-
-
-def serialize_paper_note(note: PaperNote) -> dict[str, JsonValue]:
-    return PaperNoteResponse.model_validate(note).to_json()
 
 
 def serialize_highlight(highlight: Highlight) -> dict[str, JsonValue]:

@@ -11,7 +11,6 @@ from app.database.models import (
     ConversableType,
     DataTableExtractionJob,
     Highlight,
-    PaperNote,
 )
 from app.errors import AppError
 from app.policies.research import (
@@ -21,9 +20,7 @@ from app.policies.research import (
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 
-ResearchOutput = (
-    Artifact | AudioOverview | DataTableExtractionJob | Highlight | PaperNote
-)
+ResearchOutput = Artifact | AudioOverview | DataTableExtractionJob | Highlight
 
 
 class ResearchOutputKind(str, Enum):
@@ -31,7 +28,6 @@ class ResearchOutputKind(str, Enum):
     AUDIO = "audio"
     DATA_TABLE = "data_table"
     HIGHLIGHT = "highlight"
-    NOTE = "note"
 
 
 def _load_output(
@@ -46,9 +42,7 @@ def _load_output(
         return db.get(AudioOverview, output_id)
     if kind == ResearchOutputKind.DATA_TABLE:
         return db.get(DataTableExtractionJob, output_id)
-    if kind == ResearchOutputKind.HIGHLIGHT:
-        return db.get(Highlight, output_id)
-    return db.get(PaperNote, output_id)
+    return db.get(Highlight, output_id)
 
 
 def _project_id(output: ResearchOutput) -> uuid.UUID | None:
