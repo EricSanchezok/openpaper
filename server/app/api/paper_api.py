@@ -70,7 +70,13 @@ class UpdatePaperFieldsSchema(BaseModel):
 
 
 def _serialize_paper_for_client(paper: Paper) -> dict[str, object]:
-    return dict(serialize_paper(paper))
+    data: dict[str, object] = dict(serialize_paper(paper))
+    data["preview_url"] = _presigned_preview_url(paper)
+    return data
+
+
+def _presigned_preview_url(paper: Paper) -> str | None:
+    return s3_service.generate_presigned_url_from_storage_url(paper.preview_url)
 
 
 @paper_router.get("/all")
@@ -101,7 +107,7 @@ async def get_paper_ids(
             "authors": paper.authors,
             "institutions": paper.institutions,
             "status": paper.status,
-            "preview_url": paper.preview_url,
+            "preview_url": _presigned_preview_url(paper),
             "size_in_kb": paper.size_in_kb,
             "parser_quality": paper.parser_quality,
             "parser_warning_code": paper.parser_warning_code,
@@ -141,7 +147,7 @@ async def get_active_paper_ids(
             "authors": paper.authors,
             "institutions": paper.institutions,
             "status": paper.status,
-            "preview_url": paper.preview_url,
+            "preview_url": _presigned_preview_url(paper),
             "size_in_kb": paper.size_in_kb,
             "parser_quality": paper.parser_quality,
             "parser_warning_code": paper.parser_warning_code,
@@ -408,7 +414,7 @@ async def get_relevant_papers(
                     "authors": paper.authors,
                     "institutions": paper.institutions,
                     "status": paper.status,
-                    "preview_url": paper.preview_url,
+                    "preview_url": _presigned_preview_url(paper),
                     "size_in_kb": paper.size_in_kb,
                 }
                 for paper in papers

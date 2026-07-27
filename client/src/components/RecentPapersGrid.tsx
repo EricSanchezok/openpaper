@@ -16,31 +16,34 @@ interface RecentPapersGridProps {
 
 function PaperCardCompact({ paper }: { paper: PaperItem }) {
     const createdAt = paper.created_at ? formatDate(paper.created_at) : null;
+    const [previewFailed, setPreviewFailed] = useState(false);
+    const showPreview = Boolean(paper.preview_url) && !previewFailed;
 
     return (
         <Link
             href={`/paper/${paper.id}`}
             className="group flex flex-col rounded-xl border border-border/50 bg-card hover:border-border hover:shadow-sm transition-all h-full overflow-hidden"
         >
-            {paper.preview_url ? (
+            {showPreview ? (
                 <div className="relative w-full aspect-[4/3] bg-muted">
                     <Image
-                        src={paper.preview_url}
+                        src={paper.preview_url!}
                         alt={paper.title || "Paper preview"}
                         className="w-full h-full object-cover"
                         fill
                         unoptimized
+                        onError={() => setPreviewFailed(true)}
                     />
                 </div>
             ) : (
-                <div className="flex items-start justify-between gap-2 p-4 pb-2">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex-shrink-0">
-                        <FileText className="h-4 w-4" />
+                <div className="flex aspect-[4/3] items-center justify-center bg-muted">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
+                        <FileText className="h-6 w-6" />
                     </div>
                 </div>
             )}
 
-            <div className={`flex flex-col flex-1 ${paper.preview_url ? "p-4" : "px-4 pb-4"}`}>
+            <div className="flex flex-1 flex-col p-4">
                 <h3 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors flex-1">
                     {paper.title || "Untitled Paper"}
                 </h3>

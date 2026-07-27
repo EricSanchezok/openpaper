@@ -4,6 +4,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from urllib.parse import unquote, urlsplit
 
 import boto3
 import requests
@@ -199,6 +200,25 @@ class S3Service:
         except ClientError as e:
             logger.error(f"Error generating presigned URL: {e}")
             return None
+
+    def generate_presigned_url_from_storage_url(
+        self, storage_url: str | None, expiration: int = 3600
+    ) -> str | None:
+        """Sign an object URL previously produced by this storage service."""
+        if not storage_url:
+            return None
+
+        parsed = urlsplit(storage_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            logger.warning("Refusing to sign an invalid storage URL")
+            return None
+
+        object_key = unquote(parsed.path).lstrip("/")
+        if not object_key:
+            logger.warning("Refusing to sign a storage URL without an object key")
+            return None
+
+        return self.generate_presigned_url(object_key, expiration)
 
     def get_file_size_in_kb(self, object_key: str) -> int | None:
         """
