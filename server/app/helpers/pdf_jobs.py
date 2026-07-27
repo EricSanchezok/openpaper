@@ -179,6 +179,7 @@ class JobsClient:
                     "webhook_url": webhook_url,
                 },
                 queue="pdf_processing",
+                task_id=job_id,
             )
 
             logger.info(

@@ -221,6 +221,15 @@ async def create_data_table(
             papers=papers,
         )
 
+        # Use the durable Scholens job UUID as the Celery task ID. Persist it
+        # before broker hand-off so status recovery never depends on an
+        # unknowable producer-generated identifier.
+        data_table_job_crud.update_task_id(
+            db=db,
+            job_id=uuid.UUID(job_id),
+            task_id=job_id,
+        )
+
         # Submit the data table processing job
         task_id = jobs_client.submit_data_table_processing_job(
             data_table=data_table,
@@ -234,13 +243,6 @@ async def create_data_table(
             status=JobStatus.RUNNING,
         )
 
-        # Update the job with the task ID
-        data_table_job_crud.update_task_id(
-            db=db,
-            job_id=uuid.UUID(job_id),
-            task_id=task_id,
-        )
-
         return JSONResponse(
             status_code=202,
             content={
@@ -251,6 +253,12 @@ async def create_data_table(
         )
     except Exception:
         if lease_acquired and job is not None:
+            data_table_job_crud.update_status(
+                db=db,
+                job_id=uuid.UUID(str(job.id)),
+                status=JobStatus.FAILED,
+                error_message="jobs_submission_failed",
+            )
             await release_concurrency_by_id(
                 user_id=int(current_user.id),
                 category="background",

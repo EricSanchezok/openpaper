@@ -42,6 +42,7 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
     celery.assert_called_once()
     assert celery_app.send_task.call_count == 2
     assert celery_app.send_task.call_args_list[0].kwargs["task_id"] == "job-pdf"
+    assert celery_app.send_task.call_args_list[1].kwargs["task_id"] == "job-table"
 
 
 def test_jobs_status_failure_returns_stable_public_error() -> None:
