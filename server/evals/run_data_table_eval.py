@@ -24,29 +24,24 @@ import json
 import logging
 import os
 import re
-import sys
 import time
 import uuid
+from io import BytesIO
+from pathlib import Path
 from typing import Any, Optional
 
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# Add server/ to path so we can import app modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from app.database.crud.paper_crud import PaperCreate, paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
-from app.database.crud.subscription_crud import subscription_crud
-from app.database.crud.user_crud import user as user_crud
 from app.database.database import SessionLocal
-from app.database.models import SubscriptionPlan
+from app.database.models import AuthUser
 from app.helpers.s3 import s3_service
 from app.repositories.projects import project_repository
 from app.schemas.user import CurrentUser
-from evals.run_benchmark import ensure_eval_user, extract_text_from_pdf
+from dotenv import load_dotenv
+from pypdf import PdfReader
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -54,10 +49,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
-EVALS_DIR = os.path.dirname(os.path.abspath(__file__))
-SEED_DATA_DIR = os.path.join(EVALS_DIR, "seed_data")
-MANIFEST_PATH = os.path.join(EVALS_DIR, "data_table_eval_manifest.json")
-RESULTS_PATH = os.path.join(EVALS_DIR, "results", "eval_data_table.json")
+EVALS_DIR = Path(__file__).resolve().parent
+SEED_DATA_DIR = EVALS_DIR / "seed_data"
+MANIFEST_PATH = EVALS_DIR / "data_table_eval_manifest.json"
+RESULTS_PATH = EVALS_DIR / "results" / "eval_data_table.json"
 
 SERVER_BASE_URL = os.getenv("EVAL_SERVER_BASE_URL", "http://localhost:8000")
 POLL_INTERVAL_SECONDS = 10
@@ -77,18 +72,34 @@ def load_manifest() -> dict:
 
 
 def load_results() -> dict:
-    if os.path.exists(RESULTS_PATH):
+    if RESULTS_PATH.exists():
         with open(RESULTS_PATH) as f:
             return json.load(f)
     return {"seed": {}, "runs": []}
 
 
 def save_results(results: dict) -> None:
-    os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
-    tmp_path = RESULTS_PATH + ".tmp"
+    RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = RESULTS_PATH.with_suffix(".tmp")
     with open(tmp_path, "w") as f:
         json.dump(results, f, indent=2)
-    os.replace(tmp_path, RESULTS_PATH)
+    tmp_path.replace(RESULTS_PATH)
+
+
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    return "\n".join(
+        page.extract_text() or "" for page in PdfReader(BytesIO(pdf_bytes)).pages
+    )
+
+
+def get_eval_user(db) -> CurrentUser:
+    raw_user_id = os.getenv("EVAL_USER_ID")
+    if not raw_user_id or not raw_user_id.isdigit():
+        raise RuntimeError("EVAL_USER_ID must identify an existing cloud-auth user")
+    user = db.get(AuthUser, int(raw_user_id))
+    if user is None:
+        raise RuntimeError("EVAL_USER_ID does not exist in auth.users")
+    return CurrentUser.from_auth_user(user)
 
 
 # ---------------------------------------------------------------------------
@@ -117,8 +128,8 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
                 continue
             logger.info(f"[seed] {key}: stale seed state, re-seeding")
 
-        pdf_path = os.path.join(SEED_DATA_DIR, paper_cfg["file"])
-        if not os.path.exists(pdf_path):
+        pdf_path = SEED_DATA_DIR / paper_cfg["file"]
+        if not pdf_path.exists():
             raise FileNotFoundError(f"Seed PDF missing: {pdf_path}")
 
         logger.info(f"[seed] {key}: uploading {paper_cfg['file']} to S3")
@@ -149,9 +160,9 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
             description="Seeded by evals.run_data_table_eval (KHO-308)",
         )
 
-        project_paper_crud.attach_document(
+        project_paper_crud.attach_library_documents(
             db=db,
-            document=paper,
+            document_ids=[uuid.UUID(str(paper.id))],
             user=current_user,
             project_id=uuid.UUID(str(project.id)),
         )
@@ -171,21 +182,6 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Phase 2: Drive the e2e flow over HTTP
 # ---------------------------------------------------------------------------
-
-
-def ensure_researcher_plan(db, current_user: CurrentUser) -> None:
-    """The eval creates several data table jobs per cycle; the BASIC plan
-    allows only 2/week. Bump the eval user to RESEARCHER (50/week)."""
-    subscription_crud.create_or_update(
-        db,
-        user_id=current_user.id,
-        subscription_data={"plan": SubscriptionPlan.RESEARCHER.value},
-    )
-
-
-def mint_session_token(db, current_user: CurrentUser) -> str:
-    session = user_crud.create_session(db, user_id=current_user.id, expires_in_days=1)
-    return str(session.token)
 
 
 class ApiClient:
@@ -472,7 +468,7 @@ def main():
 
     paper_texts = {}
     for paper_cfg in manifest["papers"]:
-        pdf_path = os.path.join(SEED_DATA_DIR, paper_cfg["file"])
+        pdf_path = SEED_DATA_DIR / paper_cfg["file"]
         with open(pdf_path, "rb") as f:
             paper_texts[paper_cfg["key"]] = normalize_text(
                 extract_text_from_pdf(f.read())
@@ -481,8 +477,7 @@ def main():
     if not args.grade_only:
         db = SessionLocal()
         try:
-            current_user = ensure_eval_user(db)
-            ensure_researcher_plan(db, current_user)
+            current_user = get_eval_user(db)
 
             if not args.skip_seed:
                 seed(db, current_user, manifest, results)
@@ -491,7 +486,11 @@ def main():
                     logger.info("Seed complete (--seed-only), exiting.")
                     return
 
-            token = mint_session_token(db, current_user)
+            token = os.getenv("EVAL_BEARER_TOKEN")
+            if not token:
+                raise RuntimeError(
+                    "EVAL_BEARER_TOKEN must contain a valid cloud-auth session token"
+                )
         finally:
             db.close()
 
