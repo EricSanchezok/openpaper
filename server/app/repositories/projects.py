@@ -172,7 +172,7 @@ class ProjectRepository:
         db.commit()
         delete_project_storage(plan=plan)
 
-    def list_members(
+    def list_collaborators(
         self, db: Session, *, project_id: uuid.UUID, user_id: int
     ) -> tuple[Project, list[ProjectCollaborator]]:
         access = require_project_access(db, project_id=project_id, user_id=user_id)
@@ -186,7 +186,7 @@ class ProjectRepository:
         )
         return access.project, collaborators
 
-    def update_member(
+    def update_collaborator(
         self,
         db: Session,
         *,
@@ -237,7 +237,7 @@ class ProjectRepository:
         db.refresh(target)
         return target
 
-    def remove_member(
+    def remove_collaborator(
         self,
         db: Session,
         *,

@@ -182,7 +182,7 @@ class PaperUploadJobCRUD(
         have not yet completed so the client can rehydrate the upload tracker
         after a page refresh.
         """
-        # Only members of the project may see its in-progress uploads.
+        # Only the owner and collaborators may see in-progress Project uploads.
         if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return []
 

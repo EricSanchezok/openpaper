@@ -21,8 +21,8 @@ from app.repositories.projects import project_repository
 from app.schemas.projects import (
     ProjectCapabilitiesResponse,
     ProjectCreateRequest,
-    ProjectMemberResponse,
-    ProjectMemberUpdateRequest,
+    ProjectCollaboratorResponse,
+    ProjectCollaboratorUpdateRequest,
     ProjectMembershipResponse,
     ProjectOwnerResponse,
     ProjectPermissionSet,
@@ -221,21 +221,22 @@ def delete_project(
 
 
 @projects_router.get(
-    "/{project_id}/members", response_model=list[ProjectMemberResponse]
+    "/{project_id}/collaborators",
+    response_model=list[ProjectCollaboratorResponse],
 )
-def get_project_members(
+def get_project_collaborators(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> list[ProjectMemberResponse]:
-    project, collaborators = project_repository.list_members(
+) -> list[ProjectCollaboratorResponse]:
+    project, collaborators = project_repository.list_collaborators(
         db, project_id=project_id, user_id=current_user.id
     )
     owner = db.get(AuthUser, project.owner_id)
     if owner is None:
         raise RuntimeError(f"Project {project.id} has no owner")
     result = [
-        ProjectMemberResponse(
+        ProjectCollaboratorResponse(
             user_id=owner.id,
             display_name=owner.display_name or owner.email,
             email=owner.email,
@@ -249,7 +250,7 @@ def get_project_members(
         )
     ]
     result.extend(
-        ProjectMemberResponse(
+        ProjectCollaboratorResponse(
             user_id=collaborator.user_id,
             display_name=collaborator.user.display_name or collaborator.user.email,
             email=collaborator.user.email,
@@ -267,23 +268,24 @@ def get_project_members(
 
 
 @projects_router.patch(
-    "/{project_id}/members/{user_id}", response_model=ProjectMemberResponse
+    "/{project_id}/collaborators/{user_id}",
+    response_model=ProjectCollaboratorResponse,
 )
-def update_project_member(
+def update_project_collaborator(
     project_id: uuid.UUID,
     user_id: int,
-    request: ProjectMemberUpdateRequest,
+    request: ProjectCollaboratorUpdateRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ProjectMemberResponse:
-    collaborator = project_repository.update_member(
+) -> ProjectCollaboratorResponse:
+    collaborator = project_repository.update_collaborator(
         db,
         project_id=project_id,
         actor_id=current_user.id,
         target_user_id=user_id,
         requested=request,
     )
-    return ProjectMemberResponse(
+    return ProjectCollaboratorResponse(
         user_id=collaborator.user_id,
         display_name=collaborator.user.display_name or collaborator.user.email,
         email=collaborator.user.email,
@@ -298,15 +300,16 @@ def update_project_member(
 
 
 @projects_router.delete(
-    "/{project_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/{project_id}/collaborators/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
-def remove_project_member(
+def remove_project_collaborator(
     project_id: uuid.UUID,
     user_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> Response:
-    project_repository.remove_member(
+    project_repository.remove_collaborator(
         db,
         project_id=project_id,
         actor_id=current_user.id,

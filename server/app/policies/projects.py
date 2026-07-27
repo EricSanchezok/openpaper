@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import Literal
 
 from app.database.models import Project, ProjectCollaborator
 from app.errors import AppError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+ProjectPermission = Literal[
+    "edit_project",
+    "manage_papers",
+    "manage_collaborators",
+    "owner",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +114,7 @@ def require_project_permission(
     *,
     project_id: uuid.UUID,
     user_id: int,
-    permission: str,
+    permission: ProjectPermission,
 ) -> ProjectAccess:
     access = require_project_access(db, project_id=project_id, user_id=user_id)
     allowed = {

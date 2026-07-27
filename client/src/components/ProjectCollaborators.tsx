@@ -58,7 +58,7 @@ export function ProjectCollaborators({
     setHasCollaborators,
     onProjectChanged,
 }: ProjectCollaboratorsProps) {
-    const [members, setMembers] = useState<Collaborator[]>([]);
+    const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
     const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
     const [open, setOpen] = useState(false);
     const [email, setEmail] = useState("");
@@ -82,11 +82,11 @@ export function ProjectCollaborators({
 
     const load = useCallback(async () => {
         try {
-            const loadedMembers = await fetchFromApi(
-                `/api/projects/${project.id}/members`,
+            const loadedCollaborators = await fetchFromApi(
+                `/api/projects/${project.id}/collaborators`,
             ) as Collaborator[];
-            setMembers(loadedMembers);
-            setHasCollaborators?.(loadedMembers.length > 1);
+            setCollaborators(loadedCollaborators);
+            setHasCollaborators?.(loadedCollaborators.length > 1);
             if (canManage) {
                 const loadedInvitations = await fetchFromApi(
                     `/api/projects/${project.id}/invitations`,
@@ -116,13 +116,13 @@ export function ProjectCollaborators({
         };
         try {
             const updated = await fetchFromApi(
-                `/api/projects/${project.id}/members/${member.user_id}`,
+                `/api/projects/${project.id}/collaborators/${member.user_id}`,
                 {
                     method: "PATCH",
                     body: JSON.stringify(permissions),
                 },
             ) as Collaborator;
-            setMembers((current) =>
+            setCollaborators((current) =>
                 current.map((item) =>
                     item.user_id === updated.user_id ? updated : item,
                 ),
@@ -140,10 +140,10 @@ export function ProjectCollaborators({
     const removeMember = async (member: Collaborator) => {
         try {
             await fetchFromApi(
-                `/api/projects/${project.id}/members/${member.user_id}`,
+                `/api/projects/${project.id}/collaborators/${member.user_id}`,
                 { method: "DELETE" },
             );
-            setMembers((current) =>
+            setCollaborators((current) =>
                 current.filter((item) => item.user_id !== member.user_id),
             );
             toast.success("Collaborator removed.");
@@ -228,7 +228,7 @@ export function ProjectCollaborators({
         }
     };
 
-    const visibleMembers = members.slice(0, 4);
+    const visibleCollaborators = collaborators.slice(0, 4);
 
     return (
         <>
@@ -238,7 +238,7 @@ export function ProjectCollaborators({
                 onClick={() => setOpen(true)}
                 aria-label="Project collaborators"
             >
-                {visibleMembers.map((member) => {
+                {visibleCollaborators.map((member) => {
                     const name = member.display_name || member.email;
                     return (
                         <Avatar
@@ -253,7 +253,7 @@ export function ProjectCollaborators({
                         </Avatar>
                     );
                 })}
-                {members.length === 0 && (
+                {collaborators.length === 0 && (
                     <span className="flex h-8 w-8 items-center justify-center rounded-full border">
                         <Users className="h-4 w-4" />
                     </span>
@@ -271,7 +271,7 @@ export function ProjectCollaborators({
                     </DialogHeader>
 
                     <div className="space-y-3">
-                        {members.map((member) => (
+                        {collaborators.map((member) => (
                             <div
                                 key={member.user_id}
                                 className="rounded-lg border p-3"

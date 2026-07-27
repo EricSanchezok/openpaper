@@ -218,7 +218,8 @@ def test_transfer_validates_and_reassigns_owner_quota(
 def test_project_api_exposes_capabilities_and_invitation_lifecycle() -> None:
     paths = app.openapi()["paths"]
 
-    assert "/api/projects/{project_id}/members" in paths
+    assert "/api/projects/{project_id}/collaborators" in paths
+    assert "/api/projects/{project_id}/members" not in paths
     assert "/api/projects/{project_id}/transfer" in paths
     assert "/api/projects/{project_id}/leave" in paths
     assert "/api/project-invitations/{invitation_id}/accept" in paths

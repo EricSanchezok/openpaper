@@ -28,7 +28,7 @@ class ProjectUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=10_000)
 
 
-class ProjectMemberUpdateRequest(ProjectPermissionSet):
+class ProjectCollaboratorUpdateRequest(ProjectPermissionSet):
     pass
 
 
@@ -81,7 +81,7 @@ class ProjectResponse(BaseModel):
     updated_at: datetime
 
 
-class ProjectMemberResponse(BaseModel):
+class ProjectCollaboratorResponse(BaseModel):
     user_id: int
     display_name: str
     email: EmailStr
