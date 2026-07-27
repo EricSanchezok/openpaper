@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from app.database.models import Document, JobStatus, Project, SubscriptionPlan
 from app.errors import AppError
+from app.services.upload_lifecycle import UploadCleanupPlan
 from app.services.upload_reservations import (
     reassign_project_quota_owner,
     reserve_upload,
@@ -37,6 +38,11 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
             "app.services.upload_reservations.paper_crud.get_size_of_knowledge_base",
             return_value=0,
         ),
+        patch(
+            "app.services.upload_reservations.reap_stale_uploads",
+            return_value=UploadCleanupPlan(),
+        ),
+        patch("app.services.upload_reservations.delete_upload_storage"),
     )
 
 
@@ -53,6 +59,8 @@ def test_personal_upload_is_reserved_to_requester() -> None:
         patches[4],
         patches[5],
         patches[6],
+        patches[7],
+        patches[8] as storage_cleanup,
     ):
         job = reserve_upload(
             db,
@@ -70,6 +78,7 @@ def test_personal_upload_is_reserved_to_requester() -> None:
     quota_lock.assert_called_once_with(db, user_id=17)
     db.add.assert_called_once_with(job)
     db.commit.assert_called_once()
+    storage_cleanup.assert_called_once_with(plan=UploadCleanupPlan())
 
 
 def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
@@ -95,6 +104,8 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         patches[4],
         patches[5],
         patches[6],
+        patches[7],
+        patches[8],
     ):
         job = reserve_upload(
             db,
@@ -129,6 +140,8 @@ def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:
         patches[4],
         patches[5],
         patches[6],
+        patches[7],
+        patches[8],
         pytest.raises(AppError) as error,
     ):
         reserve_upload(

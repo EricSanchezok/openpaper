@@ -27,6 +27,10 @@ from app.helpers.subscription_limits import (
 )
 from app.policies.projects import require_project_permission
 from app.schemas.user import CurrentUser
+from app.services.upload_lifecycle import (
+    delete_upload_storage,
+    reap_stale_uploads,
+)
 from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
@@ -239,6 +243,7 @@ def reserve_upload(
         owner_id = project.owner_id
 
     lock_account_resource_quota(db, user_id=owner_id)
+    cleanup_plan = reap_stale_uploads(db, quota_owner_id=owner_id)
     owner = get_quota_user(db, user_id=owner_id)
     limits = get_plan_limits(get_user_subscription_plan(db, owner))
     reserved_size_kb = math.ceil(input_size_bytes / 1024)
@@ -300,4 +305,5 @@ def reserve_upload(
     db.add(job)
     db.commit()
     db.refresh(job)
+    delete_upload_storage(plan=cleanup_plan)
     return job

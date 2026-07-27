@@ -38,22 +38,23 @@ class ProjectDeletionPlan:
 
 
 def _active_project_job_count(db: Session, *, project_id: UUID) -> int:
-    upload_jobs = select(PaperUploadJob.id).where(
-        PaperUploadJob.project_id == project_id,
-        PaperUploadJob.status.in_(ACTIVE_JOB_STATUSES),
-    )
-    audio_jobs = select(AudioOverviewJob.id).where(
-        AudioOverviewJob.conversable_type == ConversableType.PROJECT.value,
-        AudioOverviewJob.conversable_id == project_id,
-        AudioOverviewJob.status.in_(ACTIVE_JOB_STATUSES),
-    )
-    data_table_jobs = select(DataTableExtractionJob.id).where(
-        DataTableExtractionJob.project_id == project_id,
-        DataTableExtractionJob.status.in_(ACTIVE_JOB_STATUSES),
+    statements = (
+        select(PaperUploadJob.id).where(
+            PaperUploadJob.project_id == project_id,
+            PaperUploadJob.status.in_(ACTIVE_JOB_STATUSES),
+        ),
+        select(AudioOverviewJob.id).where(
+            AudioOverviewJob.conversable_type == ConversableType.PROJECT.value,
+            AudioOverviewJob.conversable_id == project_id,
+            AudioOverviewJob.status.in_(ACTIVE_JOB_STATUSES),
+        ),
+        select(DataTableExtractionJob.id).where(
+            DataTableExtractionJob.project_id == project_id,
+            DataTableExtractionJob.status.in_(ACTIVE_JOB_STATUSES),
+        ),
     )
     return sum(
-        int(db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
-        for statement in (upload_jobs, audio_jobs, data_table_jobs)
+        len(db.scalars(statement.with_for_update()).all()) for statement in statements
     )
 
 

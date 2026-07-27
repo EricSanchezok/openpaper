@@ -29,8 +29,10 @@ def test_project_deletion_detaches_private_chats_and_collects_owned_storage() ->
         parser_archive_s3_key="parses/paper.zip",
     )
     db = MagicMock(spec=Session)
-    db.scalar.side_effect = [0, 0, 0]
     db.scalars.side_effect = [
+        _scalars_result([]),
+        _scalars_result([]),
+        _scalars_result([]),
         _scalars_result([document]),
         _scalars_result(["images/page-1.png"]),
         _scalars_result(["audio/project.mp3"]),
@@ -56,7 +58,11 @@ def test_project_deletion_detaches_private_chats_and_collects_owned_storage() ->
 
 def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
     db = MagicMock(spec=Session)
-    db.scalar.side_effect = [1, 0, 0]
+    db.scalars.side_effect = [
+        _scalars_result([uuid4()]),
+        _scalars_result([]),
+        _scalars_result([]),
+    ]
 
     with pytest.raises(AppError) as error:
         prepare_project_deletion(
@@ -65,7 +71,7 @@ def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
         )
 
     assert error.value.code == "project_has_active_jobs"
-    db.scalars.assert_not_called()
+    assert db.scalars.call_count == 3
     db.execute.assert_not_called()
 
 

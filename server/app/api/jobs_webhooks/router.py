@@ -344,6 +344,18 @@ async def handle_paper_processing_webhook(
         is_active=user.status == "active",
     )
     _settle_jobs_usage(int(user.id), webhook_data.usage_events)
+    if job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+        logger.warning(
+            "Ignoring late webhook for terminal job %s with status %s",
+            job_id,
+            job.status,
+        )
+        await release_concurrency_by_id(
+            user_id=int(user.id),
+            category="background",
+            operation_id=job_id,
+        )
+        return {"status": "webhook ignored - job is terminal"}
 
     # Serialize concurrent/duplicate deliveries for the same job. Celery retries
     # with acks_late, so a redelivered task can fire a second webhook while the
@@ -378,6 +390,12 @@ async def handle_paper_processing_webhook(
                 f"duplicate webhook"
             )
             return {"status": "webhook ignored - job already completed"}
+        if job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+            logger.warning(
+                "Job %s became terminal before webhook processing; ignoring",
+                job_id,
+            )
+            return {"status": "webhook ignored - job is terminal"}
 
         if status == "completed" and result.success:
             # Zotero imports run the worker with LLM metadata extraction skipped,

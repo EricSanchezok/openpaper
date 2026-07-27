@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import (
@@ -9,18 +9,12 @@ from app.database.models import (
     PaperUploadJob,
     ProjectPaper,
 )
-from app.schemas.user import CurrentUser
 from app.policies.projects import get_project_access
+from app.schemas.user import CurrentUser
+from app.services.upload_lifecycle import active_upload_freshness_clause
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-# In-progress upload jobs older than this are treated as dead — a worker that
-# died before writing a terminal status leaves a job stuck in PENDING/RUNNING
-# forever (there is no reaper). A real PDF upload+parse finishes in minutes, so
-# any in-progress job older than this window is filtered out of upload trackers.
-# Single source of truth for the "stale upload" threshold.
-STALE_UPLOAD_JOB_CUTOFF = timedelta(minutes=30)
 
 
 # Define Pydantic models for type safety
@@ -154,10 +148,10 @@ class PaperUploadJobCRUD(
         Project-only uploads are deliberately excluded and are exposed through
         ``get_in_progress_jobs_for_project`` instead.
 
-        Dead jobs (worker died before writing a terminal status) are filtered
-        out via STALE_UPLOAD_JOB_CUTOFF so they don't resurface on every load.
+        Dead jobs are filtered using the same freshness contract as the
+        reservation reaper.
         """
-        stale_cutoff = datetime.now(timezone.utc) - STALE_UPLOAD_JOB_CUTOFF
+        now = datetime.now(timezone.utc)
         statement = (
             select(PaperUploadJob, Document)
             .join(Document, Document.upload_job_id == PaperUploadJob.id)
@@ -169,7 +163,7 @@ class PaperUploadJobCRUD(
                 PaperUploadJob.user_id == user.id,
                 LibraryPaper.user_id == user.id,
                 PaperUploadJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
-                PaperUploadJob.created_at >= stale_cutoff,
+                active_upload_freshness_clause(now),
             )
             .order_by(PaperUploadJob.created_at.asc())
         )
@@ -192,9 +186,7 @@ class PaperUploadJobCRUD(
         if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return []
 
-        # Filter out dead uploads so a phantom job doesn't resurface every time
-        # the project opens. See STALE_UPLOAD_JOB_CUTOFF.
-        stale_cutoff = datetime.now(timezone.utc) - STALE_UPLOAD_JOB_CUTOFF
+        now = datetime.now(timezone.utc)
 
         statement = (
             select(PaperUploadJob, Document)
@@ -203,7 +195,7 @@ class PaperUploadJobCRUD(
             .where(
                 ProjectPaper.project_id == project_id,
                 PaperUploadJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
-                PaperUploadJob.created_at >= stale_cutoff,
+                active_upload_freshness_clause(now),
             )
             .order_by(PaperUploadJob.created_at.asc())
         )
