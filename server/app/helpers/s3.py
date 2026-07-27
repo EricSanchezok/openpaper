@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlsplit
 import boto3
 import requests
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
-from app.database.models import AuthUser, Paper
+from app.database.models import AuthUser, Document
 from app.schemas.user import CurrentUser
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -357,30 +357,32 @@ class S3Service:
             logger.error(f"Error invalidating cached URL: {e}")
             return False
 
-    def get_cached_presigned_url_by_owner(
+    def get_public_presigned_url(
         self,
         db: Session,
         paper_id: str,
         object_key: str,
-        owner_id: str,
+        share_id: str,
         expiration: int = 86400,
     ) -> str | None:
-        """
-        Get a cached presigned URL for a paper owned by a specific user (used for shared papers)
-        """
-
+        """Sign a document only when the supplied public library link is active."""
         try:
-            # Get the owner user object
-            owner = db.scalars(
-                select(AuthUser).where(AuthUser.id == int(owner_id))
-            ).first()
+            from app.database.models import LibraryPaper
+
+            public_entry = db.scalar(
+                select(LibraryPaper).where(
+                    LibraryPaper.document_id == uuid.UUID(paper_id),
+                    LibraryPaper.share_id == share_id,
+                    LibraryPaper.is_public.is_(True),
+                )
+            )
+            if public_entry is None:
+                return None
+            owner = db.get(AuthUser, public_entry.user_id)
             if not owner:
                 return None
 
-            # Convert to CurrentUser
             current_user = CurrentUser.from_auth_user(owner)
-
-            # Use the existing method
             return self.get_cached_presigned_url(
                 db=db,
                 paper_id=paper_id,
@@ -390,13 +392,13 @@ class S3Service:
             )
 
         except Exception as e:
-            logger.error(f"Error getting cached presigned URL by owner: {e}")
+            logger.error(f"Error getting public presigned URL: {e}")
             return None
 
     def get_cached_presigned_urls_bulk(
         self,
         db: Session,
-        papers: list[Paper],
+        papers: list[Document],
         expiration: int = 86400,
     ) -> dict[str, str | None]:
         """
@@ -409,7 +411,7 @@ class S3Service:
 
         Args:
             db: Database session
-            papers: List of Paper objects to get URLs for
+            papers: List of Document objects to get URLs for
             expiration: URL expiration time in seconds (default: 24 hours)
 
         Returns:
@@ -418,7 +420,7 @@ class S3Service:
         from app.database.crud.paper_crud import PaperUpdate, paper_crud
 
         result: dict[str, str | None] = {}
-        papers_needing_urls: list[Paper] = []
+        papers_needing_urls: list[Document] = []
         now = datetime.now(timezone.utc)
 
         # First pass: check cache status for all papers (fast, sequential)
@@ -445,7 +447,7 @@ class S3Service:
 
         # Second pass: generate new URLs in parallel (no DB access, just S3 API calls)
         def generate_url_for_paper(
-            paper: Paper,
+            paper: Document,
         ) -> tuple[str, str | None, int | None]:
             """Generate URL and file size for a single paper"""
             try:
@@ -463,7 +465,7 @@ class S3Service:
 
         # Use ThreadPoolExecutor for parallel S3 API calls
         new_urls: dict[str, str | None] = {}
-        papers_to_update: dict[str, tuple[Paper, str, int | None]] = {}
+        papers_to_update: dict[str, tuple[Document, str, int | None]] = {}
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_paper = {

@@ -5,7 +5,7 @@ from time import time
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
-from app.database.models import Paper
+from app.database.models import Document
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 
@@ -130,7 +130,7 @@ def read_file(
     Read the content of a file associated with a paper.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Paper | None = None
+    paper: Document | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,
@@ -164,7 +164,7 @@ def search_file(
     Returns matching lines with line numbers.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Paper | None = None
+    paper: Document | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,
@@ -265,7 +265,7 @@ def view_file(
     View a specific range of lines from the file content of a paper.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Paper | None = None
+    paper: Document | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,
@@ -307,7 +307,7 @@ def read_abstract(
     Read the abstract of a paper.
     """
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
-    paper: Paper | None = None
+    paper: Document | None = None
     if project_id:
         paper = project_paper_crud.get_paper_by_project(
             db,

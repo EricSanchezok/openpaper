@@ -77,7 +77,7 @@ class CitationFields:
 
 
 def fields_from_paper(paper: object) -> CitationFields:
-    """Build CitationFields from a Paper ORM row (or any object with those attrs)."""
+    """Build CitationFields from a Document ORM row (or any object with those attrs)."""
     publish_date = getattr(paper, "publish_date", None)
     if publish_date is not None and not isinstance(publish_date, str):
         # SQLAlchemy may hand back a datetime/date.

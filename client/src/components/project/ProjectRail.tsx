@@ -107,14 +107,12 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-                    {paper.is_owner && (
-                        <DropdownMenuItem asChild>
-                            <Link href={`/paper/${paper.id}`}>
-                                <ExternalLink className="h-4 w-4" />
-                                Open full page
-                            </Link>
-                        </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem asChild>
+                        <Link href={`/paper/${paper.id}`}>
+                            <ExternalLink className="h-4 w-4" />
+                            Open full page
+                        </Link>
+                    </DropdownMenuItem>
                     {canManagePapers && (
                         <DropdownMenuItem variant="destructive" onClick={handleUnlink}>
                             <Unlink className="h-4 w-4" />

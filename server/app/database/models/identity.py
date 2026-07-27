@@ -16,8 +16,9 @@ if TYPE_CHECKING:
         AudioOverviewJob,
         Conversation,
         Highlight,
+        LibraryPaper,
         Message,
-        Paper,
+        Document,
         PaperNote,
         PaperTag,
         PaperUploadJob,
@@ -49,8 +50,11 @@ class AuthUser(Base):
         cascade="all, delete-orphan",
     )
 
-    papers: Mapped[list["Paper"]] = relationship(
-        "Paper", back_populates="user", cascade="all, delete-orphan"
+    created_documents: Mapped[list["Document"]] = relationship(
+        "Document", back_populates="creator"
+    )
+    library_papers: Mapped[list["LibraryPaper"]] = relationship(
+        "LibraryPaper", back_populates="user", cascade="all, delete-orphan"
     )
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="user", cascade="all, delete-orphan"

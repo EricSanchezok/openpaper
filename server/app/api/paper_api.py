@@ -12,9 +12,15 @@ from app.database.crud.paper_note_crud import (
     paper_note_crud,
 )
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
-from app.database.models import Paper, PaperStatus, ZoteroImportedItem
+from app.database.models import (
+    AuthUser,
+    Document,
+    LibraryPaper,
+    PaperStatus,
+    PaperTag,
+    ZoteroImportedItem,
+)
 from app.database.telemetry import track_event
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.s3 import s3_service
@@ -67,13 +73,31 @@ class UpdatePaperFieldsSchema(BaseModel):
     publisher: str | None = None
 
 
-def _serialize_paper_for_client(paper: Paper) -> dict[str, object]:
+def _serialize_paper_for_client(
+    paper: Document,
+    *,
+    library_paper: LibraryPaper | None = None,
+    tags: list[PaperTag] | None = None,
+) -> dict[str, object]:
     data: dict[str, object] = dict(serialize_paper(paper))
+    data["status"] = (
+        library_paper.status if library_paper is not None else PaperStatus.reading
+    )
+    data["last_accessed_at"] = (
+        library_paper.last_accessed_at.isoformat()
+        if library_paper is not None
+        else None
+    )
+    data["is_public"] = library_paper.is_public if library_paper else False
+    data["share_id"] = library_paper.share_id if library_paper else None
+    data["tags"] = [
+        {"id": str(tag.id), "name": tag.name, "color": tag.color} for tag in tags or []
+    ]
     data["preview_url"] = _presigned_preview_url(paper)
     return data
 
 
-def _presigned_preview_url(paper: Paper) -> str | None:
+def _presigned_preview_url(paper: Document) -> str | None:
     return s3_service.generate_presigned_url_from_storage_url(paper.preview_url)
 
 
@@ -86,7 +110,20 @@ async def get_paper_ids(
     """
     Get all paper IDs
     """
-    papers: list[Paper] = paper_crud.get_multi_uploads_completed(db, user=current_user)
+    papers: list[Document] = paper_crud.get_multi_uploads_completed(
+        db, user=current_user
+    )
+    document_ids = [paper.id for paper in papers]
+    library_by_document = paper_crud.get_library_papers(
+        db,
+        document_ids=document_ids,
+        user=current_user,
+    )
+    tags_by_document = paper_crud.get_tags_by_document_ids(
+        db,
+        document_ids=document_ids,
+        user=current_user,
+    )
 
     # Bulk retrieve presigned URLs for all papers (optimized with parallelization)
     file_urls = {}
@@ -104,7 +141,7 @@ async def get_paper_ids(
             "abstract": paper.abstract,
             "authors": paper.authors,
             "institutions": paper.institutions,
-            "status": paper.status,
+            "status": library_by_document[paper.id].status,
             "preview_url": _presigned_preview_url(paper),
             "size_in_kb": paper.size_in_kb,
             "parser_quality": paper.parser_quality,
@@ -113,7 +150,7 @@ async def get_paper_ids(
             "file_url": file_urls.get(str(paper.id)),
             "tags": [
                 {"id": str(tag.id), "name": tag.name, "color": tag.color}
-                for tag in paper.tags
+                for tag in tags_by_document.get(paper.id, [])
             ],
         }
         for paper in papers
@@ -132,8 +169,13 @@ async def get_active_paper_ids(
     """
     Get all active paper IDs
     """
-    papers: list[Paper] = paper_crud.get_multi_uploads_completed(
+    papers: list[Document] = paper_crud.get_multi_uploads_completed(
         db, user=current_user, status=PaperStatus.reading
+    )
+    library_by_document = paper_crud.get_library_papers(
+        db,
+        document_ids=[paper.id for paper in papers],
+        user=current_user,
     )
 
     data = [
@@ -144,7 +186,7 @@ async def get_active_paper_ids(
             "abstract": paper.abstract,
             "authors": paper.authors,
             "institutions": paper.institutions,
-            "status": paper.status,
+            "status": library_by_document[paper.id].status,
             "preview_url": _presigned_preview_url(paper),
             "size_in_kb": paper.size_in_kb,
             "parser_quality": paper.parser_quality,
@@ -216,7 +258,7 @@ async def get_paper_file_url(
     """
     paper = paper_crud.get(db, id=id, user=current_user)
     if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
     file_url = s3_service.get_cached_presigned_url(
         db,
@@ -254,7 +296,7 @@ async def get_paper_note(
         return JSONResponse(content=serialize_paper_note(paper_note), status_code=200)
 
     raise HTTPException(
-        status_code=404, detail=f"Paper Note does not exist for document {paper_id}"
+        status_code=404, detail=f"Paper note does not exist for document {paper_id}"
     )
 
 
@@ -333,14 +375,21 @@ async def set_paper_status(
         "paper_status_updated",
         properties={
             "paper_id": str(updated_paper.id),
-            "status": updated_paper.status,
+            "status": status.value,
         },
         user_id=str(current_user.id),
         db=db,
     )
 
     return JSONResponse(
-        content=_serialize_paper_for_client(updated_paper),
+        content=_serialize_paper_for_client(
+            updated_paper,
+            library_paper=paper_crud.get_library_paper(
+                db,
+                document_id=updated_paper.id,
+                user=current_user,
+            ),
+        ),
         status_code=200,
     )
 
@@ -385,7 +434,14 @@ async def update_paper_fields(
     )
 
     return JSONResponse(
-        content=_serialize_paper_for_client(updated_paper),
+        content=_serialize_paper_for_client(
+            updated_paper,
+            library_paper=paper_crud.get_library_paper(
+                db,
+                document_id=updated_paper.id,
+                user=current_user,
+            ),
+        ),
         status_code=200,
     )
 
@@ -398,7 +454,12 @@ async def get_relevant_papers(
     """
     Get the most relevant papers uploaded by the user
     """
-    papers: list[Paper] = paper_crud.get_top_relevant_papers(db, user=current_user)
+    papers: list[Document] = paper_crud.get_top_relevant_papers(db, user=current_user)
+    library_by_document = paper_crud.get_library_papers(
+        db,
+        document_ids=[paper.id for paper in papers],
+        user=current_user,
+    )
 
     return JSONResponse(
         status_code=200,
@@ -411,7 +472,7 @@ async def get_relevant_papers(
                     "abstract": paper.abstract,
                     "authors": paper.authors,
                     "institutions": paper.institutions,
-                    "status": paper.status,
+                    "status": library_by_document[paper.id].status,
                     "preview_url": _presigned_preview_url(paper),
                     "size_in_kb": paper.size_in_kb,
                 }
@@ -495,7 +556,7 @@ async def get_pdf(
     paper = paper_crud.get(db, id=id, user=current_user, update_last_accessed=True)
 
     if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
     signed_url = s3_service.get_cached_presigned_url(
         db,
@@ -508,7 +569,21 @@ async def get_pdf(
 
     paper = hydrate_paper_metadata(db=db, paper=paper, user=current_user)
 
-    paper_data = _serialize_paper_for_client(paper)
+    library_paper = paper_crud.get_library_paper(
+        db,
+        document_id=paper.id,
+        user=current_user,
+    )
+    tags = paper_crud.get_tags_by_document_ids(
+        db,
+        document_ids=[paper.id],
+        user=current_user,
+    ).get(paper.id, [])
+    paper_data = _serialize_paper_for_client(
+        paper,
+        library_paper=library_paper,
+        tags=tags,
+    )
     paper_data["file_url"] = signed_url
     paper_data["summary_citations"] = [
         ResponseCitation.model_validate(citation).model_dump()
@@ -518,10 +593,6 @@ async def get_pdf(
     paper_data["summary"] = paper_crud.get_summary_replace_image_placeholders(
         db, paper_id=id, current_user=current_user
     )
-
-    paper_data["tags"] = [
-        {"id": str(t.id), "name": t.name, "color": t.color} for t in paper.tags
-    ]
 
     # Flag whether this paper originated from a Zotero import (surfaced as a
     # provenance badge in the library detail panel).
@@ -555,15 +626,25 @@ async def share_pdf(
     paper = paper_crud.get(db, id=id, user=current_user)
 
     if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
     paper_crud.make_public(db, paper_id=id, user=current_user)
+    library_paper = paper_crud.get_library_paper(
+        db,
+        document_id=paper.id,
+        user=current_user,
+    )
+    if library_paper is None:
+        return JSONResponse(
+            status_code=404,
+            content={"message": "Paper is not in your library"},
+        )
 
     track_event(
         "paper_share",
         properties={
             "paper_id": str(paper.id),
-            "share_id": paper.share_id,
+            "share_id": library_paper.share_id,
         },
         user_id=str(current_user.id),
         db=db,
@@ -574,8 +655,8 @@ async def share_pdf(
         status_code=200,
         content={
             "message": "Document shared successfully",
-            "share_id": paper.share_id,
-            "is_public": paper.is_public,
+            "share_id": library_paper.share_id,
+            "is_public": library_paper.is_public,
         },
     )
 
@@ -594,15 +675,25 @@ async def unshare_pdf(
     paper = paper_crud.get(db, id=id, user=current_user)
 
     if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
     paper_crud.make_private(db, paper_id=id, user=current_user)
+    library_paper = paper_crud.get_library_paper(
+        db,
+        document_id=paper.id,
+        user=current_user,
+    )
+    if library_paper is None:
+        return JSONResponse(
+            status_code=404,
+            content={"message": "Paper is not in your library"},
+        )
 
     track_event(
         "paper_unshare",
         properties={
             "paper_id": str(paper.id),
-            "share_id": paper.share_id,
+            "share_id": library_paper.share_id,
         },
         user_id=str(current_user.id),
         db=db,
@@ -613,8 +704,8 @@ async def unshare_pdf(
         status_code=200,
         content={
             "message": "Document unshared successfully",
-            "share_id": paper.share_id,
-            "is_public": paper.is_public,
+            "share_id": library_paper.share_id,
+            "is_public": library_paper.is_public,
         },
     )
 
@@ -633,17 +724,21 @@ async def get_shared_pdf(
     response: dict[str, object] = {}
 
     paper = paper_crud.get_public_paper(db, share_id=id)
+    public_entry = paper_crud.get_public_library_paper(db, share_id=id)
 
-    if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+    if not paper or public_entry is None:
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    paper_data = _serialize_paper_for_client(paper)
+    paper_data = _serialize_paper_for_client(
+        paper,
+        library_paper=public_entry,
+    )
 
-    signed_url = s3_service.get_cached_presigned_url_by_owner(
+    signed_url = s3_service.get_public_presigned_url(
         db,
         paper_id=str(paper.id),
         object_key=str(paper.s3_object_key),
-        owner_id=str(paper.user_id),
+        share_id=id,
     )
     if not signed_url:
         return JSONResponse(status_code=404, content={"message": "File not found"})
@@ -671,7 +766,7 @@ async def get_shared_pdf(
     response["annotations"] = [
         serialize_annotation(annotation) for annotation in annotations
     ]
-    owner = paper.user
+    owner = db.get(AuthUser, public_entry.user_id)
     if owner is None:
         return JSONResponse(
             status_code=404, content={"message": "Document owner not found"}
@@ -685,7 +780,7 @@ async def get_shared_pdf(
         "paper_shared_view",
         properties={
             "paper_id": str(paper.id),
-            "share_id": paper.share_id,
+            "share_id": public_entry.share_id,
         },
         user_id=str(current_user.id) if current_user else None,
         db=db,
@@ -709,36 +804,20 @@ async def delete_pdf(
     paper = paper_crud.get(db, id=id, user=current_user)
 
     if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    s3_object_key = paper.s3_object_key
-
-    # Delete the document from the database
     try:
-        projects = project_paper_crud.get_projects_by_paper_id(
-            db, paper_id=uuid.UUID(id), user=current_user
-        )
-
-        if len(projects) > 0:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": "Cannot delete document associated with projects. Please remove the document from all projects before deleting."
-                },
-            )
-
         removed_paper = paper_crud.remove(db, id=id, user=current_user)
         if not removed_paper:
             return JSONResponse(
-                status_code=500, content={"message": "Failed to delete document"}
+                status_code=500,
+                content={"message": "Failed to remove paper from library"},
             )
 
-        # Delete the file from S3 if s3_object_key exists
-        if s3_object_key:
-            s3_service.delete_file(str(s3_object_key))
-            logger.info(f"Deleted S3 object: {s3_object_key}")
-
-        return JSONResponse(status_code=200, content={"message": "Document deleted"})
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Paper removed from library"},
+        )
     except Exception:
         logger.error("Error deleting document")
         return JSONResponse(
@@ -747,22 +826,20 @@ async def delete_pdf(
         )
 
 
-class ForkSharedPaperRequest(BaseModel):
+class CollectSharedPaperRequest(BaseModel):
     share_id: str
 
 
-@paper_router.post("/fork")
-async def fork_shared_paper(
-    request: ForkSharedPaperRequest,
+@paper_router.post("/collect")
+async def collect_shared_paper(
+    request: CollectSharedPaperRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> JSONResponse:
     """
-    Fork a shared paper into the current user's library.
-    The paper must be publicly shared (via share_id).
+    Add an already-stored public document to the current user's library.
     """
     try:
-        # Check subscription limits before forking
         can_upload, error_message = can_user_upload_paper(db, current_user)
         if not can_upload:
             return JSONResponse(
@@ -770,7 +847,6 @@ async def fork_shared_paper(
                 content={"message": error_message},
             )
 
-        # Find the shared paper by share_id
         shared_paper = paper_crud.get_public_paper(db, share_id=request.share_id)
 
         if not shared_paper:
@@ -779,68 +855,39 @@ async def fork_shared_paper(
                 detail="Shared paper not found or is no longer public.",
             )
 
-        # Skip fork if user is the original owner
-        if shared_paper.user_id == current_user.id:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "message": "You already own this paper",
-                    "new_paper_id": str(shared_paper.id),
-                    "already_exists": True,
-                },
-            )
-
-        # Check if user already has a fork of this paper
-        existing_fork = paper_crud.get_forked_paper_by_parent_id(
-            db, parent_paper_id=uuid.UUID(str(shared_paper.id)), user=current_user
+        existing = paper_crud.get_library_paper(
+            db,
+            document_id=shared_paper.id,
+            user=current_user,
         )
-        if existing_fork:
+        if existing is not None:
             return JSONResponse(
                 status_code=200,
                 content={
                     "message": "You already have this paper in your library",
-                    "new_paper_id": str(existing_fork.id),
+                    "paper_id": str(shared_paper.id),
                     "already_exists": True,
                 },
             )
 
-        # Duplicate the file in S3
-        duplicate_paper_key, duplicate_file_url = s3_service.duplicate_file(
-            source_object_key=str(shared_paper.s3_object_key),
-            new_filename=f"forked_{uuid.uuid4()}.pdf",
-        )
-
-        # Duplicate the preview image if it exists
-        duplicate_preview_url = None
-        if shared_paper.preview_url:
-            _, duplicate_preview_url = s3_service.duplicate_file_from_url(
-                s3_url=str(shared_paper.preview_url),
-                new_filename=f"forked_preview_{uuid.uuid4()}.png",
-            )
-
-        # Fork the paper using paper_crud
-        new_paper = paper_crud.fork_paper(
+        collected = paper_crud.add_to_library(
             db,
-            original_paper=shared_paper,
-            new_file_object_key=duplicate_paper_key,
-            new_file_url=duplicate_file_url,
-            new_preview_url=duplicate_preview_url,
-            current_user=current_user,
+            document=shared_paper,
+            user=current_user,
         )
 
-        if not new_paper:
+        if collected is None:
             raise HTTPException(
                 status_code=500,
-                detail="Failed to fork paper.",
+                detail="Failed to collect paper.",
             )
 
         track_event(
-            "paper_forked_from_share",
+            "paper_collected_from_share",
             user_id=str(current_user.id),
             properties={
                 "share_id": request.share_id,
-                "original_paper_id": str(shared_paper.id),
-                "new_paper_id": str(new_paper.id),
+                "paper_id": str(shared_paper.id),
             },
             db=db,
         )
@@ -848,16 +895,16 @@ async def fork_shared_paper(
         return JSONResponse(
             status_code=201,
             content={
-                "message": "Paper forked successfully",
-                "new_paper_id": str(new_paper.id),
+                "message": "Paper added to your library",
+                "paper_id": str(shared_paper.id),
             },
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error forking shared paper: {e}", exc_info=True)
+        logger.error(f"Error collecting shared paper: {e}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={"message": "Failed to fork shared paper"},
+            content={"message": "Failed to collect shared paper"},
         )

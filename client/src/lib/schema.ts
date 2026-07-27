@@ -410,7 +410,7 @@ export interface PaperItem {
     file_url?: string
     size_in_kb?: number
     tags?: PaperTag[]
-    is_owner?: boolean
+    in_library?: boolean
     journal?: string
     doi?: string
     publisher?: string

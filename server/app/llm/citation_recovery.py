@@ -3,7 +3,7 @@
 A small LLM loop that uses AnySearch and Scholight MCP tools over a paper's
 bibliographic details, falls back to a forced structured-output
 extraction, and writes back any null fields it can confidently fill (with
-field_provenance). Reusable from any codepath that already has a Paper row
+field_provenance). Reusable from any codepath that already has a Document row
 (chat, post-upload background, backfill).
 
 This module deliberately does NOT depend on `app.helpers.metadata_hydration` so
@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
-from app.database.models import Paper
+from app.database.models import Document
 from app.helpers.citations import CitationFields, bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import extract_doi_from_url
 from app.helpers.parser import parse_publication_date
@@ -119,11 +119,11 @@ class MetadataRecoveryAgent(BaseLLMClient):
         self,
         *,
         db: Session,
-        paper: Paper,
+        paper: Document,
         user: CurrentUser | None = None,
         missing_hint: list[str] | None = None,
         steps: list[CitationStep] | None = None,
-    ) -> tuple[Paper, dict[str, Any], float | None]:
+    ) -> tuple[Document, dict[str, Any], float | None]:
         """Agentic fallback that tries to fill the paper's missing metadata.
 
         Confidence-gated, null-only write-back with `field_provenance`. Pass
@@ -350,7 +350,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
     def _write_back(
         self,
         db: Session,
-        paper: Paper,
+        paper: Document,
         findings: dict[str, Any],
         confidence: float,
         current_user: CurrentUser | None,

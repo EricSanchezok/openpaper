@@ -15,6 +15,7 @@ from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.models import AuthUser, Project, SubscriptionPlan, SubscriptionStatus
 from app.database.telemetry import track_event
+from app.policies.projects import get_project_access
 from app.schemas.user import CurrentUser
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -147,9 +148,12 @@ def can_user_add_papers_to_project(
     Returns:
         Whether the action is allowed and an optional user-facing reason.
     """
-    project = db.get(Project, project_id)
-    if project is None:
+    access = get_project_access(db, project_id=project_id, user_id=user.id)
+    if access is None:
         return False, "Project not found"
+    if not access.can_manage_papers:
+        return False, "You do not have permission to add papers to this project"
+    project = access.project
     owner = db.get(AuthUser, project.owner_id)
     if owner is None:
         raise RuntimeError(f"Project {project_id} has no owner")

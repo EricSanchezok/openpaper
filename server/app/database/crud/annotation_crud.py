@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Annotation, Paper
+from app.database.models import Annotation, Document, LibraryPaper
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -50,8 +50,13 @@ class AnnotationCrud(CRUDBase[Annotation, AnnotationCreate, AnnotationUpdate]):
         return list(
             db.scalars(
                 select(Annotation)
-                .join(Paper, Annotation.paper_id == Paper.id)
-                .where(Paper.share_id == str(share_id), Paper.is_public.is_(True))
+                .join(Document, Annotation.paper_id == Document.id)
+                .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+                .where(
+                    LibraryPaper.share_id == str(share_id),
+                    LibraryPaper.is_public.is_(True),
+                    Annotation.user_id == LibraryPaper.user_id,
+                )
                 .order_by(Annotation.created_at)
             ).all()
         )

@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Highlight, Paper
+from app.database.models import Document, Highlight, LibraryPaper
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -100,8 +100,13 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
         return list(
             db.scalars(
                 select(Highlight)
-                .join(Paper, Highlight.paper_id == Paper.id)
-                .where(Paper.share_id == share_id, Paper.is_public.is_(True))
+                .join(Document, Highlight.paper_id == Document.id)
+                .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+                .where(
+                    LibraryPaper.share_id == share_id,
+                    LibraryPaper.is_public.is_(True),
+                    Highlight.user_id == LibraryPaper.user_id,
+                )
                 .order_by(Highlight.created_at)
             ).all()
         )

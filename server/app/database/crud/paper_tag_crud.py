@@ -1,7 +1,12 @@
 import uuid
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Paper, PaperTag, PaperTagAssociation
+from app.database.models import (
+    Document,
+    LibraryPaper,
+    LibraryPaperTag,
+    PaperTag,
+)
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -112,10 +117,18 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         if not keywords:
             return 0
 
+        library_paper = db.scalar(
+            select(LibraryPaper).where(
+                LibraryPaper.document_id == paper_id,
+                LibraryPaper.user_id == user_id,
+            )
+        )
+        if library_paper is None:
+            return 0
         existing_tag_ids = set(
             db.scalars(
-                select(PaperTagAssociation.tag_id).where(
-                    PaperTagAssociation.paper_id == paper_id
+                select(LibraryPaperTag.tag_id).where(
+                    LibraryPaperTag.library_paper_id == library_paper.id
                 )
             ).all()
         )
@@ -131,7 +144,12 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
             seen_tag_ids.add(tag.id)
             if tag.id in existing_tag_ids:
                 continue
-            db.add(PaperTagAssociation(paper_id=paper_id, tag_id=tag.id))
+            db.add(
+                LibraryPaperTag(
+                    library_paper_id=library_paper.id,
+                    tag_id=tag.id,
+                )
+            )
             new_associations += 1
 
         if commit:
@@ -142,12 +160,14 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
 
     def add_tag_to_paper(
         self, db: Session, *, paper_id: uuid.UUID, tag_id: uuid.UUID, user: CurrentUser
-    ) -> PaperTagAssociation | None:
-        # Ensure paper belongs to the user
-        paper = db.scalars(
-            select(Paper).where(Paper.id == paper_id, Paper.user_id == user.id)
-        ).first()
-        if not paper:
+    ) -> LibraryPaperTag | None:
+        library_paper = db.scalar(
+            select(LibraryPaper).where(
+                LibraryPaper.document_id == paper_id,
+                LibraryPaper.user_id == user.id,
+            )
+        )
+        if library_paper is None:
             return None
 
         # Ensure tag belongs to the user
@@ -157,7 +177,10 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         if not tag:
             return None
 
-        association = PaperTagAssociation(paper_id=paper_id, tag_id=tag_id)
+        association = LibraryPaperTag(
+            library_paper_id=library_paper.id,
+            tag_id=tag_id,
+        )
         db.add(association)
         db.commit()
         return association
@@ -165,18 +188,19 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
     def remove_tag_from_paper(
         self, db: Session, *, paper_id: uuid.UUID, tag_id: uuid.UUID, user: CurrentUser
     ) -> None:
-        # Ensure paper belongs to the user to enforce security
-        paper = db.scalars(
-            select(Paper).where(Paper.id == paper_id, Paper.user_id == user.id)
-        ).first()
-        if not paper:
-            # Or raise an exception
+        library_paper = db.scalar(
+            select(LibraryPaper).where(
+                LibraryPaper.document_id == paper_id,
+                LibraryPaper.user_id == user.id,
+            )
+        )
+        if library_paper is None:
             return
 
         association = db.scalars(
-            select(PaperTagAssociation).where(
-                PaperTagAssociation.paper_id == paper_id,
-                PaperTagAssociation.tag_id == tag_id,
+            select(LibraryPaperTag).where(
+                LibraryPaperTag.library_paper_id == library_paper.id,
+                LibraryPaperTag.tag_id == tag_id,
             )
         ).first()
 
@@ -187,28 +211,34 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
     def get_tags_for_paper(
         self, db: Session, *, paper_id: uuid.UUID, user: CurrentUser
     ) -> list[PaperTag]:
-        # Ensure paper belongs to the user
-        paper = db.scalars(
-            select(Paper)
-            .options(selectinload(Paper.tags))
-            .where(Paper.id == paper_id, Paper.user_id == user.id)
-        ).first()
-        if not paper:
+        library_paper = db.scalar(
+            select(LibraryPaper)
+            .options(selectinload(LibraryPaper.tags))
+            .where(
+                LibraryPaper.document_id == paper_id,
+                LibraryPaper.user_id == user.id,
+            )
+        )
+        if library_paper is None:
             return []
-        return paper.tags
+        return list(library_paper.tags)
 
     def get_papers_for_tag(
         self, db: Session, *, tag_id: uuid.UUID, user: CurrentUser
-    ) -> list[Paper]:
+    ) -> list[Document]:
         # Ensure tag belongs to the user
         tag = db.scalars(
             select(PaperTag)
-            .options(selectinload(PaperTag.papers))
+            .options(
+                selectinload(PaperTag.library_papers).selectinload(
+                    LibraryPaper.document
+                )
+            )
             .where(PaperTag.id == tag_id, PaperTag.user_id == user.id)
         ).first()
         if not tag:
             return []
-        return tag.papers
+        return [library_paper.document for library_paper in tag.library_papers]
 
     def bulk_add_tags_to_papers(
         self,
@@ -219,14 +249,16 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         user: CurrentUser,
     ) -> None:
         # First, verify all papers and tags belong to the user
-        found_paper_ids = set(
+        library_entries = list(
             db.scalars(
-                select(Paper.id).where(
-                    Paper.user_id == user.id, Paper.id.in_(paper_ids)
+                select(LibraryPaper).where(
+                    LibraryPaper.user_id == user.id,
+                    LibraryPaper.document_id.in_(paper_ids),
                 )
             ).all()
         )
-        if len(found_paper_ids) != len(set(paper_ids)):
+        library_by_document = {entry.document_id: entry for entry in library_entries}
+        if len(library_by_document) != len(set(paper_ids)):
             raise ValueError(
                 "One or more papers not found or do not belong to the user."
             )
@@ -244,20 +276,26 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         existing_pairs = set(
             db.execute(
                 select(
-                    PaperTagAssociation.paper_id,
-                    PaperTagAssociation.tag_id,
+                    LibraryPaperTag.library_paper_id,
+                    LibraryPaperTag.tag_id,
                 ).where(
-                    PaperTagAssociation.paper_id.in_(paper_ids),
-                    PaperTagAssociation.tag_id.in_(tag_ids),
+                    LibraryPaperTag.library_paper_id.in_(
+                        [entry.id for entry in library_entries]
+                    ),
+                    LibraryPaperTag.tag_id.in_(tag_ids),
                 )
             ).tuples()
         )
-        associations_to_create: list[PaperTagAssociation] = []
+        associations_to_create: list[LibraryPaperTag] = []
         for paper_id in paper_ids:
+            library_paper_id = library_by_document[paper_id].id
             for tag_id in tag_ids:
-                if (paper_id, tag_id) not in existing_pairs:
+                if (library_paper_id, tag_id) not in existing_pairs:
                     associations_to_create.append(
-                        PaperTagAssociation(paper_id=paper_id, tag_id=tag_id)
+                        LibraryPaperTag(
+                            library_paper_id=library_paper_id,
+                            tag_id=tag_id,
+                        )
                     )
 
         if associations_to_create:

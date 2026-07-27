@@ -5,7 +5,7 @@ from typing import AsyncGenerator, Literal, Sequence
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
 from app.database.database import get_db
-from app.database.models import Paper, ReasoningLevel
+from app.database.models import Document, ReasoningLevel
 from app.llm.base import BaseLLMClient
 from app.llm.citation_handler import CitationHandler
 from app.llm.prompts import (
@@ -98,7 +98,7 @@ class PaperOperations(BaseLLMClient):
             else None
         )
 
-        paper: Paper | None = paper_crud.get(db, id=paper_id, user=current_user)
+        paper: Document | None = paper_crud.get(db, id=paper_id, user=current_user)
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found.")

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.database.models import Annotation, Highlight, Paper
+from app.database.models import Annotation, Document, Highlight, LibraryPaper
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, or_, select
@@ -90,23 +90,24 @@ def search_knowledge_base(
         func.lower(Annotation.content).like(search_pattern),
     )
     paper_statement = (
-        select(Paper)
-        .where(Paper.user_id == user.id)
+        select(Document)
+        .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+        .where(LibraryPaper.user_id == user.id)
         .where(
             or_(
-                func.lower(Paper.title).like(search_pattern),
-                func.lower(Paper.abstract).like(search_pattern),
-                func.lower(Paper.raw_content).like(search_pattern),
+                func.lower(Document.title).like(search_pattern),
+                func.lower(Document.abstract).like(search_pattern),
+                func.lower(Document.raw_content).like(search_pattern),
                 # Include papers that have matching highlights
-                Paper.id.in_(matching_highlight_papers),
+                Document.id.in_(matching_highlight_papers),
                 # Include papers that have matching annotations
-                Paper.id.in_(matching_annotation_papers),
+                Document.id.in_(matching_annotation_papers),
             )
         )
-        .order_by(Paper.last_accessed_at.desc())
+        .order_by(LibraryPaper.last_accessed_at.desc())
     )
     if papers_filter:
-        paper_statement = paper_statement.where(Paper.id.in_(papers_filter))
+        paper_statement = paper_statement.where(Document.id.in_(papers_filter))
 
     # Get total count for pagination
     total_papers = int(
@@ -119,6 +120,15 @@ def search_knowledge_base(
     # Apply pagination
     papers = list(db.scalars(paper_statement.offset(offset).limit(limit)).all())
     paper_ids = [paper.id for paper in papers]
+    library_by_document = {
+        entry.document_id: entry
+        for entry in db.scalars(
+            select(LibraryPaper).where(
+                LibraryPaper.user_id == user.id,
+                LibraryPaper.document_id.in_(paper_ids),
+            )
+        ).all()
+    }
 
     matching_highlights = (
         list(
@@ -166,6 +176,7 @@ def search_knowledge_base(
     total_annotations = 0
 
     for paper in papers:
+        library_paper = library_by_document[paper.id]
         paper_highlights = highlights_by_paper.get(paper.id, [])
         paper_annotations = annotations_by_paper.get(paper.id, [])
 
@@ -207,10 +218,10 @@ def search_knowledge_base(
             title=paper.title,
             authors=paper.authors,
             abstract=paper.abstract,
-            status=paper.status,
+            status=library_paper.status,
             publish_date=paper.publish_date,
             created_at=paper.created_at,
-            last_accessed_at=paper.last_accessed_at,
+            last_accessed_at=library_paper.last_accessed_at,
             highlights=highlight_results,
             annotations=annotation_results,
             preview_url=paper.preview_url,

@@ -30,7 +30,7 @@ from .enums import (
 )
 
 if TYPE_CHECKING:
-    from .content import Paper
+    from .content import Document
     from .identity import AuthUser
     from .projects import Project
 
@@ -242,7 +242,7 @@ class DataTableRow(Base):
     )
     paper_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="CASCADE"),
+        ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
     )
     values: Mapped[dict[str, JsonValue]] = mapped_column(
@@ -258,7 +258,7 @@ class DataTableRow(Base):
     data_table: Mapped["DataTableExtractionResult"] = relationship(
         "DataTableExtractionResult", back_populates="rows"
     )
-    paper: Mapped["Paper"] = relationship("Paper")
+    paper: Mapped["Document"] = relationship("Document")
 
     # Index for efficient lookups by paper
     __table_args__ = (

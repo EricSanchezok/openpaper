@@ -3,8 +3,9 @@ from datetime import datetime, timedelta, timezone
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import (
+    Document,
     JobStatus,
-    Paper,
+    LibraryPaper,
     PaperUploadJob,
     ProjectPaper,
 )
@@ -127,22 +128,27 @@ class PaperUploadJobCRUD(
 
     def get_in_progress_jobs_for_user(
         self, db: Session, *, user: CurrentUser
-    ) -> list[tuple[PaperUploadJob, Paper]]:
+    ) -> list[tuple[PaperUploadJob, Document]]:
         """
-        Get a user's in-progress upload jobs across their whole library
-        (project uploads included), paired with their paper record so the
-        Library tracker can show a title. Mirrors get_in_progress_jobs_for_project
-        but is scoped to the user rather than a single project.
+        Get in-progress jobs for documents in the user's personal library.
+
+        Project-only uploads are deliberately excluded and are exposed through
+        ``get_in_progress_jobs_for_project`` instead.
 
         Dead jobs (worker died before writing a terminal status) are filtered
         out via STALE_UPLOAD_JOB_CUTOFF so they don't resurface on every load.
         """
         stale_cutoff = datetime.now(timezone.utc) - STALE_UPLOAD_JOB_CUTOFF
         statement = (
-            select(PaperUploadJob, Paper)
-            .join(Paper, Paper.upload_job_id == PaperUploadJob.id)
+            select(PaperUploadJob, Document)
+            .join(Document, Document.upload_job_id == PaperUploadJob.id)
+            .join(
+                LibraryPaper,
+                LibraryPaper.document_id == Document.id,
+            )
             .where(
                 PaperUploadJob.user_id == user.id,
+                LibraryPaper.user_id == user.id,
                 PaperUploadJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
                 PaperUploadJob.created_at >= stale_cutoff,
             )
@@ -152,14 +158,14 @@ class PaperUploadJobCRUD(
 
     def get_in_progress_jobs_for_project(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> list[tuple[PaperUploadJob, Paper]]:
+    ) -> list[tuple[PaperUploadJob, Document]]:
         """
         Get upload jobs that are still in progress for a project, paired with
         their paper record.
 
         The paper and its ProjectPaper association are created at upload start
         (see helpers/pdf_jobs.py), so we can reach the job via
-        ProjectPaper -> Paper.upload_job_id -> PaperUploadJob. Returns jobs that
+        ProjectPaper -> Document.upload_job_id -> PaperUploadJob. Returns jobs that
         have not yet completed so the client can rehydrate the upload tracker
         after a page refresh.
         """
@@ -172,9 +178,9 @@ class PaperUploadJobCRUD(
         stale_cutoff = datetime.now(timezone.utc) - STALE_UPLOAD_JOB_CUTOFF
 
         statement = (
-            select(PaperUploadJob, Paper)
-            .join(Paper, Paper.upload_job_id == PaperUploadJob.id)
-            .join(ProjectPaper, ProjectPaper.paper_id == Paper.id)
+            select(PaperUploadJob, Document)
+            .join(Document, Document.upload_job_id == PaperUploadJob.id)
+            .join(ProjectPaper, ProjectPaper.document_id == Document.id)
             .where(
                 ProjectPaper.project_id == project_id,
                 PaperUploadJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),

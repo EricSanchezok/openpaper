@@ -15,7 +15,7 @@ from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
-from app.database.models import Paper, ReasoningLevel
+from app.database.models import Document, ReasoningLevel
 from app.llm.citation_handler import CitationHandler
 from app.llm.evidence_operations import EvidenceOperations
 from app.llm.prompts import (
@@ -45,7 +45,7 @@ class MultiPaperOperations(EvidenceOperations):
         conversation_id: str,
         question: str,
         current_user: CurrentUser,
-        all_papers: list[Paper],
+        all_papers: list[Document],
         evidence_gathered: EvidenceCollection,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,

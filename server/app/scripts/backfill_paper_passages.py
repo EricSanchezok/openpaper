@@ -29,7 +29,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             db.execute(
                 text(
                     """
-                    SELECT COUNT(*) FROM scholens.papers p
+                    SELECT COUNT(*) FROM scholens.documents p
                     WHERE p.raw_content IS NOT NULL
                       AND NOT EXISTS (
                         SELECT 1 FROM scholens.paper_passages pp
@@ -69,7 +69,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 text(
                     """
                     SELECT p.id, p.raw_content
-                    FROM scholens.papers p
+                    FROM scholens.documents p
                     WHERE p.raw_content IS NOT NULL
                       AND NOT EXISTS (
                         SELECT 1 FROM scholens.paper_passages pp
@@ -91,7 +91,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 for paper_id, raw_content in rows:
                     passages = paper_crud.build_passages(raw_content)
                     logger.info(
-                        f"[DRY RUN] Paper {paper_id}: would index {len(passages)} passages"
+                        f"[DRY RUN] Document {paper_id}: would index {len(passages)} passages"
                     )
                     skipped += 1
             else:

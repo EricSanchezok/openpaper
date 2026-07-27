@@ -200,10 +200,10 @@ class Conversation(Base):
     )
 
     # Specific relationship for papers
-    paper: Mapped["Paper | None"] = relationship(
-        "Paper",
+    paper: Mapped["Document | None"] = relationship(
+        "Document",
         primaryjoin=lambda: and_(
-            foreign(Conversation.conversable_id) == Paper.id,
+            foreign(Conversation.conversable_id) == Document.id,
             Conversation.conversable_type == ConversableType.PAPER.value,
         ),
         viewonly=True,
@@ -311,19 +311,19 @@ class PaperTag(Base):
     )
 
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="paper_tags")
-    papers: Mapped[list["Paper"]] = relationship(
-        "Paper",
-        secondary=lambda: PaperTagAssociation.__table__,
+    library_papers: Mapped[list["LibraryPaper"]] = relationship(
+        "LibraryPaper",
+        secondary=lambda: LibraryPaperTag.__table__,
         back_populates="tags",
     )
 
 
-class PaperTagAssociation(Base):
-    __tablename__ = "paper_tag_association"
+class LibraryPaperTag(Base):
+    __tablename__ = "library_paper_tags"
 
-    paper_id: Mapped[uuid.UUID] = mapped_column(
+    library_paper_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="CASCADE"),
+        ForeignKey("library_papers.id", ondelete="CASCADE"),
         primary_key=True,
     )
     tag_id: Mapped[uuid.UUID] = mapped_column(
@@ -333,28 +333,25 @@ class PaperTagAssociation(Base):
     )
 
 
-class Paper(Base):
-    __tablename__ = "papers"
+class Document(Base):
+    """One stored and parsed PDF, independent of any user's library."""
 
-    # Define the GIN index for full-text search
+    __tablename__ = "documents"
+
     __table_args__ = (
-        Index("ix_papers_ts_vector", "ts_vector", postgresql_using="gin"),
+        Index("ix_documents_ts_vector", "ts_vector", postgresql_using="gin"),
         CheckConstraint(
             "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
-            name="ck_papers_parser_backend",
+            name="ck_documents_parser_backend",
         ),
         CheckConstraint(
             "parser_quality IS NULL OR parser_quality IN ('full', 'text_only')",
-            name="ck_papers_parser_quality",
+            name="ck_documents_parser_quality",
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    # we can change the default to TODO once we have some kind of bulk paper upload? for now, every upload automatically converts to reading
-    status: Mapped[str] = mapped_column(
-        String, nullable=False, default=PaperStatus.reading
     )
     file_url: Mapped[str] = mapped_column(String, nullable=False)
     preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -363,6 +360,7 @@ class Paper(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
     institutions: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    keywords: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_citations: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
         JSONB, nullable=True
@@ -382,11 +380,11 @@ class Paper(Base):
     page_offset_map: Mapped[dict[int, list[int]] | None] = mapped_column(
         JSONB, nullable=True
     )  # Maps page numbers to text offsets. Useful for re-annotation.
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=True
-    )
-    last_accessed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+    created_by_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     upload_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -398,12 +396,6 @@ class Paper(Base):
     cached_presigned_url: Mapped[str | None] = mapped_column(String, nullable=True)
     presigned_url_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )
-
-    # Optional fields for sharing
-    is_public: Mapped[bool | None] = mapped_column(Boolean, default=False)
-    share_id: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
     )
 
     # Additional metadata
@@ -425,20 +417,17 @@ class Paper(Base):
         Integer, nullable=True
     )  # Size of the paper file in KB
 
-    # Some papers can be forked/duplicated from other papers (across users). To handle this, we store the parent paper ID of the original paper.
-    parent_paper_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="SET NULL"),
-        nullable=True,
+    library_entries: Mapped[list["LibraryPaper"]] = relationship(
+        "LibraryPaper",
+        back_populates="document",
+        cascade="all, delete-orphan",
     )
-
-    user: Mapped["AuthUser | None"] = relationship("AuthUser", back_populates="papers")
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation",
         back_populates="paper",
         cascade="all, delete-orphan",
         primaryjoin=lambda: and_(
-            Paper.id == foreign(Conversation.conversable_id),
+            Document.id == foreign(Conversation.conversable_id),
             Conversation.conversable_type == ConversableType.PAPER.value,
         ),
     )
@@ -450,7 +439,7 @@ class Paper(Base):
         "AudioOverview",
         cascade="all, delete-orphan",
         primaryjoin=lambda: and_(
-            Paper.id == foreign(AudioOverview.conversable_id),
+            Document.id == foreign(AudioOverview.conversable_id),
             AudioOverview.conversable_type == ConversableType.PAPER.value,
         ),
         overlaps="audio_overviews",
@@ -460,7 +449,7 @@ class Paper(Base):
         "AudioOverviewJob",
         cascade="all, delete-orphan",
         primaryjoin=lambda: and_(
-            Paper.id == foreign(AudioOverviewJob.conversable_id),
+            Document.id == foreign(AudioOverviewJob.conversable_id),
             AudioOverviewJob.conversable_type == ConversableType.PAPER.value,
         ),
         overlaps="audio_overview_jobs",
@@ -471,13 +460,66 @@ class Paper(Base):
     )
 
     project_papers: Mapped[list["ProjectPaper"]] = relationship(
-        "ProjectPaper", back_populates="paper"
+        "ProjectPaper", back_populates="document"
     )
 
+    creator: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="created_documents"
+    )
+
+
+class LibraryPaper(Base):
+    """A user's personal library membership for a shared Document."""
+
+    __tablename__ = "library_papers"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "document_id",
+            name="uq_library_papers_user_document",
+        ),
+        Index("ix_library_papers_user_activity", "user_id", "updated_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=PaperStatus.reading,
+        server_default=PaperStatus.reading.value,
+    )
+    last_accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    share_id: Mapped[str | None] = mapped_column(
+        String, unique=True, nullable=True, index=True
+    )
+
+    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="library_papers")
+    document: Mapped["Document"] = relationship(
+        "Document", back_populates="library_entries"
+    )
     tags: Mapped[list["PaperTag"]] = relationship(
         "PaperTag",
-        secondary=lambda: PaperTagAssociation.__table__,
-        back_populates="papers",
+        secondary=lambda: LibraryPaperTag.__table__,
+        back_populates="library_papers",
     )
 
 
@@ -492,7 +534,7 @@ class PaperPassage(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     paper_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="CASCADE"),
+        ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -501,7 +543,7 @@ class PaperPassage(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     ts_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
-    paper: Mapped["Paper"] = relationship("Paper")
+    paper: Mapped["Document"] = relationship("Document")
 
 
 class PaperImage(Base):
@@ -511,7 +553,9 @@ class PaperImage(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("papers.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
     )
     s3_object_key: Mapped[str] = mapped_column(String, nullable=False)
     image_url: Mapped[str] = mapped_column(String, nullable=False)
@@ -542,7 +586,7 @@ class PaperImage(Base):
         String, nullable=True
     )  # Placeholder ID for the image
 
-    paper: Mapped["Paper"] = relationship("Paper", back_populates="paper_images")
+    paper: Mapped["Document"] = relationship("Document", back_populates="paper_images")
 
 
 class PaperNote(Base):
@@ -554,7 +598,7 @@ class PaperNote(Base):
     # Ensure each document has only one associated paper note
     paper_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="CASCADE"),
+        ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
@@ -565,7 +609,7 @@ class PaperNote(Base):
 
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="paper_notes")
 
-    paper: Mapped["Paper"] = relationship("Paper", back_populates="paper_notes")
+    paper: Mapped["Document"] = relationship("Document", back_populates="paper_notes")
 
 
 class Highlight(Base):
@@ -575,7 +619,9 @@ class Highlight(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("papers.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
     )
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str | None] = mapped_column(
@@ -631,7 +677,9 @@ class Annotation(Base):
 
     # The associated paper
     paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("papers.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -683,10 +731,10 @@ class AudioOverviewJob(Base):
     )
 
     # Specific relationship for papers (viewonly)
-    paper: Mapped["Paper | None"] = relationship(
-        "Paper",
+    paper: Mapped["Document | None"] = relationship(
+        "Document",
         primaryjoin=lambda: and_(
-            foreign(AudioOverviewJob.conversable_id) == Paper.id,
+            foreign(AudioOverviewJob.conversable_id) == Document.id,
             AudioOverviewJob.conversable_type == ConversableType.PAPER.value,
         ),
         viewonly=True,
@@ -733,10 +781,10 @@ class AudioOverview(Base):
     )
 
     # Specific relationship for papers (viewonly)
-    paper: Mapped["Paper | None"] = relationship(
-        "Paper",
+    paper: Mapped["Document | None"] = relationship(
+        "Document",
         primaryjoin=lambda: and_(
-            foreign(AudioOverview.conversable_id) == Paper.id,
+            foreign(AudioOverview.conversable_id) == Document.id,
             AudioOverview.conversable_type == ConversableType.PAPER.value,
         ),
         viewonly=True,

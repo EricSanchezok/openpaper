@@ -2,13 +2,19 @@ import logging
 import uuid
 
 from app.database.crud.paper_crud import paper_crud
-from app.database.models import Paper, Project, ProjectPaper, ProjectCollaborator
+from app.database.models import (
+    Document,
+    LibraryPaper,
+    Project,
+    ProjectCollaborator,
+    ProjectPaper,
+)
 from app.policies.projects import get_project_access
 from app.repositories.projects import project_repository
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, load_only, selectinload
+from sqlalchemy.orm import Session, load_only
 
 logger = logging.getLogger(__name__)
 
@@ -60,53 +66,75 @@ class ProjectPaperCRUD:
                 )
                 return None
 
-            # Check if the paper exists and belongs to the user
+            # A user can add a paper they have deliberately collected in their
+            # personal library. Project-only access is not enough to copy a
+            # document between projects implicitly.
             paper = db.scalars(
-                select(Paper).where(
-                    Paper.id == obj_in.paper_id, Paper.user_id == user.id
+                select(Document)
+                .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+                .where(
+                    Document.id == obj_in.paper_id,
+                    LibraryPaper.user_id == user.id,
                 )
             ).first()
             if not paper:
                 logger.warning(
-                    f"Paper with id {obj_in.paper_id} not found for user {user.id}"
+                    f"Document with id {obj_in.paper_id} not found for user {user.id}"
                 )
                 return None
 
-            # Check if the paper is already in the project
-            existing_project_paper = db.scalars(
-                select(ProjectPaper).where(
-                    ProjectPaper.project_id == project_id,
-                    ProjectPaper.paper_id == obj_in.paper_id,
-                )
-            ).first()
-            if existing_project_paper:
-                logger.warning(
-                    f"Paper {obj_in.paper_id} is already in project {project_id}"
-                )
-                return existing_project_paper
-
-            db_obj = ProjectPaper(
+            return self.attach_document(
+                db,
+                document=paper,
                 project_id=project_id,
-                paper_id=obj_in.paper_id,
-                added_by_id=user.id,
+                user=user,
+                auto_commit=auto_commit,
             )
-            db.add(db_obj)
-            if auto_commit:
-                db.commit()
-            else:
-                db.flush()
-            db.refresh(db_obj)
-
-            # Touch project updated_at so it sorts to top of recent projects
-            project_repository.touch(db, project_id=project_id, commit=auto_commit)
-
-            return db_obj
         except Exception as e:
             db.rollback()
             logger.error(
                 f"Error creating {ProjectPaper.__name__}: {str(e)}", exc_info=True
             )
             return None
+
+    def attach_document(
+        self,
+        db: Session,
+        *,
+        document: Document,
+        project_id: uuid.UUID,
+        user: CurrentUser,
+        auto_commit: bool = True,
+    ) -> ProjectPaper | None:
+        """Attach an already-authorized document to a project.
+
+        This internal boundary is also used for a fresh project upload, which
+        deliberately has no personal ``LibraryPaper`` entry.
+        """
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None or not access.can_manage_papers:
+            return None
+        existing = db.scalar(
+            select(ProjectPaper).where(
+                ProjectPaper.project_id == project_id,
+                ProjectPaper.document_id == document.id,
+            )
+        )
+        if existing is not None:
+            return existing
+        association = ProjectPaper(
+            project_id=project_id,
+            document_id=document.id,
+            added_by_id=user.id,
+        )
+        db.add(association)
+        if auto_commit:
+            db.commit()
+        else:
+            db.flush()
+        db.refresh(association)
+        project_repository.touch(db, project_id=project_id, commit=auto_commit)
+        return association
 
     def get_paper_by_project(
         self,
@@ -115,43 +143,41 @@ class ProjectPaperCRUD:
         paper_id: uuid.UUID,
         project_id: uuid.UUID,
         user: CurrentUser,
-    ) -> Paper | None:
+    ) -> Document | None:
         access = get_project_access(db, project_id=project_id, user_id=user.id)
-        if access is None or not access.can_manage_papers:
+        if access is None:
             return None
 
         project_paper = db.scalars(
             select(ProjectPaper).where(
                 ProjectPaper.project_id == project_id,
-                ProjectPaper.paper_id == paper_id,
+                ProjectPaper.document_id == paper_id,
             )
         ).first()
 
         if not project_paper:
             return None
 
-        return db.get(Paper, project_paper.paper_id)
+        return db.get(Document, project_paper.document_id)
 
     def get_all_papers_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> list[Paper]:
+    ) -> list[Document]:
         # First, check if the user has access to the project.
         if not self._has_project_access(db, project_id=project_id, user_id=user.id):
             return []
 
         paper_ids = db.scalars(
-            select(ProjectPaper.paper_id).where(ProjectPaper.project_id == project_id)
+            select(ProjectPaper.document_id).where(
+                ProjectPaper.project_id == project_id
+            )
         ).all()
-        papers = db.scalars(
-            select(Paper)
-            .options(selectinload(Paper.tags))
-            .where(Paper.id.in_(paper_ids))
-        ).all()
+        papers = db.scalars(select(Document).where(Document.id.in_(paper_ids))).all()
         return list(papers)
 
     def get_papers_metadata_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
-    ) -> list[Paper]:
+    ) -> list[Document]:
         """
         Lightweight variant of get_all_papers_by_project_id for the project
         papers listing endpoint.
@@ -167,31 +193,47 @@ class ProjectPaperCRUD:
             return []
 
         papers = db.scalars(
-            select(Paper)
-            .join(ProjectPaper, ProjectPaper.paper_id == Paper.id)
+            select(Document)
+            .join(ProjectPaper, ProjectPaper.document_id == Document.id)
             .where(ProjectPaper.project_id == project_id)
             .options(
                 load_only(
-                    Paper.title,
-                    Paper.abstract,
-                    Paper.authors,
-                    Paper.institutions,
-                    Paper.status,
-                    Paper.journal,
-                    Paper.publisher,
-                    Paper.doi,
-                    Paper.publish_date,
-                    Paper.user_id,
-                    Paper.created_at,
+                    Document.title,
+                    Document.abstract,
+                    Document.authors,
+                    Document.institutions,
+                    Document.journal,
+                    Document.publisher,
+                    Document.doi,
+                    Document.publish_date,
+                    Document.created_at,
                     # Needed by s3_service.get_cached_presigned_urls_bulk
-                    Paper.s3_object_key,
-                    Paper.cached_presigned_url,
-                    Paper.presigned_url_expires_at,
-                    Paper.size_in_kb,
+                    Document.s3_object_key,
+                    Document.cached_presigned_url,
+                    Document.presigned_url_expires_at,
+                    Document.size_in_kb,
                 )
             )
         ).all()
         return list(papers)
+
+    def get_library_document_ids(
+        self,
+        db: Session,
+        *,
+        document_ids: list[uuid.UUID],
+        user: CurrentUser,
+    ) -> list[uuid.UUID]:
+        if not document_ids:
+            return []
+        return list(
+            db.scalars(
+                select(LibraryPaper.document_id).where(
+                    LibraryPaper.user_id == user.id,
+                    LibraryPaper.document_id.in_(document_ids),
+                )
+            ).all()
+        )
 
     def get_project_paper_ids_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
@@ -202,7 +244,7 @@ class ProjectPaperCRUD:
 
         return list(
             db.scalars(
-                select(ProjectPaper.paper_id).where(
+                select(ProjectPaper.document_id).where(
                     ProjectPaper.project_id == project_id
                 )
             ).all()
@@ -212,7 +254,8 @@ class ProjectPaperCRUD:
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
     ) -> int:
         """Number of papers in a project. Returns 0 if the user has no access."""
-        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None or not access.can_manage_papers:
             return 0
 
         return int(
@@ -232,14 +275,14 @@ class ProjectPaperCRUD:
         project_id: uuid.UUID,
         user: CurrentUser,
     ) -> ProjectPaper | None:
-        # First, check if the user has access to the project.
-        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None or not access.can_manage_papers:
             return None
 
         project_paper = db.scalars(
             select(ProjectPaper).where(
                 ProjectPaper.project_id == project_id,
-                ProjectPaper.paper_id == paper_id,
+                ProjectPaper.document_id == paper_id,
             )
         ).first()
 
@@ -255,7 +298,7 @@ class ProjectPaperCRUD:
     ) -> list[Project]:
         # First, find all project-paper associations for the given paper_id
         project_ids = db.scalars(
-            select(ProjectPaper.project_id).where(ProjectPaper.paper_id == paper_id)
+            select(ProjectPaper.project_id).where(ProjectPaper.document_id == paper_id)
         ).all()
 
         if not project_ids:
@@ -279,55 +322,26 @@ class ProjectPaperCRUD:
         ).all()
         return list(projects)
 
-    def get_forked_papers_by_parent_id(
-        self, db: Session, *, parent_paper_id: uuid.UUID, user: CurrentUser
-    ) -> Paper | None:
-        """
-        Find a forked paper by its parent_paper_id for the current user.
-        Delegates to paper_crud.get_forked_paper_by_parent_id.
-        """
-        return paper_crud.get_forked_paper_by_parent_id(
-            db, parent_paper_id=parent_paper_id, user=user
-        )
-
-    def fork_paper(
+    def add_project_paper_to_library(
         self,
         db: Session,
         *,
-        parent_paper_id: str,
-        new_file_object_key: str,
-        new_file_url: str,
-        new_preview_url: str | None,
+        paper_id: str,
         project_id: str,
         current_user: CurrentUser,
-    ) -> Paper | None:
-        """
-        Fork a paper to create a duplicate for the current user.
-        Validates that the user has access to the paper via the project,
-        then delegates to paper_crud.fork_paper.
-        """
-        # Retrieve the original paper. Validate that the current_user has access to it via a project.
-        original_paper = self.get_paper_by_project(
+    ) -> Document | None:
+        document = self.get_paper_by_project(
             db,
-            paper_id=uuid.UUID(parent_paper_id),
+            paper_id=uuid.UUID(paper_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
-
-        if not original_paper:
-            logger.error(
-                f"Original paper with ID {parent_paper_id} not found for forking."
-            )
+        if document is None:
             return None
-
-        # Delegate to paper_crud.fork_paper for the actual forking logic
-        return paper_crud.fork_paper(
+        return paper_crud.add_to_library(
             db,
-            original_paper=original_paper,
-            new_file_object_key=new_file_object_key,
-            new_file_url=new_file_url,
-            new_preview_url=new_preview_url,
-            current_user=current_user,
+            document=document,
+            user=current_user,
         )
 
 

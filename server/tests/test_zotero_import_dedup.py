@@ -58,7 +58,7 @@ class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
         import_row = MagicMock()
         mock_import_crud.create.return_value = import_row
         client = MagicMock()
-        item = {"key": "ITEM2", "data": {"title": "Paper", "DOI": "10.1234/x"}}
+        item = {"key": "ITEM2", "data": {"title": "Document", "DOI": "10.1234/x"}}
 
         await _link_zotero_item_to_existing_paper(
             MagicMock(),
@@ -346,7 +346,7 @@ class TestDiscoverImportCandidates(unittest.IsolatedAsyncioTestCase):
         return {
             "key": key,
             "data": {
-                "title": f"Paper {key}",
+                "title": f"Document {key}",
                 "itemType": "journalArticle",
             },
         }

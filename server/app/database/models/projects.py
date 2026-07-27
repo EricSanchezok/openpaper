@@ -21,7 +21,7 @@ from sqlalchemy.sql import func
 from .base import Base
 
 if TYPE_CHECKING:
-    from .content import AudioOverview, AudioOverviewJob, Paper
+    from .content import AudioOverview, AudioOverviewJob, Document
     from .identity import AuthUser
 
 
@@ -176,16 +176,18 @@ class ProjectPaper(Base):
     __tablename__ = "project_papers"
     __table_args__ = (
         UniqueConstraint(
-            "project_id", "paper_id", name="uq_project_paper_project_paper"
+            "project_id",
+            "document_id",
+            name="uq_project_papers_project_document",
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    paper_id: Mapped[uuid.UUID] = mapped_column(
+    document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="RESTRICT"),
+        ForeignKey("documents.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -202,4 +204,6 @@ class ProjectPaper(Base):
     )
 
     project: Mapped["Project"] = relationship("Project", back_populates="papers")
-    paper: Mapped["Paper"] = relationship("Paper", back_populates="project_papers")
+    document: Mapped["Document"] = relationship(
+        "Document", back_populates="project_papers"
+    )

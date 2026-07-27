@@ -71,18 +71,18 @@ export function ImportPaperButton() {
         const toastId = toast.loading("Importing paper to your library...");
 
         try {
-            const response = await fetchFromApi('/api/paper/fork', {
+            const response = await fetchFromApi('/api/paper/collect', {
                 method: 'POST',
                 body: JSON.stringify({ share_id: shareId }),
             });
 
-            if (response.new_paper_id) {
+            if (response.paper_id) {
                 toast.success("Paper imported!", {
                     id: toastId,
                     description: "The paper has been added to your library.",
                     richColors: true,
                 });
-                router.push(`/paper/${response.new_paper_id}`);
+                router.push(`/paper/${response.paper_id}`);
             } else {
                 throw new Error("Invalid response from server.");
             }

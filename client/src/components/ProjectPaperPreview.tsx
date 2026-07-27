@@ -7,7 +7,7 @@ import { FilePlus2 } from "lucide-react";
 import { PdfHighlighterViewer } from "./PdfHighlighterViewer";
 import { useRouter } from "next/navigation";
 import { fetchFromApi, getProjectPaperFileUrl } from "@/lib/api";
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { CitePaperButton } from "./CitePaperButton";
 
 interface ProjectPaperPreviewProps {
@@ -19,31 +19,7 @@ interface ProjectPaperPreviewProps {
 
 export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPaperPreviewProps) {
     const router = useRouter();
-    const [forkedPaper, setForkedPaper] = useState<PaperItem | null>(null);
-    const [isCheckingFork, setIsCheckingFork] = useState(true);
-
-    useEffect(() => {
-        const checkForkStatus = async () => {
-            if (!paper.id) return;
-            setIsCheckingFork(true);
-            try {
-                const response = await fetchFromApi(`/api/projects/papers/forked/${paper.id}`);
-                if (response.paper) {
-                    setForkedPaper(response.paper);
-                }
-            } catch (error) {
-                console.log("Could not check fork status, or paper is not forked.", error);
-            } finally {
-                setIsCheckingFork(false);
-            }
-        };
-
-        // Forking only applies to papers from collaborators — the user's own
-        // papers are already in their library.
-        if (!paper.is_owner) {
-            checkForkStatus();
-        }
-    }, [paper.id, paper.is_owner]);
+    const [isInLibrary, setIsInLibrary] = useState(Boolean(paper.in_library));
 
     const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
         try {
@@ -54,7 +30,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
         }
     }, [projectId, paper.id]);
 
-    const handleDuplicate = async () => {
+    const handleCollect = async () => {
         if (!projectId) {
             toast.error("Cannot duplicate", {
                 description: "This paper is not part of a project.",
@@ -63,7 +39,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
             return;
         }
 
-        const toastId = toast.loading("Duplicating paper...");
+        const toastId = toast.loading("Adding paper to your library...");
 
         try {
             const requestBody = {
@@ -71,25 +47,24 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                 paper_id: paper.id,
             };
 
-            const response = await fetchFromApi('/api/projects/papers/fork', {
+            const response = await fetchFromApi('/api/projects/papers/collect', {
                 method: 'POST',
                 body: JSON.stringify(requestBody),
             });
 
-            if (response.new_paper_id) {
-                toast.success("Paper duplicated!", {
+            if (response.paper_id) {
+                toast.success("Paper added!", {
                     id: toastId,
-                    description: "Paper has been duplicated successfully.",
+                    description: "The paper is now in your personal library.",
                     richColors: true,
                 });
-                // Update the forked paper state to show the "View Fork" button
-                setForkedPaper({ ...paper, id: response.new_paper_id });
+                setIsInLibrary(true);
             } else {
                 throw new Error("Invalid response from server.");
             }
         } catch (error) {
-            console.error("Failed to duplicate paper:", error);
-            toast.error("Duplication failed", {
+            console.error("Failed to add paper to library:", error);
+            toast.error("Could not add paper", {
                 id: toastId,
                 description: "Could not duplicate the paper. Please try again.",
                 richColors: true,
@@ -106,23 +81,13 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                     <h3 className="min-w-0 flex-1 truncate text-sm font-medium" title={paper.title}>{paper.title}</h3>
                     <div className="flex shrink-0 items-center gap-1">
                         <CitePaperButton paper={[paper]} minimalist={true} />
-                        {paper.is_owner ? (
+                        {isInLibrary ? (
                             <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => router.push(`/paper/${paper.id}`)}>
                                 <FilePlus2 className="h-3.5 w-3.5 mr-1.5" />
                                 Open
                             </Button>
-                        ) : isCheckingFork ? (
-                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" disabled>
-                                <FilePlus2 className="h-3.5 w-3.5 mr-1.5" />
-                                Checking...
-                            </Button>
-                        ) : forkedPaper ? (
-                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => router.push(`/paper/${forkedPaper.id}`)}>
-                                <FilePlus2 className="h-3.5 w-3.5 mr-1.5" />
-                                Open
-                            </Button>
                         ) : (
-                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={handleDuplicate}>
+                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={handleCollect}>
                                 <FilePlus2 className="h-3.5 w-3.5 mr-1.5" />
                                 Add to My Library
                             </Button>

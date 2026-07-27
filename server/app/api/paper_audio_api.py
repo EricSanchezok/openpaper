@@ -12,7 +12,7 @@ from app.database.crud.audio_overview_crud import (
 )
 from app.database.crud.paper_crud import paper_crud
 from app.database.database import get_db
-from app.database.models import ConversableType, JobStatus, Paper
+from app.database.models import ConversableType, JobStatus, Document
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -73,12 +73,12 @@ async def create_audio_overview(
         return JSONResponse(status_code=429, content={"code": exc.code})
 
     # Fetch the document from the database
-    paper: Paper | None = paper_crud.get(
+    paper: Document | None = paper_crud.get(
         db, id=id, user=current_user, update_last_accessed=True
     )
 
     if not paper:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
     paper_uuid = uuid.UUID(str(paper.id))
 

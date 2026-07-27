@@ -25,7 +25,7 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from app.database.database import SessionLocal
-from app.database.models import Paper
+from app.database.models import Document
 from app.helpers.citations import bibliographic_gaps, fields_from_paper
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from sqlalchemy import select
@@ -35,17 +35,17 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _candidate_papers(db: Session, limit: int | None) -> list[Paper]:
+def _candidate_papers(db: Session, limit: int | None) -> list[Document]:
     # Anything still missing DOI, venue, or publish_date is a candidate.
     statement = (
-        select(Paper)
+        select(Document)
         .where(
-            (Paper.doi.is_(None))
-            | ((Paper.journal.is_(None)) & (Paper.publisher.is_(None)))
-            | (Paper.publish_date.is_(None))
+            (Document.doi.is_(None))
+            | ((Document.journal.is_(None)) & (Document.publisher.is_(None)))
+            | (Document.publish_date.is_(None))
         )
-        .where(Paper.title.isnot(None))
-        .order_by(Paper.last_accessed_at.desc().nullslast())
+        .where(Document.title.isnot(None))
+        .order_by(Document.updated_at.desc())
     )
     if limit:
         statement = statement.limit(limit)

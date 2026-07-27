@@ -2,7 +2,8 @@ import logging
 import uuid
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Paper, PaperImage
+from app.database.models import PaperImage
+from app.policies.documents import get_document_access
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -43,7 +44,7 @@ class PaperImageUpdate(BaseModel):
     placeholder_id: str | None = None
 
 
-# Paper Image CRUD that inherits from the base CRUD
+# Document Image CRUD that inherits from the base CRUD
 class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
     """CRUD operations specifically for PaperImage model"""
 
@@ -54,11 +55,14 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
         Create a paper image with validation that the paper exists and belongs to the user
         """
         # Verify the paper exists and belongs to the user
-        paper = db.scalars(
-            select(Paper).where(Paper.id == obj_in.paper_id, Paper.user_id == user.id)
-        ).first()
-
-        if not paper:
+        if (
+            get_document_access(
+                db,
+                document_id=obj_in.paper_id,
+                user_id=user.id,
+            )
+            is None
+        ):
             raise ValueError(
                 f"Paper with ID {obj_in.paper_id} not found or doesn't belong to user"
             )
@@ -78,13 +82,16 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
         paper_ids = list(set(img.paper_id for img in images))
 
         # Verify all papers exist and belong to the user
-        existing_paper_ids = set(
-            db.scalars(
-                select(Paper.id).where(
-                    Paper.id.in_(paper_ids), Paper.user_id == user.id
-                )
-            ).all()
-        )
+        existing_paper_ids = {
+            paper_id
+            for paper_id in paper_ids
+            if get_document_access(
+                db,
+                document_id=paper_id,
+                user_id=user.id,
+            )
+            is not None
+        }
 
         # Check if any paper IDs are missing
         missing_paper_ids = set(paper_ids) - existing_paper_ids
@@ -109,11 +116,18 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
         Get all images for a specific paper
         """
         # First verify the paper belongs to the user
-        paper = db.scalars(
-            select(Paper).where(Paper.id == paper_id, Paper.user_id == user.id)
-        ).first()
-
-        if not paper:
+        try:
+            document_id = uuid.UUID(paper_id)
+        except ValueError as exc:
+            raise ValueError("Invalid paper ID") from exc
+        if (
+            get_document_access(
+                db,
+                document_id=document_id,
+                user_id=user.id,
+            )
+            is None
+        ):
             raise ValueError(
                 f"Paper with ID {paper_id} not found or doesn't belong to user"
             )

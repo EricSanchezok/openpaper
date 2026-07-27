@@ -3,11 +3,9 @@
 import { useState, useMemo } from "react";
 import { Download, Table as TableIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { PaperItem, DataTableResult, Citation } from "@/lib/schema";
 import ReferencePaperCards from "@/components/ReferencePaperCards";
-import { ProjectPaperPreview } from "@/components/ProjectPaperPreview";
 import Link from "next/link";
 
 interface DataTableGenerationViewProps {
@@ -15,45 +13,23 @@ interface DataTableGenerationViewProps {
     papers: PaperItem[];
     onClose: () => void;
     onCitationClick?: (paperId: string, searchTerm: string) => void;
-    projectId?: string;
 }
 
-// Wrapper component to handle owned vs non-owned papers
 const PaperLinkWrapper = ({
     paper,
-    projectId,
     children
 }: {
     paper: PaperItem;
-    projectId?: string;
     children: React.ReactNode;
 }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const isOwner = paper.is_owner !== false; // Default to true if not specified
-
-    if (isOwner) {
-        return (
-            <Link
-                href={`/paper/${paper.id}`}
-                className="hover:underline font-medium"
-                target="_blank"
-            >
-                {children}
-            </Link>
-        );
-    }
-
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <button className="hover:underline font-medium text-left cursor-pointer">
-                    {children}
-                </button>
-            </DialogTrigger>
-            <DialogContent className="max-w-[90vw] sm:max-w-[90vw] h-[90vh] overflow-y-auto p-0">
-                <ProjectPaperPreview paper={paper} projectId={projectId!} />
-            </DialogContent>
-        </Dialog>
+        <Link
+            href={`/paper/${paper.id}`}
+            className="hover:underline font-medium"
+            target="_blank"
+        >
+            {children}
+        </Link>
     );
 };
 
@@ -62,7 +38,6 @@ export default function DataTableGenerationView({
     papers,
     onClose,
     onCitationClick,
-    projectId,
 }: DataTableGenerationViewProps) {
     const [highlightedPaper, setHighlightedPaper] = useState<string | null>(null);
 
@@ -177,7 +152,7 @@ export default function DataTableGenerationView({
                                     >
                                         <td className="p-3 align-top sticky left-0 bg-card z-10">
                                             {paper ? (
-                                                <PaperLinkWrapper paper={paper} projectId={projectId}>
+                                                <PaperLinkWrapper paper={paper}>
                                                     {paper.title}
                                                 </PaperLinkWrapper>
                                             ) : (

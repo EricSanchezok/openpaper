@@ -60,7 +60,7 @@ def test_relevant_papers_uses_empty_collection_for_new_user(monkeypatch) -> None
 def test_relevant_papers_returns_a_presigned_preview(monkeypatch) -> None:
     paper = SimpleNamespace(
         id="paper-1",
-        title="Paper",
+        title="Document",
         created_at=datetime.now(timezone.utc),
         abstract=None,
         authors=["Author"],
@@ -73,6 +73,11 @@ def test_relevant_papers_returns_a_presigned_preview(monkeypatch) -> None:
         paper_crud,
         "get_top_relevant_papers",
         lambda *_args, **_kwargs: [paper],
+    )
+    monkeypatch.setattr(
+        paper_crud,
+        "get_library_papers",
+        lambda *_args, **_kwargs: {paper.id: SimpleNamespace(status="reading")},
     )
     monkeypatch.setattr(
         s3_service,

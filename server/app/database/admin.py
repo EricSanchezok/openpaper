@@ -9,7 +9,7 @@ from app.database.models import (
     Highlight,
     Message,
     Onboarding,
-    Paper,
+    Document,
     PaperNote,
     Project,
     ProjectCollaborator,
@@ -123,9 +123,9 @@ class ProjectPaperAdmin(ModelView, model=ProjectPaper):
     column_list = [
         ProjectPaper.id,
         ProjectPaper.project_id,
-        ProjectPaper.paper_id,
+        ProjectPaper.document_id,
     ]
-    column_searchable_list = [ProjectPaper.project_id, ProjectPaper.paper_id]
+    column_searchable_list = [ProjectPaper.project_id, ProjectPaper.document_id]
 
 
 class HighlightAdmin(ModelView, model=Highlight):
@@ -138,9 +138,9 @@ class HighlightAdmin(ModelView, model=Highlight):
     column_searchable_list = [Highlight.raw_text]
 
 
-class PaperAdmin(ModelView, model=Paper):
-    column_list = [Paper.id, Paper.title, Paper.user_id]
-    column_searchable_list = [Paper.title]
+class PaperAdmin(ModelView, model=Document):
+    column_list = [Document.id, Document.title, Document.created_by_id]
+    column_searchable_list = [Document.title]
 
 
 class AnnotationAdmin(ModelView, model=Annotation):

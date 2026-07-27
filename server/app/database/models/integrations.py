@@ -69,7 +69,9 @@ class ZoteroImportedItem(Base):
     import_source: Mapped[str] = mapped_column(String, nullable=False)
     source_url: Mapped[str | None] = mapped_column(String, nullable=True)
     paper_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("papers.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
     )
     upload_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

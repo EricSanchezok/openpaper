@@ -8,28 +8,35 @@ from app.database.crud.annotation_crud import AnnotationCreate, annotation_crud
 from app.database.crud.base_crud import CRUDBase
 from app.database.crud.highlight_crud import HighlightCreate, highlight_crud
 from app.database.crud.paper_image_crud import paper_image_crud
-from app.database.crud.paper_tag_crud import paper_tag_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
     AuthUser,
+    Document,
     Highlight,
     JobStatus,
     JsonValue,
-    Paper,
+    LibraryPaper,
     PaperImage,
     PaperStatus,
     PaperTag,
     PaperUploadJob,
+    Project,
+    ProjectPaper,
     RoleType,
 )
 from app.helpers.paper_search import normalize_doi
 from app.helpers.parser import get_start_page_from_offset
 from app.llm.utils import find_offsets
+from app.policies.documents import (
+    get_document_access,
+    get_library_paper,
+)
 from app.schemas.responses import PaperMetadataExtraction, ResponseCitation
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
-from sqlalchemy import func, select, text
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.orm import Session, load_only, selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +55,7 @@ class PaperBase(BaseModel):
     title: str | None = None
     abstract: str | None = None
     institutions: list[str] | None = None
+    keywords: list[str] | None = None
     summary: str | None = None
     summary_citations: list[ResponseCitation] | None = None
     starter_questions: list[str] | None = None
@@ -73,7 +81,6 @@ class PaperCreate(PaperBase):
     s3_object_key: str | None = None
     upload_job_id: str | None = None
     preview_url: str | None = None
-    parent_paper_id: uuid.UUID | None = None
 
 
 class PaperUpdate(PaperBase):
@@ -95,9 +102,237 @@ class PaperDocumentMetadata(BaseModel):
     page_offsets: dict[int, tuple[int, int]] | None = None
 
 
-# Paper CRUD that inherits from the base CRUD
-class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
-    """CRUD operations specifically for Document model"""
+# Document CRUD that inherits from the base CRUD
+class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
+    """Persistence boundary for canonical documents and personal library entries."""
+
+    @staticmethod
+    def _is_billed_to(user_id: int) -> ColumnElement[bool]:
+        """SQL predicate for resources charged to one account.
+
+        A document is billed once when it is either in the user's personal
+        library or in any project they own. Merely collaborating on someone
+        else's project never consumes the collaborator's resource allowance.
+        """
+        return or_(
+            exists(
+                select(LibraryPaper.id).where(
+                    LibraryPaper.document_id == Document.id,
+                    LibraryPaper.user_id == user_id,
+                )
+            ),
+            exists(
+                select(ProjectPaper.id)
+                .join(Project, Project.id == ProjectPaper.project_id)
+                .where(
+                    ProjectPaper.document_id == Document.id,
+                    Project.owner_id == user_id,
+                )
+            ),
+        )
+
+    def create(
+        self,
+        db: Session,
+        *,
+        obj_in: PaperCreate,
+        user: CurrentUser | None = None,
+        add_to_library: bool = True,
+        auto_commit: bool = True,
+    ) -> Document | None:
+        if user is None:
+            raise ValueError("user is required when creating a document")
+        try:
+            data = sanitize_for_postgres(obj_in.model_dump())
+            document = Document(
+                **data,
+                created_by_id=user.id,
+            )
+            db.add(document)
+            db.flush()
+            if add_to_library:
+                db.add(
+                    LibraryPaper(
+                        user_id=user.id,
+                        document_id=document.id,
+                        status=PaperStatus.reading,
+                    )
+                )
+            if auto_commit:
+                db.commit()
+            else:
+                db.flush()
+            db.refresh(document)
+            return document
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to create document")
+            return None
+
+    def get(
+        self,
+        db: Session,
+        id: object,
+        *,
+        user: CurrentUser | None = None,
+        update_last_accessed: bool = False,
+    ) -> Document | None:
+        try:
+            document_id = uuid.UUID(str(id))
+        except (TypeError, ValueError):
+            return None
+        if user is None:
+            return db.get(Document, document_id)
+        access = get_document_access(
+            db,
+            document_id=document_id,
+            user_id=user.id,
+        )
+        if access is None:
+            return None
+        if update_last_accessed and access.library_paper is not None:
+            access.library_paper.last_accessed_at = datetime.now().astimezone()
+            db.commit()
+        return access.document
+
+    def update(
+        self,
+        db: Session,
+        *,
+        db_obj: Document,
+        obj_in: PaperUpdate | dict[str, object],
+        user: CurrentUser | None = None,
+    ) -> Document | None:
+        if user is not None:
+            access = get_document_access(
+                db,
+                document_id=db_obj.id,
+                user_id=user.id,
+            )
+            if access is None:
+                return None
+        else:
+            access = None
+        update_data = (
+            obj_in
+            if isinstance(obj_in, dict)
+            else obj_in.model_dump(exclude_unset=True)
+        )
+        status = update_data.pop("status", None)
+        if status is not None:
+            library_paper = (
+                access.library_paper
+                if access is not None
+                else (
+                    get_library_paper(
+                        db,
+                        document_id=db_obj.id,
+                        user_id=user.id,
+                    )
+                    if user is not None
+                    else None
+                )
+            )
+            if library_paper is None:
+                return None
+            library_paper.status = (
+                status.value if isinstance(status, PaperStatus) else str(status)
+            )
+        sanitized = sanitize_for_postgres(update_data)
+        for field, value in sanitized.items():
+            if hasattr(db_obj, field):
+                setattr(db_obj, field, value)
+        try:
+            db.commit()
+            db.refresh(db_obj)
+            return db_obj
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to update document %s", db_obj.id)
+            return None
+
+    def remove(
+        self,
+        db: Session,
+        *,
+        id: object,
+        user: CurrentUser | None = None,
+    ) -> Document | None:
+        if user is None:
+            raise ValueError("user is required when removing a library paper")
+        try:
+            document_id = uuid.UUID(str(id))
+        except (TypeError, ValueError):
+            return None
+        library_paper = get_library_paper(
+            db,
+            document_id=document_id,
+            user_id=user.id,
+        )
+        if library_paper is None:
+            return None
+        document = db.get(Document, document_id)
+        db.delete(library_paper)
+        db.commit()
+        return document
+
+    def delete_orphan_document(
+        self,
+        db: Session,
+        *,
+        document_id: uuid.UUID,
+    ) -> bool:
+        """Delete an internal document only when no user or project references it."""
+        document = db.get(Document, document_id)
+        if document is None:
+            return False
+        reference_count = int(
+            db.scalar(
+                select(func.count(LibraryPaper.id) + func.count(ProjectPaper.id))
+                .select_from(Document)
+                .outerjoin(
+                    LibraryPaper,
+                    LibraryPaper.document_id == Document.id,
+                )
+                .outerjoin(
+                    ProjectPaper,
+                    ProjectPaper.document_id == Document.id,
+                )
+                .where(Document.id == document_id)
+            )
+            or 0
+        )
+        if reference_count:
+            return False
+        db.delete(document)
+        db.commit()
+        return True
+
+    def get_library_paper(
+        self, db: Session, *, document_id: uuid.UUID, user: CurrentUser
+    ) -> LibraryPaper | None:
+        return get_library_paper(
+            db,
+            document_id=document_id,
+            user_id=user.id,
+        )
+
+    def get_library_papers(
+        self,
+        db: Session,
+        *,
+        document_ids: list[uuid.UUID],
+        user: CurrentUser,
+    ) -> dict[uuid.UUID, LibraryPaper]:
+        if not document_ids:
+            return {}
+        entries = db.scalars(
+            select(LibraryPaper).where(
+                LibraryPaper.user_id == user.id,
+                LibraryPaper.document_id.in_(document_ids),
+            )
+        ).all()
+        return {entry.document_id: entry for entry in entries}
 
     def read_raw_document_content(
         self,
@@ -110,7 +345,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         Read raw document content by ID.
         For PDF files, extract and return the text content.
         """
-        paper: Paper | None = self.get(db, paper_id, user=current_user)
+        paper: Document | None = self.get(db, paper_id, user=current_user)
         if paper is None:
             raise ValueError(f"Paper with ID {paper_id} not found.")
 
@@ -130,7 +365,7 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
     def get_top_relevant_papers(
         self, db: Session, *, user: CurrentUser, limit: int = 3
-    ) -> list[Paper]:
+    ) -> list[Document]:
         """
         Get recent papers with priority logic:
         1. Order by most recently uploaded
@@ -140,16 +375,22 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         """
         # First, get reading papers
         reading_papers = db.scalars(
-            select(Paper)
-            .where(Paper.user_id == user.id, Paper.status == PaperStatus.reading)
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(
+                LibraryPaper.user_id == user.id,
+                LibraryPaper.status == PaperStatus.reading,
+            )
             .join(
-                PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id, isouter=True
+                PaperUploadJob,
+                Document.upload_job_id == PaperUploadJob.id,
+                isouter=True,
             )
             .where(
                 (PaperUploadJob.status == JobStatus.COMPLETED)
-                | (Paper.upload_job_id.is_(None))
+                | (Document.upload_job_id.is_(None))
             )
-            .order_by(Paper.last_accessed_at.desc())
+            .order_by(LibraryPaper.last_accessed_at.desc())
             .limit(limit)
         ).all()
 
@@ -162,9 +403,13 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
         # Get todo papers to fill the remaining slots
         todo_papers = db.scalars(
-            select(Paper)
-            .where(Paper.user_id == user.id, Paper.status == PaperStatus.todo)
-            .order_by(Paper.last_accessed_at.desc())
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(
+                LibraryPaper.user_id == user.id,
+                LibraryPaper.status == PaperStatus.todo,
+            )
+            .order_by(LibraryPaper.last_accessed_at.desc())
             .limit(remaining_limit)
         ).all()
 
@@ -173,25 +418,27 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
     def get_size_of_knowledge_base(self, db: Session, *, user: CurrentUser) -> int:
         """
-        Get the total size of the user's knowledge base in KB.
-        This includes all papers that have completed uploads.
+        Get unique completed document storage billed to the user in KB.
+
+        Personal Library documents and documents in owned Projects count once;
+        documents in Projects where the user is only a collaborator do not.
         """
         from app.helpers.s3 import s3_service
 
         # First, get papers with missing size_in_kb and update them
         papers_without_size = db.scalars(
-            select(Paper)
-            .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
+            select(Document)
+            .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
             .where(
-                Paper.user_id == user.id,
+                self._is_billed_to(user.id),
                 (
-                    Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
+                    Document.upload_job_id.is_(None)  # No upload job (direct uploads)
                     | (
                         PaperUploadJob.status == JobStatus.COMPLETED
                     )  # Or job is completed
                 ),
-                Paper.size_in_kb.is_(None),  # Only papers without size_in_kb
-                Paper.s3_object_key.isnot(None),  # Must have S3 object key
+                Document.size_in_kb.is_(None),  # Only papers without size_in_kb
+                Document.s3_object_key.isnot(None),  # Must have S3 object key
             )
         ).all()
 
@@ -208,12 +455,12 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
         # Now get all completed papers and sum their sizes
         total_size = db.scalar(
-            select(func.coalesce(func.sum(Paper.size_in_kb), 0))
-            .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
+            select(func.coalesce(func.sum(Document.size_in_kb), 0))
+            .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
             .where(
-                Paper.user_id == user.id,
+                self._is_billed_to(user.id),
                 (
-                    Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
+                    Document.upload_job_id.is_(None)  # No upload job (direct uploads)
                     | (
                         PaperUploadJob.status == JobStatus.COMPLETED
                     )  # Or job is completed
@@ -224,58 +471,86 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
 
     def make_public(
         self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> Paper | None:
+    ) -> Document | None:
         """Make a paper publicly accessible via share link"""
         paper = self.get(db, id=paper_id, user=user)
         if paper:
-            # Generate a unique share ID if not already present
-            if not paper.share_id:
-                paper.share_id = str(uuid.uuid4())
-            paper.is_public = True
+            library_paper = get_library_paper(
+                db,
+                document_id=paper.id,
+                user_id=user.id,
+            )
+            if library_paper is None:
+                return None
+            if not library_paper.share_id:
+                library_paper.share_id = str(uuid.uuid4())
+            library_paper.is_public = True
             db.commit()
-            db.refresh(paper)
         return paper
 
     def make_private(
         self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> Paper | None:
+    ) -> Document | None:
         """Make a paper private (not publicly accessible)"""
         paper = self.get(db, id=paper_id, user=user)
         if paper:
-            paper.is_public = False
+            library_paper = get_library_paper(
+                db,
+                document_id=paper.id,
+                user_id=user.id,
+            )
+            if library_paper is None:
+                return None
+            library_paper.is_public = False
             db.commit()
-            db.refresh(paper)
         return paper
 
-    def get_public_paper(self, db: Session, *, share_id: str) -> Paper | None:
+    def get_public_paper(self, db: Session, *, share_id: str) -> Document | None:
         """Get a paper by its share_id if it's public"""
-        return db.scalars(
-            select(Paper).where(Paper.share_id == share_id, Paper.is_public.is_(True))
-        ).first()
+        return db.scalar(
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(
+                LibraryPaper.share_id == share_id,
+                LibraryPaper.is_public.is_(True),
+            )
+        )
+
+    def get_public_library_paper(
+        self, db: Session, *, share_id: str
+    ) -> LibraryPaper | None:
+        return db.scalar(
+            select(LibraryPaper).where(
+                LibraryPaper.share_id == share_id,
+                LibraryPaper.is_public.is_(True),
+            )
+        )
 
     def get_by_upload_job_id(
         self, db: Session, *, upload_job_id: str, user: CurrentUser
-    ) -> Paper | None:
-        """Get a paper by its upload job ID"""
-        return db.scalars(
-            select(Paper).where(
-                Paper.upload_job_id == upload_job_id, Paper.user_id == user.id
+    ) -> Document | None:
+        """Get the document created by one of the user's upload jobs."""
+        return db.scalar(
+            select(Document)
+            .join(PaperUploadJob, PaperUploadJob.id == Document.upload_job_id)
+            .where(
+                Document.upload_job_id == upload_job_id,
+                PaperUploadJob.user_id == user.id,
             )
-        ).first()
+        )
 
     def get_total_paper_count(self, db: Session, *, user: CurrentUser) -> int:
-        """
-        Get the total number of papers uploaded by a user.
-        This includes all papers that have completed uploads.
-        """
+        """Count unique completed documents billed to this account."""
         return int(
             db.scalar(
-                select(func.count(Paper.id))
-                .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
+                select(func.count(Document.id))
+                .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
                 .where(
-                    Paper.user_id == user.id,
+                    self._is_billed_to(user.id),
                     (
-                        Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
+                        Document.upload_job_id.is_(
+                            None
+                        )  # No upload job (direct uploads)
                         | (
                             PaperUploadJob.status == JobStatus.COMPLETED
                         )  # Or job is completed
@@ -293,50 +568,63 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         skip: int = 0,
         limit: int = 500,
         status: PaperStatus | None = None,
-    ) -> list[Paper]:
+    ) -> list[Document]:
         """
         Get multiple papers that have completed uploads
         Completed uploads are those either with a null upload_job_id OR an upload_job with status 'completed'.
         """
         statement = (
-            select(Paper)
+            select(Document)
             .options(
-                selectinload(Paper.tags),
-                # Library listings only need lightweight metadata. Without this,
-                # the query SELECT *'s heavy columns (raw_content, ts_vector,
-                # summary, summary_citations, page_offset_map) for every paper
-                # in the user's library. Both callers (/api/paper/all and
-                # /api/paper/active) serialize only the columns listed here.
                 load_only(
-                    Paper.title,
-                    Paper.created_at,
-                    Paper.updated_at,
-                    Paper.abstract,
-                    Paper.authors,
-                    Paper.institutions,
-                    Paper.status,
-                    Paper.preview_url,
-                    Paper.size_in_kb,
-                    Paper.publish_date,
+                    Document.title,
+                    Document.created_at,
+                    Document.updated_at,
+                    Document.abstract,
+                    Document.authors,
+                    Document.institutions,
+                    Document.preview_url,
+                    Document.size_in_kb,
+                    Document.publish_date,
                 ),
             )
-            .outerjoin(PaperUploadJob, Paper.upload_job_id == PaperUploadJob.id)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .outerjoin(PaperUploadJob, Document.upload_job_id == PaperUploadJob.id)
             .where(
-                Paper.user_id == user.id,
+                LibraryPaper.user_id == user.id,
                 (
-                    Paper.upload_job_id.is_(None)  # No upload job (direct uploads)
+                    Document.upload_job_id.is_(None)  # No upload job (direct uploads)
                     | (
                         PaperUploadJob.status == JobStatus.COMPLETED
                     )  # Or job is completed
                 ),
             )
-            .order_by(Paper.updated_at.desc())
+            .order_by(LibraryPaper.updated_at.desc())
             .offset(skip)
             .limit(limit)
         )
         if status:
-            statement = statement.where(Paper.status == status)
+            statement = statement.where(LibraryPaper.status == status)
         return list(db.scalars(statement).all())
+
+    def get_tags_by_document_ids(
+        self,
+        db: Session,
+        *,
+        document_ids: list[uuid.UUID],
+        user: CurrentUser,
+    ) -> dict[uuid.UUID, list[PaperTag]]:
+        if not document_ids:
+            return {}
+        entries = db.scalars(
+            select(LibraryPaper)
+            .options(selectinload(LibraryPaper.tags))
+            .where(
+                LibraryPaper.user_id == user.id,
+                LibraryPaper.document_id.in_(document_ids),
+            )
+        ).all()
+        return {entry.document_id: list(entry.tags) for entry in entries}
 
     def create_ai_annotations(
         self,
@@ -494,16 +782,21 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             paper_id (str): ID of the paper to update.
         """
         # Get the paper without a user context first
-        paper = db.get(Paper, paper_id)
+        paper = db.get(Document, paper_id)
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found")
 
-        # Verify the paper is public
-        if not paper.is_public:
+        public_entry = db.scalar(
+            select(LibraryPaper).where(
+                LibraryPaper.document_id == paper.id,
+                LibraryPaper.is_public.is_(True),
+            )
+        )
+        if public_entry is None:
             raise ValueError(f"Paper with ID {paper_id} is not a shared paper")
 
-        user = db.get(AuthUser, paper.user_id)
+        user = db.get(AuthUser, public_entry.user_id)
         if not user:
             raise ValueError(f"User for paper with ID {paper_id} not found")
 
@@ -521,33 +814,31 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         user: CurrentUser,
         query: str | None = None,
         paper_ids: list[str] | None = None,
-    ) -> list[Paper]:
+    ) -> list[Document]:
         """
         Get all papers available to the user, regardless of status.
         This includes papers with 'todo', 'reading', and 'completed' statuses.
         If a query is provided, it will filter papers by raw_content.
         If paper_ids is provided, it will filter papers by the given list of IDs.
         """
-        # Eager-load tags in a single batched query: callers like the evidence
-        # pipeline read paper.tags per paper, which would otherwise N+1.
         statement = (
-            select(Paper)
-            .options(selectinload(Paper.tags))
-            .where(Paper.user_id == user.id)
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(LibraryPaper.user_id == user.id)
         )
 
         if paper_ids:
-            statement = statement.where(Paper.id.in_(paper_ids))
+            statement = statement.where(Document.id.in_(paper_ids))
 
-        statement = statement.where(Paper.ts_vector.isnot(None))
+        statement = statement.where(Document.ts_vector.isnot(None))
 
         if query:
             # The query is split into words and joined with '&' to create a tsquery.
             # This means all words in the query must be present in the document.
             ts_query = func.to_tsquery("english", " & ".join(query.split()))
-            statement = statement.where(Paper.ts_vector.op("@@")(ts_query))
+            statement = statement.where(Document.ts_vector.op("@@")(ts_query))
 
-        return list(db.scalars(statement.order_by(Paper.updated_at.desc())).all())
+        return list(db.scalars(statement.order_by(Document.updated_at.desc())).all())
 
     @staticmethod
     def build_passages(
@@ -644,9 +935,10 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         sql = f"""
             SELECT pp.paper_id::text, pp.start_line, pp.content
             FROM scholens.paper_passages pp
-            JOIN scholens.papers p ON p.id = pp.paper_id
+            JOIN scholens.documents d ON d.id = pp.paper_id
+            JOIN scholens.library_papers lp ON lp.document_id = d.id
             WHERE pp.ts_vector @@ ({fts_query_clause})
-              AND p.user_id = :user_id
+              AND lp.user_id = :user_id
         """
 
         params: dict[str, object] = {"user_id": user.id}
@@ -684,119 +976,42 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
         """
         rows = db.scalars(
             select(PaperTag.name)
-            .join(PaperTag.papers)
+            .join(PaperTag.library_papers)
             .where(
                 PaperTag.user_id == user.id,
-                Paper.user_id == user.id,
-                Paper.ts_vector.isnot(None),
             )
             .distinct()
         ).all()
 
         return [name.strip() for name in rows if name and name.strip()]
 
-    def get_forked_paper_by_parent_id(
-        self, db: Session, *, parent_paper_id: uuid.UUID, user: CurrentUser
-    ) -> Paper | None:
-        """
-        Find a forked paper by its parent_paper_id for the current user.
-        A user can only have one fork of a given paper.
-        """
-        return db.scalars(
-            select(Paper).where(
-                Paper.parent_paper_id == parent_paper_id,
-                Paper.user_id == user.id,
-            )
-        ).one_or_none()
-
-    def fork_paper(
+    def add_to_library(
         self,
         db: Session,
         *,
-        original_paper: Paper,
-        new_file_object_key: str,
-        new_file_url: str,
-        new_preview_url: str | None,
-        current_user: CurrentUser,
-    ) -> Paper | None:
-        """
-        Fork a paper to create a duplicate for the current user.
-
-        Args:
-            original_paper: The paper to fork
-            new_file_object_key: S3 object key for the forked paper's file
-            new_file_url: URL for the forked paper's file
-            new_preview_url: Optional preview URL for the forked paper
-            current_user: The user creating the fork
-
-        Returns:
-            The newly created forked paper, or None if creation failed
-        """
-        # Create a new PaperCreate object with the same data as the original
-        # TODO: Include AI highlights/annotations as well? See function used during intake `create_ai_annotations` for reference.
-        new_paper_data = PaperCreate(
-            file_url=new_file_url,
-            s3_object_key=new_file_object_key,
-            authors=original_paper.authors,
-            title=str(original_paper.title),
-            abstract=str(original_paper.abstract),
-            institutions=original_paper.institutions,
-            summary=str(original_paper.summary),
-            summary_citations=None,
-            starter_questions=original_paper.starter_questions,
-            publish_date=str(original_paper.publish_date)
-            if original_paper.publish_date
-            else None,
-            raw_content=original_paper.raw_content,
-            upload_job_id=None,  # New upload job ID
-            preview_url=new_preview_url,
-            size_in_kb=(
-                int(original_paper.size_in_kb)
-                if original_paper.size_in_kb is not None
-                else None
-            ),
-            parent_paper_id=uuid.UUID(str(original_paper.id)),  # Set parent paper ID
+        document: Document,
+        user: CurrentUser,
+    ) -> Document | None:
+        existing = get_library_paper(
+            db,
+            document_id=document.id,
+            user_id=user.id,
         )
-
-        # Create the new paper in the database
-        forked_paper = self.create(db, obj_in=new_paper_data, user=current_user)
-
-        # Copy the original paper's tags onto the fork. Tags are user-scoped, so
-        # this reuses the forking user's existing tags (case-insensitive) or
-        # creates new ones, then links them to the forked paper.
-        if forked_paper and original_paper.tags:
-            try:
-                paper_tag_crud.apply_keyword_tags(
-                    db,
-                    paper_id=uuid.UUID(str(forked_paper.id)),
-                    keywords=[str(tag.name) for tag in original_paper.tags if tag.name],
-                    user_id=current_user.id,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error copying tags to forked paper {forked_paper.id}: {e}",
-                    exc_info=True,
-                )
-
-        # Index passages for the forked paper
-        if forked_paper and original_paper.raw_content:
-            try:
-                self.index_paper_passages(
-                    db,
-                    paper_id=uuid.UUID(str(forked_paper.id)),
-                    raw_content=str(original_paper.raw_content),
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error indexing passages for forked paper {forked_paper.id}: {e}",
-                    exc_info=True,
-                )
-
-        return forked_paper
+        if existing is not None:
+            return document
+        db.add(
+            LibraryPaper(
+                user_id=user.id,
+                document_id=document.id,
+                status=PaperStatus.reading,
+            )
+        )
+        db.commit()
+        return document
 
     def get_by_doi_for_user(
         self, db: Session, *, user_id: int, doi: str
-    ) -> Paper | None:
+    ) -> Document | None:
         """Return the user's paper with a matching normalized DOI, if any."""
         normalized = normalize_doi(doi)
         if not normalized:
@@ -810,12 +1025,14 @@ class PaperCRUD(CRUDBase["Paper", PaperCreate, PaperUpdate]):
             normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         )
         return db.scalars(
-            select(Paper).where(
-                Paper.user_id == user_id,
-                func.lower(Paper.doi).like(f"%{escaped}", escape="\\"),
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(
+                LibraryPaper.user_id == user_id,
+                func.lower(Document.doi).like(f"%{escaped}", escape="\\"),
             )
         ).first()
 
 
 # Create a single instance to use throughout the application
-paper_crud = PaperCRUD(Paper)
+paper_crud = PaperCRUD(Document)

@@ -1,5 +1,5 @@
 """
-Paper Upload API - Microservice Integration
+Document Upload API - Microservice Integration
 
 This module handles PDF upload and processing by integrating with a separate
 PDF processing microservice. The architecture is:
@@ -9,7 +9,7 @@ PDF processing microservice. The architecture is:
 3. API submits the PDF to the separate jobs service via Celery/HTTP
 4. Jobs service processes PDF (S3 upload, metadata extraction, preview generation)
 5. Jobs service sends results back via webhook
-6. Webhook handler updates PaperUploadJob status and creates Paper record
+6. Webhook handler updates PaperUploadJob status and creates Document record
 
 The client can poll the job status using the same job_id throughout the process.
 """
@@ -29,7 +29,7 @@ from app.database.crud.paper_upload_crud import (
     paper_upload_job_crud,
 )
 from app.database.database import get_db
-from app.database.models import JobStatus, PaperUploadJob
+from app.database.models import AuthUser, JobStatus, PaperUploadJob
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -48,6 +48,7 @@ from app.helpers.subscription_limits import (
     can_user_add_papers_to_project,
     can_user_upload_paper,
 )
+from app.policies.projects import get_project_access
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import (
@@ -378,27 +379,40 @@ async def check_subscription_limits(
     project_id: UUID | None = None,
 ) -> str | None:
     """
-    Check if the user can upload a new paper based on their subscription limits.
-    Returns a JSONResponse with an error message if limits are exceeded.
+    Check resource quotas against the account that owns the destination.
 
-    When the upload targets a project, the project's paper cap is checked too —
-    an upload into a project is an association, and would otherwise slip past
-    the limit enforced on the add-to-project route.
+    Personal uploads are billed to the caller. Project uploads are authorized
+    using the caller's delegated capability but billed to the Project owner.
     """
-    can_upload, error_message = can_user_upload_paper(db, current_user)
-    if not can_upload and error_message:
-        return error_message
-
-    can_access, error_message = can_user_access_knowledge_base(db, current_user)
-    if not can_access and error_message:
-        return error_message
-
     if project_id:
+        access = get_project_access(
+            db,
+            project_id=project_id,
+            user_id=current_user.id,
+        )
+        if access is None:
+            return "Project not found"
+        if not access.can_manage_papers:
+            return "You do not have permission to add papers to this project"
         can_add, error_message = can_user_add_papers_to_project(
             db, current_user, project_id=project_id, paper_count=1
         )
         if not can_add and error_message:
             return error_message
+        owner = db.get(AuthUser, access.project.owner_id)
+        if owner is None:
+            raise RuntimeError(f"Project {project_id} has no owner")
+        quota_user = CurrentUser.from_auth_user(owner)
+    else:
+        quota_user = current_user
+
+    can_upload, error_message = can_user_upload_paper(db, quota_user)
+    if not can_upload and error_message:
+        return error_message
+
+    can_access, error_message = can_user_access_knowledge_base(db, quota_user)
+    if not can_access and error_message:
+        return error_message
 
     return None
 

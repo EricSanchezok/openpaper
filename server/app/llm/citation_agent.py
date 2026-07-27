@@ -18,7 +18,7 @@ from typing import Any
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
-from app.database.models import Paper
+from app.database.models import Document
 from app.helpers.citations import (
     STYLE_DISPLAY_NAMES,
     CitationFields,
@@ -177,7 +177,7 @@ class CitationFinder(MetadataRecoveryAgent):
         paper_id: str,
         current_user: CurrentUser,
         project_id: str | None,
-    ) -> Paper | None:
+    ) -> Document | None:
         try:
             if project_id:
                 return project_paper_crud.get_paper_by_project(

@@ -22,7 +22,7 @@ from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal
 from app.database.models import (
-    Paper,
+    Document,
     RoleType,
     ZoteroImportedItem,
     ZoteroImportSource,
@@ -324,7 +324,7 @@ def _embed_page_dims_in_annotation_data(
     ann_data["_page_height"] = h
 
 
-def _get_page_dims_for_paper(paper: Paper) -> dict[int, tuple[float, float]]:
+def _get_page_dims_for_paper(paper: Document) -> dict[int, tuple[float, float]]:
     if not paper.s3_object_key:
         return {}
     try:
@@ -589,7 +589,7 @@ async def _link_zotero_item_to_existing_paper(
     client: ZoteroApiClient,
     item: dict[str, Any],
     item_key: str,
-    paper: Paper,
+    paper: Document,
     user: CurrentUser,
 ) -> None:
     """Link a Zotero item to an existing paper and merge any new annotations."""
@@ -791,7 +791,7 @@ async def _discover_import_candidates(
 def _apply_metadata_from_zotero(
     db: Session,
     *,
-    paper: Paper,
+    paper: Document,
     item_data: dict[str, Any],
     user: CurrentUser,
 ) -> None:
@@ -1056,7 +1056,7 @@ def list_library(
     imported_keys = set(
         db.scalars(
             select(ZoteroImportedItem.zotero_item_key)
-            .join(Paper, ZoteroImportedItem.paper_id == Paper.id)
+            .join(Document, ZoteroImportedItem.paper_id == Document.id)
             .where(
                 ZoteroImportedItem.user_id == user.id,
                 ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,

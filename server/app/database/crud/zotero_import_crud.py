@@ -3,7 +3,7 @@ from uuid import UUID
 
 from app.database.models import (
     JsonValue,
-    Paper,
+    Document,
     ZoteroConnection,
     ZoteroImportedItem,
     ZoteroImportSource,
@@ -52,8 +52,8 @@ class CRUDZoteroImport:
         self, db: Session, *, user_id: int, limit: int = 20
     ) -> list[tuple[ZoteroImportedItem, str | None]]:
         statement = (
-            select(ZoteroImportedItem, Paper.title)
-            .outerjoin(Paper, ZoteroImportedItem.paper_id == Paper.id)
+            select(ZoteroImportedItem, Document.title)
+            .outerjoin(Document, ZoteroImportedItem.paper_id == Document.id)
             .where(ZoteroImportedItem.user_id == user_id)
             .order_by(ZoteroImportedItem.created_at.desc())
             .limit(limit)
@@ -66,8 +66,8 @@ class CRUDZoteroImport:
         if not item_keys:
             return []
         statement = (
-            select(ZoteroImportedItem, Paper.title)
-            .outerjoin(Paper, ZoteroImportedItem.paper_id == Paper.id)
+            select(ZoteroImportedItem, Document.title)
+            .outerjoin(Document, ZoteroImportedItem.paper_id == Document.id)
             .where(
                 ZoteroImportedItem.user_id == user_id,
                 ZoteroImportedItem.zotero_item_key.in_(item_keys),
@@ -131,7 +131,7 @@ class CRUDZoteroImport:
         return list(
             db.scalars(
                 select(ZoteroImportedItem)
-                .join(Paper, ZoteroImportedItem.paper_id == Paper.id)
+                .join(Document, ZoteroImportedItem.paper_id == Document.id)
                 .where(
                     ZoteroImportedItem.user_id == user_id,
                     ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,

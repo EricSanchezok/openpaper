@@ -3,7 +3,7 @@ import logging
 
 from app.auth.dependencies import get_required_user
 from app.database.database import get_db
-from app.database.models import Annotation, Highlight, Paper
+from app.database.models import Annotation, Highlight, LibraryPaper
 from app.database.queries.search import search_knowledge_base
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
@@ -37,7 +37,7 @@ async def search_knowledge_base_endpoint(
 
     Returns a hierarchical view with matching content organized under paper metadata.
     The search looks through:
-    - Paper titles, abstracts, and raw content
+    - Document titles, abstracts, and raw content
     - Highlight text
     - Annotation content
 
@@ -106,7 +106,9 @@ async def get_search_stats(
         # Count total items in user's knowledge base
         total_papers = int(
             db.scalar(
-                select(func.count(Paper.id)).where(Paper.user_id == current_user.id)
+                select(func.count(LibraryPaper.id)).where(
+                    LibraryPaper.user_id == current_user.id
+                )
             )
             or 0
         )

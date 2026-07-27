@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
-from app.database.models import Paper
+from app.database.models import Document
 from app.helpers.citations import bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import get_doi, get_enriched_data
 from app.helpers.parser import parse_publication_date
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 CHECK_METADATA_INTERVAL_DAYS = 30
 
 
-def _is_metadata_cache_stale(paper: Paper) -> bool:
+def _is_metadata_cache_stale(paper: Document) -> bool:
     attempted_at = paper.attempted_metadata_at
     if not attempted_at:
         return True
@@ -41,12 +41,12 @@ def _is_metadata_cache_stale(paper: Paper) -> bool:
 def hydrate_paper_metadata(
     *,
     db: Session,
-    paper: Paper,
+    paper: Document,
     user: CurrentUser | None = None,
     force: bool = False,
     agentic: bool = False,
     agentic_steps: list[Any] | None = None,
-) -> Paper:
+) -> Document:
     """Resolve DOI + enrich journal/publisher/publish_date for a paper.
 
     Mutates and returns the paper. No-op (returns paper unchanged) when the

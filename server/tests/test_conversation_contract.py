@@ -65,9 +65,7 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     table = Conversation.__table__
     assert table.c.user_id.nullable is False
     assert table.c.title.nullable is False
-    assert {"pinned_at", "archived_at", "scope_label_snapshot"} <= set(
-        table.c.keys()
-    )
+    assert {"pinned_at", "archived_at", "scope_label_snapshot"} <= set(table.c.keys())
 
 
 def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:

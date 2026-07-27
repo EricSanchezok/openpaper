@@ -13,10 +13,7 @@ from uuid import UUID
 
 import requests
 from app.database.crud.paper_crud import PaperCreate, paper_crud
-from app.database.crud.projects.project_paper_crud import (
-    ProjectPaperCreate,
-    project_paper_crud,
-)
+from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.models import PaperUploadJob
 from app.database.telemetry import track_event
 from app.helpers.celery_config import (
@@ -326,6 +323,7 @@ class JobsClient:
                 db=db,
                 obj_in=new_paper,
                 user=user,
+                add_to_library=project_id is None,
                 auto_commit=False,
             )
 
@@ -335,11 +333,9 @@ class JobsClient:
                 )
 
             if project_id and created_paper.id:
-                casted_uuid = UUID(str(created_paper.id))
-
-                created_project_paper = project_paper_crud.create(
+                created_project_paper = project_paper_crud.attach_document(
                     db=db,
-                    obj_in=ProjectPaperCreate(paper_id=casted_uuid),
+                    document=created_paper,
                     user=user,
                     project_id=project_id,
                     auto_commit=False,
@@ -390,10 +386,14 @@ class JobsClient:
 
                 if created_paper and created_paper.id:
                     try:
-                        paper_crud.remove(db=db, id=created_paper.id, user=user)
-                        logger.info(
-                            f"Rolled back paper record with ID {created_paper.id}"
-                        )
+                        if paper_crud.delete_orphan_document(
+                            db=db,
+                            document_id=UUID(str(created_paper.id)),
+                        ):
+                            logger.info(
+                                "Rolled back orphan document %s",
+                                created_paper.id,
+                            )
                     except Exception as rollback_error:
                         logger.error(
                             f"Failed to rollback paper record: {rollback_error}"

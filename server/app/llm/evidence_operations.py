@@ -167,7 +167,7 @@ class EvidenceOperations(BaseLLMClient):
             str(paper.id): {
                 "title": paper.title,
                 "length": len(str(paper.raw_content)),
-                "keywords": [tag.name for tag in paper.tags if tag.name],
+                "keywords": paper.keywords or [],
                 "authors": paper.authors,
                 "published": paper.publish_date,
             }
@@ -298,7 +298,8 @@ class EvidenceOperations(BaseLLMClient):
                                 f"Paper ID {paper_id_arg} not found in available papers."
                             )
                             evidence_collection.add_tool_call_result(
-                                fn_selected, f"Error: Paper ID {paper_id_arg} not found"
+                                fn_selected,
+                                f"Error: Paper ID {paper_id_arg} not found",
                             )
                             continue
 

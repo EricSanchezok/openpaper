@@ -179,9 +179,9 @@ def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     assert len(versions) == 1
     baseline = versions[0].read_text(encoding="utf-8")
     assert "down_revision: str | None = None" in baseline
-    assert "scholens.paper_content_trigger" in baseline
+    assert "scholens.document_content_trigger" in baseline
     assert "scholens.paper_passages_tsvector_trigger" in baseline
-    assert "ON scholens.papers" in baseline
+    assert "ON scholens.documents" in baseline
     assert "ON scholens.paper_passages" in baseline
     assert "discover_searches" not in baseline
 
@@ -208,7 +208,7 @@ def test_global_discovery_surfaces_are_absent_from_client_sources() -> None:
         "/discover",
         "/finder",
         "Discover Research",
-        "Paper Finder",
+        "Document Finder",
     ):
         assert removed_identifier not in product_surfaces
 

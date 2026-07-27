@@ -9,12 +9,15 @@ from datetime import datetime, timezone
 from app.database.models import (
     ConversableType,
     Conversation,
-    Paper,
+    Document,
+    LibraryPaper,
     Project,
     ProjectCollaborator,
+    ProjectPaper,
 )
 from app.errors import AppError
 from app.policies.projects import get_project_access
+from app.policies.documents import get_document_access
 from app.schemas.conversations import (
     ConversationCapabilitiesResponse,
     ConversationCreateRequest,
@@ -104,15 +107,18 @@ class ConversationRepository:
             )
         if conversation.conversable_id is None:
             raise RuntimeError("Paper conversation has no paper id")
-        paper = db.scalar(
-            select(Paper).where(
-                Paper.id == conversation.conversable_id,
-                Paper.user_id == conversation.user_id,
-            )
+        document_access = get_document_access(
+            db,
+            document_id=conversation.conversable_id,
+            user_id=conversation.user_id,
         )
         return (
-            paper.title if paper is not None else conversation.scope_label_snapshot,
-            paper is not None,
+            (
+                document_access.document.title
+                if document_access is not None
+                else conversation.scope_label_snapshot
+            ),
+            document_access is not None,
         )
 
     def summarize(
@@ -184,10 +190,38 @@ class ConversationRepository:
 
         paper_labels: dict[uuid.UUID, str | None] = {}
         if paper_ids:
+            library_document_ids = set(
+                db.scalars(
+                    select(LibraryPaper.document_id).where(
+                        LibraryPaper.user_id == user_id,
+                        LibraryPaper.document_id.in_(paper_ids),
+                    )
+                ).all()
+            )
+            project_document_ids = set(
+                db.scalars(
+                    select(ProjectPaper.document_id)
+                    .join(Project, Project.id == ProjectPaper.project_id)
+                    .outerjoin(
+                        ProjectCollaborator,
+                        and_(
+                            ProjectCollaborator.project_id == Project.id,
+                            ProjectCollaborator.user_id == user_id,
+                        ),
+                    )
+                    .where(
+                        ProjectPaper.document_id.in_(paper_ids),
+                        or_(
+                            Project.owner_id == user_id,
+                            ProjectCollaborator.user_id == user_id,
+                        ),
+                    )
+                ).all()
+            )
+            accessible_document_ids = library_document_ids | project_document_ids
             paper_rows = db.execute(
-                select(Paper.id, Paper.title).where(
-                    Paper.id.in_(paper_ids),
-                    Paper.user_id == user_id,
+                select(Document.id, Document.title).where(
+                    Document.id.in_(accessible_document_ids)
                 )
             ).all()
             paper_labels = {paper_id: title for paper_id, title in paper_rows}
@@ -255,19 +289,18 @@ class ConversationRepository:
             scope_label = access.project.title
         elif request.conversable_type == ConversableType.PAPER:
             assert request.conversable_id is not None
-            paper = db.scalar(
-                select(Paper).where(
-                    Paper.id == request.conversable_id,
-                    Paper.user_id == user_id,
-                )
+            document_access = get_document_access(
+                db,
+                document_id=request.conversable_id,
+                user_id=user_id,
             )
-            if paper is None:
+            if document_access is None:
                 raise AppError(
                     code="paper_not_found",
                     message="Paper not found",
                     status_code=404,
                 )
-            scope_label = paper.title
+            scope_label = document_access.document.title
 
         conversation = Conversation(
             title=request.title.strip(),

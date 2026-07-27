@@ -535,9 +535,8 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "papers",
+        "documents",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("status", sa.String(), nullable=False),
         sa.Column("file_url", sa.String(), nullable=False),
         sa.Column("preview_url", sa.String(), nullable=True),
         sa.Column("s3_object_key", sa.String(), nullable=True),
@@ -545,6 +544,7 @@ def upgrade() -> None:
         sa.Column("title", sa.Text(), nullable=True),
         sa.Column("abstract", sa.Text(), nullable=True),
         sa.Column("institutions", sa.ARRAY(sa.String()), nullable=True),
+        sa.Column("keywords", sa.ARRAY(sa.String()), nullable=True),
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column(
             "summary_citations", postgresql.JSONB(astext_type=sa.Text()), nullable=True
@@ -562,20 +562,12 @@ def upgrade() -> None:
         sa.Column(
             "page_offset_map", postgresql.JSONB(astext_type=sa.Text()), nullable=True
         ),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
-        sa.Column(
-            "last_accessed_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
+        sa.Column("created_by_id", sa.BigInteger(), nullable=True),
         sa.Column("upload_job_id", sa.UUID(), nullable=True),
         sa.Column("cached_presigned_url", sa.String(), nullable=True),
         sa.Column(
             "presigned_url_expires_at", sa.DateTime(timezone=True), nullable=True
         ),
-        sa.Column("is_public", sa.Boolean(), nullable=True),
-        sa.Column("share_id", sa.String(), nullable=True),
         sa.Column("doi", sa.String(), nullable=True),
         sa.Column("journal", sa.String(), nullable=True),
         sa.Column("publisher", sa.String(), nullable=True),
@@ -584,7 +576,6 @@ def upgrade() -> None:
             "field_provenance", postgresql.JSONB(astext_type=sa.Text()), nullable=True
         ),
         sa.Column("size_in_kb", sa.Integer(), nullable=True),
-        sa.Column("parent_paper_id", sa.UUID(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -599,39 +590,119 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
-            name="ck_papers_parser_backend",
+            name="ck_documents_parser_backend",
         ),
         sa.CheckConstraint(
             "parser_quality IS NULL OR parser_quality IN ('full', 'text_only')",
-            name="ck_papers_parser_quality",
-        ),
-        sa.ForeignKeyConstraint(
-            ["parent_paper_id"], ["scholens.papers.id"], ondelete="SET NULL"
+            name="ck_documents_parser_quality",
         ),
         sa.ForeignKeyConstraint(
             ["upload_job_id"], ["scholens.paper_upload_jobs.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
-            ["user_id"],
+            ["created_by_id"],
             ["auth.users.id"],
+            ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
     op.create_index(
-        op.f("ix_scholens_papers_share_id"),
-        "papers",
+        op.f("ix_scholens_documents_created_by_id"),
+        "documents",
+        ["created_by_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_documents_ts_vector",
+        "documents",
+        ["ts_vector"],
+        unique=False,
+        schema="scholens",
+        postgresql_using="gin",
+    )
+    op.create_table(
+        "library_papers",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("document_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "status",
+            sa.String(),
+            server_default="reading",
+            nullable=False,
+        ),
+        sa.Column(
+            "last_accessed_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "is_public",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column("share_id", sa.String(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["document_id"],
+            ["scholens.documents.id"],
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["auth.users.id"],
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "user_id",
+            "document_id",
+            name="uq_library_papers_user_document",
+        ),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_library_papers_document_id"),
+        "library_papers",
+        ["document_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_library_papers_share_id"),
+        "library_papers",
         ["share_id"],
         unique=True,
         schema="scholens",
     )
     op.create_index(
-        "ix_papers_ts_vector",
-        "papers",
-        ["ts_vector"],
+        op.f("ix_scholens_library_papers_user_id"),
+        "library_papers",
+        ["user_id"],
         unique=False,
         schema="scholens",
-        postgresql_using="gin",
+    )
+    op.create_index(
+        "ix_library_papers_user_activity",
+        "library_papers",
+        ["user_id", "updated_at"],
+        unique=False,
+        schema="scholens",
     )
     op.create_table(
         "project_collaborators",
@@ -861,7 +932,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
@@ -905,7 +976,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
@@ -929,7 +1000,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
@@ -960,7 +1031,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("paper_id", "start_line"),
@@ -982,8 +1053,8 @@ def upgrade() -> None:
         postgresql_using="gin",
     )
     op.create_table(
-        "paper_tag_association",
-        sa.Column("paper_id", sa.UUID(), nullable=False),
+        "library_paper_tags",
+        sa.Column("library_paper_id", sa.UUID(), nullable=False),
         sa.Column("tag_id", sa.UUID(), nullable=False),
         sa.Column(
             "created_at",
@@ -998,18 +1069,20 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["library_paper_id"],
+            ["scholens.library_papers.id"],
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["tag_id"], ["scholens.paper_tags.id"], ondelete="CASCADE"
         ),
-        sa.PrimaryKeyConstraint("paper_id", "tag_id"),
+        sa.PrimaryKeyConstraint("library_paper_id", "tag_id"),
         schema="scholens",
     )
     op.create_table(
         "project_papers",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("paper_id", sa.UUID(), nullable=False),
+        sa.Column("document_id", sa.UUID(), nullable=False),
         sa.Column("project_id", sa.UUID(), nullable=False),
         sa.Column("added_by_id", sa.BigInteger(), nullable=True),
         sa.Column(
@@ -1025,7 +1098,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="RESTRICT"
+            ["document_id"], ["scholens.documents.id"], ondelete="RESTRICT"
         ),
         sa.ForeignKeyConstraint(
             ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
@@ -1035,14 +1108,16 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "project_id", "paper_id", name="uq_project_paper_project_paper"
+            "project_id",
+            "document_id",
+            name="uq_project_papers_project_document",
         ),
         schema="scholens",
     )
     op.create_index(
-        op.f("ix_scholens_project_papers_paper_id"),
+        op.f("ix_scholens_project_papers_document_id"),
         "project_papers",
-        ["paper_id"],
+        ["document_id"],
         unique=False,
         schema="scholens",
     )
@@ -1084,7 +1159,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="SET NULL"
+            ["paper_id"], ["scholens.documents.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
             ["upload_job_id"], ["scholens.paper_upload_jobs.id"], ondelete="SET NULL"
@@ -1121,7 +1196,7 @@ def upgrade() -> None:
             ["scholens.highlights.id"],
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
@@ -1154,7 +1229,7 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.papers.id"], ondelete="CASCADE"
+            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
@@ -1175,7 +1250,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE FUNCTION scholens.paper_content_trigger() RETURNS trigger AS $$
+        CREATE FUNCTION scholens.document_content_trigger() RETURNS trigger AS $$
         BEGIN
             NEW.ts_vector :=
                 setweight(
@@ -1194,9 +1269,9 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TRIGGER tsvectorupdate
-            BEFORE INSERT OR UPDATE ON scholens.papers
+            BEFORE INSERT OR UPDATE ON scholens.documents
             FOR EACH ROW
-            EXECUTE FUNCTION scholens.paper_content_trigger()
+            EXECUTE FUNCTION scholens.document_content_trigger()
         """
     )
     op.execute(
@@ -1239,8 +1314,8 @@ def downgrade() -> None:
         "ON scholens.paper_passages"
     )
     op.execute("DROP FUNCTION IF EXISTS scholens.paper_passages_tsvector_trigger()")
-    op.execute("DROP TRIGGER IF EXISTS tsvectorupdate ON scholens.papers")
-    op.execute("DROP FUNCTION IF EXISTS scholens.paper_content_trigger()")
+    op.execute("DROP TRIGGER IF EXISTS tsvectorupdate ON scholens.documents")
+    op.execute("DROP FUNCTION IF EXISTS scholens.document_content_trigger()")
     op.drop_index(
         "ix_data_table_rows_paper_id", table_name="data_table_rows", schema="scholens"
     )
@@ -1258,12 +1333,12 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_index(
-        op.f("ix_scholens_project_papers_paper_id"),
+        op.f("ix_scholens_project_papers_document_id"),
         table_name="project_papers",
         schema="scholens",
     )
     op.drop_table("project_papers", schema="scholens")
-    op.drop_table("paper_tag_association", schema="scholens")
+    op.drop_table("library_paper_tags", schema="scholens")
     op.drop_index(
         "ix_paper_passages_ts_vector",
         table_name="paper_passages",
@@ -1312,15 +1387,38 @@ def downgrade() -> None:
     )
     op.drop_table("project_collaborators", schema="scholens")
     op.drop_index(
-        "ix_papers_ts_vector",
-        table_name="papers",
+        "ix_documents_ts_vector",
+        table_name="documents",
         schema="scholens",
         postgresql_using="gin",
     )
     op.drop_index(
-        op.f("ix_scholens_papers_share_id"), table_name="papers", schema="scholens"
+        "ix_library_papers_user_activity",
+        table_name="library_papers",
+        schema="scholens",
     )
-    op.drop_table("papers", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_library_papers_user_id"),
+        table_name="library_papers",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_library_papers_share_id"),
+        table_name="library_papers",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_library_papers_document_id"),
+        table_name="library_papers",
+        schema="scholens",
+    )
+    op.drop_table("library_papers", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_documents_created_by_id"),
+        table_name="documents",
+        schema="scholens",
+    )
+    op.drop_table("documents", schema="scholens")
     op.drop_table("messages", schema="scholens")
     op.drop_table("data_table_extraction_jobs", schema="scholens")
     op.drop_index(
