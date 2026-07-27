@@ -90,6 +90,7 @@ export default function PaperView() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const id = params.id as string;
+    const initialConversationId = searchParams.get('conversation');
     const { user } = useAuth();
     const [paperData, setPaperData] = useState<PaperData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -621,6 +622,7 @@ export default function PaperView() {
         composeHighlightId,
         onComposeHighlightDismiss,
         addAnnotation,
+        initialConversationId,
     };
 
     if (isMobile) {

@@ -9,7 +9,7 @@ import { useIsDarkMode } from "@/hooks/useDarkMode";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useActivePapers } from "@/hooks/useActivePapers";
-import { Conversation, Project } from "@/lib/schema";
+import { Conversation, ConversationListResponse, Project } from "@/lib/schema";
 import { SidebarNav } from "./SidebarNav";
 import { AppSidebarFooter } from "./SidebarFooter";
 import { getSubscriptionWarning } from "./subscriptionWarning";
@@ -35,11 +35,13 @@ export function AppSidebar() {
         const fetchData = async () => {
             try {
                 const [conversationsResponse, projectsResponse] = await Promise.all([
-                    fetchFromApi("/api/conversation/everything"),
+                    fetchFromApi("/api/conversations?limit=100"),
                     fetchFromApi("/api/projects"),
                 ]);
 
-                setEverythingConversations(conversationsResponse || []);
+                setEverythingConversations(
+                    (conversationsResponse as ConversationListResponse).items,
+                );
                 setProjects(projectsResponse || []);
             } catch (error) {
                 console.error("Error fetching sidebar data:", error);

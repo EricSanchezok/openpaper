@@ -1,162 +1,109 @@
-import logging
-import uuid
-from datetime import datetime, timezone
+from __future__ import annotations
 
-from app.auth.dependencies import get_current_user, get_required_user
-from app.database.crud.conversation_crud import (
-    ConversationCreate,
-    ConversationUpdate,
-    conversation_crud,
-)
+import uuid
+
+from app.auth.dependencies import get_required_user
 from app.database.crud.message_crud import message_crud
 from app.database.database import get_db
-from app.database.models import ConversableType, Conversation
+from app.database.models import ConversableType
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.llm.conversation_operations import conversation_operations
-from app.schemas.user import CurrentUser
+from app.repositories.conversations import conversation_repository
+from app.schemas.conversations import (
+    ConversationAutoTitleResponse,
+    ConversationCreateRequest,
+    ConversationDetailResponse,
+    ConversationListResponse,
+    ConversationMoveRequest,
+    ConversationSummaryResponse,
+    ConversationUpdateRequest,
+)
 from app.schemas.orm_responses import serialize_messages
-from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from app.schemas.user import CurrentUser
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
-load_dotenv()
-
-logger = logging.getLogger(__name__)
-
-# Create API router with prefix
 conversation_router = APIRouter()
 
 
-@conversation_router.post("/{conversation_id}/rename")
-async def rename_conversation(
-    conversation_id: str,
+@conversation_router.get("", response_model=ConversationListResponse)
+def list_conversations(
+    archived: bool = False,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    conversable_type: ConversableType | None = None,
+    conversable_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Rename a conversation based on its chat history"""
-    try:
-        new_name = conversation_operations.rename_conversation(
-            db=db, conversation_id=conversation_id, user=current_user
+) -> ConversationListResponse:
+    if conversable_id is not None and conversable_type is None:
+        raise AppError(
+            code="conversation_scope_filter_invalid",
+            message="conversable_type is required with conversable_id",
+            status_code=422,
         )
-        if new_name:
-            return JSONResponse(status_code=200, content={"new_title": new_name})
-        else:
-            raise ValueError("Failed to rename conversation. No new title generated.")
-    except ValueError:
-        return JSONResponse(status_code=404, content={"code": "request_failed"})
-    except Exception as e:
-        logger.error(f"Error renaming conversation: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to rename conversation"},
+    if conversable_type == ConversableType.EVERYTHING and conversable_id is not None:
+        raise AppError(
+            code="conversation_scope_filter_invalid",
+            message="Everything conversations do not have conversable_id",
+            status_code=422,
         )
+    conversations, next_cursor = conversation_repository.list(
+        db,
+        user_id=current_user.id,
+        archived=archived,
+        cursor=cursor,
+        limit=limit,
+        conversable_type=conversable_type,
+        conversable_id=conversable_id,
+    )
+    return ConversationListResponse(
+        items=conversation_repository.summarize_many(
+            db,
+            conversations=conversations,
+            user_id=current_user.id,
+        ),
+        next_cursor=next_cursor,
+    )
 
 
-@conversation_router.get("/everything")
-async def get_everything_conversations(
+@conversation_router.post(
+    "",
+    response_model=ConversationDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_conversation(
+    request: ConversationCreateRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Get all conversations with conversable_type EVERYTHING"""
-    try:
-        conversations = conversation_crud.get_multi_by(
-            db,
-            conversable_type=ConversableType.EVERYTHING,
-            user=current_user,
-        )
-        conversations = sorted(
-            conversations,
-            key=lambda x: x.updated_at or datetime.min.replace(tzinfo=timezone.utc),
-            reverse=True,
-        )
-        result = [
-            {
-                "id": str(conv.id),
-                "title": conv.title,
-                "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
-            }
-            for conv in conversations
-        ]
-        return JSONResponse(status_code=200, content=result)
-    except Exception as e:
-        logger.error(f"Error fetching EVERYTHING conversations: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to fetch conversations"},
-        )
-
-
-@conversation_router.get("/share/{share_paper_id}")
-async def get_shared_paper_conversation(
-    share_paper_id: str,
-    page: int = 1,
-    page_size: int = 10,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser | None = Depends(get_current_user),
-) -> JSONResponse:
-    """Get conversation for a shared paper"""
-    try:
-        conversation = conversation_crud.get_by_share_paper_id(
-            db,
-            share_paper_id=share_paper_id,
-        )
-        if not conversation:
-            raise ValueError(
-                f"Conversation for share paper ID {share_paper_id} not found."
-            )
-
+) -> ConversationDetailResponse:
+    conversation = conversation_repository.create(
+        db, request=request, user_id=current_user.id
+    )
+    if request.conversable_type == ConversableType.PROJECT:
         track_event(
-            "viewed_shared_paper_conversation",
-            properties={"share_paper_id": share_paper_id},
-            user_id=str(current_user.id) if current_user else None,
+            "project_conversation_created",
+            user_id=str(current_user.id),
             db=db,
         )
-
-        # Fetch messages for the conversation
-        messages = message_crud.get_shared_conversation_messages(
-            db,
-            conversation_id=conversation.id,
-            share_paper_id=share_paper_id,
-            page=page,
-            page_size=page_size,
-        )
-
-        formatted_messages = serialize_messages(messages)
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "id": str(conversation.id),
-                "title": conversation.title,
-                "messages": formatted_messages,
-            },
-        )
-    except ValueError:
-        return JSONResponse(status_code=404, content={"code": "request_failed"})
-    except Exception as e:
-        logger.error(f"Error fetching shared paper conversation: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to fetch conversation"},
-        )
+    summary = conversation_repository.summarize(db, conversation=conversation)
+    return ConversationDetailResponse(**summary.model_dump(), messages=[])
 
 
-@conversation_router.get("/{conversation_id}")
-async def get_conversation(
+@conversation_router.get(
+    "/{conversation_id}", response_model=ConversationDetailResponse
+)
+def get_conversation(
     conversation_id: uuid.UUID,
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Get a specific conversation by ID"""
-    conversation: Conversation | None = conversation_crud.get(
-        db, conversation_id, user=current_user
+) -> ConversationDetailResponse:
+    conversation = conversation_repository.require_owned(
+        db, conversation_id=conversation_id, user_id=current_user.id
     )
-    if not conversation:
-        raise HTTPException(status_code=404, detail="conversation_not_found")
-
     messages = message_crud.get_conversation_messages(
         db,
         conversation_id=conversation_id,
@@ -164,154 +111,101 @@ async def get_conversation(
         page=page,
         page_size=page_size,
     )
-    formatted_messages = serialize_messages(messages)
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "id": str(conversation.id),
-            "title": conversation.title,
-            "messages": formatted_messages,
-        },
+    summary = conversation_repository.summarize(db, conversation=conversation)
+    return ConversationDetailResponse(
+        **summary.model_dump(),
+        messages=[dict(message) for message in serialize_messages(messages)],
     )
 
 
-@conversation_router.post("/paper/{paper_id}")
-async def create_conversation(
-    paper_id: str,
-    title: str | None = None,
+@conversation_router.patch(
+    "/{conversation_id}", response_model=ConversationSummaryResponse
+)
+def update_conversation(
+    conversation_id: uuid.UUID,
+    request: ConversationUpdateRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Create a new conversation for a document"""
-    try:
-        # Create a conversation with the user ID
-        conversation_data = ConversationCreate(
-            conversable_type=ConversableType.PAPER,
-            conversable_id=uuid.UUID(paper_id),
-            title=title,
-        )
-
-        conversation: Conversation | None = conversation_crud.create(
-            db, obj_in=conversation_data, user=current_user
-        )
-        if not conversation:
-            raise ValueError("Failed to create conversation.")
-        return JSONResponse(
-            status_code=201,
-            content={
-                "id": str(conversation.id),
-                "title": conversation.title,
-                "messages": [],
-            },
-        )
-    except Exception as e:
-        logger.error(f"Error creating conversation: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to create conversation"},
-        )
+) -> ConversationSummaryResponse:
+    conversation = conversation_repository.update(
+        db,
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        request=request,
+    )
+    return conversation_repository.summarize(db, conversation=conversation)
 
 
-@conversation_router.post("/everything")
-async def create_everything_conversation(
-    title: str | None = None,
+@conversation_router.post(
+    "/{conversation_id}/move", response_model=ConversationSummaryResponse
+)
+def move_conversation(
+    conversation_id: uuid.UUID,
+    request: ConversationMoveRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Create a new conversation for everything"""
-    try:
-        # Create a conversation with the user ID
-        conversation_data = ConversationCreate(
-            conversable_type=ConversableType.EVERYTHING, title=title
-        )
-
-        conversation: Conversation | None = conversation_crud.create(
-            db, obj_in=conversation_data, user=current_user
-        )
-        if not conversation:
-            raise ValueError("Failed to create conversation.")
-        return JSONResponse(
-            status_code=201,
-            content={
-                "id": str(conversation.id),
-                "title": conversation.title,
-                "messages": [],
-            },
-        )
-    except Exception as e:
-        logger.error(f"Error creating everything conversation: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to create conversation"},
-        )
+) -> ConversationSummaryResponse:
+    conversation = conversation_repository.move(
+        db,
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        request=request,
+    )
+    return conversation_repository.summarize(db, conversation=conversation)
 
 
-@conversation_router.patch("/{conversation_id}")
-async def update_conversation(
-    conversation_id: str,
-    title: str,
+@conversation_router.post(
+    "/{conversation_id}/detach", response_model=ConversationSummaryResponse
+)
+def detach_conversation(
+    conversation_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Update conversation title"""
-    try:
-        existing_conversation = conversation_crud.get(
-            db, conversation_id, user=current_user
-        )
-        if not existing_conversation:
-            raise ValueError(f"Conversation with ID {conversation_id} not found.")
-        conversation = conversation_crud.update(
-            db,
-            db_obj=existing_conversation,
-            obj_in=ConversationUpdate(title=title),
-            user=current_user,
-        )
-
-        if not conversation:
-            raise ValueError("Failed to update conversation.")
-
-        return JSONResponse(
-            status_code=200,
-            content={"id": str(conversation.id), "title": conversation.title},
-        )
-    except ValueError:
-        return JSONResponse(status_code=404, content={"code": "request_failed"})
-    except Exception as e:
-        logger.error(f"Error updating conversation: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to update conversation"},
-        )
+) -> ConversationSummaryResponse:
+    conversation = conversation_repository.move(
+        db,
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        request=ConversationMoveRequest(conversable_type="everything"),
+    )
+    return conversation_repository.summarize(db, conversation=conversation)
 
 
-@conversation_router.delete("/{conversation_id}")
-async def delete_conversation(
-    conversation_id: str,
+@conversation_router.post(
+    "/{conversation_id}/auto-title",
+    response_model=ConversationAutoTitleResponse,
+)
+def auto_title_conversation(
+    conversation_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
-    """Delete an existing conversation"""
-    try:
-        # First verify the conversation exists and belongs to the user
-        existing_conversation = conversation_crud.get(
-            db, conversation_id, user=current_user
+) -> ConversationAutoTitleResponse:
+    conversation_repository.require_owned(
+        db, conversation_id=conversation_id, user_id=current_user.id
+    )
+    title = conversation_operations.rename_conversation(
+        db=db,
+        conversation_id=str(conversation_id),
+        user=current_user,
+    )
+    if not title:
+        raise AppError(
+            code="conversation_title_failed",
+            message="Conversation title could not be generated",
+            status_code=422,
         )
-        if not existing_conversation:
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "message": f"Conversation with ID {conversation_id} not found."
-                },
-            )
+    return ConversationAutoTitleResponse(title=title)
 
-        conversation_crud.remove(db, id=conversation_id, user=current_user)
-        return JSONResponse(
-            status_code=200, content={"message": "Conversation deleted successfully"}
-        )
-    except Exception as e:
-        logger.error(f"Error deleting conversation: {e}")
-        return JSONResponse(
-            status_code=404,
-            content={"code": "conversation_delete_failed"},
-        )
+
+@conversation_router.delete(
+    "/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_conversation(
+    conversation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_required_user),
+) -> Response:
+    conversation_repository.delete(
+        db, conversation_id=conversation_id, user_id=current_user.id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

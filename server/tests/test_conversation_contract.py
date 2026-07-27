@@ -1,16 +1,19 @@
-import asyncio
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 from app.api.conversation_api import get_conversation
-from app.database.crud.conversation_crud import conversation_crud
 from app.database.crud.message_crud import message_crud
-from app.database.models import Message
+from app.database.models import Conversation, Message
+from app.errors import AppError
+from app.main import app
+from app.repositories.conversations import conversation_repository
+from app.schemas.conversations import ConversationCreateRequest
 from app.schemas.orm_responses import serialize_messages
 from app.schemas.user import CurrentUser
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 
 def _current_user() -> CurrentUser:
@@ -49,37 +52,78 @@ def test_assistant_trace_serializes_as_an_object() -> None:
     }
 
 
-def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        conversation_crud,
-        "get",
-        lambda *_args, **_kwargs: None,
+def test_conversation_scope_contract_is_private_and_unified() -> None:
+    paths = set(app.openapi()["paths"])
+
+    assert "/api/conversations" in paths
+    assert "/api/conversations/{conversation_id}/move" in paths
+    assert "/api/conversations/{conversation_id}/detach" in paths
+    assert not any(path.startswith("/api/conversation/") for path in paths)
+    assert not any(path.startswith("/api/projects/conversations") for path in paths)
+    assert not any("conversation/share" in path for path in paths)
+
+    table = Conversation.__table__
+    assert table.c.user_id.nullable is False
+    assert table.c.title.nullable is False
+    assert {"pinned_at", "archived_at", "scope_label_snapshot"} <= set(
+        table.c.keys()
     )
 
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            get_conversation(
-                conversation_id=uuid.uuid4(),
-                db=MagicMock(spec=Session),
-                current_user=_current_user(),
+
+def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:
+    with pytest.raises(ValidationError):
+        ConversationCreateRequest.model_validate({"conversable_type": "project"})
+    with pytest.raises(ValidationError):
+        ConversationCreateRequest.model_validate(
+            {
+                "conversable_type": "everything",
+                "conversable_id": str(uuid.uuid4()),
+            }
+        )
+
+
+def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        conversation_repository,
+        "require_owned",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AppError(
+                code="conversation_not_found",
+                message="Conversation not found",
+                status_code=404,
             )
+        ),
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        get_conversation(
+            conversation_id=uuid.uuid4(),
+            page=1,
+            page_size=10,
+            db=MagicMock(spec=Session),
+            current_user=_current_user(),
         )
 
     assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "conversation_not_found"
+    assert exc_info.value.code == "conversation_not_found"
 
 
 def test_conversation_serialization_errors_are_not_reported_as_404(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation_id = uuid.uuid4()
+    conversation = Conversation(
+        id=conversation_id,
+        title="Conversation",
+        user_id=1,
+        conversable_type="everything",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
     monkeypatch.setattr(
-        conversation_crud,
-        "get",
-        lambda *_args, **_kwargs: MagicMock(
-            id=conversation_id,
-            title="Conversation",
-        ),
+        conversation_repository,
+        "require_owned",
+        lambda *_args, **_kwargs: conversation,
     )
     monkeypatch.setattr(
         message_crud,
@@ -94,10 +138,10 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
                 ValueError("invalid message payload")
             ),
         )
-        asyncio.run(
-            get_conversation(
-                conversation_id=conversation_id,
-                db=MagicMock(spec=Session),
-                current_user=_current_user(),
-            )
+        get_conversation(
+            conversation_id=conversation_id,
+            page=1,
+            page_size=10,
+            db=MagicMock(spec=Session),
+            current_user=_current_user(),
         )

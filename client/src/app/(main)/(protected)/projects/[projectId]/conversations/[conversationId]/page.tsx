@@ -165,10 +165,10 @@ function ProjectConversationPageContent() {
 
     const fetchMessages = useCallback(async (id: string) => {
         try {
-            const response = await fetchFromApi(`/api/projects/conversations/${projectId}/${id}`);
+            const response = await fetchFromApi(`/api/conversations/${id}`);
             if (response && response.messages) {
                 setMessages(response.messages);
-                setIsOwner(response.is_owner);
+                setIsOwner(true);
                 setConversationId(id);
                 setIsCentered(false);
             }

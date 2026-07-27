@@ -17,7 +17,6 @@ from app.api.paper_tag_api import paper_tag_router
 from app.api.paper_upload_api import paper_upload_router
 from app.api.project_audio_api import project_audio_router
 from app.api.projects.project_artifacts_api import project_artifacts_router
-from app.api.projects.project_conversations_api import project_conversations_router
 from app.api.projects.project_papers_api import project_papers_router
 from app.api.projects.projects_api import projects_router
 from app.api.projects.projects_data_table_api import projects_data_table_router
@@ -85,13 +84,12 @@ app.include_router(cloud_auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(cloud_user_router, prefix="/api/user", tags=["user"])
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(paper_router, prefix="/api/paper")
-app.include_router(conversation_router, prefix="/api/conversation")
+app.include_router(conversation_router, prefix="/api/conversations")
 app.include_router(message_router, prefix="/api/message")
 app.include_router(highlight_router, prefix="/api/highlight")
 app.include_router(annotation_router, prefix="/api/annotation")
 app.include_router(projects_router, prefix="/api/projects")
 app.include_router(project_papers_router, prefix="/api/projects/papers")
-app.include_router(project_conversations_router, prefix="/api/projects/conversations")
 app.include_router(projects_invitation_router, prefix="/api")
 app.include_router(paper_search_router, prefix="/api/search/global")
 app.include_router(search_router, prefix="/api/search/local")

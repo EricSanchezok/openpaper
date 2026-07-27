@@ -1,10 +1,8 @@
 import logging
 import uuid
 
-from app.database.crud.conversation_crud import ConversationUpdate, conversation_crud
 from app.database.crud.message_crud import message_crud
 from app.database.database import get_db
-from app.database.models import Conversation
 from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
     NAME_DATA_TABLE_SYSTEM_PROMPT,
@@ -15,6 +13,8 @@ from app.llm.prompts import (
     RENAME_CONVERSATION_USER_MESSAGE,
 )
 from app.llm.backend import TextContent
+from app.repositories.conversations import conversation_repository
+from app.schemas.conversations import ConversationUpdateRequest
 from app.schemas.user import CurrentUser
 from fastapi import Depends
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -42,12 +42,9 @@ class ConversationOperations(BaseLLMClient):
         Rename a conversation based on its chat history
         """
         casted_uuid = uuid.UUID(conversation_id)
-        conversation: Conversation | None = conversation_crud.get_conversation_by_id(
+        conversation = conversation_repository.require_owned(
             db, conversation_id=casted_uuid, user_id=user.id
         )
-
-        if not conversation:
-            raise ValueError(f"Conversation with ID {conversation_id} not found.")
 
         chat_history = message_crud.get_conversation_messages(
             db, conversation_id=casted_uuid, current_user=user
@@ -80,14 +77,11 @@ class ConversationOperations(BaseLLMClient):
 
         if response and response.text:
             new_title = response.text.strip()
-            new_conversation = ConversationUpdate(
-                title=new_title,
-            )
-            conversation_crud.update(
+            conversation_repository.update(
                 db,
-                db_obj=conversation,
-                obj_in=new_conversation,
-                user=user,
+                conversation_id=conversation.id,
+                user_id=user.id,
+                request=ConversationUpdateRequest(title=new_title),
             )
             return response.text.strip()
         else:

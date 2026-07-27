@@ -4,7 +4,6 @@ import uuid
 
 from app.auth.dependencies import get_current_user, get_required_user
 from app.database.crud.annotation_crud import annotation_crud
-from app.database.crud.conversation_crud import conversation_crud
 from app.database.crud.highlight_crud import highlight_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_note_crud import (
@@ -22,7 +21,6 @@ from app.helpers.s3 import s3_service
 from app.helpers.subscription_limits import can_user_upload_paper
 from app.schemas.orm_responses import (
     serialize_annotation,
-    serialize_conversation,
     serialize_highlight,
     serialize_paper,
     serialize_paper_note,
@@ -481,46 +479,6 @@ async def update_paper_note(
     return JSONResponse(
         content=serialize_paper_note(updated_paper_note), status_code=200
     )
-
-
-@paper_router.get("/conversation")
-async def get_mru_paper_conversation(
-    paper_id: str,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
-    """
-    Get latest conversation associated with specific document
-    """
-    casted_paper_id = uuid.UUID(paper_id)
-
-    # Fetch the document from the database
-    document = paper_crud.get(
-        db, id=paper_id, user=current_user, update_last_accessed=True
-    )
-
-    if not document:
-        return JSONResponse(status_code=404, content={"message": "Document not found"})
-
-    # Fetch the latest conversation associated with the document
-    conversations = conversation_crud.get_document_conversations(
-        db, paper_id=casted_paper_id, current_user=current_user
-    )
-
-    if not conversations or len(conversations) == 0:
-        # No conversations found for the document
-        logger.info(f"No conversations found for document ID {paper_id}")
-        return JSONResponse(
-            status_code=404, content={"message": "No conversations found"}
-        )
-
-    latest_conversation = conversations[-1]
-
-    # Prepare the response data
-    conversation_data = serialize_conversation(latest_conversation)
-
-    # Return the conversation data
-    return JSONResponse(status_code=200, content=conversation_data)
 
 
 @paper_router.get("")

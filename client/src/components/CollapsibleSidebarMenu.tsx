@@ -21,6 +21,7 @@ interface CollapsibleSidebarMenuProps<T extends { id: string; title?: string; }>
     viewAllText: string;
     getItemUrl: (item: T) => string;
     getItemName?: (item: T) => string;
+    getItemMeta?: (item: T) => string | null;
     defaultOpen?: boolean;
     maxItems?: number;
     tag?: string;
@@ -35,6 +36,7 @@ export function CollapsibleSidebarMenu<T extends { id: string; title?: string; }
     viewAllText,
     getItemUrl,
     getItemName,
+    getItemMeta,
     defaultOpen = false,
     maxItems = 7,
     tag,
@@ -72,7 +74,16 @@ export function CollapsibleSidebarMenu<T extends { id: string; title?: string; }
                                 <SidebarMenuSubItem key={item.id}>
                                     <SidebarMenuSubButton asChild>
                                         <Link href={getItemUrl(item)} className="text-xs font-medium w-full h-fit my-1">
-                                            <p className="line-clamp-3">{getItemName ? getItemName(item) : item.title}</p>
+                                            <div className="min-w-0">
+                                                <p className="line-clamp-2">
+                                                    {getItemName ? getItemName(item) : item.title}
+                                                </p>
+                                                {getItemMeta?.(item) && (
+                                                    <p className="truncate text-[10px] font-normal text-muted-foreground">
+                                                        {getItemMeta(item)}
+                                                    </p>
+                                                )}
+                                            </div>
                                         </Link>
                                     </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchFromApi } from "@/lib/api";
-import { Conversation } from "@/lib/schema";
+import { Conversation, ConversationListResponse } from "@/lib/schema";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -14,8 +14,10 @@ export default function PastConversationsPage() {
 	useEffect(() => {
 		const fetchConversations = async () => {
 			try {
-				const response = await fetchFromApi("/api/conversation/everything");
-				setConversations(response);
+				const response = await fetchFromApi(
+					"/api/conversations?conversable_type=everything&limit=100",
+				) as ConversationListResponse;
+				setConversations(response.items);
 			} catch (error) {
 				console.error("Error fetching everything conversations", error);
 				setConversations([]);
@@ -27,7 +29,7 @@ export default function PastConversationsPage() {
 
 	const handleDeleteConversation = async (conversationId: string) => {
 		try {
-			await fetchFromApi(`/api/conversation/${conversationId}`, {
+			await fetchFromApi(`/api/conversations/${conversationId}`, {
 				method: "DELETE",
 			});
 			setConversations(conversations.filter((c) => c.id !== conversationId));

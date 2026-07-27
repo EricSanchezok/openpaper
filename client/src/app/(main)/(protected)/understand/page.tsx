@@ -129,7 +129,7 @@ function UnderstandPageContent() {
 
     const fetchMessages = useCallback(async (id: string) => {
         try {
-            const response = await fetchFromApi(`/api/conversation/${id}`);
+            const response = await fetchFromApi(`/api/conversations/${id}`);
             if (response && response.messages) {
                 setMessages(response.messages);
                 setConversationId(id);
@@ -258,8 +258,9 @@ function UnderstandPageContent() {
 
         if (!currentConversationId) {
             try {
-                const newConversationResponse = await fetchFromApi('/api/conversation/everything', {
+                const newConversationResponse = await fetchFromApi('/api/conversations', {
                     method: 'POST',
+                    body: JSON.stringify({ conversable_type: 'everything' }),
                 });
                 currentConversationId = newConversationResponse.id;
                 setConversationId(currentConversationId);

@@ -6,13 +6,9 @@ from typing import Any, AsyncGenerator, TypedDict
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.artifact_crud import artifact_crud
-from app.database.crud.conversation_crud import conversation_crud
 from app.database.crud.highlight_crud import highlight_crud
 from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_conversation_crud import (
-    project_conversation_crud,
-)
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import (
@@ -33,6 +29,7 @@ from app.llm.multi_paper_operations import multi_paper_operations
 from app.llm.paper_operations import paper_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.policies.projects import get_project_access
+from app.repositories.conversations import conversation_repository
 from app.schemas.message import EvidenceCollection, ResponseStyle
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
@@ -383,33 +380,31 @@ async def chat_message_multipaper(
                 evidence_collection: EvidenceCollection | None = None
 
                 # Ensure conversation is valid
+                conversation = conversation_repository.require_owned(
+                    db,
+                    conversation_id=uuid.UUID(request.conversation_id),
+                    user_id=current_user.id,
+                )
                 if request.project_id:
+                    project_id = uuid.UUID(request.project_id)
                     project_access = get_project_access(
                         db,
-                        project_id=uuid.UUID(request.project_id),
+                        project_id=project_id,
                         user_id=current_user.id,
                     )
 
                     if project_access is None:
                         raise ValueError("Project not found.")
-
-                    conversation = project_conversation_crud.get_by_conversation_id(
-                        db,
-                        project_id=uuid.UUID(request.project_id),
-                        conversation_id=uuid.UUID(request.conversation_id),
-                        user=current_user,
-                    )
-                else:
-                    conversation = conversation_crud.get(
-                        db, request.conversation_id, user=current_user
-                    )
+                    if (
+                        conversation.conversable_type != ConversableType.PROJECT
+                        or conversation.conversable_id != project_id
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="conversation_scope_mismatch",
+                        )
 
                 # Multi-paper conversation must either be of type EVERYTHING or PROJECT. If it is a PROJECT conversation, naturally we need a `project_id`.
-
-                if not conversation:
-                    raise HTTPException(
-                        status_code=404, detail="Conversation not found."
-                    )
 
                 if (
                     conversation.conversable_type != ConversableType.EVERYTHING

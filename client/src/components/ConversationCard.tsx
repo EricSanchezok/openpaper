@@ -1,7 +1,7 @@
 "use client";
 
 import { Conversation } from "@/lib/schema";
-import { formatDate, getAlphaHashToBackgroundColor, getInitials } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { ArrowRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -15,19 +15,17 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Button } from "./ui/button";
 
 interface ConversationCardProps {
 	convo: Conversation;
-	showAvatar?: boolean;
 	href: string;
 	onDelete: (conversationId: string) => void;
 	// Slim single-line row instead of a boxed card (used in dense lists).
 	compact?: boolean;
 }
 
-export default function ConversationCard({ convo, href, onDelete, showAvatar = true, compact = false }: ConversationCardProps) {
+export default function ConversationCard({ convo, href, onDelete, compact = false }: ConversationCardProps) {
 	const [isAlertOpen, setIsAlertOpen] = useState(false);
 
 	const handleDelete = (e: React.MouseEvent) => {
@@ -49,26 +47,16 @@ export default function ConversationCard({ convo, href, onDelete, showAvatar = t
 					className="group flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-accent"
 				>
 					<span className="min-w-0 flex-1 truncate text-sm">{convo.title}</span>
-                    {showAvatar && convo.owner_display_name && (
-						<Avatar className="size-5 shrink-0">
-							<AvatarFallback
-                                className={`${getAlphaHashToBackgroundColor(convo.owner_display_name)} text-[9px]`}>
-                                {getInitials(convo.owner_display_name)}
-							</AvatarFallback>
-						</Avatar>
-					)}
 					<span className="shrink-0 text-xs text-muted-foreground">{formatDate(convo.updated_at)}</span>
-					{convo.is_owner && (
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={handleDelete}
-							aria-label="Delete conversation"
-							className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-						>
-							<Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-						</Button>
-					)}
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={handleDelete}
+						aria-label="Delete conversation"
+						className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+					>
+						<Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+					</Button>
 				</Link>
 				<AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
 					<AlertDialogContent>
@@ -103,27 +91,15 @@ export default function ConversationCard({ convo, href, onDelete, showAvatar = t
 						</p>
 					</div>
 					<div className="flex flex-col items-end">
-                        {showAvatar && convo.owner_display_name && (
-							<Avatar className="size-6 mb-2">
-								<AvatarFallback
-									className={`${getAlphaHashToBackgroundColor(
-                                        convo.owner_display_name,
-									)} text-xs`}>
-                                    {getInitials(convo.owner_display_name)}
-								</AvatarFallback>
-							</Avatar>
-						)}
 						<div className="flex items-center">
-							{convo.is_owner && (
-								<Button
-									variant="ghost"
-									size="icon"
-									onClick={handleDelete}
-									className="mr-2 opacity-0 group-hover:opacity-100 transition-opacity"
-								>
-									<Trash2 className="w-4 h-4 text-gray-400" />
-								</Button>
-							)}
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={handleDelete}
+								className="mr-2 opacity-0 group-hover:opacity-100 transition-opacity"
+							>
+								<Trash2 className="w-4 h-4 text-gray-400" />
+							</Button>
 							<ArrowRight className="w-4 h-4 text-gray-400 transform transition-all group-hover:translate-x-1 opacity-0 group-hover:opacity-100" />
 						</div>
 					</div>

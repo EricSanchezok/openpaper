@@ -18,7 +18,7 @@ export default function ProjectPastConversationsPage() {
 
     const handleDeleteConversation = async (conversationId: string) => {
         try {
-            await fetchFromApi(`/api/conversation/${conversationId}`, {
+            await fetchFromApi(`/api/conversations/${conversationId}`, {
                 method: 'DELETE',
             });
             refetchConversations();

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchFromApi } from "@/lib/api";
-import { Project, PaperItem, Conversation } from "@/lib/schema";
+import { Project, PaperItem, Conversation, ConversationListResponse } from "@/lib/schema";
 
 interface UseProjectsResult {
     projects: Project[];
@@ -170,8 +170,15 @@ export function useProjectConversations(projectId?: string): UseProjectConversat
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetchFromApi(`/api/projects/conversations/${projectId}`);
-            setConversations(response || []);
+            const query = new URLSearchParams({
+                conversable_type: "project",
+                conversable_id: projectId,
+                limit: "100",
+            });
+            const response = await fetchFromApi(
+                `/api/conversations?${query.toString()}`,
+            ) as ConversationListResponse;
+            setConversations(response.items);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch conversations for project ${projectId}`));
             console.error(`Error fetching conversations for project ${projectId}:`, err);

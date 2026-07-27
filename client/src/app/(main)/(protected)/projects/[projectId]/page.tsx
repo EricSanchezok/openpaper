@@ -79,9 +79,13 @@ export default function ProjectPage() {
 
         setIsSubmitting(true);
         try {
-            const newConversation = await fetchFromApi(`/api/projects/conversations/${projectId}`, {
+            const newConversation = await fetchFromApi("/api/conversations", {
                 method: "POST",
-                body: JSON.stringify({ title: "New Conversation" }),
+                body: JSON.stringify({
+                    title: "New conversation",
+                    conversable_type: "project",
+                    conversable_id: projectId,
+                }),
             });
             localStorage.setItem(`pending-query-${newConversation.id}`, newQuery);
             // Carry the @-mention scope (project chat is papers-only) to the new

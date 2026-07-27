@@ -75,6 +75,7 @@ interface SidePanelContentProps {
     composeHighlightId?: string | null;
     onComposeHighlightDismiss?: (cancelledHighlightId?: string | null) => void;
     addAnnotation?: (highlightId: string, content: string) => Promise<PaperHighlightAnnotation>;
+    initialConversationId?: string | null;
 }
 
 interface ChatRequestBody {
@@ -114,6 +115,7 @@ export function SidePanelContent({
     composeHighlightId,
     onComposeHighlightDismiss,
     addAnnotation,
+    initialConversationId,
 }: SidePanelContentProps) {
     const { user } = useAuth();
     const [currentMessage, setCurrentMessage] = useState('');
@@ -150,7 +152,11 @@ export function SidePanelContent({
         messagesContainerRef,
         scrollToLatestMessage,
         setMessages,
-    } = useConversationHistory({ paperId: id, enabled: Boolean(user && paperData) });
+    } = useConversationHistory({
+        paperId: id,
+        enabled: Boolean(user && paperData),
+        initialConversationId,
+    });
 
     const END_DELIMITER = "END_OF_STREAM";
 

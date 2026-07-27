@@ -7,6 +7,10 @@ interface ConversationResponse {
 	id: string;
 }
 
+interface ConversationListResponse {
+	items: ConversationResponse[];
+}
+
 interface MessagePageResponse {
 	messages: ChatMessage[];
 }
@@ -14,11 +18,13 @@ interface MessagePageResponse {
 interface UseConversationHistoryOptions {
 	paperId: string;
 	enabled: boolean;
+	initialConversationId?: string | null;
 }
 
 export function useConversationHistory({
 	paperId,
 	enabled,
+	initialConversationId,
 }: UseConversationHistoryOptions) {
 	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -39,7 +45,7 @@ export function useConversationHistory({
 		setIsLoadingMoreMessages(true);
 		try {
 			const response = (await fetchFromApi(
-				`/api/conversation/${conversationId}?page=${page}`,
+				`/api/conversations/${conversationId}?page=${page}`,
 				{ method: "GET" },
 			)) as MessagePageResponse;
 			const fetchedMessages = response.messages.map((message) => ({
@@ -80,23 +86,37 @@ export function useConversationHistory({
 		let cancelled = false;
 		async function loadConversation() {
 			try {
-				let id: string | null = null;
+				let id: string | null = initialConversationId ?? null;
+				if (id) {
+					if (!cancelled) setConversationId(id);
+					return;
+				}
 				const existing = (await fetchFromApi(
-					`/api/paper/conversation?paper_id=${paperId}`,
+					`/api/conversations?conversable_type=paper&conversable_id=${paperId}&limit=1`,
 					{ method: "GET" },
-				)) as ConversationResponse;
-				id = existing.id || null;
-				if (!cancelled) setConversationId(id);
-			} catch {
+				)) as ConversationListResponse;
+				id = existing.items[0]?.id ?? null;
+				if (id) {
+					if (!cancelled) setConversationId(id);
+					return;
+				}
 				try {
 					const created = (await fetchFromApi(
-						`/api/conversation/paper/${paperId}`,
-						{ method: "POST" },
+						"/api/conversations",
+						{
+							method: "POST",
+							body: JSON.stringify({
+								conversable_type: "paper",
+								conversable_id: paperId,
+							}),
+						},
 					)) as ConversationResponse;
 					if (!cancelled) setConversationId(created.id);
 				} catch {
 					if (!cancelled) setIsFetchingHistory(false);
 				}
+			} catch {
+				if (!cancelled) setIsFetchingHistory(false);
 			}
 		}
 
@@ -104,7 +124,7 @@ export function useConversationHistory({
 		return () => {
 			cancelled = true;
 		};
-	}, [enabled, paperId]);
+	}, [enabled, initialConversationId, paperId]);
 
 	useEffect(() => {
 		if (enabled) void fetchMoreMessages();

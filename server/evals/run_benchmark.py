@@ -35,7 +35,6 @@ load_dotenv()
 # Add server/ to path so we can import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.database.crud.conversation_crud import ConversationCreate, conversation_crud
 from app.database.crud.paper_crud import PaperCreate, PaperUpdate, paper_crud
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.crud.user_crud import user as user_crud
@@ -44,6 +43,8 @@ from app.database.models import ConversableType, SubscriptionStatus
 from app.llm.base import ModelType
 from app.llm.operations import operations
 from app.llm.provider import LLMProvider, TextContent
+from app.repositories.conversations import conversation_repository
+from app.schemas.conversations import ConversationCreateRequest
 from app.schemas.responses import FileContent
 from app.schemas.user import CurrentUser
 
@@ -350,17 +351,14 @@ async def run_single_question(
 ) -> dict:
     """Run a single question through chat_with_paper and return the result."""
     # Create a fresh conversation for isolation
-    conversation = conversation_crud.create(
+    conversation = conversation_repository.create(
         db,
-        obj_in=ConversationCreate(
+        request=ConversationCreateRequest(
             conversable_type=ConversableType.PAPER,
             conversable_id=uuid.UUID(paper_id),
         ),
-        user=current_user,
+        user_id=current_user.id,
     )
-
-    if not conversation:
-        raise ValueError("Failed to create conversation for paper_id: " + paper_id)
 
     answer_parts = []
     citations = []

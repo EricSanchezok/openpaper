@@ -175,11 +175,13 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    title: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # Optional conversation title
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=True
+    title: Mapped[str] = mapped_column(
+        String(240), nullable=False, default="New conversation"
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        nullable=False,
     )
 
     # Polymorphic Columns
@@ -188,6 +190,13 @@ class Conversation(Base):
     )
     conversable_type: Mapped[str] = mapped_column(
         String, nullable=False, default=ConversableType.PAPER
+    )
+    scope_label_snapshot: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    pinned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Specific relationship for papers
@@ -217,6 +226,17 @@ class Conversation(Base):
             "(conversable_type = 'project' AND conversable_id IS NOT NULL) OR "
             "(conversable_type = 'everything' AND conversable_id IS NULL)",
             name="check_conversable_consistency",
+        ),
+        Index(
+            "ix_conversations_user_archive_activity",
+            "user_id",
+            "archived_at",
+            "updated_at",
+        ),
+        Index(
+            "ix_conversations_user_pinned",
+            "user_id",
+            "pinned_at",
         ),
     )
 

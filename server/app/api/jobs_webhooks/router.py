@@ -4,7 +4,6 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from app.database.crud.conversation_crud import ConversationCreate, conversation_crud
 from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_tag_crud import paper_tag_crud
@@ -23,7 +22,6 @@ from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal, engine, get_db
 from app.database.models import (
     ConversableType,
-    Conversation,
     JobStatus,
     ZoteroImportStatus,
 )
@@ -36,6 +34,8 @@ from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.s3 import s3_service
 from app.helpers.subscription_limits import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
+from app.repositories.conversations import conversation_repository
+from app.schemas.conversations import ConversationCreateRequest
 from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.schemas.jobs import (
@@ -514,13 +514,15 @@ async def handle_paper_processing_webhook(
 
             if metadata.summary and paper:
                 try:
-                    conversation_data = ConversationCreate(
+                    conversation_data = ConversationCreateRequest(
                         conversable_type=ConversableType.PAPER,
                         conversable_id=uuid.UUID(str(paper.id)),
                     )
 
-                    conversation: Conversation | None = conversation_crud.create(
-                        db, obj_in=conversation_data, user=job_user
+                    conversation = conversation_repository.create(
+                        db,
+                        request=conversation_data,
+                        user_id=job_user.id,
                     )
 
                     if conversation:

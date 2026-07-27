@@ -180,8 +180,27 @@ export interface Conversation {
     id: string;
     title: string;
     updated_at: string;
-    is_owner?: boolean;
-    owner_display_name?: string;
+    conversable_type: 'everything' | 'project' | 'paper';
+    conversable_id: string | null;
+    scope_label: string | null;
+    scope_access: 'active' | 'lost';
+    pinned_at: string | null;
+    archived_at: string | null;
+    capabilities: {
+        rename: boolean;
+        pin: boolean;
+        move: boolean;
+        detach: boolean;
+        archive: boolean;
+        share: false;
+        delete: boolean;
+        send: boolean;
+    };
+}
+
+export interface ConversationListResponse {
+    items: Conversation[];
+    next_cursor: string | null;
 }
 
 

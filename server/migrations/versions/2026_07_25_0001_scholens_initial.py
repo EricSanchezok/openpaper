@@ -207,10 +207,13 @@ def upgrade() -> None:
     op.create_table(
         "conversations",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("title", sa.String(), nullable=True),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
+        sa.Column("title", sa.String(length=240), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("conversable_id", sa.UUID(), nullable=True),
         sa.Column("conversable_type", sa.String(), nullable=False),
+        sa.Column("scope_label_snapshot", sa.String(length=240), nullable=True),
+        sa.Column("pinned_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -227,11 +230,22 @@ def upgrade() -> None:
             "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR (conversable_type = 'project' AND conversable_id IS NOT NULL) OR (conversable_type = 'everything' AND conversable_id IS NULL)",
             name="check_conversable_consistency",
         ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["auth.users.id"],
-        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_conversations_user_archive_activity",
+        "conversations",
+        ["user_id", "archived_at", "updated_at"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_conversations_user_pinned",
+        "conversations",
+        ["user_id", "pinned_at"],
+        unique=False,
         schema="scholens",
     )
     op.create_table(
@@ -1327,6 +1341,16 @@ def downgrade() -> None:
     op.drop_table("paper_upload_jobs", schema="scholens")
     op.drop_table("paper_tags", schema="scholens")
     op.drop_table("onboarding", schema="scholens")
+    op.drop_index(
+        "ix_conversations_user_pinned",
+        table_name="conversations",
+        schema="scholens",
+    )
+    op.drop_index(
+        "ix_conversations_user_archive_activity",
+        table_name="conversations",
+        schema="scholens",
+    )
     op.drop_table("conversations", schema="scholens")
     op.drop_table("audio_overviews", schema="scholens")
     op.drop_table("audio_overview_jobs", schema="scholens")

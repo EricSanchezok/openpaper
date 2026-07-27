@@ -21,6 +21,26 @@ interface SidebarNavProps {
     projects: Project[];
 }
 
+function getConversationUrl(conversation: Conversation): string {
+    if (
+        conversation.conversable_type === "project"
+        && conversation.conversable_id
+    ) {
+        return `/projects/${conversation.conversable_id}/conversations/${conversation.id}`;
+    }
+    if (
+        conversation.conversable_type === "paper"
+        && conversation.conversable_id
+    ) {
+        const query = new URLSearchParams({
+            rsf: "chat",
+            conversation: conversation.id,
+        });
+        return `/paper/${conversation.conversable_id}?${query.toString()}`;
+    }
+    return `/understand?id=${conversation.id}`;
+}
+
 export function SidebarNav({ user, papers, conversations, projects }: SidebarNavProps) {
     return (
         <SidebarGroup>
@@ -50,7 +70,10 @@ export function SidebarNav({ user, papers, conversations, projects }: SidebarNav
                                     icon={item.icon}
                                     url={item.url}
                                     items={conversations}
-                                    getItemUrl={(convo) => `/understand?id=${convo.id}`}
+                                    getItemUrl={getConversationUrl}
+                                    getItemMeta={(conversation) =>
+                                        conversation.scope_label
+                                    }
                                     viewAllUrl="/understand/past"
                                     viewAllText="View all chats"
                                     defaultOpen={false}

@@ -9,12 +9,11 @@ import {
     PaperData,
     PaperHighlight,
     PaperHighlightAnnotation,
-    ChatMessage,
     SharedPaper,
 } from '@/lib/schema';
 import PaperMetadata from '@/components/PaperMetadata';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Book, Box, User } from 'lucide-react';
+import { Book, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
@@ -22,14 +21,11 @@ import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css' // `rehype-katex` does not import the CSS for you
 
 import { PaperSidebar } from '@/components/PaperSidebar';
-import { Lightbulb, Highlighter, MessageCircle } from 'lucide-react';
+import { Lightbulb, Highlighter } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { CopyableTable } from '@/components/AnimatedMarkdown';
 import CustomCitationLink from '@/components/utils/CustomCitationLink';
-import { ChatMessageActions } from '@/components/ChatMessageActions';
 import { BasicUser } from '@/lib/auth';
-import { Avatar } from '@/components/ui/avatar';
-import EmptyConversationState from './EmptyConversationState';
 
 
 export default function SharedPaperView() {
@@ -40,7 +36,6 @@ export default function SharedPaperView() {
     const [highlights, setHighlights] = useState<PaperHighlight[]>([]);
     const [annotations, setAnnotations] = useState<PaperHighlightAnnotation[]>([]);
     const [owner, setOwner] = useState<BasicUser | undefined>(undefined);
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeHighlight, setActiveHighlight] = useState<PaperHighlight | null>(null);
@@ -54,7 +49,6 @@ export default function SharedPaperView() {
 
     const dynamicPaperToolset = useMemo(() => {
         const navItems = [
-            { name: 'Chat', label: 'Show chat', icon: MessageCircle },
             { name: 'Annotations', label: 'All annotations', icon: Highlighter },
         ];
         if (paperData?.summary) {
@@ -85,32 +79,6 @@ export default function SharedPaperView() {
         // Clear the highlight after a few seconds
         setTimeout(() => setActiveCitationKey(null), 3000);
     }, [paperData?.summary_citations]);
-
-    const handleCitationClick = useCallback((key: string, messageIndex: number) => {
-        setActiveCitationKey(key);
-        setActiveCitationMessageIndex(messageIndex);
-
-        // Scroll to the citation
-        const element = document.getElementById(`citation-${key}-${messageIndex}`);
-        if (element) {
-
-            const refValueElement = document.getElementById(`citation-ref-${key}-${messageIndex}`);
-            if (refValueElement) {
-                const refValueText = refValueElement.innerText;
-                let searchTerm = refValueText.replace(/^\[\^(\d+|[a-zA-Z]+)\]/, '').trim();
-
-                // Only remove quotes if the text is actually wrapped in quotes
-                if ((searchTerm.startsWith('"') && searchTerm.endsWith('"')) ||
-                    (searchTerm.startsWith("'") && searchTerm.endsWith("'"))) {
-                    searchTerm = searchTerm.substring(1, searchTerm.length - 1);
-                }
-                setExplicitSearchTerm(searchTerm);
-            }
-        }
-
-        // Clear the highlight after a few seconds
-        setTimeout(() => setActiveCitationKey(null), 3000);
-    }, []);
 
     // Memoize expensive markdown components to prevent re-renders
     const memoizedOverviewContent = useMemo(() => {
@@ -175,104 +143,6 @@ export default function SharedPaperView() {
         );
     }, [paperData?.summary, paperData?.summary_citations, handleCitationClickFromSummary]);
 
-    const memoizedMessages = useMemo(() => {
-        return messages.map((msg, index) => (
-            <div
-                key={`${msg.id || `msg-${index}`}-${index}-${msg.role}-${msg.content.slice(0, 20).replace(/\s+/g, '')}`} // Use a stable and unique key
-                className='flex flex-row gap-2 items-end'
-            >
-                {
-                    msg.role === 'user' && owner && (
-                        <Avatar className="h-6 w-6">
-                            <User size={16} />
-                        </Avatar>
-                    )
-                }
-                <div
-                    data-message-index={index}
-                    className={`relative group prose dark:prose-invert p-2 !max-w-full rounded-lg ${msg.role === 'user'
-                        ? 'bg-blue-200 text-blue-800 w-fit animate-fade-in'
-                        : 'w-full text-primary'
-                        }`}
-                >
-                    <Markdown
-                        remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
-                        rehypePlugins={[rehypeKatex]}
-                        components={{
-                            // Apply the custom component to text nodes
-                            p: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClick}
-                                messageIndex={index}
-                                citations={msg.references?.citations || []}
-                            />,
-                            li: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClick}
-                                messageIndex={index}
-                                citations={msg.references?.citations || []}
-                            />,
-                            div: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClick}
-                                messageIndex={index}
-                                citations={msg.references?.citations || []}
-                            />,
-                            td: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClickFromSummary}
-                                messageIndex={0}
-                                citations={msg.references?.citations || []}
-                            />,
-                            table: CopyableTable,
-                        }}>
-                        {msg.content}
-                    </Markdown>
-                    {msg.references && msg.references.citations && msg.references.citations.length > 0 ? (
-                        <div className="mt-0 pt-0 border-t border-gray-300 dark:border-gray-700" id="references-section">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-semibold mb-2">References</h4>
-                                {msg.role === 'assistant' && (
-                                    <ChatMessageActions message={msg.content} references={msg.references} />
-                                )}
-                            </div>
-                            <ul className="list-none p-0">
-                                    {msg.references.citations.map((value, refIndex) => (
-                                        <div
-                                            key={refIndex}
-                                            className={`flex flex-row gap-2 animate-fade-in ${matchesCurrentCitation(value.key, index) ? 'bg-blue-100 dark:bg-blue-900 rounded p-1 transition-colors duration-300' : ''}`}
-                                            id={`citation-${value.key}-${index}`}
-                                            onClick={() => handleCitationClick(value.key, index)}
-                                        >
-                                            <div className={`text-xs ${msg.role === 'user'
-                                                ? 'bg-blue-200 text-blue-800'
-                                                : 'text-secondary-foreground'
-                                                }`}>
-                                                <a href={`#citation-ref-${value.key}`}>{value.key}</a>
-                                            </div>
-                                            <div
-                                                id={`citation-ref-${value.key}-${index}`}
-                                                className={`text-xs ${msg.role === 'user'
-                                                    ? 'bg-blue-200 text-blue-800 line-clamp-1'
-                                                    : 'text-secondary-foreground'
-                                                    }`}
-                                            >
-                                                {value.reference}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </ul>
-                            </div>
-                        ) : (
-                            msg.role === 'assistant' && (
-                                <ChatMessageActions message={msg.content} references={msg.references} />
-                            )
-                        )}
-                </div>
-            </div>
-        ));
-    }, [messages, handleCitationClick, matchesCurrentCitation]);
-
     useEffect(() => {
         if (!shareId) {
             setError("Share ID is missing.");
@@ -289,10 +159,6 @@ export default function SharedPaperView() {
                 setHighlights(response.highlights || []);
                 setAnnotations(response.annotations || []);
                 setOwner(response.owner);
-                // Set default rightSideFunction based on summary availability
-                if (!response.paper.summary) {
-                    setRightSideFunction('Chat');
-                }
             } catch (err) {
                 console.error("Error fetching shared paper data:", err);
                 setError("Failed to load shared paper. The link might be invalid or expired.");
@@ -305,18 +171,7 @@ export default function SharedPaperView() {
             }
         };
 
-        const fetchConversation = async () => {
-            try {
-                const response = await fetchFromApi(`/api/conversation/share/${shareId}`);
-                setMessages(response.messages || []);
-            } catch (err) {
-                console.error("Error fetching shared conversation data:", err);
-                setMessages([]);
-            }
-        };
-
         fetchSharedData();
-        fetchConversation();
     }, [shareId]);
 
     const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
@@ -434,15 +289,6 @@ export default function SharedPaperView() {
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-                                {rightSideFunction === 'Chat' && (
-                                    <div className={`flex flex-col ${heightClass} md:px-2 overflow-y-auto m-2 relative animate-fade-in`}>
-                                        {messages.length === 0 ? (
-                                            <EmptyConversationState owner={owner} />
-                                        ) : (
-                                            memoizedMessages
                                         )}
                                     </div>
                                 )}
@@ -565,15 +411,6 @@ export default function SharedPaperView() {
                                             </div>
                                         )}
                                 </div>
-                            </div>
-                        )}
-                        {rightSideFunction === 'Chat' && (
-                            <div className={`flex flex-col ${heightClass} md:px-2 overflow-y-auto m-2 relative animate-fade-in`}>
-                                {messages.length === 0 ? (
-                                    <EmptyConversationState owner={owner} />
-                                ) : (
-                                    memoizedMessages
-                                )}
                             </div>
                         )}
                     </div>

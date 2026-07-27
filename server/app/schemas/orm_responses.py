@@ -11,7 +11,6 @@ from app.database.models import (
     Annotation,
     AudioOverview,
     AudioOverviewJob,
-    Conversation,
     DataTableExtractionJob,
     DataTableExtractionResult,
     Highlight,
@@ -45,15 +44,6 @@ class PaperNoteResponse(OrmResponse):
     id: UUID
     paper_id: UUID
     content: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class ConversationResponse(OrmResponse):
-    id: UUID
-    title: str | None
-    conversable_id: UUID | None
-    conversable_type: str
     created_at: datetime
     updated_at: datetime
 
@@ -217,10 +207,6 @@ def serialize_project(project: Project) -> dict[str, JsonValue]:
 
 def serialize_paper_note(note: PaperNote) -> dict[str, JsonValue]:
     return PaperNoteResponse.model_validate(note).to_json()
-
-
-def serialize_conversation(conversation: Conversation) -> dict[str, JsonValue]:
-    return ConversationResponse.model_validate(conversation).to_json()
 
 
 def serialize_highlight(highlight: Highlight) -> dict[str, JsonValue]:

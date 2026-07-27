@@ -50,17 +50,6 @@ async function mockSharedPaper(page: Page) {
 			},
 		}),
 	);
-	await page.route("**/api/conversation/share/e2e-paper", (route) =>
-		route.fulfill({
-			headers: {
-				"access-control-allow-credentials": "true",
-				"access-control-allow-headers": "content-type",
-				"access-control-allow-methods": "GET,OPTIONS",
-				"access-control-allow-origin": "http://127.0.0.1:3100",
-			},
-			json: { messages: [] },
-		}),
-	);
 }
 
 test("loads, searches, zooms, and changes pages in a two-page PDF", async ({
