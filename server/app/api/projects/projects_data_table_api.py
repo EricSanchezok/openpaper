@@ -18,7 +18,7 @@ from app.helpers.ai_limits import (
     release_concurrency,
     release_concurrency_by_id,
 )
-from app.helpers.pdf_jobs import jobs_client
+from app.integrations.jobs_client import jobs_client
 from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.schemas.responses import DataTableSchema, DocumentMapping

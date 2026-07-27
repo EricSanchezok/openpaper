@@ -10,7 +10,7 @@ from app.api.subscription.config import (
 from app.auth.dependencies import get_required_user
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import get_db
-from app.helpers.subscription_limits import get_user_usage_info
+from app.services.resource_quotas import get_user_usage_info
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session

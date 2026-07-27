@@ -15,7 +15,7 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.database.telemetry import track_event
-from app.helpers.subscription_limits import can_user_create_project
+from app.services.resource_quotas import can_user_create_project
 from app.policies.projects import ProjectAccess
 from app.repositories.projects import project_repository
 from app.schemas.projects import (

@@ -147,7 +147,7 @@ def get_token_usage(db: Session, *, user_id: int) -> int:
 
 def token_quota_status(db: Session, *, user: CurrentUser) -> tuple[int, int, int, int]:
     """Return (limit, used, remaining, overage) for the user's current plan."""
-    from app.helpers.subscription_limits import (
+    from app.services.resource_quotas import (
         TOKEN_CREDITS_KEY,
         get_plan_limits,
         get_user_subscription_plan,

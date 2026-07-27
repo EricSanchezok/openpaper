@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import requests
-from app.helpers.pdf_jobs import JobsClient
+from app.integrations.jobs_client import JobsClient
 from app.helpers.redaction import redact_url
 from app.schemas.responses import DataTableSchema
 
@@ -24,7 +24,9 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
         MagicMock(id="task_pdf"),
         MagicMock(id="task_table"),
     ]
-    with patch("app.helpers.pdf_jobs.Celery", return_value=celery_app) as celery:
+    with patch(
+        "app.integrations.jobs_client.Celery", return_value=celery_app
+    ) as celery:
         client = JobsClient(
             webhook_base_url="http://server:8000",
             celery_broker_url="amqp://user:password@rabbitmq:5672//",
@@ -46,7 +48,7 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
 
 
 def test_jobs_status_failure_returns_stable_public_error() -> None:
-    with patch("app.helpers.pdf_jobs.Celery"):
+    with patch("app.integrations.jobs_client.Celery"):
         client = JobsClient(
             webhook_base_url="http://server:8000",
             celery_broker_url="amqp://user:password@rabbitmq:5672//",
@@ -54,7 +56,7 @@ def test_jobs_status_failure_returns_stable_public_error() -> None:
         )
 
     with patch(
-        "app.helpers.pdf_jobs.requests.get",
+        "app.integrations.jobs_client.requests.get",
         side_effect=requests.ConnectionError(
             "HTTPConnectionPool(host='jobs-api', port=8001)"
         ),

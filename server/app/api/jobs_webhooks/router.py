@@ -31,7 +31,7 @@ from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.jobs_webhooks import verify_jobs_webhook
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.s3 import s3_service
-from app.helpers.subscription_limits import can_user_auto_sync_zotero
+from app.services.resource_quotas import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
 from app.repositories.conversations import conversation_repository
 from app.schemas.conversations import ConversationCreateRequest

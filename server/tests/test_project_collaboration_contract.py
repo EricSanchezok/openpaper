@@ -143,6 +143,40 @@ def test_project_paper_batch_rejects_partial_library_matches(
     db.commit.assert_not_called()
 
 
+def test_fresh_project_upload_requires_matching_durable_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = MagicMock(spec=Session)
+    document = Document(
+        id=uuid.uuid4(),
+        file_url="s3://bucket/a.pdf",
+        upload_job_id=uuid.uuid4(),
+    )
+    db.scalar.return_value = None
+    monkeypatch.setattr(
+        "app.database.crud.projects.project_paper_crud.require_project_permission",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(AppError) as error:
+        project_paper_crud.attach_reserved_upload(
+            db,
+            document=document,
+            project_id=uuid.uuid4(),
+            user=CurrentUser(
+                id=2,
+                email="collaborator@example.com",
+                status="active",
+                email_verified=True,
+                is_active=True,
+            ),
+        )
+
+    assert error.value.code == "upload_reservation_invalid"
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+
+
 def test_transfer_validates_and_reassigns_owner_quota(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

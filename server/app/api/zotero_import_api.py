@@ -6,7 +6,7 @@ from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import get_db
 from app.database.models import ZoteroImportedItem
 from app.database.telemetry import track_event
-from app.helpers.subscription_limits import can_user_upload_paper
+from app.services.resource_quotas import can_user_upload_paper
 from app.schemas.user import CurrentUser
 from app.schemas.zotero import (
     ZoteroImportError,

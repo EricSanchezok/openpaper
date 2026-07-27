@@ -24,7 +24,7 @@ from app.database.models import (
 from app.database.telemetry import track_event
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.s3 import s3_service
-from app.helpers.subscription_limits import can_user_upload_paper
+from app.services.resource_quotas import can_user_upload_paper
 from app.schemas.orm_responses import (
     serialize_annotation,
     serialize_highlight,

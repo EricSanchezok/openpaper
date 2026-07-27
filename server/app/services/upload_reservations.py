@@ -15,7 +15,7 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.errors import AppError
-from app.helpers.subscription_limits import (
+from app.services.resource_quotas import (
     KB_SIZE_KEY,
     PAPER_UPLOAD_KEY,
     PROJECTS_KEY,

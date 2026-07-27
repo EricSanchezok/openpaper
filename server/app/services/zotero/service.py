@@ -33,9 +33,9 @@ from app.helpers.parser import (
     validate_pdf_content,
     validate_url_and_fetch_pdf,
 )
-from app.helpers.pdf_jobs import jobs_client
+from app.integrations.jobs_client import jobs_client
 from app.helpers.s3 import s3_service
-from app.helpers.subscription_limits import (
+from app.services.resource_quotas import (
     can_user_upload_paper,
     get_remaining_paper_upload_slots,
 )

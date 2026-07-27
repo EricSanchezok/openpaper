@@ -3,14 +3,16 @@ from datetime import datetime, timezone
 
 from app.database.models import (
     Document,
+    JobStatus,
     LibraryPaper,
     PaperStatus,
+    PaperUploadJob,
     Project,
     ProjectCollaborator,
     ProjectPaper,
 )
 from app.errors import AppError
-from app.helpers.subscription_limits import (
+from app.services.resource_quotas import (
     require_library_document_capacity,
     require_project_document_capacity,
 )
@@ -104,7 +106,7 @@ class ProjectPaperCRUD:
             db.refresh(association)
         return associations, len(existing_ids)
 
-    def attach_document(
+    def attach_reserved_upload(
         self,
         db: Session,
         *,
@@ -113,17 +115,33 @@ class ProjectPaperCRUD:
         user: CurrentUser,
         auto_commit: bool = True,
     ) -> ProjectPaper:
-        """Attach an already-authorized document to a project.
-
-        This internal boundary is also used for a fresh project upload, which
-        deliberately has no personal ``LibraryPaper`` entry.
-        """
+        """Attach a fresh upload covered by its durable Project reservation."""
         access = require_project_permission(
             db,
             project_id=project_id,
             user_id=user.id,
             permission="manage_papers",
         )
+        if document.upload_job_id is None:
+            raise AppError(
+                code="upload_reservation_missing",
+                message="Project uploads require a durable reservation",
+                status_code=409,
+            )
+        reservation = db.scalar(
+            select(PaperUploadJob.id).where(
+                PaperUploadJob.id == document.upload_job_id,
+                PaperUploadJob.project_id == project_id,
+                PaperUploadJob.user_id == user.id,
+                PaperUploadJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+            )
+        )
+        if reservation is None:
+            raise AppError(
+                code="upload_reservation_invalid",
+                message="The Project upload reservation is no longer valid",
+                status_code=409,
+            )
         existing = db.scalar(
             select(ProjectPaper).where(
                 ProjectPaper.project_id == project_id,

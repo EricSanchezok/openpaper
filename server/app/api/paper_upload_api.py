@@ -40,8 +40,9 @@ from app.helpers.parser import (
     validate_pdf_content,
     validate_url_and_fetch_pdf,
 )
-from app.helpers.pdf_jobs import jobs_client
+from app.integrations.jobs_client import jobs_client
 from app.schemas.user import CurrentUser
+from app.services.document_submission import submit_reserved_document
 from app.services.upload_reservations import reserve_upload
 from dotenv import load_dotenv
 from fastapi import (
@@ -337,13 +338,11 @@ async def upload_raw_file_microservice(
 
     try:
         # Submit to microservice
-        task_id = await jobs_client.submit_pdf_processing_job_with_upload(
+        task_id = await submit_reserved_document(
             pdf_bytes=file_contents,
-            paper_upload_job=paper_upload_job,
+            upload_job=paper_upload_job,
             db=db,
             user=current_user,
-            project_id=paper_upload_job.project_id,
-            original_filename=paper_upload_job.original_filename,
         )
 
         # Track paper upload event

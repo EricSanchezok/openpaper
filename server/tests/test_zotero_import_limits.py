@@ -88,10 +88,10 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
         user.id = "user-1"
         return user
 
-    @patch("app.helpers.subscription_limits.paper_crud")
-    @patch("app.helpers.subscription_limits.get_user_subscription_plan")
+    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.get_user_subscription_plan")
     def test_basic_5_used(self, mock_plan, mock_paper_crud):
-        from app.helpers.subscription_limits import get_remaining_paper_upload_slots
+        from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.BASIC
         mock_paper_crud.get_total_paper_count.return_value = 5
@@ -100,10 +100,10 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
 
         self.assertEqual(result, 5)
 
-    @patch("app.helpers.subscription_limits.paper_crud")
-    @patch("app.helpers.subscription_limits.get_user_subscription_plan")
+    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.get_user_subscription_plan")
     def test_basic_at_limit(self, mock_plan, mock_paper_crud):
-        from app.helpers.subscription_limits import get_remaining_paper_upload_slots
+        from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.BASIC
         mock_paper_crud.get_total_paper_count.return_value = 10
@@ -112,10 +112,10 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
 
         self.assertEqual(result, 0)
 
-    @patch("app.helpers.subscription_limits.paper_crud")
-    @patch("app.helpers.subscription_limits.get_user_subscription_plan")
+    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.get_user_subscription_plan")
     def test_researcher_499(self, mock_plan, mock_paper_crud):
-        from app.helpers.subscription_limits import get_remaining_paper_upload_slots
+        from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.RESEARCHER
         mock_paper_crud.get_total_paper_count.return_value = 499
@@ -124,10 +124,10 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
 
         self.assertEqual(result, 1)
 
-    @patch("app.helpers.subscription_limits.paper_crud")
-    @patch("app.helpers.subscription_limits.get_user_subscription_plan")
+    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.get_user_subscription_plan")
     def test_researcher_at_limit(self, mock_plan, mock_paper_crud):
-        from app.helpers.subscription_limits import get_remaining_paper_upload_slots
+        from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.RESEARCHER
         mock_paper_crud.get_total_paper_count.return_value = 500
@@ -136,11 +136,11 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
 
         self.assertEqual(result, 0)
 
-    @patch("app.helpers.subscription_limits.paper_crud")
-    @patch("app.helpers.subscription_limits.get_user_subscription_plan")
+    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.get_user_subscription_plan")
     def test_over_limit_clamps_to_zero(self, mock_plan, mock_paper_crud):
         """If somehow over limit, return 0 not negative."""
-        from app.helpers.subscription_limits import get_remaining_paper_upload_slots
+        from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.BASIC
         mock_paper_crud.get_total_paper_count.return_value = 15
