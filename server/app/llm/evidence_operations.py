@@ -14,7 +14,6 @@ from typing import (
 
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
@@ -41,6 +40,7 @@ from app.llm.tools.file_tools import (
     view_file_function,
 )
 from app.llm.tools.meta_tools import stop_function
+from app.policies.projects import get_project_access
 from app.schemas.citation import CitationResult
 from app.schemas.message import (
     EvidenceCollection,
@@ -139,8 +139,12 @@ class EvidenceOperations(BaseLLMClient):
         max_iterations = 4
 
         if project_id:
-            project = project_crud.get(db, id=project_id, user=current_user)
-            if not project:
+            project_access = get_project_access(
+                db,
+                project_id=uuid.UUID(project_id),
+                user_id=current_user.id,
+            )
+            if project_access is None:
                 raise ValueError("Project not found.")
             all_papers = project_paper_crud.get_all_papers_by_project_id(
                 db, project_id=uuid.UUID(project_id), user=current_user

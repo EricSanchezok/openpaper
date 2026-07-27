@@ -11,7 +11,6 @@ from app.database.crud.audio_overview_crud import (
     audio_overview_job_crud,
 )
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_crud import project_crud
 from app.database.database import SessionLocal
 from app.database.models import ConversableType, JobStatus
 from app.database.telemetry import track_event
@@ -20,6 +19,7 @@ from app.llm.multi_paper_operations import multi_paper_operations
 from app.llm.paper_operations import paper_operations
 from app.llm.speech import speaker
 from app.llm.token_credits import llm_usage_context
+from app.policies.projects import get_project_access
 from app.schemas.responses import AudioOverviewForLLM
 from app.schemas.user import CurrentUser
 
@@ -96,10 +96,12 @@ async def generate_audio_overview(
                     db=db,
                 )
         elif project_id:
-            project = project_crud.get(db, id=str(project_id), user=user)
-
-            if not project:
+            project_access = get_project_access(
+                db, project_id=project_id, user_id=user.id
+            )
+            if project_access is None:
                 raise ValueError(f"Project with ID {project_id} not found")
+            project = project_access.project
             conversable_title = (
                 f"{project.title} - {project.description}" or "Untitled Project"
             )

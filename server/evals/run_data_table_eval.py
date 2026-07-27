@@ -38,7 +38,6 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database.crud.paper_crud import PaperCreate, paper_crud
-from app.database.crud.projects.project_crud import ProjectCreate, project_crud
 from app.database.crud.projects.project_paper_crud import (
     ProjectPaperCreate,
     project_paper_crud,
@@ -48,6 +47,7 @@ from app.database.crud.user_crud import user as user_crud
 from app.database.database import SessionLocal
 from app.database.models import SubscriptionPlan
 from app.helpers.s3 import s3_service
+from app.repositories.projects import project_repository
 from app.schemas.user import CurrentUser
 from evals.run_benchmark import ensure_eval_user, extract_text_from_pdf
 
@@ -145,16 +145,12 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
         if not paper:
             raise RuntimeError(f"Failed to create paper record for {key}")
 
-        project = project_crud.create(
-            db=db,
-            obj_in=ProjectCreate(
-                title=f"DT Eval — {key}",
-                description="Seeded by evals.run_data_table_eval (KHO-308)",
-            ),
-            user=current_user,
+        project = project_repository.create(
+            db,
+            owner_id=current_user.id,
+            title=f"DT Eval — {key}",
+            description="Seeded by evals.run_data_table_eval (KHO-308)",
         )
-        if not project:
-            raise RuntimeError(f"Failed to create project for {key}")
 
         linked = project_paper_crud.create(
             db=db,

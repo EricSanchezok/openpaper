@@ -12,9 +12,9 @@ from app.database.models import (
     Paper,
     PaperNote,
     Project,
+    ProjectCollaborator,
+    ProjectInvitation,
     ProjectPaper,
-    ProjectRole,
-    ProjectRoleInvitation,
     Subscription,
     AuthUser,
     UserProfile,
@@ -96,24 +96,26 @@ class ProjectAdmin(ModelView, model=Project):
     column_searchable_list = [Project.title]
 
 
-class ProjectRoleAdmin(ModelView, model=ProjectRole):
+class ProjectCollaboratorAdmin(ModelView, model=ProjectCollaborator):
     column_list = [
-        ProjectRole.id,
+        ProjectCollaborator.id,
         "project",
         "user",
-        ProjectRole.role,
+        ProjectCollaborator.can_edit_project,
+        ProjectCollaborator.can_manage_papers,
+        ProjectCollaborator.can_manage_collaborators,
     ]
     column_searchable_list = [
-        ProjectRole.role,
-        ProjectRole.project_id,
-        ProjectRole.user_id,
+        ProjectCollaborator.project_id,
+        ProjectCollaborator.user_id,
     ]
-    column_sortable_list = [ProjectRole.role]
     column_details_list = [
-        ProjectRole.id,
+        ProjectCollaborator.id,
         "project",
         "user",
-        ProjectRole.role,
+        ProjectCollaborator.can_edit_project,
+        ProjectCollaborator.can_manage_papers,
+        ProjectCollaborator.can_manage_collaborators,
     ]
 
 
@@ -220,18 +222,17 @@ class DataTableRowAdmin(ModelView, model=DataTableRow):
     ]
 
 
-class ProjectRoleInvitationAdmin(ModelView, model=ProjectRoleInvitation):
+class ProjectInvitationAdmin(ModelView, model=ProjectInvitation):
     column_list = [
-        ProjectRoleInvitation.id,
-        ProjectRoleInvitation.project_id,
-        ProjectRoleInvitation.email,
-        ProjectRoleInvitation.role,
-        ProjectRoleInvitation.created_at,
+        ProjectInvitation.id,
+        ProjectInvitation.project_id,
+        ProjectInvitation.email,
+        ProjectInvitation.expires_at,
+        ProjectInvitation.created_at,
     ]
     column_searchable_list = [
-        ProjectRoleInvitation.project_id,
-        ProjectRoleInvitation.email,
-        ProjectRoleInvitation.role,
+        ProjectInvitation.project_id,
+        ProjectInvitation.email,
     ]
 
 
@@ -326,8 +327,8 @@ def setup_admin(app: FastAPI) -> None:
     admin.add_view(ConversationAdmin)
     admin.add_view(MessageAdmin)
     admin.add_view(ProjectAdmin)
-    admin.add_view(ProjectRoleInvitationAdmin)
-    admin.add_view(ProjectRoleAdmin)
+    admin.add_view(ProjectInvitationAdmin)
+    admin.add_view(ProjectCollaboratorAdmin)
     admin.add_view(ProjectPaperAdmin)
     admin.add_view(SubscriptionAdmin)
     admin.add_view(DataTableExtractionJobAdmin)

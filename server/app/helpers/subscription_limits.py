@@ -11,12 +11,12 @@ import uuid
 from datetime import datetime, timezone
 
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.crud.subscription_crud import subscription_crud
-from app.database.models import SubscriptionPlan, SubscriptionStatus
+from app.database.models import AuthUser, Project, SubscriptionPlan, SubscriptionStatus
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -141,14 +141,20 @@ def can_user_add_papers_to_project(
     """
     Check if `paper_count` more papers can be added to a project.
 
-    The cap is per-project, but the plan consulted is the acting user's, which
-    matches what the client gates on. On a shared project this means the limit
-    follows whoever is adding, not the project owner.
+    The cap and quota plan belong to the project owner, never the collaborator
+    performing the action.
 
     Returns:
         Whether the action is allowed and an optional user-facing reason.
     """
-    plan = get_user_subscription_plan(db, user)
+    project = db.get(Project, project_id)
+    if project is None:
+        return False, "Project not found"
+    owner = db.get(AuthUser, project.owner_id)
+    if owner is None:
+        raise RuntimeError(f"Project {project_id} has no owner")
+    quota_user = CurrentUser.from_auth_user(owner)
+    plan = get_user_subscription_plan(db, quota_user)
     limits = get_plan_limits(plan)
     project_paper_limit = limits[PROJECT_PAPERS_KEY]
 
@@ -159,7 +165,7 @@ def can_user_add_papers_to_project(
     if current_project_paper_count + paper_count > project_paper_limit:
         track_event(
             "action_blocked_limit_reached",
-            user_id=str(user.id),
+            user_id=str(project.owner_id),
             properties={
                 "current_project_paper_count": current_project_paper_count,
                 "requested_paper_count": paper_count,
@@ -187,8 +193,9 @@ def can_user_create_project(db: Session, user: CurrentUser) -> tuple[bool, str |
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
 
-    current_project_count = len(
-        project_crud.get_all_projects_by_user_with_metadata(db=db, user=user)
+    current_project_count = int(
+        db.scalar(select(func.count(Project.id)).where(Project.owner_id == user.id))
+        or 0
     )
     project_limit = limits[PROJECTS_KEY]
 
@@ -264,8 +271,9 @@ def get_user_usage_info(db: Session, user: CurrentUser) -> dict[str, object]:
     paper_limit = limits[PAPER_UPLOAD_KEY]
     total_size = paper_crud.get_size_of_knowledge_base(db, user=user)
     total_size_allowed = limits[KB_SIZE_KEY]
-    current_project_count = len(
-        project_crud.get_all_projects_by_user_with_metadata(db=db, user=user)
+    current_project_count = int(
+        db.scalar(select(func.count(Project.id)).where(Project.owner_id == user.id))
+        or 0
     )
     project_limit = limits[PROJECTS_KEY]
     token_limit, token_used, token_remaining, token_overage = token_quota_status(

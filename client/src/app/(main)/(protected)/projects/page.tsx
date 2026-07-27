@@ -21,11 +21,11 @@ const FILTER_CONFIG: Record<ProjectFilter, { label: string; icon: React.ElementT
 	hasAudio: { label: "Audio Overviews", icon: Headphones, check: (p) => (p.num_audio_overviews ?? 0) > 0 },
 	hasChats: { label: "Chats", icon: MessageCircle, check: (p) => (p.num_conversations ?? 0) > 0 },
 	hasDataTables: { label: "Data Tables", icon: Table, check: (p) => (p.num_data_tables ?? 0) > 0 },
-	shared: { label: "Shared", icon: Users, check: (p) => (p.num_roles ?? 1) > 1 },
+	shared: { label: "Shared", icon: Users, check: (p) => (p.num_collaborators ?? 0) > 0 },
 };
 
 function ProjectsPage() {
-	const { projects, isLoading, error, refetch: getProjects } = useProjects(true);
+	const { projects, isLoading, error, refetch: getProjects } = useProjects();
 	const { subscription } = useSubscription();
 	const router = useRouter();
 	const searchParams = useSearchParams();

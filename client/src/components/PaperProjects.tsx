@@ -37,7 +37,7 @@ interface PaperProjectsProps {
 
 export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
     const [projects, setProjects] = useState<Project[]>([]);
-    const { projects: allProjects, isLoading: isLoadingAllProjects } = useProjects(true);
+    const { projects: allProjects, isLoading: isLoadingAllProjects } = useProjects();
     const [isLoadingProjects, setIsLoadingProjects] = useState(false);
     const [addingToProjectId, setAddingToProjectId] = useState<string | null>(null);
     const [isCreateProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);

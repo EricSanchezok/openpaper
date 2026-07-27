@@ -31,12 +31,6 @@ class ReasoningLevel(str, Enum):
     DEEP = "deep"
 
 
-class ProjectRoles(str, Enum):
-    ADMIN = "admin"
-    EDITOR = "editor"
-    VIEWER = "viewer"
-
-
 class ZoteroImportSource(str, Enum):
     PDF_ATTACHMENT = "pdf_attachment"
     URL = "url"

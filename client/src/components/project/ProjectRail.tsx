@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fetchFromApi } from "@/lib/api";
-import { PaperItem, ProjectRole } from "@/lib/schema";
+import { PaperItem } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -51,7 +51,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
     const { project, projectId, openDocument, openDocumentIds, activePaperId, refetchPapers } = useProjectWorkspace();
     const isOpen = openDocumentIds.includes(paper.id);
     const isActive = activePaperId === paper.id;
-    const isViewer = project?.role === ProjectRole.Viewer;
+    const canManagePapers = project?.capabilities.manage_papers === true;
 
     const handleUnlink = async () => {
         try {
@@ -115,7 +115,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
                             </Link>
                         </DropdownMenuItem>
                     )}
-                    {!isViewer && (
+                    {canManagePapers && (
                         <DropdownMenuItem variant="destructive" onClick={handleUnlink}>
                             <Unlink className="h-4 w-4" />
                             Remove from project
@@ -144,7 +144,7 @@ export function ProjectRail({ onNavigate }: ProjectRailProps) {
     } = useProjectWorkspace();
     const [paperSearchQuery, setPaperSearchQuery] = useState("");
 
-    const isViewer = project?.role === ProjectRole.Viewer;
+    const canManagePapers = project?.capabilities.manage_papers === true;
 
     const filteredPapers = useMemo(() => {
         if (!paperSearchQuery.trim()) return papers;
@@ -165,7 +165,7 @@ export function ProjectRail({ onNavigate }: ProjectRailProps) {
             <div className="flex min-h-0 flex-1 flex-col pt-2">
                 <SectionHeading label="Papers" count={papers.length}>
                     {papers.length > 0 && <CitePaperButton paper={papers} minimalist={true} />}
-                    {!isViewer && (
+                    {canManagePapers && (
                         <Button
                             variant="ghost"
                             size="icon"
@@ -206,7 +206,7 @@ export function ProjectRail({ onNavigate }: ProjectRailProps) {
                     ) : (
                         <div className="px-2 pt-1">
                             <p className="text-xs text-muted-foreground">No papers yet.</p>
-                            {!isViewer && (
+                            {canManagePapers && (
                                 <Button
                                     variant="link"
                                     className="h-auto p-0 text-xs"
@@ -225,36 +225,34 @@ export function ProjectRail({ onNavigate }: ProjectRailProps) {
                 <SectionHeading label="Chats" count={conversations.length} />
                 <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
                     {/* Explicit path back to the project home (= the new-chat surface) */}
-                    {!isViewer && (
-                        <Link
-                            href={`/projects/${projectId}`}
-                            onClick={onNavigate}
+                    <Link
+                        href={`/projects/${projectId}`}
+                        onClick={onNavigate}
+                        className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
+                            pathname === `/projects/${projectId}`
+                                ? "bg-blue-50 dark:bg-blue-900/30"
+                                : "hover:bg-accent",
+                        )}
+                    >
+                        <Plus
                             className={cn(
-                                "flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
+                                "h-3.5 w-3.5 shrink-0",
+                                pathname === `/projects/${projectId}` ? "text-blue-500" : "text-muted-foreground/70",
+                            )}
+                            aria-hidden
+                        />
+                        <span
+                            className={cn(
+                                "truncate text-xs",
                                 pathname === `/projects/${projectId}`
-                                    ? "bg-blue-50 dark:bg-blue-900/30"
-                                    : "hover:bg-accent",
+                                    ? "font-medium text-blue-700 dark:text-blue-300"
+                                    : "text-foreground",
                             )}
                         >
-                            <Plus
-                                className={cn(
-                                    "h-3.5 w-3.5 shrink-0",
-                                    pathname === `/projects/${projectId}` ? "text-blue-500" : "text-muted-foreground/70",
-                                )}
-                                aria-hidden
-                            />
-                            <span
-                                className={cn(
-                                    "truncate text-xs",
-                                    pathname === `/projects/${projectId}`
-                                        ? "font-medium text-blue-700 dark:text-blue-300"
-                                        : "text-foreground",
-                                )}
-                            >
-                                New chat
-                            </span>
-                        </Link>
-                    )}
+                            New chat
+                        </span>
+                    </Link>
                     {isConversationsLoading ? (
                         <div className="space-y-2 px-2 pt-1">
                             {[1, 2, 3].map((i) => (

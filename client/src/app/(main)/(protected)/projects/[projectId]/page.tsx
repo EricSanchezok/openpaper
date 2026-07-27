@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { fetchFromApi } from "@/lib/api";
-import { ProjectRole } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MentionInput } from "@/components/chat/MentionInput";
@@ -41,7 +40,7 @@ export default function ProjectPage() {
     const { subscription } = useSubscription();
 
     const aiDisabled = isTokenCreditAtLimit(subscription);
-    const isViewer = project?.role === ProjectRole.Viewer;
+    const canManagePapers = project?.capabilities.manage_papers === true;
 
     useEffect(() => {
         const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
@@ -134,7 +133,7 @@ export default function ProjectPage() {
                     <h2 className="mb-2 text-2xl font-bold">Get Started with Your Project</h2>
                     <p className="mb-8 text-muted-foreground">Add research papers to your project, then ask questions and generate insights.</p>
 
-                    {!isViewer && (
+                    {canManagePapers && (
                         <div className="mb-8 grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
                             {/* Deep-link straight to the chosen flow — no second chooser in the sheet */}
                             <button
@@ -181,7 +180,7 @@ export default function ProjectPage() {
         <div className="flex-1 overflow-y-auto">
             {/* min-h-full (not h-full) so tall content grows instead of clipping under justify-center */}
             <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-4 py-8">
-                {!isViewer && papers.length > 0 ? (
+                {papers.length > 0 ? (
                     <>
                         {/* The project itself is the hero — title + description ground the user */}
                         <div className="mb-6 text-center">
@@ -214,29 +213,18 @@ export default function ProjectPage() {
                             {papers.length} paper{papers.length === 1 ? "" : "s"} in context · pick up past chats from the sidebar
                         </p>
                     </>
-                ) : !isViewer ? (
+                ) : (
                     <div className="rounded-xl border-2 border-dashed bg-muted/30 p-8 text-center">
                         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted p-3">
                             <MessageCircle className="h-6 w-6 text-muted-foreground" />
                         </div>
                         <h3 className="mb-1 text-sm font-semibold">Ready to Start Conversations</h3>
                         <p className="text-sm text-muted-foreground">Add papers to your project to begin discussing and analyzing them.</p>
-                        <Button variant="outline" size="sm" className="mt-3" onClick={() => openAddPapers()}>
-                            Add papers
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="text-center">
-                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 p-4 dark:bg-blue-900/30">
-                            <MessageCircle className="h-8 w-8 text-blue-400" />
-                        </div>
-                        <h3 className="mb-2 text-lg font-medium">{project.title}</h3>
-                        {project.description && (
-                            <p className="mx-auto mb-3 max-w-md text-sm text-muted-foreground">{project.description}</p>
+                        {canManagePapers && (
+                            <Button variant="outline" size="sm" className="mt-3" onClick={() => openAddPapers()}>
+                                Add papers
+                            </Button>
                         )}
-                        <p className="mx-auto max-w-md text-sm text-muted-foreground">
-                            You have view access — browse papers and pick up chats from the sidebar.
-                        </p>
                     </div>
                 )}
             </div>

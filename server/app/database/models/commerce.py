@@ -30,8 +30,9 @@ from .enums import (
 )
 
 if TYPE_CHECKING:
-    from .content import Paper, Project
+    from .content import Paper
     from .identity import AuthUser
+    from .projects import Project
 
 
 class Subscription(Base):
@@ -152,7 +153,7 @@ class DataTableExtractionJob(Base):
     )
 
     project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=True
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
 
     columns: Mapped[list[str] | None] = mapped_column(

@@ -26,10 +26,11 @@ from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .base import Base, JsonValue
-from .enums import ConversableType, JobStatus, PaperStatus, ProjectRoles
+from .enums import ConversableType, JobStatus, PaperStatus
 
 if TYPE_CHECKING:
     from .identity import AuthUser
+    from .projects import ProjectPaper
 
 
 class PaperUploadJob(Base):
@@ -481,148 +482,6 @@ class PaperPassage(Base):
     ts_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     paper: Mapped["Paper"] = relationship("Paper")
-
-
-class Project(Base):
-    __tablename__ = "project"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    title: Mapped[str | None] = mapped_column(String, nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    admin_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=False
-    )
-
-    project_roles: Mapped[list["ProjectRole"]] = relationship(
-        "ProjectRole", back_populates="project"
-    )
-    project_papers: Mapped[list["ProjectPaper"]] = relationship(
-        "ProjectPaper", back_populates="project"
-    )
-
-    audio_overviews: Mapped[list["AudioOverview"]] = relationship(
-        "AudioOverview",
-        cascade="all, delete-orphan",
-        primaryjoin=lambda: and_(
-            Project.id == foreign(AudioOverview.conversable_id),
-            AudioOverview.conversable_type == ConversableType.PROJECT.value,
-        ),
-        overlaps="audio_overviews",
-    )
-
-    audio_overview_jobs: Mapped[list["AudioOverviewJob"]] = relationship(
-        "AudioOverviewJob",
-        cascade="all, delete-orphan",
-        primaryjoin=lambda: and_(
-            Project.id == foreign(AudioOverviewJob.conversable_id),
-            AudioOverviewJob.conversable_type == ConversableType.PROJECT.value,
-        ),
-        overlaps="audio_overview_jobs",
-    )
-    invitations: Mapped[list["ProjectRoleInvitation"]] = relationship(
-        "ProjectRoleInvitation", back_populates="project", cascade="all, delete-orphan"
-    )
-
-
-class ProjectRoleInvitation(Base):
-    __tablename__ = "project_role_invitations"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=False
-    )
-    email: Mapped[str] = mapped_column(String, nullable=False)
-    invited_by: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=False
-    )
-    role: Mapped[str] = mapped_column(String, nullable=False)
-    invited_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    accepted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    # Relationships
-    inviter: Mapped["AuthUser"] = relationship(
-        "AuthUser", foreign_keys=[invited_by], back_populates="invitations"
-    )
-    project: Mapped["Project"] = relationship(
-        "Project", back_populates="invitations", foreign_keys=[project_id]
-    )
-
-
-class ProjectRole(Base):
-    __tablename__ = "project_role"
-
-    __table_args__ = (
-        Index("ix_project_role_project_id_user_id", "project_id", "user_id"),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=False
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=False
-    )
-    role: Mapped[str] = mapped_column(
-        String, nullable=False, default=ProjectRoles.ADMIN
-    )
-
-    project: Mapped["Project"] = relationship("Project", back_populates="project_roles")
-    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="project_roles")
-
-
-class ProjectPaper(Base):
-    """
-    Association table for linking papers and projects. This is because projects can have many papers and papers can belong to many projects.
-    """
-
-    __tablename__ = "project_paper"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("project.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    project: Mapped["Project"] = relationship(
-        "Project", back_populates="project_papers"
-    )
-    paper: Mapped["Paper"] = relationship("Paper", back_populates="project_papers")
-
-
-class ProjectAudioOverview(Base):
-    __tablename__ = "project_audio_overview"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=False
-    )
-    audio_overview_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("audio_overviews.id", ondelete="CASCADE"),
-        nullable=False,
-    )
 
 
 class PaperImage(Base):

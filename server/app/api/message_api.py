@@ -13,7 +13,6 @@ from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_conversation_crud import (
     project_conversation_crud,
 )
-from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import (
@@ -33,6 +32,7 @@ from app.llm.conversation_operations import conversation_operations
 from app.llm.multi_paper_operations import multi_paper_operations
 from app.llm.paper_operations import paper_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
+from app.policies.projects import get_project_access
 from app.schemas.message import EvidenceCollection, ResponseStyle
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
@@ -264,9 +264,14 @@ def _resolve_mention_scope(
             )
 
     for project_id in request.mentioned_project_ids or []:
-        project = project_crud.get(db, id=project_id, user=current_user)
-        if not project:
+        project_access = get_project_access(
+            db,
+            project_id=uuid.UUID(project_id),
+            user_id=current_user.id,
+        )
+        if project_access is None:
             continue
+        project = project_access.project
         paper_ids = project_paper_crud.get_project_paper_ids_by_project_id(
             db, project_id=uuid.UUID(project_id), user=current_user
         )
@@ -379,11 +384,13 @@ async def chat_message_multipaper(
 
                 # Ensure conversation is valid
                 if request.project_id:
-                    project = project_crud.get(
-                        db, id=request.project_id, user=current_user
+                    project_access = get_project_access(
+                        db,
+                        project_id=uuid.UUID(request.project_id),
+                        user_id=current_user.id,
                     )
 
-                    if not project:
+                    if project_access is None:
                         raise ValueError("Project not found.")
 
                     conversation = project_conversation_crud.get_by_conversation_id(

@@ -7,9 +7,9 @@ from app.database.models import (
     Paper,
     PaperUploadJob,
     ProjectPaper,
-    ProjectRole,
 )
 from app.schemas.user import CurrentUser
+from app.policies.projects import get_project_access
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -164,13 +164,7 @@ class PaperUploadJobCRUD(
         after a page refresh.
         """
         # Only members of the project may see its in-progress uploads.
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-        ).first()
-        if not project_role:
+        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return []
 
         # Filter out dead uploads so a phantom job doesn't resurface every time

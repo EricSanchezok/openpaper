@@ -309,11 +309,11 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "project",
+        "projects",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("title", sa.String(), nullable=True),
+        sa.Column("title", sa.String(length=240), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("admin_id", sa.BigInteger(), nullable=False),
+        sa.Column("owner_id", sa.BigInteger(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -327,10 +327,18 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["admin_id"],
+            ["owner_id"],
             ["auth.users.id"],
+            ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id"),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_projects_owner_id"),
+        "projects",
+        ["owner_id"],
+        unique=False,
         schema="scholens",
     )
     op.create_table(
@@ -473,7 +481,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -612,37 +620,34 @@ def upgrade() -> None:
         postgresql_using="gin",
     )
     op.create_table(
-        "project_audio_overview",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("project_id", sa.UUID(), nullable=False),
-        sa.Column("audio_overview_id", sa.UUID(), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["audio_overview_id"], ["scholens.audio_overviews.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        schema="scholens",
-    )
-    op.create_table(
-        "project_role",
+        "project_collaborators",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("project_id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column("role", sa.String(), nullable=False),
+        sa.Column(
+            "can_edit_project",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column(
+            "can_manage_papers",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column(
+            "can_manage_collaborators",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column(
+            "joined_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -656,56 +661,87 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "project_id",
+            "user_id",
+            name="uq_project_collaborator_project_user",
+        ),
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_project_collaborators_user_id",
+        "project_collaborators",
+        ["user_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_table(
+        "project_invitations",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("project_id", sa.UUID(), nullable=False),
+        sa.Column("email", sa.String(length=320), nullable=False),
+        sa.Column("token_hash", sa.String(length=64), nullable=False),
+        sa.Column("invited_by_id", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "can_edit_project",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column(
+            "can_manage_papers",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column(
+            "can_manage_collaborators",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["user_id"],
+            ["invited_by_id"],
             ["auth.users.id"],
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
     op.create_index(
-        "ix_project_role_project_id_user_id",
-        "project_role",
-        ["project_id", "user_id"],
+        "ix_project_invitations_project_email",
+        "project_invitations",
+        ["project_id", "email"],
         unique=False,
         schema="scholens",
     )
-    op.create_table(
-        "project_role_invitations",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("project_id", sa.UUID(), nullable=False),
-        sa.Column("email", sa.String(), nullable=False),
-        sa.Column("invited_by", sa.BigInteger(), nullable=False),
-        sa.Column("role", sa.String(), nullable=False),
-        sa.Column(
-            "invited_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=True,
-        ),
-        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["invited_by"],
-            ["auth.users.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
-        ),
-        sa.PrimaryKeyConstraint("id"),
+    op.create_index(
+        "ix_project_invitations_token_hash",
+        "project_invitations",
+        ["token_hash"],
+        unique=True,
         schema="scholens",
     )
     op.create_table(
@@ -957,10 +993,11 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "project_paper",
+        "project_papers",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("paper_id", sa.UUID(), nullable=False),
         sa.Column("project_id", sa.UUID(), nullable=False),
+        sa.Column("added_by_id", sa.BigInteger(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -977,21 +1014,27 @@ def upgrade() -> None:
             ["paper_id"], ["scholens.papers.id"], ondelete="RESTRICT"
         ),
         sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.project.id"], ondelete="CASCADE"
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["added_by_id"], ["auth.users.id"], ondelete="SET NULL"
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "project_id", "paper_id", name="uq_project_paper_project_paper"
+        ),
         schema="scholens",
     )
     op.create_index(
-        op.f("ix_scholens_project_paper_paper_id"),
-        "project_paper",
+        op.f("ix_scholens_project_papers_paper_id"),
+        "project_papers",
         ["paper_id"],
         unique=False,
         schema="scholens",
     )
     op.create_index(
-        op.f("ix_scholens_project_paper_project_id"),
-        "project_paper",
+        op.f("ix_scholens_project_papers_project_id"),
+        "project_papers",
         ["project_id"],
         unique=False,
         schema="scholens",
@@ -1196,16 +1239,16 @@ def downgrade() -> None:
     op.drop_table("annotations", schema="scholens")
     op.drop_table("zotero_imported_items", schema="scholens")
     op.drop_index(
-        op.f("ix_scholens_project_paper_project_id"),
-        table_name="project_paper",
+        op.f("ix_scholens_project_papers_project_id"),
+        table_name="project_papers",
         schema="scholens",
     )
     op.drop_index(
-        op.f("ix_scholens_project_paper_paper_id"),
-        table_name="project_paper",
+        op.f("ix_scholens_project_papers_paper_id"),
+        table_name="project_papers",
         schema="scholens",
     )
-    op.drop_table("project_paper", schema="scholens")
+    op.drop_table("project_papers", schema="scholens")
     op.drop_table("paper_tag_association", schema="scholens")
     op.drop_index(
         "ix_paper_passages_ts_vector",
@@ -1237,14 +1280,23 @@ def downgrade() -> None:
     op.drop_index("ix_artifacts_scope", table_name="artifacts", schema="scholens")
     op.drop_index("ix_artifacts_message_id", table_name="artifacts", schema="scholens")
     op.drop_table("artifacts", schema="scholens")
-    op.drop_table("project_role_invitations", schema="scholens")
     op.drop_index(
-        "ix_project_role_project_id_user_id",
-        table_name="project_role",
+        "ix_project_invitations_token_hash",
+        table_name="project_invitations",
         schema="scholens",
     )
-    op.drop_table("project_role", schema="scholens")
-    op.drop_table("project_audio_overview", schema="scholens")
+    op.drop_index(
+        "ix_project_invitations_project_email",
+        table_name="project_invitations",
+        schema="scholens",
+    )
+    op.drop_table("project_invitations", schema="scholens")
+    op.drop_index(
+        "ix_project_collaborators_user_id",
+        table_name="project_collaborators",
+        schema="scholens",
+    )
+    op.drop_table("project_collaborators", schema="scholens")
     op.drop_index(
         "ix_papers_ts_vector",
         table_name="papers",
@@ -1266,7 +1318,12 @@ def downgrade() -> None:
     op.drop_table("zotero_connections", schema="scholens")
     op.drop_table("user_profiles", schema="scholens")
     op.drop_table("subscriptions", schema="scholens")
-    op.drop_table("project", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_projects_owner_id"),
+        table_name="projects",
+        schema="scholens",
+    )
+    op.drop_table("projects", schema="scholens")
     op.drop_table("paper_upload_jobs", schema="scholens")
     op.drop_table("paper_tags", schema="scholens")
     op.drop_table("onboarding", schema="scholens")

@@ -13,7 +13,6 @@ from typing import (
 
 from app.database.crud.message_crud import message_crud
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import Paper, ReasoningLevel
@@ -25,6 +24,7 @@ from app.llm.prompts import (
     GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
+from app.policies.projects import get_project_access
 from app.schemas.message import EvidenceCollection
 from app.schemas.responses import AudioOverviewForLLM
 from app.schemas.user import CurrentUser
@@ -360,8 +360,12 @@ class MultiPaperOperations(EvidenceOperations):
 
         # Get paper metadata for context
         if project_id:
-            project = project_crud.get(db, id=project_id, user=current_user)
-            if not project:
+            project_access = get_project_access(
+                db,
+                project_id=uuid.UUID(project_id),
+                user_id=current_user.id,
+            )
+            if project_access is None:
                 raise ValueError("Project not found.")
             all_papers = project_paper_crud.get_all_papers_by_project_id(
                 db, project_id=uuid.UUID(project_id), user=current_user

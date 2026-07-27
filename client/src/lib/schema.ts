@@ -439,8 +439,10 @@ export interface Project {
     num_data_tables?: number;
     created_at: string;
     updated_at: string;
-    role?: ProjectRole;
-    num_roles?: number;
+    num_collaborators?: number;
+    owner: ProjectOwner;
+    membership: ProjectMembership;
+    capabilities: ProjectCapabilities;
 }
 
 export interface PdfUploadResponse {
@@ -454,26 +456,49 @@ export interface MinimalJob {
     fileName: string;
 }
 
-export const ProjectRole = {
-    Admin: 'admin',
-    Editor: 'editor',
-    Viewer: 'viewer',
-} as const;
+export interface ProjectPermissions {
+    edit_project: boolean;
+    manage_papers: boolean;
+    manage_collaborators: boolean;
+}
 
-export type ProjectRole = (typeof ProjectRole)[keyof typeof ProjectRole];
-
-export interface Collaborator {
-    id: string;
+export interface ProjectOwner {
+    id: number;
     display_name: string;
     email: string;
-    role: ProjectRole;
+}
+
+export interface ProjectMembership {
+    kind: 'owner' | 'collaborator';
+    permissions: ProjectPermissions;
+}
+
+export interface ProjectCapabilities {
+    read: boolean;
+    edit_project: boolean;
+    manage_papers: boolean;
+    manage_collaborators: boolean;
+    create_conversation: boolean;
+    contribute_research: boolean;
+    transfer: boolean;
+    delete: boolean;
+    leave: boolean;
+}
+
+export interface Collaborator {
+    user_id: number;
+    display_name: string;
+    email: string;
+    is_owner: boolean;
+    permissions: ProjectPermissions;
+    joined_at: string | null;
 }
 
 export interface PendingInvite {
     id?: string;
     email: string;
-    role: ProjectRole;
-    invited_at: string;
+    permissions: ProjectPermissions;
+    expires_at?: string;
 }
 
 export interface ProjectInvitation {
@@ -482,9 +507,9 @@ export interface ProjectInvitation {
     project_name: string;
     invited_by: string;
     email: string;
-    role: string;
-    accepted_at?: string;
-    invited_at: string;
+    permissions: ProjectPermissions;
+    expires_at: string;
+    created_at: string;
 }
 
 export interface DataTableJob {

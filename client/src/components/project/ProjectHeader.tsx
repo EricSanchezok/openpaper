@@ -27,7 +27,6 @@ import { ProjectCollaborators } from "@/components/ProjectCollaborators";
 import { ProjectRail } from "@/components/project/ProjectRail";
 import { EditProjectButton } from "@/components/project/EditProjectDialog";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
-import { ProjectRole } from "@/lib/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Wraps the project-name crumb: the description surfaces as a hover tooltip
@@ -57,6 +56,7 @@ export function ProjectHeader() {
         railCollapsed,
         toggleRail,
         setHasCollaborators,
+        refetchProject,
     } = useProjectWorkspace();
     const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
 
@@ -116,7 +116,7 @@ export function ProjectHeader() {
                                 <BreadcrumbPage className="truncate font-medium">{project?.title}</BreadcrumbPage>
                             </TitleWithDescription>
                         )}
-                        {project && project.role !== ProjectRole.Viewer && (
+                        {project?.capabilities.edit_project && (
                             <EditProjectButton className="ml-0.5 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/crumb:opacity-100" />
                         )}
                     </BreadcrumbItem>
@@ -132,11 +132,13 @@ export function ProjectHeader() {
             </Breadcrumb>
 
             <div className="flex shrink-0 items-center gap-2">
-                <ProjectCollaborators
-                    projectId={projectId}
-                    setHasCollaborators={setHasCollaborators}
-                    currentUserIsAdmin={project?.role === "admin"}
-                />
+                {project && (
+                    <ProjectCollaborators
+                        project={project}
+                        setHasCollaborators={setHasCollaborators}
+                        onProjectChanged={refetchProject}
+                    />
+                )}
                 <Button
                     variant="outline"
                     size="sm"

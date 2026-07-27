@@ -38,7 +38,7 @@ export default function Home() {
 	const [jobUploadStatus, setJobUploadStatus] = useState<JobStatus | null>(null);
 
 	const [relevantPapers, setRelevantPapers] = useState<PaperItem[]>([]);
-	const { projects, isLoading: isLoadingProjects, refetch: refetchProjects } = useProjects(true);
+	const { projects, isLoading: isLoadingProjects, refetch: refetchProjects } = useProjects();
 	const [isLoadingData, setIsLoadingData] = useState(true);
 	const [showErrorAlert, setShowErrorAlert] = useState(false);
 	const [errorAlertMessage, setErrorAlertMessage] = useState(DEFAULT_PAPER_UPLOAD_ERROR_MESSAGE);

@@ -26,7 +26,7 @@ function ProjectCardSkeleton() {
 }
 
 export function ProjectsPreview({ limit = 4 }: ProjectsPreviewProps) {
-    const { projects: allProjects, isLoading } = useProjects(true);
+    const { projects: allProjects, isLoading } = useProjects();
 
     // Sort by updated_at and take top N.
     const projects = useMemo(

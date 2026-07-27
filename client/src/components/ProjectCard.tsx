@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Project, ProjectRole } from "@/lib/schema";
+import { Project } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, FileText, MessageCircle, X, Users, Headphones, Table } from "lucide-react";
@@ -95,8 +95,8 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 
 	const exitProject = async () => {
 		try {
-			const response = await fetchFromApi(`/api/projects/${project.id}/collaborators/self`, {
-				method: 'DELETE',
+			const response = await fetchFromApi(`/api/projects/${project.id}/leave`, {
+				method: 'POST',
 			});
 			if (response) {
 				setShowExitAlert(false);
@@ -154,10 +154,10 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 							{project.num_data_tables}
 						</span>
 					)}
-					{(project.num_roles ?? 1) > 1 && (
+					{(project.num_collaborators ?? 0) > 0 && (
 						<span className="flex items-center gap-1">
 							<Users className="h-3.5 w-3.5" aria-hidden />
-							{project.num_roles}
+							{project.num_collaborators}
 						</span>
 					)}
 				</div>
@@ -195,12 +195,12 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-32" onClick={(e) => e.stopPropagation()}>
-							{project.role === ProjectRole.Admin && (
+							{project.capabilities.edit_project && (
 								<DropdownMenuItem onClick={handleEditClick} className="cursor-pointer">
 									Edit
 								</DropdownMenuItem>
 							)}
-							{project.role === ProjectRole.Admin && (
+							{project.capabilities.delete && (
 								<DropdownMenuItem
 									onClick={handleDeleteClick}
 									className="cursor-pointer text-destructive focus:text-destructive"
@@ -208,7 +208,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 									Delete
 								</DropdownMenuItem>
 							)}
-							{project.role !== ProjectRole.Admin && (
+							{project.capabilities.leave && (
 								<DropdownMenuItem
 									onClick={handleExitClick}
 									className="cursor-pointer text-destructive focus:text-destructive"

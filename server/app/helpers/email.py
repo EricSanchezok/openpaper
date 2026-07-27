@@ -309,6 +309,7 @@ def send_project_invite_email(
     to_email: str,
     from_name: str,
     project_title: str,
+    invitation_token: str,
 ) -> bool:
     """
     Send a project invitation email using Resend.
@@ -322,7 +323,9 @@ def send_project_invite_email(
         bool: True if email was sent successfully, False otherwise
     """
     try:
-        invite_link = f"{CLIENT_DOMAIN}/projects?openInvites=true"
+        invite_link = (
+            f"{CLIENT_DOMAIN.rstrip('/')}/project-invitations/{invitation_token}"
+        )
         subject = f"{from_name} invited you to collaborate on '{project_title}'"
         html_content = (
             load_email_template("project_invite.html")

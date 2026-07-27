@@ -21,9 +21,8 @@ if TYPE_CHECKING:
         PaperNote,
         PaperTag,
         PaperUploadJob,
-        ProjectRole,
-        ProjectRoleInvitation,
     )
+    from .projects import Project, ProjectCollaborator, ProjectInvitation
     from .integrations import (
         ZoteroConnection,
         ZoteroImportedItem,
@@ -90,14 +89,21 @@ class AuthUser(Base):
         cascade="all, delete-orphan",
     )
 
-    project_roles: Mapped[list["ProjectRole"]] = relationship(
-        "ProjectRole", back_populates="user"
+    owned_projects: Mapped[list["Project"]] = relationship(
+        "Project", foreign_keys="Project.owner_id", back_populates="owner"
+    )
+    project_collaborations: Mapped[list["ProjectCollaborator"]] = relationship(
+        "ProjectCollaborator",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     paper_tags: Mapped[list["PaperTag"]] = relationship(
         "PaperTag", back_populates="user", cascade="all, delete-orphan"
     )
-    invitations: Mapped[list["ProjectRoleInvitation"]] = relationship(
-        "ProjectRoleInvitation", back_populates="inviter", cascade="all, delete-orphan"
+    project_invitations: Mapped[list["ProjectInvitation"]] = relationship(
+        "ProjectInvitation",
+        back_populates="invited_by",
+        cascade="all, delete-orphan",
     )
 
     zotero_oauth_pending: Mapped[list["ZoteroOAuthPending"]] = relationship(

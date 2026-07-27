@@ -10,9 +10,9 @@ from app.database.crud.audio_overview_crud import (
     audio_overview_crud,
     audio_overview_job_crud,
 )
-from app.database.crud.projects.project_crud import project_crud
 from app.database.database import get_db
-from app.database.models import ConversableType, JobStatus, ProjectRoles
+from app.database.models import ConversableType, JobStatus
+from app.policies.projects import get_project_access
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -67,29 +67,10 @@ async def create_project_audio_overview(
     except AILimitExceeded as exc:
         return JSONResponse(status_code=429, content={"code": exc.code})
 
-    project = project_crud.get(db, id=project_id, user=current_user)
-
-    if not project:
+    project_uuid = uuid.UUID(project_id)
+    access = get_project_access(db, project_id=project_uuid, user_id=current_user.id)
+    if access is None:
         return JSONResponse(status_code=404, content={"message": "Project not found"})
-
-    has_edit_permission = project_crud.has_role(
-        db, project_id=project_id, user_id=current_user.id, role=ProjectRoles.ADMIN
-    ) or project_crud.has_role(
-        db,
-        project_id=project_id,
-        user_id=current_user.id,
-        role=ProjectRoles.EDITOR,
-    )
-
-    if not has_edit_permission:
-        return JSONResponse(
-            status_code=403,
-            content={
-                "message": "You do not have permission to create audio overviews for this project"
-            },
-        )
-
-    project_uuid = uuid.UUID(str(project.id))
 
     # Create the audio overview job
     audio_overview_job = audio_overview_job_crud.create(

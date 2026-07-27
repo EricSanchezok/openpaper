@@ -13,7 +13,6 @@ import {
     CitationArtifact,
     DataTableJob,
     ProjectChatArtifact,
-    ProjectRole,
 } from "@/lib/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,11 +84,10 @@ function CreateTile({ icon, label, sub, isNew, disabled, onClick }: CreateTilePr
 // Shares the right slot with the reader panel; kept mounted (CSS-hidden) while
 // inactive so in-progress polling and audio playback survive mode switches.
 export function ArtifactsPanel() {
-    const { projectId, project, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
+    const { projectId, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
     const router = useRouter();
     const { subscription, refetch: refetchSubscription } = useSubscription();
     const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
-    const isViewer = project?.role === ProjectRole.Viewer;
 
     const [audioInstructions, setAudioInstructions] = useState("");
     const [selectedAudioLength, setSelectedAudioLength] = useState("medium");
@@ -344,31 +342,29 @@ export function ArtifactsPanel() {
 
                 <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
                     {/* Create */}
-                    {!isViewer && (
-                        <div>
-                            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Create new</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <CreateTile
-                                    icon={<Volume2 className="h-4 w-4" />}
-                                    label="Audio Overview"
-                                    sub="Podcast-style discussion of your papers"
-                                    disabled={papers.length === 0}
-                                    onClick={() => setCreateAudioDialogOpen(true)}
-                                />
-                                <CreateTile
-                                    icon={<Table className="h-4 w-4" />}
-                                    label="Data Table"
-                                    sub="Compare findings across papers"
-                                    isNew
-                                    disabled={papers.length === 0}
-                                    onClick={() => setDataTableSchemaModalOpen(true)}
-                                />
-                            </div>
-                            {papers.length === 0 && (
-                                <p className="mt-2 text-xs text-muted-foreground">Add papers to your project to create artifacts.</p>
-                            )}
+                    <div>
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Create new</div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <CreateTile
+                                icon={<Volume2 className="h-4 w-4" />}
+                                label="Audio Overview"
+                                sub="Podcast-style discussion of your papers"
+                                disabled={papers.length === 0}
+                                onClick={() => setCreateAudioDialogOpen(true)}
+                            />
+                            <CreateTile
+                                icon={<Table className="h-4 w-4" />}
+                                label="Data Table"
+                                sub="Compare findings across papers"
+                                isNew
+                                disabled={papers.length === 0}
+                                onClick={() => setDataTableSchemaModalOpen(true)}
+                            />
                         </div>
-                    )}
+                        {papers.length === 0 && (
+                            <p className="mt-2 text-xs text-muted-foreground">Add papers to your project to create artifacts.</p>
+                        )}
+                    </div>
 
                     {/* List */}
                     <div className="flex min-h-0 flex-col">

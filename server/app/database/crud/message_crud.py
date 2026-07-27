@@ -8,9 +8,9 @@ from app.database.models import (
     Conversation,
     Message,
     Paper,
-    ProjectRole,
 )
 from app.schemas.user import CurrentUser
+from app.policies.projects import get_project_access
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
@@ -129,13 +129,10 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         3. Reverse final results for chronological display
         """
         # First, check if the user has access to the project.
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == current_user.id,
-            )
-        ).first()
-        if not project_role:
+        if (
+            get_project_access(db, project_id=project_id, user_id=current_user.id)
+            is None
+        ):
             return []
 
         # Ensure that the target conversation belongs to the project

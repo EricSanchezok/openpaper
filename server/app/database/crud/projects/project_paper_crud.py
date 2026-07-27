@@ -2,12 +2,12 @@ import logging
 import uuid
 
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_base_crud import ProjectBaseCRUD
-from app.database.crud.projects.project_crud import project_crud
-from app.database.models import Paper, Project, ProjectPaper, ProjectRole, ProjectRoles
+from app.database.models import Paper, Project, ProjectPaper, ProjectCollaborator
+from app.policies.projects import get_project_access
+from app.repositories.projects import project_repository
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, load_only, selectinload
 
 logger = logging.getLogger(__name__)
@@ -25,23 +25,13 @@ class ProjectPaperUpdate(BaseModel):  # Empty update schema
     pass
 
 
-class ProjectPaperCRUD(
-    ProjectBaseCRUD[ProjectPaper, ProjectPaperCreate, ProjectPaperUpdate]
-):
+class ProjectPaperCRUD:
     @staticmethod
     def _has_project_access(
         db: Session, *, project_id: uuid.UUID, user_id: int
     ) -> bool:
         return (
-            db.scalar(
-                select(ProjectRole.id)
-                .where(
-                    ProjectRole.project_id == project_id,
-                    ProjectRole.user_id == user_id,
-                )
-                .limit(1)
-            )
-            is not None
+            get_project_access(db, project_id=project_id, user_id=user_id) is not None
         )
 
     def create(
@@ -63,14 +53,8 @@ class ProjectPaperCRUD(
 
         try:
             # Check if the user has permission to add a paper to this project
-            project_role = db.scalars(
-                select(ProjectRole).where(
-                    ProjectRole.project_id == project_id,
-                    ProjectRole.user_id == user.id,
-                    ProjectRole.role.in_([ProjectRoles.ADMIN, ProjectRoles.EDITOR]),
-                )
-            ).first()
-            if not project_role:
+            access = get_project_access(db, project_id=project_id, user_id=user.id)
+            if access is None or not access.can_manage_papers:
                 logger.warning(
                     f"User {user.id} does not have permission to add paper to project {project_id}"
                 )
@@ -101,7 +85,11 @@ class ProjectPaperCRUD(
                 )
                 return existing_project_paper
 
-            db_obj = ProjectPaper(project_id=project_id, paper_id=obj_in.paper_id)
+            db_obj = ProjectPaper(
+                project_id=project_id,
+                paper_id=obj_in.paper_id,
+                added_by_id=user.id,
+            )
             db.add(db_obj)
             if auto_commit:
                 db.commit()
@@ -110,13 +98,13 @@ class ProjectPaperCRUD(
             db.refresh(db_obj)
 
             # Touch project updated_at so it sorts to top of recent projects
-            project_crud.touch(db, project_id)
+            project_repository.touch(db, project_id=project_id, commit=auto_commit)
 
             return db_obj
         except Exception as e:
             db.rollback()
             logger.error(
-                f"Error creating {self.model.__name__}: {str(e)}", exc_info=True
+                f"Error creating {ProjectPaper.__name__}: {str(e)}", exc_info=True
             )
             return None
 
@@ -128,8 +116,8 @@ class ProjectPaperCRUD(
         project_id: uuid.UUID,
         user: CurrentUser,
     ) -> Paper | None:
-        # First, check if the user has access to the project.
-        if not self._has_project_access(db, project_id=project_id, user_id=user.id):
+        access = get_project_access(db, project_id=project_id, user_id=user.id)
+        if access is None or not access.can_manage_papers:
             return None
 
         project_paper = db.scalars(
@@ -276,11 +264,18 @@ class ProjectPaperCRUD(
         # Now, fetch all projects that match these IDs and that the user has access to
         projects = db.scalars(
             select(Project)
-            .join(ProjectRole, Project.id == ProjectRole.project_id)
+            .outerjoin(
+                ProjectCollaborator,
+                Project.id == ProjectCollaborator.project_id,
+            )
             .where(
                 Project.id.in_(project_ids),
-                ProjectRole.user_id == user.id,
+                or_(
+                    Project.owner_id == user.id,
+                    ProjectCollaborator.user_id == user.id,
+                ),
             )
+            .distinct()
         ).all()
         return list(projects)
 
@@ -336,4 +331,4 @@ class ProjectPaperCRUD(
         )
 
 
-project_paper_crud = ProjectPaperCRUD(ProjectPaper)
+project_paper_crud = ProjectPaperCRUD()

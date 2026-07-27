@@ -53,7 +53,7 @@ function UnderstandPageContent() {
     // Paper metadata only — file URLs are fetched lazily per-paper on demand
     // (via refreshPaperUrl) when a citation/reference is opened.
     const { papers: fetchedPapers, isLoading: isPapersLoading, error: papersError } = usePapers();
-    const { projects } = useProjects(true);
+    const { projects } = useProjects();
     const [mentionSelection, setMentionSelection] = useState<MentionSelection>(EMPTY_MENTION_SELECTION);
 
     const papers = useMemo(() => {

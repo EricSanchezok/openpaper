@@ -4,16 +4,15 @@ from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.crud.projects.project_crud import project_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
     DataTableExtractionJob,
     DataTableExtractionResult,
     DataTableRow,
     JobStatus,
-    ProjectRole,
-    ProjectRoles,
 )
+from app.policies.projects import get_project_access
+from app.repositories.projects import project_repository
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
@@ -92,14 +91,10 @@ class DataTableJobCRUD(
         if user is None:
             raise ValueError("User must be provided to create a data table job")
         # Check if user has access to the project
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == obj_in.project_id,
-                ProjectRole.user_id == user.id,
-                ProjectRole.role.in_([ProjectRoles.ADMIN, ProjectRoles.EDITOR]),
-            )
-        ).first()
-        if not project_role:
+        if (
+            get_project_access(db, project_id=obj_in.project_id, user_id=user.id)
+            is None
+        ):
             logger.warning(
                 f"User {user.id} does not have permission to create job in project {obj_in.project_id}"
             )
@@ -121,7 +116,9 @@ class DataTableJobCRUD(
                 db.flush()
 
             # Touch project updated_at so it sorts to top of recent projects
-            project_crud.touch(db, obj_in.project_id)
+            project_repository.touch(
+                db, project_id=obj_in.project_id, commit=auto_commit
+            )
 
             track_event(
                 "data_table_job_created",
@@ -171,13 +168,7 @@ class DataTableJobCRUD(
     ) -> list[DataTableExtractionJob]:
         """Get all data table jobs for a project with their associated results"""
         # Check if user has access to the project
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-        ).first()
-        if not project_role:
+        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return []
 
         return list(
@@ -200,13 +191,7 @@ class DataTableJobCRUD(
     ) -> list[DataTableExtractionJob]:
         """Get all pending data table jobs for a project"""
         # Check if user has access to the project
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-        ).first()
-        if not project_role:
+        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return []
 
         return list(
@@ -229,13 +214,7 @@ class DataTableJobCRUD(
         user: CurrentUser,
     ) -> DataTableExtractionJob | None:
         """Get a specific job by ID within a project"""
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-        ).first()
-        if not project_role:
+        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return None
 
         return db.scalars(
@@ -420,13 +399,7 @@ class DataTableResultCRUD(
         user: CurrentUser,
     ) -> list[DataTableExtractionResult]:
         """Get all results for a project"""
-        project_role = db.scalars(
-            select(ProjectRole).where(
-                ProjectRole.project_id == project_id,
-                ProjectRole.user_id == user.id,
-            )
-        ).first()
-        if not project_role:
+        if get_project_access(db, project_id=project_id, user_id=user.id) is None:
             return []
 
         return list(

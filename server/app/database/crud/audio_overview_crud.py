@@ -7,11 +7,10 @@ from app.database.models import (
     AudioOverviewJob,
     ConversableType,
     JobStatus,
-    Project,
-    ProjectRole,
 )
 from app.schemas.responses import ResponseCitation
 from app.schemas.user import CurrentUser
+from app.policies.projects import get_project_access
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -102,16 +101,19 @@ class AudioOverviewJobCRUD(
                 ).all()
             )
         elif conversable_type == ConversableType.PROJECT:
-            # For projects, check user has project access through ProjectRole
+            if (
+                get_project_access(
+                    db, project_id=conversable_id, user_id=current_user.id
+                )
+                is None
+            ):
+                return []
             return list(
                 db.scalars(
                     select(AudioOverviewJob)
-                    .join(Project, AudioOverviewJob.conversable_id == Project.id)
-                    .join(ProjectRole, Project.id == ProjectRole.project_id)
                     .where(
                         AudioOverviewJob.conversable_id == conversable_id,
                         AudioOverviewJob.conversable_type == conversable_type,
-                        ProjectRole.user_id == current_user.id,
                     )
                     .order_by(AudioOverviewJob.created_at.desc())
                 ).all()
@@ -266,16 +268,19 @@ class AudioOverviewCRUD(
                 ).all()
             )
         elif conversable_type == ConversableType.PROJECT:
-            # For projects, check user has project access through ProjectRole
+            if (
+                get_project_access(
+                    db, project_id=conversable_id, user_id=current_user.id
+                )
+                is None
+            ):
+                return []
             return list(
                 db.scalars(
                     select(AudioOverview)
-                    .join(Project, AudioOverview.conversable_id == Project.id)
-                    .join(ProjectRole, Project.id == ProjectRole.project_id)
                     .where(
                         AudioOverview.conversable_id == conversable_id,
                         AudioOverview.conversable_type == conversable_type,
-                        ProjectRole.user_id == current_user.id,
                     )
                     .order_by(AudioOverview.created_at.desc())
                 ).all()
@@ -317,15 +322,16 @@ class AudioOverviewCRUD(
         self, db: Session, *, id: UUID, project_id: UUID, current_user: CurrentUser
     ) -> AudioOverview | None:
         """Get audio overview by ID, project ID and user - ensures user has project access"""
+        if (
+            get_project_access(db, project_id=project_id, user_id=current_user.id)
+            is None
+        ):
+            return None
         return db.scalars(
-            select(AudioOverview)
-            .join(Project, AudioOverview.conversable_id == Project.id)
-            .join(ProjectRole, Project.id == ProjectRole.project_id)
-            .where(
+            select(AudioOverview).where(
                 AudioOverview.id == id,
                 AudioOverview.conversable_id == project_id,
                 AudioOverview.conversable_type == ConversableType.PROJECT,
-                ProjectRole.user_id == current_user.id,
             )
         ).first()
 

@@ -205,7 +205,7 @@ Document any SWR introduction here. Do not pre-emptively cache.
   export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus]
   ```
 
-  `JobStatus`, `SubscriptionStatus`, and `ProjectRole` all follow this. Note one consequence:
+  `JobStatus` and `SubscriptionStatus` both follow this. Note one consequence:
   because members are now plain string literals (not nominal enum members), a `switch` over
   the union is genuinely exhaustive — a `default` branch narrows the discriminant to `never`,
   so cast (`status as string`) if you keep one as a runtime safety net.
