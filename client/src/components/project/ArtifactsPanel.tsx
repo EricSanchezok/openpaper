@@ -368,7 +368,7 @@ export function ArtifactsPanel() {
                                         kind="data_table"
                                         outputId={job.id}
                                         shared={job.is_shared}
-                                        canManage={canManageResearchOutput(job.created_by_id)}
+                                        canManage={canManageResearchOutput(job.created_by?.id ?? null)}
                                         onChanged={(shared) =>
                                             setDataTableJobs((jobs) =>
                                                 jobs.map((item) =>
@@ -392,7 +392,7 @@ export function ArtifactsPanel() {
                                         kind="audio"
                                         outputId={overview.id}
                                         shared={overview.is_shared}
-                                        canManage={canManageResearchOutput(overview.created_by_id)}
+                                        canManage={canManageResearchOutput(overview.created_by?.id ?? null)}
                                         onChanged={(shared) =>
                                             setAudioOverviews((items) =>
                                                 items.map((item) =>
@@ -431,7 +431,7 @@ export function ArtifactsPanel() {
                                             kind="artifact"
                                             outputId={artifact.id}
                                             shared={artifact.is_shared}
-                                            canManage={canManageResearchOutput(artifact.created_by_id)}
+                                            canManage={canManageResearchOutput(artifact.created_by?.id ?? null)}
                                             onChanged={(shared) =>
                                                 setProjectArtifacts((items) =>
                                                     items.map((item) =>

@@ -21,6 +21,7 @@ from app.database.models import (
     PaperImage,
     Project,
 )
+from app.schemas.research import ResearchCreatorResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -52,7 +53,7 @@ class HighlightResponse(OrmResponse):
     color: str | None
     project_id: UUID | None
     is_shared: bool
-    created_by_id: int | None = Field(validation_alias="user_id")
+    created_by: ResearchCreatorResponse | None = Field(validation_alias="user")
     created_at: datetime
     updated_at: datetime
 
@@ -63,7 +64,7 @@ class AnnotationResponse(OrmResponse):
     paper_id: UUID
     content: str
     role: str
-    created_by_id: int | None = Field(validation_alias="user_id")
+    created_by: ResearchCreatorResponse | None = Field(validation_alias="user")
     created_at: datetime
     updated_at: datetime
 
@@ -155,7 +156,7 @@ class AudioOverviewResponse(OrmResponse):
     title: str | None
     citations: list[dict[str, JsonValue]] | None
     is_shared: bool
-    created_by_id: int | None = Field(validation_alias="user_id")
+    created_by: ResearchCreatorResponse | None = Field(validation_alias="user")
     created_at: datetime
     updated_at: datetime
 
@@ -174,7 +175,7 @@ class DataTableJobResponse(OrmResponse):
     error_message: str | None
     result_id: UUID | None
     is_shared: bool
-    created_by_id: int | None = Field(validation_alias="user_id")
+    created_by: ResearchCreatorResponse | None
 
 
 class DataTableRowResponse(OrmResponse):
@@ -265,6 +266,8 @@ def serialize_data_table_job(
             "updated_at": job.updated_at,
             "error_message": job.error_message,
             "result_id": job.result.id if job.result else None,
+            "is_shared": job.is_shared,
+            "created_by": job.user,
         }
     ).to_json()
 

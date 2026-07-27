@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.schemas.citation import CitationData, CitationMethod
+from app.schemas.research import ResearchCreatorResponse
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -121,7 +122,7 @@ class ProjectArtifactResponse(BaseModel):
     kind: Literal["citation"]
     payload: ProjectCitationArtifactPayload
     is_shared: bool
-    created_by_id: int | None
+    created_by: ResearchCreatorResponse | None
     created_at: datetime
 
 

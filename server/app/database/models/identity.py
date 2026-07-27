@@ -10,9 +10,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
 if TYPE_CHECKING:
-    from .commerce import Onboarding, Subscription
+    from .commerce import DataTableExtractionJob, Onboarding, Subscription
     from .content import (
         Annotation,
+        Artifact,
+        AudioOverview,
         AudioOverviewJob,
         Conversation,
         Highlight,
@@ -63,8 +65,17 @@ class AuthUser(Base):
     annotations: Mapped[list["Annotation"]] = relationship(
         "Annotation", back_populates="user", passive_deletes=True
     )
+    artifacts: Mapped[list["Artifact"]] = relationship(
+        "Artifact", back_populates="user", passive_deletes=True
+    )
+    audio_overviews: Mapped[list["AudioOverview"]] = relationship(
+        "AudioOverview", back_populates="user", passive_deletes=True
+    )
     audio_overview_jobs: Mapped[list["AudioOverviewJob"]] = relationship(
         "AudioOverviewJob", back_populates="user", cascade="all, delete-orphan"
+    )
+    data_table_jobs: Mapped[list["DataTableExtractionJob"]] = relationship(
+        "DataTableExtractionJob", back_populates="user", passive_deletes=True
     )
     paper_upload_jobs: Mapped[list["PaperUploadJob"]] = relationship(
         "PaperUploadJob",

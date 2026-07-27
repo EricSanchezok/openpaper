@@ -187,7 +187,9 @@ class DataTableExtractionJob(Base):
         Boolean, nullable=False, default=True, server_default="true"
     )
 
-    user: Mapped["AuthUser | None"] = relationship("AuthUser")
+    user: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="data_table_jobs"
+    )
     project: Mapped["Project | None"] = relationship("Project")
 
     # Relationship to results

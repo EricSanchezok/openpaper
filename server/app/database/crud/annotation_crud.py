@@ -10,7 +10,7 @@ from app.policies.research import (
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 
 class AnnotationBase(BaseModel):
@@ -51,6 +51,7 @@ class AnnotationCrud(CRUDBase[Annotation, AnnotationCreate, AnnotationUpdate]):
         return list(
             db.scalars(
                 select(Annotation)
+                .options(joinedload(Annotation.user))
                 .where(Annotation.highlight_id.in_(highlight_ids))
                 .order_by(Annotation.created_at)
             ).all()
@@ -109,6 +110,7 @@ class AnnotationCrud(CRUDBase[Annotation, AnnotationCreate, AnnotationUpdate]):
         return list(
             db.scalars(
                 select(Annotation)
+                .options(joinedload(Annotation.user))
                 .join(Document, Annotation.paper_id == Document.id)
                 .join(LibraryPaper, LibraryPaper.document_id == Document.id)
                 .join(Highlight, Annotation.highlight_id == Highlight.id)

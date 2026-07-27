@@ -175,7 +175,10 @@ class DataTableJobCRUD(
 
         statement = (
             select(DataTableExtractionJob)
-            .options(joinedload(DataTableExtractionJob.result))
+            .options(
+                joinedload(DataTableExtractionJob.result),
+                joinedload(DataTableExtractionJob.user),
+            )
             .where(DataTableExtractionJob.project_id == project_id)
         )
         if not access.is_owner:
@@ -201,9 +204,13 @@ class DataTableJobCRUD(
         if access is None:
             return []
 
-        statement = select(DataTableExtractionJob).where(
-            DataTableExtractionJob.project_id == project_id,
-            DataTableExtractionJob.status == JobStatus.PENDING,
+        statement = (
+            select(DataTableExtractionJob)
+            .options(joinedload(DataTableExtractionJob.user))
+            .where(
+                DataTableExtractionJob.project_id == project_id,
+                DataTableExtractionJob.status == JobStatus.PENDING,
+            )
         )
         if not access.is_owner:
             statement = statement.where(
@@ -229,9 +236,13 @@ class DataTableJobCRUD(
         if access is None:
             return None
 
-        statement = select(DataTableExtractionJob).where(
-            DataTableExtractionJob.id == job_id,
-            DataTableExtractionJob.project_id == project_id,
+        statement = (
+            select(DataTableExtractionJob)
+            .options(joinedload(DataTableExtractionJob.user))
+            .where(
+                DataTableExtractionJob.id == job_id,
+                DataTableExtractionJob.project_id == project_id,
+            )
         )
         if not access.is_owner:
             statement = statement.where(

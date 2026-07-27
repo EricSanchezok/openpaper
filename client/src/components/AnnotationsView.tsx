@@ -376,7 +376,7 @@ export function AnnotationsView({
 							&& onVisibilityChanged
 							&& (
 								project?.membership.kind === 'owner'
-								|| highlight.created_by_id === Number(user.id)
+								|| highlight.created_by?.id === Number(user.id)
 							)
 						);
 
@@ -436,7 +436,10 @@ export function AnnotationsView({
 													)}
 												</div>
 												<span className="text-sm font-medium text-foreground">
-                                                    {isAI ? 'Scholens' : user?.display_name || 'User'}
+                                                    {isAI
+														? 'Scholens'
+														: annotation.created_by?.display_name
+															|| 'Former collaborator'}
 												</span>
 												<span className="text-xs text-muted-foreground">
 													{formatAnnotationDate(annotation.created_at)}

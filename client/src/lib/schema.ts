@@ -67,7 +67,7 @@ export interface ProjectArtifact {
     kind: 'citation';
     payload: CitationArtifact;
     is_shared: boolean;
-    created_by_id: number | null;
+    created_by: ResearchCreator | null;
     created_at?: string | null;
 }
 
@@ -144,6 +144,11 @@ export interface ScaledPosition {
 
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple';
 
+export interface ResearchCreator {
+    id: number;
+    display_name: string | null;
+}
+
 export interface PaperHighlight {
     id?: string;
     raw_text: string;
@@ -156,7 +161,7 @@ export interface PaperHighlight {
     color?: HighlightColor;
     project_id?: string | null;
     is_shared?: boolean;
-    created_by_id?: number | null;
+    created_by?: ResearchCreator | null;
 }
 
 export interface PaperHighlightAnnotation {
@@ -166,7 +171,7 @@ export interface PaperHighlightAnnotation {
     content: string;
     role: 'user' | 'assistant';
     created_at: string;
-    created_by_id?: number | null;
+    created_by?: ResearchCreator | null;
 }
 
 export interface Reference {
@@ -443,7 +448,7 @@ export interface AudioOverview {
     updated_at: string;
     job_id: string;
     is_shared: boolean;
-    created_by_id: number | null;
+    created_by: ResearchCreator | null;
 }
 
 export interface AudioOverviewJob extends JobStatusResponse {
@@ -550,7 +555,7 @@ export interface DataTableJob {
     error_message: string | null;
     result_id: string | null;
     is_shared: boolean;
-    created_by_id: number | null;
+    created_by: ResearchCreator | null;
 }
 
 // Response from /api/projects/tables/{job_id} status endpoint

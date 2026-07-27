@@ -329,6 +329,9 @@ class Artifact(Base):
     message: Mapped["Message | None"] = relationship(
         "Message", back_populates="artifacts"
     )
+    user: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="artifacts"
+    )
 
     __table_args__ = (
         Index(
@@ -835,6 +838,9 @@ class AudioOverview(Base):
     )
     is_shared: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+    user: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="audio_overviews"
     )
 
     # Specific relationship for papers (viewonly)

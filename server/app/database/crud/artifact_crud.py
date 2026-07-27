@@ -15,7 +15,7 @@ from app.policies.research import require_project_research_access
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 
 class ArtifactCreate(BaseModel):
@@ -99,9 +99,13 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
             project_id=project_id,
             user_id=user.id,
         )
-        statement = select(Artifact).where(
-            Artifact.scope_type == ConversableType.PROJECT.value,
-            Artifact.scope_id == project_id,
+        statement = (
+            select(Artifact)
+            .options(joinedload(Artifact.user))
+            .where(
+                Artifact.scope_type == ConversableType.PROJECT.value,
+                Artifact.scope_id == project_id,
+            )
         )
         if not access.is_owner:
             statement = statement.where(

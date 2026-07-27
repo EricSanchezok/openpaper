@@ -1,5 +1,6 @@
 """Contracts for private conversations and selectively shared Project outputs."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import uuid
@@ -14,10 +15,12 @@ from app.database.crud.projects.project_data_table_crud import data_table_job_cr
 from app.database.models import (
     Annotation,
     Artifact,
+    AuthUser,
     AudioOverview,
     ConversableType,
     DataTableExtractionJob,
     Highlight,
+    JobStatus,
     Project,
 )
 from app.errors import AppError
@@ -29,6 +32,7 @@ from app.policies.research import (
     require_research_item_manager,
 )
 from app.schemas.user import CurrentUser
+from app.schemas.orm_responses import serialize_data_table_job
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -166,6 +170,40 @@ def test_owner_lists_include_hidden_project_outputs() -> None:
             user=user,
         )
     assert "highlights.is_shared IS true" not in str(db.scalars.call_args.args[0])
+
+
+def test_data_table_response_includes_visibility_and_creator_attribution() -> None:
+    now = datetime.now(timezone.utc)
+    creator = AuthUser(
+        id=2,
+        email="collaborator@example.com",
+        password_hash="not-used",
+        display_name="Research Collaborator",
+        status="active",
+    )
+    job = DataTableExtractionJob(
+        id=uuid.uuid4(),
+        user_id=creator.id,
+        project_id=uuid.uuid4(),
+        columns=["Outcome"],
+        task_id="task-1",
+        status=JobStatus.COMPLETED,
+        started_at=now,
+        completed_at=now,
+        error_message=None,
+        is_shared=True,
+        created_at=now,
+        updated_at=now,
+    )
+    job.user = creator
+
+    response = serialize_data_table_job(job)
+
+    assert response["is_shared"] is True
+    assert response["created_by"] == {
+        "id": creator.id,
+        "display_name": creator.display_name,
+    }
 
 
 def test_personal_highlights_cannot_claim_shared_visibility() -> None:

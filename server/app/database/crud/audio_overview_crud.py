@@ -13,7 +13,7 @@ from app.schemas.user import CurrentUser
 from app.policies.projects import get_project_access
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 
 class AudioOverviewJobBase(BaseModel):
@@ -276,9 +276,13 @@ class AudioOverviewCRUD(
             )
             if access is None:
                 return []
-            statement = select(AudioOverview).where(
-                AudioOverview.conversable_id == conversable_id,
-                AudioOverview.conversable_type == conversable_type,
+            statement = (
+                select(AudioOverview)
+                .options(joinedload(AudioOverview.user))
+                .where(
+                    AudioOverview.conversable_id == conversable_id,
+                    AudioOverview.conversable_type == conversable_type,
+                )
             )
             if not access.is_owner:
                 statement = statement.where(
@@ -332,10 +336,14 @@ class AudioOverviewCRUD(
         )
         if access is None:
             return None
-        statement = select(AudioOverview).where(
-            AudioOverview.id == id,
-            AudioOverview.conversable_id == project_id,
-            AudioOverview.conversable_type == ConversableType.PROJECT,
+        statement = (
+            select(AudioOverview)
+            .options(joinedload(AudioOverview.user))
+            .where(
+                AudioOverview.id == id,
+                AudioOverview.conversable_id == project_id,
+                AudioOverview.conversable_type == ConversableType.PROJECT,
+            )
         )
         if not access.is_owner:
             statement = statement.where(

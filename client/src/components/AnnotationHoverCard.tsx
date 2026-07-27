@@ -3,7 +3,6 @@
 import { createPortal } from "react-dom";
 import { useMemo } from "react";
 import { File, User as UserIcon } from "lucide-react";
-import { BasicUser } from "@/lib/auth";
 import { PaperHighlightAnnotation } from "@/lib/schema";
 import { formatAnnotationDate } from "@/lib/utils";
 
@@ -14,13 +13,11 @@ const VIEWPORT_PADDING = 8;
 interface AnnotationHoverCardProps {
     annotations: PaperHighlightAnnotation[];
     position: { x: number; y: number };
-    user: BasicUser | null;
 }
 
 export function AnnotationHoverCard({
     annotations,
     position,
-    user,
 }: AnnotationHoverCardProps) {
     const sorted = useMemo(
         () =>
@@ -59,7 +56,9 @@ export function AnnotationHoverCard({
                                 )}
                             </div>
                             <span className="text-xs font-medium text-foreground">
-                                {isAI ? "Scholens" : user?.display_name || "User"}
+                                {isAI
+                                    ? "Scholens"
+                                    : ann.created_by?.display_name || "Former collaborator"}
                             </span>
                             <span className="text-[11px] text-muted-foreground">
                                 {formatAnnotationDate(ann.created_at)}

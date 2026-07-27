@@ -1797,7 +1797,6 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 				<AnnotationHoverCard
 					annotations={annotations.filter((a) => a.highlight_id === hoverHighlightId)}
 					position={hoverPosition}
-					user={currentUser ?? null}
 				/>
 			)}
 

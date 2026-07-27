@@ -44,6 +44,10 @@ export function InlineAnnotationCard({
 }: InlineAnnotationCardProps) {
     const isNewThread = annotations.length === 0;
     const canWrite = Boolean(addAnnotation);
+    const currentDisplayName = user?.display_name || "Anonymous";
+    const currentAvatarBg = user?.display_name
+        ? getAlphaHashToBackgroundColor(user.display_name)
+        : "bg-muted";
 
     // State for the new-thread textarea (when no annotations exist yet)
     const [newContent, setNewContent] = useState("");
@@ -66,9 +70,6 @@ export function InlineAnnotationCard({
     const editBlockRef = useRef<HTMLDivElement>(null);
     /** Reply row (pill or expanded); used to collapse reply when clicking elsewhere on the card */
     const replySectionRef = useRef<HTMLDivElement>(null);
-
-    const displayName = user?.display_name || "Anonymous";
-    const avatarBg = user?.display_name ? getAlphaHashToBackgroundColor(user.display_name) : "bg-muted";
 
     const sortedThread = useMemo(
         () =>
@@ -284,13 +285,13 @@ export function InlineAnnotationCard({
                         <Avatar className="h-9 w-9 flex-shrink-0">
                             <AvatarFallback
                                 className="text-xs text-white font-medium"
-                                style={{ backgroundColor: avatarBg }}
+                                style={{ backgroundColor: currentAvatarBg }}
                             >
-                                {getInitials(displayName)}
+                                {getInitials(currentDisplayName)}
                             </AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col leading-tight flex-1 min-w-0">
-                            <span className="text-sm font-medium">{displayName}</span>
+                            <span className="text-sm font-medium">{currentDisplayName}</span>
                             <span className="text-xs text-muted-foreground">Just now</span>
                         </div>
                         {canWrite && (
@@ -365,7 +366,14 @@ export function InlineAnnotationCard({
                     >
                         {visibleThread.map((ann) => {
                             const isAssistant = ann.role === "assistant";
-                            const annName = isAssistant ? "Scholens" : displayName;
+                            const annName = isAssistant
+                                ? "Scholens"
+                                : ann.created_by?.display_name || "Former collaborator";
+                            const annAvatarBg = ann.created_by?.display_name
+                                ? getAlphaHashToBackgroundColor(ann.created_by.display_name)
+                                : "bg-muted";
+                            const canManageAnnotation =
+                                ann.created_by?.id === Number(user?.id);
                             return (
                             <div key={ann.id} className="flex flex-col gap-2">
                                 <div className="flex items-center gap-3">
@@ -377,7 +385,7 @@ export function InlineAnnotationCard({
                                         <Avatar className="h-7 w-7 flex-shrink-0">
                                             <AvatarFallback
                                                 className="text-[10px] text-white font-medium"
-                                                style={{ backgroundColor: avatarBg }}
+                                                style={{ backgroundColor: annAvatarBg }}
                                             >
                                                 {getInitials(annName)}
                                             </AvatarFallback>
@@ -387,7 +395,7 @@ export function InlineAnnotationCard({
                                         <span className="text-xs font-medium">{annName}</span>
                                         <span className="text-[11px] text-muted-foreground">{formatAnnotationDate(ann.created_at)}</span>
                                     </div>
-                                    {ann.role === "user" && isActive && (
+                                    {ann.role === "user" && isActive && canManageAnnotation && (
                                         <div className="flex items-center gap-0.5 flex-shrink-0">
                                             {updateAnnotation && (
                                                 <Button

@@ -10,6 +10,7 @@ from app.schemas.projects import (
     ProjectArtifactResponse,
     ProjectCitationArtifactPayload,
 )
+from app.schemas.research import ResearchCreatorResponse
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -47,7 +48,11 @@ async def get_project_artifacts(
             kind="citation",
             payload=ProjectCitationArtifactPayload.model_validate(artifact.payload),
             is_shared=artifact.is_shared,
-            created_by_id=artifact.user_id,
+            created_by=(
+                ResearchCreatorResponse.model_validate(artifact.user)
+                if artifact.user is not None
+                else None
+            ),
             created_at=artifact.created_at,
         )
         for artifact in rows

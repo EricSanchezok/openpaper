@@ -12,7 +12,7 @@ from app.policies.research import (
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 
 class HighlightBase(BaseModel):
@@ -56,7 +56,11 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
             user_id=user.id,
             project_id=project_id,
         )
-        statement = select(Highlight).where(Highlight.paper_id == paper_id)
+        statement = (
+            select(Highlight)
+            .options(joinedload(Highlight.user))
+            .where(Highlight.paper_id == paper_id)
+        )
         if project_id is None:
             statement = statement.where(
                 Highlight.project_id.is_(None),
@@ -198,6 +202,7 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
         return list(
             db.scalars(
                 select(Highlight)
+                .options(joinedload(Highlight.user))
                 .join(Document, Highlight.paper_id == Document.id)
                 .join(LibraryPaper, LibraryPaper.document_id == Document.id)
                 .where(
