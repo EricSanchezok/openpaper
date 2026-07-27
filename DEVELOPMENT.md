@@ -22,16 +22,14 @@ window enforced in `client/package.json`.
 ## Environment files
 
 Scholens follows the same “one documented environment catalog” convention as
-Scholight. The canonical template is [`.env.example`](./.env.example). Copy it
-into each service; unused variables are ignored:
+Scholight. The canonical template is [`.env.example`](./.env.example). Create
+each runtime file from the relevant section of that catalog:
 
 S3、MinerU、MOSS Voice 和 DeepSeek 的账号申请步骤见
 [`docs/setup/external-services.zh-CN.md`](./docs/setup/external-services.zh-CN.md)。
 
 ```bash
-cp .env.example server/.env
-cp .env.example jobs/.env
-cp .env.example client/.env.local
+touch server/.env jobs/.env client/.env.local
 ```
 
 The root file is a committed catalog, not a runtime file. Each process reads
@@ -43,6 +41,10 @@ the private file in its own working directory:
 | `jobs/.env`         | MinerU, background processing, webhook delivery   |
 | Both Python files   | S3, DeepSeek, broker URLs, webhook signing secret |
 | `client/.env.local` | `NEXT_PUBLIC_*` browser configuration only        |
+
+Do not copy Python-service credentials into `client/.env.local`. Next.js only
+exposes `NEXT_PUBLIC_*` values to browser code, but keeping secrets out of the
+client build context is the safer operational boundary.
 
 **Must match across server and jobs:** `CELERY_BROKER_URL`, S3/AWS bucket vars,
 `DEEPSEEK_*`, and `JOBS_WEBHOOK_SIGNING_SECRET`. Server needs
@@ -99,7 +101,7 @@ Unless `AUTH_DATABASE_URL` is explicitly set, both cloud-auth and Scholens use
 git clone <your-scholens-fork-url> scholens && cd scholens
 
 # Server
-cp .env.example server/.env
+touch server/.env
 cd server && uv sync
 # Provision auth/scholens schemas with separate owners. Apply cloud-auth from
 # its own repository first, then apply only Scholens's migration:
@@ -110,12 +112,12 @@ uv run python -m app.scripts.migrate_product
 
 # Jobs
 cd ..
-cp .env.example jobs/.env
+touch jobs/.env
 cd jobs && uv sync
 
 # Client
 cd ..
-cp .env.example client/.env.local
+touch client/.env.local
 cd client && corepack yarn install
 ```
 
