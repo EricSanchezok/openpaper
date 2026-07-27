@@ -116,6 +116,7 @@ def test_research_visibility_api_is_uniform_and_project_artifacts_hide_chat_ids(
     response_text = str(project_artifact_schema)
     assert "conversation_id" not in response_text
     assert "message_id" not in response_text
+    assert "ProjectArtifactListResponse" in response_text
 
 
 def test_clean_baseline_contains_visibility_constraints() -> None:

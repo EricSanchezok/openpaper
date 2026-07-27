@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
+from app.schemas.citation import CitationData, CitationMethod
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -99,3 +101,29 @@ class ProjectInvitationResponse(BaseModel):
     permissions: ProjectPermissionSet
     expires_at: datetime
     created_at: datetime
+
+
+class ProjectCitationArtifactPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["citation"]
+    paper_id: str
+    preferred_style: str
+    style_display: str
+    data: CitationData
+    method: CitationMethod
+    missing_fields: list[str] = Field(default_factory=list)
+    confidence: float | None = None
+
+
+class ProjectArtifactResponse(BaseModel):
+    id: UUID
+    kind: Literal["citation"]
+    payload: ProjectCitationArtifactPayload
+    is_shared: bool
+    created_by_id: int | None
+    created_at: datetime
+
+
+class ProjectArtifactListResponse(BaseModel):
+    artifacts: list[ProjectArtifactResponse]

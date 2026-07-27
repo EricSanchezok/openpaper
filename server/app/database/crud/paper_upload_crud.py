@@ -176,11 +176,11 @@ class PaperUploadJobCRUD(
         Get upload jobs that are still in progress for a project, paired with
         their paper record.
 
-        The paper and its ProjectPaper association are created at upload start
-        (see helpers/pdf_jobs.py), so we can reach the job via
-        ProjectPaper -> Document.upload_job_id -> PaperUploadJob. Returns jobs that
-        have not yet completed so the client can rehydrate the upload tracker
-        after a page refresh.
+        The Document and its ProjectPaper association are created at upload
+        start by ``services.document_submission``, so the job is reachable via
+        ProjectPaper -> Document.upload_job_id -> PaperUploadJob. Returns jobs
+        that have not yet completed so the client can rehydrate the upload
+        tracker after a page refresh.
         """
         # Only the owner and collaborators may see in-progress Project uploads.
         if get_project_access(db, project_id=project_id, user_id=user.id) is None:

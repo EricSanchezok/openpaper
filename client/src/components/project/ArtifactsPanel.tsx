@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2, MessageSquare, Sparkles, Table, Volume2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Sparkles, Table, Volume2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,9 +10,8 @@ import { fetchFromApi } from "@/lib/api";
 import {
     AudioOverview,
     AudioOverviewJob,
-    CitationArtifact,
     DataTableJob,
-    ProjectChatArtifact,
+    ProjectArtifact,
 } from "@/lib/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -117,45 +116,16 @@ export function ArtifactsPanel() {
     const [isDataTableSchemaModalOpen, setDataTableSchemaModalOpen] = useState(false);
     const [isCreatingDataTable, setIsCreatingDataTable] = useState(false);
     const [dataTableJobs, setDataTableJobs] = useState<DataTableJob[]>([]);
-    const [chatArtifacts, setChatArtifacts] = useState<ProjectChatArtifact[]>([]);
+    const [projectArtifacts, setProjectArtifacts] = useState<ProjectArtifact[]>([]);
 
-    const fetchChatArtifacts = useCallback(async () => {
+    const fetchProjectArtifacts = useCallback(async () => {
         try {
             const response = await fetchFromApi(`/api/projects/artifacts/${projectId}`);
-            setChatArtifacts(response.artifacts ?? []);
+            setProjectArtifacts(response.artifacts ?? []);
         } catch (err) {
-            console.error("Failed to fetch chat artifacts:", err);
+            console.error("Failed to fetch Project artifacts:", err);
         }
     }, [projectId]);
-
-    // Citations arrive one row per artifact; bundle them per assistant message
-    // so each chat turn renders as a single citation card, as it did in chat.
-    const chatArtifactGroups = useMemo(() => {
-        const groups: {
-            messageId: string;
-            conversationId: string;
-            conversationTitle: string | null;
-            createdAt: string | null;
-            artifacts: CitationArtifact[];
-        }[] = [];
-        const byMessage = new Map<string, (typeof groups)[number]>();
-        for (const artifact of chatArtifacts) {
-            let group = byMessage.get(artifact.message_id);
-            if (!group) {
-                group = {
-                    messageId: artifact.message_id,
-                    conversationId: artifact.conversation_id,
-                    conversationTitle: artifact.conversation_title ?? null,
-                    createdAt: artifact.created_at ?? null,
-                    artifacts: [],
-                };
-                byMessage.set(artifact.message_id, group);
-                groups.push(group);
-            }
-            group.artifacts.push(artifact.payload);
-        }
-        return groups;
-    }, [chatArtifacts]);
 
     const getProjectAudioOverviews = useCallback(async () => {
         try {
@@ -219,7 +189,7 @@ export function ArtifactsPanel() {
     useEffect(() => {
         if (projectId) {
             getProjectAudioOverviews();
-            fetchChatArtifacts();
+            fetchProjectArtifacts();
             Promise.all([
                 getProjectAudioJobs(),
                 fetchDataTableJobs()
@@ -236,7 +206,15 @@ export function ArtifactsPanel() {
         return () => {
             stopPolling();
         };
-    }, [projectId]);
+    }, [
+        projectId,
+        fetchProjectArtifacts,
+        getProjectAudioJobs,
+        fetchDataTableJobs,
+        startPolling,
+        stopPolling,
+        getProjectAudioOverviews,
+    ]);
 
     const pollAudioData = useCallback(async () => {
         const jobs = await getProjectAudioJobs();
@@ -319,7 +297,7 @@ export function ArtifactsPanel() {
     };
 
     const artifactCount =
-        dataTableJobs.length + audioJobs.length + audioOverviews.length + chatArtifactGroups.length;
+        dataTableJobs.length + audioJobs.length + audioOverviews.length + projectArtifacts.length;
 
     return (
         <>
@@ -403,25 +381,16 @@ export function ArtifactsPanel() {
                                     formatTime={formatTime}
                                 />
                             ))}
-                            {chatArtifactGroups.map((group) => (
-                                <div key={group.messageId} className="rounded-lg border p-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <Link
-                                            href={`/projects/${projectId}/conversations/${group.conversationId}`}
-                                            className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
-                                        >
-                                            <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                                            <span className="truncate">
-                                                {group.conversationTitle || "Untitled conversation"}
-                                            </span>
-                                        </Link>
-                                        {group.createdAt && (
+                            {projectArtifacts.map((artifact) => (
+                                <div key={artifact.id} className="rounded-lg border p-3">
+                                    <div className="mb-2 flex items-center justify-end">
+                                        {artifact.created_at && (
                                             <span className="shrink-0 text-xs text-muted-foreground">
-                                                {new Date(group.createdAt).toLocaleDateString()}
+                                                {new Date(artifact.created_at).toLocaleDateString()}
                                             </span>
                                         )}
                                     </div>
-                                    <CitationArtifactCard artifacts={group.artifacts} />
+                                    <CitationArtifactCard artifacts={[artifact.payload]} />
                                 </div>
                             ))}
                             {artifactCount === 0 && (

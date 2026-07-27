@@ -60,15 +60,14 @@ export interface CitationArtifact {
     confidence?: number | null;
 }
 
-// A chat-generated artifact surfaced at the project level (artifacts panel),
-// with breadcrumbs back to the conversation/message that produced it.
-export interface ProjectChatArtifact {
+// A Project research artifact. Private conversation and message identifiers are
+// deliberately absent from this shared representation.
+export interface ProjectArtifact {
     id: string;
     kind: 'citation';
     payload: CitationArtifact;
-    message_id: string;
-    conversation_id: string;
-    conversation_title?: string | null;
+    is_shared: boolean;
+    created_by_id: number | null;
     created_at?: string | null;
 }
 
