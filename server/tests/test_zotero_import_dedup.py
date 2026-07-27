@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -93,6 +94,13 @@ def _patch_import_pipeline(fn):
         ),
         patch.object(
             zotero_import_module,
+            "reserve_upload",
+            new=MagicMock(
+                side_effect=lambda *_args, **_kwargs: SimpleNamespace(id=uuid4())
+            ),
+        ),
+        patch.object(
+            zotero_import_module,
             "_upload_pdf_to_s3",
             return_value=("key", "https://example.com/file.pdf"),
         ),
@@ -145,7 +153,7 @@ class _ImportPipelineHelpers:
         items: list,
     ) -> tuple[MagicMock, MagicMock, MagicMock]:
         user = MagicMock()
-        user.id = uuid4()
+        user.id = 42
         mock_zotero_crud.get_by_user_id.return_value = MagicMock(
             zotero_user_id="1", api_key="key"
         )

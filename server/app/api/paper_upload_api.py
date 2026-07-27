@@ -17,20 +17,18 @@ The client can poll the job status using the same job_id throughout the process.
 from starlette.responses import Response as ApiResponse
 
 import logging
-from datetime import datetime, timezone
+from pathlib import PurePosixPath
+from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 from app.api.jobs_webhooks.router import handle_failed_upload
 from app.auth.dependencies import get_required_user
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.paper_upload_crud import (
-    PaperUploadJobCreate,
-    PaperUploadJobUpdate,
-    paper_upload_job_crud,
-)
+from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.database import get_db
-from app.database.models import AuthUser, JobStatus, PaperUploadJob
+from app.database.models import JobStatus, PaperUploadJob
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
@@ -43,17 +41,11 @@ from app.helpers.parser import (
     validate_url_and_fetch_pdf,
 )
 from app.helpers.pdf_jobs import jobs_client
-from app.helpers.subscription_limits import (
-    can_user_access_knowledge_base,
-    can_user_add_papers_to_project,
-    can_user_upload_paper,
-)
-from app.policies.projects import get_project_access
 from app.schemas.user import CurrentUser
+from app.services.upload_reservations import reserve_upload
 from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -168,7 +160,6 @@ async def get_upload_status(
 async def upload_pdf_from_url(
     request: UploadFromUrlSchema,
     http_request: Request,
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
@@ -185,39 +176,20 @@ async def upload_pdf_from_url(
     except AILimitExceeded as exc:
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    # Check subscription limits before proceeding
-    err_message = await check_subscription_limits(current_user, db, project_id)
-    if err_message:
-        return JSONResponse(
-            status_code=403,
-            content={
-                "message": err_message,
-                "error_code": "SUBSCRIPTION_LIMIT_EXCEEDED",
-            },
-        )
-
     # Validate the URL and fetch PDF content
     url = str(request.url)
     is_valid, pdf_bytes, error_message = await validate_url_and_fetch_pdf(url)
     if not is_valid:
         return JSONResponse(status_code=400, content={"message": error_message})
 
-    # Create the paper upload job
-    paper_upload_job_obj = PaperUploadJobCreate(
-        started_at=datetime.now(timezone.utc),
+    filename = PurePosixPath(unquote(urlparse(url).path)).name or "downloaded-paper.pdf"
+    paper_upload_job = reserve_upload(
+        db,
+        requester=current_user,
+        project_id=project_id,
+        input_size_bytes=len(pdf_bytes),
+        original_filename=filename,
     )
-
-    paper_upload_job = paper_upload_job_crud.create(
-        db=db,
-        obj_in=paper_upload_job_obj,
-        user=current_user,
-    )
-
-    if not paper_upload_job:
-        return JSONResponse(
-            status_code=500,
-            content={"message": "Failed to create paper upload job"},
-        )
     try:
         await acquire_concurrency(
             user_id=int(current_user.id),
@@ -226,22 +198,18 @@ async def upload_pdf_from_url(
         )
     except AILimitExceeded as exc:
         paper_upload_job_crud.mark_as_failed(
-            db=db, job_id=str(paper_upload_job.id), user=current_user
+            db=db,
+            job_id=str(paper_upload_job.id),
+            user=current_user,
+            error_code=exc.code,
         )
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    # Get filename from URL
-    filename = url.split("/")[-1]
-
-    # Pass file contents and filename instead of the UploadFile object
-    background_tasks.add_task(
-        upload_raw_file_microservice,
+    await upload_raw_file_microservice(
         file_contents=pdf_bytes,
-        filename=filename,
         paper_upload_job=paper_upload_job,
         current_user=current_user,
         db=db,
-        project_id=project_id,
     )
 
     return JSONResponse(
@@ -256,7 +224,6 @@ async def upload_pdf_from_url(
 @paper_upload_router.post("/")
 async def upload_pdf(
     request: Request,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
@@ -273,17 +240,6 @@ async def upload_pdf(
         )
     except AILimitExceeded as exc:
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
-    # Check subscription limits before proceeding
-    err_message = await check_subscription_limits(current_user, db, project_id)
-    if err_message:
-        return JSONResponse(
-            status_code=403,
-            content={
-                "message": err_message,
-                "error_code": "SUBSCRIPTION_LIMIT_EXCEEDED",
-            },
-        )
-
     max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     declared_size = request.headers.get("content-length")
     if declared_size and (
@@ -325,22 +281,13 @@ async def upload_pdf(
     if not is_valid:
         return JSONResponse(status_code=400, content={"message": error_message})
 
-    # Create the paper upload job
-    paper_upload_job_obj = PaperUploadJobCreate(
-        started_at=datetime.now(timezone.utc),
+    paper_upload_job = reserve_upload(
+        db,
+        requester=current_user,
+        project_id=project_id,
+        input_size_bytes=len(file_contents),
+        original_filename=str(filename) if filename else None,
     )
-
-    paper_upload_job = paper_upload_job_crud.create(
-        db=db,
-        obj_in=paper_upload_job_obj,
-        user=current_user,
-    )
-
-    if not paper_upload_job:
-        return JSONResponse(
-            status_code=500,
-            content={"message": "Failed to create paper upload job"},
-        )
     try:
         await acquire_concurrency(
             user_id=int(current_user.id),
@@ -349,19 +296,18 @@ async def upload_pdf(
         )
     except AILimitExceeded as exc:
         paper_upload_job_crud.mark_as_failed(
-            db=db, job_id=str(paper_upload_job.id), user=current_user
+            db=db,
+            job_id=str(paper_upload_job.id),
+            user=current_user,
+            error_code=exc.code,
         )
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    # Pass file contents and filename instead of the UploadFile object
-    background_tasks.add_task(
-        upload_raw_file_microservice,
+    await upload_raw_file_microservice(
         file_contents=file_contents,
-        filename=str(filename),
         paper_upload_job=paper_upload_job,
         current_user=current_user,
         db=db,
-        project_id=project_id,
     )
 
     return JSONResponse(
@@ -373,58 +319,12 @@ async def upload_pdf(
     )
 
 
-async def check_subscription_limits(
-    current_user: CurrentUser,
-    db: Session,
-    project_id: UUID | None = None,
-) -> str | None:
-    """
-    Check resource quotas against the account that owns the destination.
-
-    Personal uploads are billed to the caller. Project uploads are authorized
-    using the caller's delegated capability but billed to the Project owner.
-    """
-    if project_id:
-        access = get_project_access(
-            db,
-            project_id=project_id,
-            user_id=current_user.id,
-        )
-        if access is None:
-            return "Project not found"
-        if not access.can_manage_papers:
-            return "You do not have permission to add papers to this project"
-        can_add, error_message = can_user_add_papers_to_project(
-            db, current_user, project_id=project_id, paper_count=1
-        )
-        if not can_add and error_message:
-            return error_message
-        owner = db.get(AuthUser, access.project.owner_id)
-        if owner is None:
-            raise RuntimeError(f"Project {project_id} has no owner")
-        quota_user = CurrentUser.from_auth_user(owner)
-    else:
-        quota_user = current_user
-
-    can_upload, error_message = can_user_upload_paper(db, quota_user)
-    if not can_upload and error_message:
-        return error_message
-
-    can_access, error_message = can_user_access_knowledge_base(db, quota_user)
-    if not can_access and error_message:
-        return error_message
-
-    return None
-
-
 async def upload_raw_file_microservice(
     file_contents: bytes,
-    filename: str,
     paper_upload_job: PaperUploadJob,
     current_user: CurrentUser,
     db: Session,
-    project_id: UUID | None = None,
-) -> None:
+) -> str:
     """
     Helper function to upload a raw file using the microservice.
     """
@@ -442,16 +342,8 @@ async def upload_raw_file_microservice(
             paper_upload_job=paper_upload_job,
             db=db,
             user=current_user,
-            project_id=project_id,
-            original_filename=filename,
-        )
-
-        # Update job with task_id
-        paper_upload_job_crud.update(
-            db=db,
-            db_obj=paper_upload_job,
-            obj_in=PaperUploadJobUpdate(task_id=task_id),
-            user=current_user,
+            project_id=paper_upload_job.project_id,
+            original_filename=paper_upload_job.original_filename,
         )
 
         # Track paper upload event
@@ -463,16 +355,23 @@ async def upload_raw_file_microservice(
             user_id=str(current_user.id),
             db=db,
         )
+        return task_id
 
-    except Exception:
+    except Exception as exc:
         logger.error("Error submitting file to microservice", exc_info=True)
         paper_upload_job_crud.mark_as_failed(
             db=db,
             job_id=str(paper_upload_job.id),
             user=current_user,
+            error_code="jobs_submission_failed",
         )
         await release_concurrency_by_id(
             user_id=int(current_user.id),
             category="background",
             operation_id=str(paper_upload_job.id),
         )
+        raise AppError(
+            code="jobs_submission_failed",
+            message="The document processing job could not be started",
+            status_code=503,
+        ) from exc

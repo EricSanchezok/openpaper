@@ -14,7 +14,6 @@ from app.database.crud.highlight_crud import HighlightCreate, highlight_crud
 from app.database.crud.paper_crud import PaperCreate, PaperUpdate, paper_crud
 from app.database.crud.paper_tag_crud import PaperTagCreate, paper_tag_crud
 from app.database.crud.paper_upload_crud import (
-    PaperUploadJobCreate,
     PaperUploadJobUpdate,
     paper_upload_job_crud,
 )
@@ -43,6 +42,7 @@ from app.helpers.subscription_limits import (
 from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
 from app.schemas.user import CurrentUser
+from app.services.upload_reservations import reserve_upload
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -872,31 +872,19 @@ async def _import_one_paper(
                 "error": failure_reason or "No PDF available from attachment or URL",
             }
 
-        paper_upload_job = paper_upload_job_crud.create(
-            db=db,
-            obj_in=PaperUploadJobCreate(started_at=datetime.now(timezone.utc)),
-            user=user,
+        safe_filename = f"zotero-{item_key}.pdf"
+        paper_upload_job = reserve_upload(
+            db,
+            requester=user,
+            project_id=None,
+            input_size_bytes=len(pdf_bytes),
+            original_filename=safe_filename,
         )
-        if not paper_upload_job or not paper_upload_job.id:
-            if import_row:
-                zotero_import_crud.update_status(
-                    db,
-                    item=import_row,
-                    status=ZoteroImportStatus.FAILED,
-                    error_message="Failed to create upload job",
-                )
-            return {
-                "status": "error",
-                "zotero_item_key": item_key,
-                "error": "Failed to create upload job",
-            }
-
         upload_job_id = str(paper_upload_job.id)
 
         # Upload the PDF to S3. Preview, raw text, and page offsets are produced
         # asynchronously by the jobs worker (with LLM metadata extraction
         # skipped), so we no longer extract them server-side here.
-        safe_filename = f"zotero-{item_key}.pdf"
         s3_object_key, file_url = await asyncio.to_thread(
             _upload_pdf_to_s3, pdf_bytes, safe_filename
         )
@@ -951,6 +939,12 @@ async def _import_one_paper(
 
         # Hand off to the jobs worker for preview + text extraction (no LLM).
         paper_upload_job_crud.mark_as_running(db=db, job_id=upload_job_id, user=user)
+        paper_upload_job_crud.update(
+            db=db,
+            db_obj=paper_upload_job,
+            obj_in=PaperUploadJobUpdate(task_id=upload_job_id),
+            user=user,
+        )
         task_id = await asyncio.to_thread(
             jobs_client.submit_pdf_processing_job,
             s3_object_key,

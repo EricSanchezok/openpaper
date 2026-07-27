@@ -29,6 +29,11 @@ class PaperUploadJobBase(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     task_id: str | None = None
+    quota_owner_id: int
+    project_id: uuid.UUID | None = None
+    reserved_size_kb: int = 0
+    original_filename: str | None = None
+    error_code: str | None = None
 
 
 class PaperUploadJobCreate(PaperUploadJobBase):
@@ -36,9 +41,16 @@ class PaperUploadJobCreate(PaperUploadJobBase):
     pass
 
 
-class PaperUploadJobUpdate(PaperUploadJobBase):
+class PaperUploadJobUpdate(BaseModel):
+    quota_owner_id: int | None = None
+    project_id: uuid.UUID | None = None
     status: JobStatus | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     task_id: str | None = None
+    reserved_size_kb: int | None = None
+    original_filename: str | None = None
+    error_code: str | None = None
 
 
 # PaperUploadJob CRUD that inherits from the base CRUD
@@ -80,7 +92,12 @@ class PaperUploadJobCRUD(
         return None
 
     def mark_as_failed(
-        self, db: Session, *, job_id: str, user: CurrentUser
+        self,
+        db: Session,
+        *,
+        job_id: str,
+        user: CurrentUser,
+        error_code: str = "upload_failed",
     ) -> PaperUploadJob | None:
         """Mark a job as failed and set completed_at timestamp"""
         job = self.get(db, id=job_id, user=user)
@@ -89,7 +106,9 @@ class PaperUploadJobCRUD(
                 db=db,
                 db_obj=job,
                 obj_in=PaperUploadJobUpdate(
-                    status=JobStatus.FAILED, completed_at=datetime.now(timezone.utc)
+                    status=JobStatus.FAILED,
+                    completed_at=datetime.now(timezone.utc),
+                    error_code=error_code,
                 ),
                 user=user,
             )

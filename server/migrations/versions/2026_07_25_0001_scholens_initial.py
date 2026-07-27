@@ -312,6 +312,16 @@ def upgrade() -> None:
         "paper_upload_jobs",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("quota_owner_id", sa.BigInteger(), nullable=False),
+        sa.Column("project_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "reserved_size_kb",
+            sa.Integer(),
+            server_default="0",
+            nullable=False,
+        ),
+        sa.Column("original_filename", sa.String(length=512), nullable=True),
+        sa.Column("error_code", sa.String(length=64), nullable=True),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
@@ -327,6 +337,15 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
             nullable=False,
+        ),
+        sa.CheckConstraint(
+            "reserved_size_kb >= 0",
+            name="ck_paper_upload_jobs_reserved_size_nonnegative",
+        ),
+        sa.ForeignKeyConstraint(
+            ["quota_owner_id"],
+            ["auth.users.id"],
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -362,6 +381,30 @@ def upgrade() -> None:
         op.f("ix_scholens_projects_owner_id"),
         "projects",
         ["owner_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_foreign_key(
+        "fk_paper_upload_jobs_project_id_projects",
+        "paper_upload_jobs",
+        "projects",
+        ["project_id"],
+        ["id"],
+        source_schema="scholens",
+        referent_schema="scholens",
+        ondelete="SET NULL",
+    )
+    op.create_index(
+        "ix_paper_upload_jobs_project_status",
+        "paper_upload_jobs",
+        ["project_id", "status"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_paper_upload_jobs_quota_status",
+        "paper_upload_jobs",
+        ["quota_owner_id", "status"],
         unique=False,
         schema="scholens",
     )
@@ -1570,6 +1613,22 @@ def downgrade() -> None:
         op.f("ix_scholens_projects_owner_id"),
         table_name="projects",
         schema="scholens",
+    )
+    op.drop_index(
+        "ix_paper_upload_jobs_quota_status",
+        table_name="paper_upload_jobs",
+        schema="scholens",
+    )
+    op.drop_index(
+        "ix_paper_upload_jobs_project_status",
+        table_name="paper_upload_jobs",
+        schema="scholens",
+    )
+    op.drop_constraint(
+        "fk_paper_upload_jobs_project_id_projects",
+        "paper_upload_jobs",
+        schema="scholens",
+        type_="foreignkey",
     )
     op.drop_table("projects", schema="scholens")
     op.drop_table("paper_upload_jobs", schema="scholens")

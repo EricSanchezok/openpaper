@@ -75,7 +75,10 @@ class AuthUser(Base):
         "AudioOverviewJob", back_populates="user", cascade="all, delete-orphan"
     )
     paper_upload_jobs: Mapped[list["PaperUploadJob"]] = relationship(
-        "PaperUploadJob", back_populates="user", cascade="all, delete-orphan"
+        "PaperUploadJob",
+        foreign_keys="PaperUploadJob.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     # The associated subscription for the user.

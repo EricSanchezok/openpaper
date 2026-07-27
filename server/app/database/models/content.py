@@ -30,11 +30,27 @@ from .enums import ConversableType, JobStatus, PaperStatus
 
 if TYPE_CHECKING:
     from .identity import AuthUser
-    from .projects import ProjectPaper
+    from .projects import Project, ProjectPaper
 
 
 class PaperUploadJob(Base):
     __tablename__ = "paper_upload_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "reserved_size_kb >= 0",
+            name="ck_paper_upload_jobs_reserved_size_nonnegative",
+        ),
+        Index(
+            "ix_paper_upload_jobs_quota_status",
+            "quota_owner_id",
+            "status",
+        ),
+        Index(
+            "ix_paper_upload_jobs_project_status",
+            "project_id",
+            "status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -42,6 +58,24 @@ class PaperUploadJob(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
     )
+    quota_owner_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reserved_size_kb: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(
         String, nullable=False, default=JobStatus.PENDING
     )
@@ -56,8 +90,15 @@ class PaperUploadJob(Base):
     )  # For tracking task in Celery
 
     user: Mapped["AuthUser"] = relationship(
-        "AuthUser", back_populates="paper_upload_jobs"
+        "AuthUser",
+        foreign_keys=[user_id],
+        back_populates="paper_upload_jobs",
     )
+    quota_owner: Mapped["AuthUser"] = relationship(
+        "AuthUser",
+        foreign_keys=[quota_owner_id],
+    )
+    project: Mapped["Project | None"] = relationship("Project")
 
 
 class TokenUsageEvent(Base):

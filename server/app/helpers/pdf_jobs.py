@@ -121,6 +121,7 @@ class JobsClient:
                 # must pin the queue here. Must match what the worker's `-Q` set
                 # contains (see jobs/scripts/start_worker.sh).
                 queue="pdf_processing",
+                task_id=job_id,
             )
 
             logger.info("Submitted PDF processing task %s for job %s", task.id, job_id)
@@ -276,7 +277,10 @@ class JobsClient:
         filename = f"{job_id}.pdf"
 
         logger.info(
-            f"Uploading PDF and submitting job - Size: {len(pdf_bytes)} bytes, Filename: {filename}, Job ID: {job_id}"
+            "Uploading PDF and submitting job: size=%s filename=%s job_id=%s",
+            len(pdf_bytes),
+            filename,
+            job_id,
         )
 
         # Track created resources for potential rollback
@@ -317,6 +321,7 @@ class JobsClient:
                 s3_object_key=s3_object_key,
                 upload_job_id=str(job_id),
                 title=original_filename,
+                size_in_kb=paper_upload_job.reserved_size_kb,
             )
 
             created_paper = paper_crud.create(
@@ -349,16 +354,19 @@ class JobsClient:
             db.commit()
             db_committed = True
 
+            # Celery uses the Scholens job UUID as its deterministic task ID.
+            # Persist it before publish so a process crash never leaves an
+            # unknowable broker task behind.
+            paper_upload_job.task_id = job_id
+            db.commit()
+
             # Submit processing job with S3 object key
             task_id = self.submit_pdf_processing_job(s3_object_key, job_id)
 
             return task_id
 
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(
-                f"PDF upload and job submission failed: {error_msg}", exc_info=True
-            )
+        except Exception as exc:
+            logger.exception("PDF upload and job submission failed for %s", job_id)
 
             # Rollback: Clean up created resources
             logger.info("Rolling back created resources due to task submission failure")
@@ -407,9 +415,7 @@ class JobsClient:
                 except Exception as rollback_error:
                     logger.error(f"Failed to rollback S3 file: {rollback_error}")
 
-            raise Exception(
-                f"Failed to upload PDF and submit processing job: {error_msg}"
-            ) from e
+            raise RuntimeError("pdf_upload_submission_failed") from exc
 
 
 # Create a client instance to use throughout the application
