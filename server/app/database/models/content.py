@@ -164,8 +164,8 @@ class Message(Base):
     artifacts: Mapped[list["Artifact"]] = relationship(
         "Artifact",
         back_populates="message",
-        cascade="all, delete-orphan",
         order_by="Artifact.created_at",
+        passive_deletes=True,
     )
 
 
@@ -256,10 +256,10 @@ class Artifact(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[int | None] = mapped_column(
         BigInteger,
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
 
@@ -267,10 +267,10 @@ class Artifact(Base):
     payload: Mapped[dict[str, JsonValue]] = mapped_column(JSONB, nullable=False)
 
     # Provenance: which assistant message produced this artifact.
-    message_id: Mapped[uuid.UUID] = mapped_column(
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("messages.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     # Scope — denormalized from the originating conversation so panel queries
@@ -281,8 +281,13 @@ class Artifact(Base):
     scope_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    is_shared: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
-    message: Mapped["Message"] = relationship("Message", back_populates="artifacts")
+    message: Mapped["Message | None"] = relationship(
+        "Message", back_populates="artifacts"
+    )
 
     __table_args__ = (
         Index(
@@ -293,6 +298,10 @@ class Artifact(Base):
             "created_at",
         ),
         Index("ix_artifacts_message_id", "message_id"),
+        CheckConstraint(
+            "NOT is_shared OR scope_type = 'project'",
+            name="ck_artifacts_shared_project_scope",
+        ),
     )
 
 
@@ -595,21 +604,55 @@ class PaperNote(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    # Ensure each document has only one associated paper note
     paper_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=True
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    is_shared: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
 
-    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="paper_notes")
+    user: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="paper_notes"
+    )
 
     paper: Mapped["Document"] = relationship("Document", back_populates="paper_notes")
+
+    __table_args__ = (
+        Index(
+            "uq_paper_notes_private_owner",
+            "paper_id",
+            "user_id",
+            unique=True,
+            postgresql_where=(project_id.is_(None)),
+        ),
+        Index(
+            "uq_paper_notes_project_owner",
+            "paper_id",
+            "project_id",
+            "user_id",
+            unique=True,
+            postgresql_where=(project_id.isnot(None)),
+        ),
+        CheckConstraint(
+            "NOT is_shared OR project_id IS NOT NULL",
+            name="ck_paper_notes_shared_project",
+        ),
+    )
 
 
 class Highlight(Base):
@@ -641,7 +684,19 @@ class Highlight(Base):
         String, nullable=False, default="user"
     )  # 'user' or 'assistant'
     user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=True
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    is_shared: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     color: Mapped[str | None] = mapped_column(String, nullable=True, default="blue")
     zotero_annotation_key: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -651,13 +706,26 @@ class Highlight(Base):
             "uq_highlight_paper_zotero_annotation_key",
             "paper_id",
             "zotero_annotation_key",
+            "user_id",
             unique=True,
             postgresql_where=(zotero_annotation_key.isnot(None)),
+        ),
+        Index(
+            "ix_highlights_project_visibility",
+            "project_id",
+            "is_shared",
+            "created_at",
+        ),
+        CheckConstraint(
+            "NOT is_shared OR project_id IS NOT NULL",
+            name="ck_highlights_shared_project",
         ),
     )
 
     # Relationships
-    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="highlights")
+    user: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="highlights"
+    )
     annotations: Mapped[list["Annotation"]] = relationship(
         "Annotation", back_populates="highlight", cascade="all, delete-orphan"
     )
@@ -687,12 +755,16 @@ class Annotation(Base):
     role: Mapped[str] = mapped_column(
         String, nullable=False, default="user"
     )  # 'user' or 'assistant'
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id"), nullable=False
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     # Relationships
-    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="annotations")
+    user: Mapped["AuthUser | None"] = relationship(
+        "AuthUser", back_populates="annotations"
+    )
     highlight: Mapped["Highlight"] = relationship(
         "Highlight", back_populates="annotations"
     )
@@ -757,8 +829,10 @@ class AudioOverview(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     s3_object_key: Mapped[str] = mapped_column(
@@ -779,6 +853,9 @@ class AudioOverview(Base):
     conversable_type: Mapped[str] = mapped_column(
         String, nullable=False, default=ConversableType.PAPER
     )
+    is_shared: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Specific relationship for papers (viewonly)
     paper: Mapped["Document | None"] = relationship(
@@ -796,5 +873,9 @@ class AudioOverview(Base):
             "(conversable_type = 'project' AND conversable_id IS NOT NULL) OR "
             "(conversable_type = 'everything' AND conversable_id IS NULL)",
             name="check_audio_overview_conversable_consistency",
+        ),
+        CheckConstraint(
+            "NOT is_shared OR conversable_type = 'project'",
+            name="ck_audio_overviews_shared_project",
         ),
     )

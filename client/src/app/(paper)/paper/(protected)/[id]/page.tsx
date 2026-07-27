@@ -91,6 +91,7 @@ export default function PaperView() {
     const searchParams = useSearchParams();
     const id = params.id as string;
     const initialConversationId = searchParams.get('conversation');
+    const projectId = searchParams.get('project_id');
     const { user } = useAuth();
     const [paperData, setPaperData] = useState<PaperData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -111,7 +112,7 @@ export default function PaperView() {
         addHighlight,
         removeHighlight,
         fetchHighlights
-    } = useHighlighterHighlights(id);
+    } = useHighlighterHighlights(id, projectId);
 
     const {
         annotations,
@@ -120,7 +121,7 @@ export default function PaperView() {
         updateAnnotation,
         renderAnnotations,
         refreshAnnotations,
-    } = useAnnotations(id);
+    } = useAnnotations(id, projectId);
 
     const [annotationCardsVisible, setAnnotationCardsVisible] = useState(false);
     /** When Annotations side panel is open, compose first note / reply here instead of margin cards */

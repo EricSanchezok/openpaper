@@ -23,6 +23,7 @@ class ArtifactCreate(BaseModel):
     message_id: uuid.UUID
     scope_type: str  # ConversableType value
     scope_id: uuid.UUID | None = None
+    is_shared: bool = False
 
 
 class ArtifactUpdate(BaseModel):
@@ -49,6 +50,7 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
             message_id=message.id,
             scope_type=str(conversation.conversable_type),
             scope_id=conversation.conversable_id,
+            is_shared=(conversation.conversable_type == ConversableType.PROJECT.value),
         )
         return self.create(db, obj_in=obj_in, user=user)
 
@@ -76,37 +78,6 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
                 created.append(obj)
         return created
 
-    def list_for_scope(
-        self,
-        db: Session,
-        *,
-        scope_type: str,
-        scope_id: uuid.UUID | None,
-        user: CurrentUser,
-        kind: ArtifactKind | None = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[Artifact]:
-        """List artifacts in a given scope (e.g. project panel feed).
-
-        Returns every occurrence; callers attach conversation breadcrumbs.
-        Ownership is enforced via user_id.
-        """
-        statement = select(Artifact).where(
-            Artifact.user_id == user.id,
-            Artifact.scope_type == scope_type,
-        )
-        if scope_id is not None:
-            statement = statement.where(Artifact.scope_id == scope_id)
-        else:
-            statement = statement.where(Artifact.scope_id.is_(None))
-        if kind is not None:
-            statement = statement.where(Artifact.kind == kind.value)
-        statement = (
-            statement.order_by(Artifact.created_at.desc()).offset(offset).limit(limit)
-        )
-        return list(db.scalars(statement).all())
-
     def list_for_project(
         self,
         db: Session,
@@ -115,31 +86,24 @@ class ArtifactCRUD(CRUDBase[Artifact, ArtifactCreate, ArtifactUpdate]):
         kind: ArtifactKind | None = None,
         limit: int = 200,
         offset: int = 0,
-    ) -> list[tuple[Artifact, uuid.UUID, str | None]]:
-        """List artifacts across ALL members' conversations in a project.
+        user: CurrentUser,
+    ) -> list[Artifact]:
+        """List shared project artifacts plus the requester's hidden artifacts.
 
-        Deliberately no user_id filter: project conversations are visible to
-        every member, so their artifacts are too. Callers MUST verify the
-        requester holds a role in the project before calling this.
-
-        Returns (artifact, conversation_id, conversation_title) so the panel
-        can attach a breadcrumb back to the source conversation.
+        The originating conversation remains private and is intentionally not
+        joined or returned.
         """
-        statement = (
-            select(Artifact, Conversation.id, Conversation.title)
-            .join(Message, Artifact.message_id == Message.id)
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(
-                Artifact.scope_type == ConversableType.PROJECT.value,
-                Artifact.scope_id == project_id,
-            )
+        statement = select(Artifact).where(
+            Artifact.scope_type == ConversableType.PROJECT.value,
+            Artifact.scope_id == project_id,
+            (Artifact.is_shared.is_(True)) | (Artifact.user_id == user.id),
         )
         if kind is not None:
             statement = statement.where(Artifact.kind == kind.value)
         statement = (
             statement.order_by(Artifact.created_at.desc()).offset(offset).limit(limit)
         )
-        return list(db.execute(statement).tuples().all())
+        return list(db.scalars(statement).all())
 
 
 artifact_crud = ArtifactCRUD(Artifact)

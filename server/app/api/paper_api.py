@@ -36,7 +36,7 @@ from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -55,11 +55,23 @@ class SharePaperSchemaResponse(BaseModel):
 
 
 class CreatePaperNoteSchema(BaseModel):
-    content: str | None
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=200_000)
+    project_id: uuid.UUID | None = None
+    shared: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_visibility(self) -> "CreatePaperNoteSchema":
+        if self.project_id is None and self.shared:
+            raise ValueError("Personal notes cannot be shared")
+        return self
 
 
 class UpdatePaperNoteSchema(BaseModel):
-    content: str
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=200_000)
 
 
 class UpdatePaperFieldsSchema(BaseModel):
@@ -275,6 +287,7 @@ async def get_paper_file_url(
 @paper_router.get("/note")
 async def get_paper_note(
     paper_id: str,
+    project_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> ApiResponse:
@@ -289,7 +302,10 @@ async def get_paper_note(
         raise HTTPException(status_code=404, detail=f"No document with id {paper_id}")
 
     paper_note = paper_note_crud.get_paper_note_by_paper_id(
-        db, paper_id=paper_id, user=current_user
+        db,
+        paper_id=paper_id,
+        user=current_user,
+        project_id=project_id,
     )
 
     if paper_note:
@@ -305,7 +321,7 @@ async def create_paper_note(
     paper_id: str,
     request: CreatePaperNoteSchema,
     db: Session = Depends(get_db),
-    current_user: CurrentUser | None = Depends(get_required_user),
+    current_user: CurrentUser = Depends(get_required_user),
 ) -> ApiResponse:
     """
     Create the paper note associated with this document
@@ -319,10 +335,17 @@ async def create_paper_note(
         raise HTTPException(status_code=404, detail=f"No document with id {paper_id}")
 
     paper_note_to_create = PaperNoteCreate(
-        paper_id=uuid.UUID(paper_id), content=content
+        paper_id=uuid.UUID(paper_id),
+        content=content,
+        project_id=request.project_id,
+        is_shared=(
+            request.shared
+            if request.shared is not None
+            else request.project_id is not None
+        ),
     )
 
-    paper_note = paper_note_crud.create(
+    paper_note = paper_note_crud.create_scoped(
         db, obj_in=paper_note_to_create, user=current_user
     )
 
@@ -486,6 +509,7 @@ async def get_relevant_papers(
 async def update_paper_note(
     paper_id: str,
     request: UpdatePaperNoteSchema,
+    project_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> ApiResponse:
@@ -501,7 +525,10 @@ async def update_paper_note(
         raise HTTPException(status_code=404, detail=f"No document with id {paper_id}")
 
     paper_note = paper_note_crud.get_paper_note_by_paper_id(
-        db, paper_id=paper_id, user=current_user
+        db,
+        paper_id=paper_id,
+        user=current_user,
+        project_id=project_id,
     )
 
     if not paper_note:
@@ -512,8 +539,18 @@ async def update_paper_note(
 
     paper_note_to_update = PaperNoteUpdate(content=content)
 
+    editable_note = paper_note_crud.get_for_mutation(
+        db,
+        note_id=paper_note.id,
+        user=current_user,
+    )
+    if editable_note is None:
+        raise HTTPException(status_code=403, detail="Cannot edit this paper note")
+
     updated_paper_note = paper_note_crud.update(
-        db=db, db_obj=paper_note, obj_in=paper_note_to_update, user=current_user
+        db=db,
+        db_obj=editable_note,
+        obj_in=paper_note_to_update,
     )
 
     if not updated_paper_note:

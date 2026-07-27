@@ -31,6 +31,7 @@ class DataTableJobCreate(BaseModel):
     project_id: UUID
     columns: list[str]
     task_id: str | None = None
+    is_shared: bool = True
 
 
 class DataTableJobUpdate(BaseModel):
@@ -107,6 +108,7 @@ class DataTableJobCRUD(
                 columns=obj_in.columns,
                 task_id=obj_in.task_id,
                 status=JobStatus.PENDING,
+                is_shared=obj_in.is_shared,
             )
             db.add(db_obj)
             if auto_commit:
@@ -176,6 +178,10 @@ class DataTableJobCRUD(
                 select(DataTableExtractionJob)
                 .options(joinedload(DataTableExtractionJob.result))
                 .where(DataTableExtractionJob.project_id == project_id)
+                .where(
+                    DataTableExtractionJob.is_shared.is_(True)
+                    | (DataTableExtractionJob.user_id == user.id)
+                )
                 .order_by(DataTableExtractionJob.created_at.desc())
             )
             .unique()
@@ -200,6 +206,10 @@ class DataTableJobCRUD(
                 .where(
                     DataTableExtractionJob.project_id == project_id,
                     DataTableExtractionJob.status == JobStatus.PENDING,
+                    (
+                        DataTableExtractionJob.is_shared.is_(True)
+                        | (DataTableExtractionJob.user_id == user.id)
+                    ),
                 )
                 .order_by(DataTableExtractionJob.created_at.desc())
             ).all()
@@ -221,6 +231,10 @@ class DataTableJobCRUD(
             select(DataTableExtractionJob).where(
                 DataTableExtractionJob.id == job_id,
                 DataTableExtractionJob.project_id == project_id,
+                (
+                    DataTableExtractionJob.is_shared.is_(True)
+                    | (DataTableExtractionJob.user_id == user.id)
+                ),
             )
         ).first()
 
@@ -410,6 +424,10 @@ class DataTableResultCRUD(
                     DataTableExtractionResult.job_id == DataTableExtractionJob.id,
                 )
                 .where(DataTableExtractionJob.project_id == project_id)
+                .where(
+                    DataTableExtractionJob.is_shared.is_(True)
+                    | (DataTableExtractionJob.user_id == user.id)
+                )
                 .order_by(DataTableExtractionResult.created_at.desc())
             ).all()
         )

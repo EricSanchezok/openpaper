@@ -63,13 +63,13 @@ class AuthUser(Base):
         "Conversation", back_populates="user", cascade="all, delete-orphan"
     )
     paper_notes: Mapped[list["PaperNote"]] = relationship(
-        "PaperNote", back_populates="user", cascade="all, delete-orphan"
+        "PaperNote", back_populates="user", passive_deletes=True
     )
     highlights: Mapped[list["Highlight"]] = relationship(
-        "Highlight", back_populates="user", cascade="all, delete-orphan"
+        "Highlight", back_populates="user", passive_deletes=True
     )
     annotations: Mapped[list["Annotation"]] = relationship(
-        "Annotation", back_populates="user", cascade="all, delete-orphan"
+        "Annotation", back_populates="user", passive_deletes=True
     )
     audio_overview_jobs: Mapped[list["AudioOverviewJob"]] = relationship(
         "AudioOverviewJob", back_populates="user", cascade="all, delete-orphan"

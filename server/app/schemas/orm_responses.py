@@ -22,7 +22,7 @@ from app.database.models import (
     PaperNote,
     Project,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OrmResponse(BaseModel):
@@ -44,6 +44,9 @@ class PaperNoteResponse(OrmResponse):
     id: UUID
     paper_id: UUID
     content: str
+    project_id: UUID | None
+    is_shared: bool
+    created_by_id: int | None = Field(validation_alias="user_id")
     created_at: datetime
     updated_at: datetime
 
@@ -59,6 +62,9 @@ class HighlightResponse(OrmResponse):
     position: dict[str, JsonValue] | None
     role: str
     color: str | None
+    project_id: UUID | None
+    is_shared: bool
+    created_by_id: int | None = Field(validation_alias="user_id")
     created_at: datetime
     updated_at: datetime
 
@@ -69,6 +75,7 @@ class AnnotationResponse(OrmResponse):
     paper_id: UUID
     content: str
     role: str
+    created_by_id: int | None = Field(validation_alias="user_id")
     created_at: datetime
     updated_at: datetime
 
@@ -159,6 +166,8 @@ class AudioOverviewResponse(OrmResponse):
     transcript: str | None
     title: str | None
     citations: list[dict[str, JsonValue]] | None
+    is_shared: bool
+    created_by_id: int | None = Field(validation_alias="user_id")
     created_at: datetime
     updated_at: datetime
 
@@ -176,6 +185,8 @@ class DataTableJobResponse(OrmResponse):
     updated_at: datetime
     error_message: str | None
     result_id: UUID | None
+    is_shared: bool
+    created_by_id: int | None = Field(validation_alias="user_id")
 
 
 class DataTableRowResponse(OrmResponse):

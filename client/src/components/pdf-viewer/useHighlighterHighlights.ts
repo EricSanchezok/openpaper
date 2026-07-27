@@ -4,6 +4,7 @@ import { fetchFromApi } from "@/lib/api";
 
 export function useHighlighterHighlights(
 	paperId: string,
+	projectId?: string | null,
 	readOnlyHighlights: Array<PaperHighlight> = []
 ) {
 	const [highlights, setHighlights] = useState<Array<PaperHighlight>>([]);
@@ -22,7 +23,7 @@ export function useHighlighterHighlights(
 	const fetchHighlights = useCallback(async () => {
 		try {
 			const data: PaperHighlight[] = await fetchFromApi(
-				`/api/highlight/${paperId}`,
+				`/api/highlight/${paperId}${projectId ? `?project_id=${projectId}` : ""}`,
 				{
 					method: "GET",
 					headers: {
@@ -57,7 +58,7 @@ export function useHighlighterHighlights(
 		} catch (error) {
 			console.error("Error loading highlights from server:", error);
 		}
-	}, [paperId]);
+	}, [paperId, projectId]);
 
 	// Send highlight to server
 	const sendHighlightToServer = async (
@@ -81,6 +82,7 @@ export function useHighlighterHighlights(
 			position: highlight.position,
 			role: highlight.role || "user",
 			color: highlight.color,
+			project_id: projectId || undefined,
 		};
 
 		try {

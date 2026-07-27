@@ -155,6 +155,9 @@ export interface PaperHighlight {
     type?: HighlightType;
     position?: ScaledPosition;
     color?: HighlightColor;
+    project_id?: string | null;
+    is_shared?: boolean;
+    created_by_id?: number | null;
 }
 
 export interface PaperHighlightAnnotation {
@@ -164,6 +167,7 @@ export interface PaperHighlightAnnotation {
     content: string;
     role: 'user' | 'assistant';
     created_at: string;
+    created_by_id?: number | null;
 }
 
 export interface Reference {
@@ -439,6 +443,8 @@ export interface AudioOverview {
     created_at: string;
     updated_at: string;
     job_id: string;
+    is_shared: boolean;
+    created_by_id: number | null;
 }
 
 export interface AudioOverviewJob extends JobStatusResponse {
@@ -544,6 +550,8 @@ export interface DataTableJob {
     updated_at: string | null;
     error_message: string | null;
     result_id: string | null;
+    is_shared: boolean;
+    created_by_id: number | null;
 }
 
 // Response from /api/projects/tables/{job_id} status endpoint

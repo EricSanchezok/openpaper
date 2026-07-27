@@ -207,6 +207,7 @@ async def generate_audio_overview(
             transcript=narrative_summary.summary,
             citations=narrative_summary.citations,
             title=narrative_summary.title or conversable_title,
+            is_shared=project_id is not None,
         )
 
         audio_overview = audio_overview_crud.create(

@@ -38,6 +38,7 @@ class AudioOverviewBase(BaseModel):
     transcript: str | None = None
     citations: list[ResponseCitation] | None = None
     title: str | None = None
+    is_shared: bool = False
 
 
 class AudioOverviewCreate(AudioOverviewBase):
@@ -281,6 +282,10 @@ class AudioOverviewCRUD(
                     .where(
                         AudioOverview.conversable_id == conversable_id,
                         AudioOverview.conversable_type == conversable_type,
+                        (
+                            AudioOverview.is_shared.is_(True)
+                            | (AudioOverview.user_id == current_user.id)
+                        ),
                     )
                     .order_by(AudioOverview.created_at.desc())
                 ).all()
@@ -332,6 +337,10 @@ class AudioOverviewCRUD(
                 AudioOverview.id == id,
                 AudioOverview.conversable_id == project_id,
                 AudioOverview.conversable_type == ConversableType.PROJECT,
+                (
+                    AudioOverview.is_shared.is_(True)
+                    | (AudioOverview.user_id == current_user.id)
+                ),
             )
         ).first()
 

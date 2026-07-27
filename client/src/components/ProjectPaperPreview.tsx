@@ -82,7 +82,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                     <div className="flex shrink-0 items-center gap-1">
                         <CitePaperButton paper={[paper]} minimalist={true} />
                         {isInLibrary ? (
-                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => router.push(`/paper/${paper.id}`)}>
+                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => router.push(`/paper/${paper.id}?project_id=${projectId}`)}>
                                 <FilePlus2 className="h-3.5 w-3.5 mr-1.5" />
                                 Open
                             </Button>

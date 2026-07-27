@@ -13,18 +13,21 @@ interface DataTableGenerationViewProps {
     papers: PaperItem[];
     onClose: () => void;
     onCitationClick?: (paperId: string, searchTerm: string) => void;
+    projectId: string;
 }
 
 const PaperLinkWrapper = ({
     paper,
+    projectId,
     children
 }: {
     paper: PaperItem;
+    projectId: string;
     children: React.ReactNode;
 }) => {
     return (
         <Link
-            href={`/paper/${paper.id}`}
+            href={`/paper/${paper.id}?project_id=${projectId}`}
             className="hover:underline font-medium"
             target="_blank"
         >
@@ -38,6 +41,7 @@ export default function DataTableGenerationView({
     papers,
     onClose,
     onCitationClick,
+    projectId,
 }: DataTableGenerationViewProps) {
     const [highlightedPaper, setHighlightedPaper] = useState<string | null>(null);
 
@@ -152,7 +156,7 @@ export default function DataTableGenerationView({
                                     >
                                         <td className="p-3 align-top sticky left-0 bg-card z-10">
                                             {paper ? (
-                                                <PaperLinkWrapper paper={paper}>
+                                                <PaperLinkWrapper paper={paper} projectId={projectId}>
                                                     {paper.title}
                                                 </PaperLinkWrapper>
                                             ) : (

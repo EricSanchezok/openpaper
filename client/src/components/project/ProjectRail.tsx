@@ -108,7 +108,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenuItem asChild>
-                        <Link href={`/paper/${paper.id}`}>
+                        <Link href={`/paper/${paper.id}?project_id=${projectId}`}>
                             <ExternalLink className="h-4 w-4" />
                             Open full page
                         </Link>

@@ -144,12 +144,20 @@ class Onboarding(Base):
 
 class DataTableExtractionJob(Base):
     __tablename__ = "data_table_extraction_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "NOT is_shared OR project_id IS NOT NULL",
+            name="ck_data_table_jobs_shared_project",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth.users.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     project_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -175,9 +183,12 @@ class DataTableExtractionJob(Base):
     )
 
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_shared: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
-    user: Mapped["AuthUser"] = relationship("AuthUser")
-    project: Mapped["Project"] = relationship("Project")
+    user: Mapped["AuthUser | None"] = relationship("AuthUser")
+    project: Mapped["Project | None"] = relationship("Project")
 
     # Relationship to results
     result: Mapped["DataTableExtractionResult | None"] = relationship(

@@ -177,13 +177,19 @@ def upgrade() -> None:
     op.create_table(
         "audio_overviews",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column("s3_object_key", sa.String(), nullable=False),
         sa.Column("transcript", sa.Text(), nullable=True),
         sa.Column("citations", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("title", sa.String(), nullable=True),
         sa.Column("conversable_id", sa.UUID(), nullable=False),
         sa.Column("conversable_type", sa.String(), nullable=False),
+        sa.Column(
+            "is_shared",
+            sa.Boolean(),
+            server_default="false",
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -200,7 +206,11 @@ def upgrade() -> None:
             "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR (conversable_type = 'project' AND conversable_id IS NOT NULL) OR (conversable_type = 'everything' AND conversable_id IS NULL)",
             name="check_audio_overview_conversable_consistency",
         ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
+        sa.CheckConstraint(
+            "NOT is_shared OR conversable_type = 'project'",
+            name="ck_audio_overviews_shared_project",
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
@@ -474,7 +484,7 @@ def upgrade() -> None:
     op.create_table(
         "data_table_extraction_jobs",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column("project_id", sa.UUID(), nullable=True),
         sa.Column("columns", sa.ARRAY(sa.String()), nullable=True),
         sa.Column("task_id", sa.String(), nullable=True),
@@ -482,6 +492,12 @@ def upgrade() -> None:
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column(
+            "is_shared",
+            sa.Boolean(),
+            server_default="true",
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -497,7 +513,11 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
         ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
+        sa.CheckConstraint(
+            "NOT is_shared OR project_id IS NOT NULL",
+            name="ck_data_table_jobs_shared_project",
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
@@ -832,12 +852,18 @@ def upgrade() -> None:
     op.create_table(
         "artifacts",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column("kind", sa.String(), nullable=False),
         sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("message_id", sa.UUID(), nullable=False),
+        sa.Column("message_id", sa.UUID(), nullable=True),
         sa.Column("scope_type", sa.String(), nullable=False),
         sa.Column("scope_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "is_shared",
+            sa.Boolean(),
+            server_default="false",
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -851,9 +877,13 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["message_id"], ["scholens.messages.id"], ondelete="CASCADE"
+            ["message_id"], ["scholens.messages.id"], ondelete="SET NULL"
         ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
+        sa.CheckConstraint(
+            "NOT is_shared OR scope_type = 'project'",
+            name="ck_artifacts_shared_project_scope",
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
@@ -919,6 +949,13 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column("color", sa.String(), nullable=True),
         sa.Column("zotero_annotation_key", sa.String(), nullable=True),
+        sa.Column("project_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "is_shared",
+            sa.Boolean(),
+            server_default="false",
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -935,19 +972,44 @@ def upgrade() -> None:
             ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["auth.users.id"],
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
         ),
+        sa.CheckConstraint(
+            "NOT is_shared OR project_id IS NOT NULL",
+            name="ck_highlights_shared_project",
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
     op.create_index(
         "uq_highlight_paper_zotero_annotation_key",
         "highlights",
-        ["paper_id", "zotero_annotation_key"],
+        ["paper_id", "zotero_annotation_key", "user_id"],
         unique=True,
         schema="scholens",
         postgresql_where=sa.text("zotero_annotation_key IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_highlights_project_visibility",
+        "highlights",
+        ["project_id", "is_shared", "created_at"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_highlights_project_id"),
+        "highlights",
+        ["project_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_highlights_user_id"),
+        "highlights",
+        ["user_id"],
+        unique=False,
+        schema="scholens",
     )
     op.create_table(
         "paper_images",
@@ -986,6 +1048,13 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("paper_id", sa.UUID(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("project_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "is_shared",
+            sa.Boolean(),
+            server_default="false",
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1003,12 +1072,45 @@ def upgrade() -> None:
             ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["auth.users.id"],
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
         ),
+        sa.CheckConstraint(
+            "NOT is_shared OR project_id IS NOT NULL",
+            name="ck_paper_notes_shared_project",
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("paper_id"),
         schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_paper_notes_project_id"),
+        "paper_notes",
+        ["project_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_paper_notes_user_id"),
+        "paper_notes",
+        ["user_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        "uq_paper_notes_private_owner",
+        "paper_notes",
+        ["paper_id", "user_id"],
+        unique=True,
+        schema="scholens",
+        postgresql_where=sa.text("project_id IS NULL"),
+    )
+    op.create_index(
+        "uq_paper_notes_project_owner",
+        "paper_notes",
+        ["paper_id", "project_id", "user_id"],
+        unique=True,
+        schema="scholens",
+        postgresql_where=sa.text("project_id IS NOT NULL"),
     )
     op.create_table(
         "paper_passages",
@@ -1178,7 +1280,7 @@ def upgrade() -> None:
         sa.Column("paper_id", sa.UUID(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("role", sa.String(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1198,10 +1300,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["auth.users.id"],
-        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
@@ -1351,8 +1450,45 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("paper_passages", schema="scholens")
+    op.drop_index(
+        "uq_paper_notes_project_owner",
+        table_name="paper_notes",
+        schema="scholens",
+        postgresql_where=sa.text("project_id IS NOT NULL"),
+    )
+    op.drop_index(
+        "uq_paper_notes_private_owner",
+        table_name="paper_notes",
+        schema="scholens",
+        postgresql_where=sa.text("project_id IS NULL"),
+    )
+    op.drop_index(
+        op.f("ix_scholens_paper_notes_user_id"),
+        table_name="paper_notes",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_paper_notes_project_id"),
+        table_name="paper_notes",
+        schema="scholens",
+    )
     op.drop_table("paper_notes", schema="scholens")
     op.drop_table("paper_images", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_highlights_user_id"),
+        table_name="highlights",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_highlights_project_id"),
+        table_name="highlights",
+        schema="scholens",
+    )
+    op.drop_index(
+        "ix_highlights_project_visibility",
+        table_name="highlights",
+        schema="scholens",
+    )
     op.drop_index(
         "uq_highlight_paper_zotero_annotation_key",
         table_name="highlights",
