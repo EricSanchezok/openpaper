@@ -111,10 +111,12 @@ class AnnotationCrud(CRUDBase[Annotation, AnnotationCreate, AnnotationUpdate]):
                 select(Annotation)
                 .join(Document, Annotation.paper_id == Document.id)
                 .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+                .join(Highlight, Annotation.highlight_id == Highlight.id)
                 .where(
                     LibraryPaper.share_id == str(share_id),
                     LibraryPaper.is_public.is_(True),
                     Annotation.user_id == LibraryPaper.user_id,
+                    Highlight.project_id.is_(None),
                 )
                 .order_by(Annotation.created_at)
             ).all()

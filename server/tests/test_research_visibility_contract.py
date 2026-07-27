@@ -1,10 +1,13 @@
 """Contracts for private conversations and selectively shared Project outputs."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 import uuid
 
 import pytest
 from app.api.highlight_api import CreateHighlightRequest
+from app.database.crud.annotation_crud import annotation_crud
+from app.database.crud.highlight_crud import highlight_crud
 from app.database.models import (
     Annotation,
     Artifact,
@@ -23,6 +26,7 @@ from app.policies.research import (
     require_research_item_manager,
 )
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).parents[2]
 
@@ -125,3 +129,23 @@ def test_clean_baseline_contains_visibility_constraints() -> None:
         "ck_paper_notes_shared_project",
     ):
         assert constraint in source
+
+
+def test_public_paper_share_excludes_project_research_layer() -> None:
+    db = MagicMock(spec=Session)
+    db.scalars.return_value.all.return_value = []
+
+    highlight_crud.get_public_highlights_data_by_paper_id(
+        db,
+        share_id=str(uuid.uuid4()),
+    )
+    highlight_statement = str(db.scalars.call_args.args[0])
+    assert "highlights.project_id IS NULL" in highlight_statement
+
+    annotation_crud.get_public_annotations_data_by_paper_id(
+        db,
+        share_id=uuid.uuid4(),
+    )
+    annotation_statement = str(db.scalars.call_args.args[0])
+    assert "JOIN scholens.highlights" in annotation_statement
+    assert "highlights.project_id IS NULL" in annotation_statement

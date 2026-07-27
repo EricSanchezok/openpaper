@@ -200,6 +200,7 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
                     LibraryPaper.share_id == share_id,
                     LibraryPaper.is_public.is_(True),
                     Highlight.user_id == LibraryPaper.user_id,
+                    Highlight.project_id.is_(None),
                 )
                 .order_by(Highlight.created_at)
             ).all()
