@@ -15,6 +15,7 @@ The client can poll the job status using the same job_id throughout the process.
 """
 
 from starlette.responses import Response as ApiResponse
+from starlette.concurrency import run_in_threadpool
 
 import logging
 from pathlib import PurePosixPath
@@ -179,7 +180,10 @@ async def upload_pdf_from_url(
 
     # Validate the URL and fetch PDF content
     url = str(request.url)
-    is_valid, pdf_bytes, error_message = await validate_url_and_fetch_pdf(url)
+    is_valid, pdf_bytes, error_message = await run_in_threadpool(
+        validate_url_and_fetch_pdf,
+        url,
+    )
     if not is_valid:
         return JSONResponse(status_code=400, content={"message": error_message})
 
@@ -278,7 +282,11 @@ async def upload_pdf(
         )
 
     # Validate PDF content
-    is_valid, error_message = await validate_pdf_content(file_contents, source="upload")
+    is_valid, error_message = await run_in_threadpool(
+        validate_pdf_content,
+        file_contents,
+        "upload",
+    )
     if not is_valid:
         return JSONResponse(status_code=400, content={"message": error_message})
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import patch
 
 import pytest
 
-from app.helpers.parser import _validate_public_http_url
+from app.helpers.parser import _validate_public_http_url, validate_pdf_content
+from pypdf import PdfWriter
 
 
 @pytest.mark.parametrize(
@@ -50,3 +52,16 @@ def test_pdf_url_accepts_only_when_all_dns_answers_are_public() -> None:
     ]
     with patch("app.helpers.parser.socket.getaddrinfo", return_value=answers):
         _validate_public_http_url("https://example.com/paper.pdf")
+
+
+def test_structurally_valid_scanned_pdf_reaches_jobs_ocr_pipeline() -> None:
+    output = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_metadata({"/Description": "scan" * 400})
+    writer.write(output)
+
+    valid, error = validate_pdf_content(output.getvalue(), source="test")
+
+    assert valid is True
+    assert error == ""

@@ -511,7 +511,11 @@ async def _resolve_pdf_bytes(
                 pdf_bytes = await asyncio.to_thread(
                     client.download_attachment_file, attachment_key
                 )
-                is_valid, err = await validate_pdf_content(pdf_bytes, source="zotero")
+                is_valid, err = await asyncio.to_thread(
+                    validate_pdf_content,
+                    pdf_bytes,
+                    "zotero",
+                )
                 if is_valid:
                     attachment_children = await asyncio.to_thread(
                         client.get_children, attachment_key
@@ -544,7 +548,10 @@ async def _resolve_pdf_bytes(
 
     urls = list(client.resolve_item_urls(data))
     for url in urls:
-        is_valid, pdf_bytes, err = await validate_url_and_fetch_pdf(url)
+        is_valid, pdf_bytes, err = await asyncio.to_thread(
+            validate_url_and_fetch_pdf,
+            url,
+        )
         if is_valid and pdf_bytes:
             return pdf_bytes, ZoteroImportSource.URL, None, url, [], None
 

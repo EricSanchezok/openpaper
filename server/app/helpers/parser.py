@@ -8,7 +8,6 @@ from urllib.parse import urljoin, urlsplit
 import requests
 from pypdf import PdfReader
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE_MB = 30
@@ -64,9 +63,7 @@ def _detect_pdf_mime_type(pdf_bytes: bytes) -> bool:
     return marker_count >= 2
 
 
-async def validate_pdf_content(
-    pdf_bytes: bytes, source: str = "upload"
-) -> tuple[bool, str]:
+def validate_pdf_content(pdf_bytes: bytes, source: str = "upload") -> tuple[bool, str]:
     """
     Perform lightweight validation on PDF content.
     Returns (is_valid, error_message).
@@ -89,29 +86,18 @@ async def validate_pdf_content(
         try:
             reader = PdfReader(pdf_stream)
 
-            # Check if PDF has pages
-            if len(reader.pages) == 0:
-                return False, "PDF contains no pages"
-
-            # Guard against extremely long PDFs that may exceed LLM context limits
-            if len(reader.pages) > DOCUMENT_PAGE_LIMIT:
-                return False, f"PDF exceeds the {DOCUMENT_PAGE_LIMIT}-page limit"
-
             # Check if PDF is encrypted and can't be processed
             if reader.is_encrypted:
                 return False, "Encrypted PDFs are not supported"
 
-            # Try to extract text from first page to verify it's readable
-            first_page = reader.pages[0]
-            text = first_page.extract_text()
+            page_count = len(reader.pages)
+            if page_count == 0:
+                return False, "PDF contains no pages"
 
-            # Check if we can extract any text (even if minimal)
-            # Some PDFs might be image-only but still valid
-            if len(text.strip()) < 10:
-                logger.warning(
-                    f"PDF from {source} has minimal text content - might be image-only"
-                )
-                return False, "PDF appears to have minimal text content"
+            # Text availability is deliberately not checked here. MinerU owns OCR,
+            # and the Jobs fallback applies its own explicit text-quality gate.
+            if page_count > DOCUMENT_PAGE_LIMIT:
+                return False, f"PDF exceeds the {DOCUMENT_PAGE_LIMIT}-page limit"
 
         except Exception:
             logger.info("Rejected unreadable PDF from %s", source, exc_info=True)
@@ -164,7 +150,7 @@ def _validate_public_response_peer(response: requests.Response) -> None:
         raise ValueError("PDF server connection used a non-public address")
 
 
-async def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
+def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
     """
     Validate URL and fetch PDF content with additional checks.
     Returns (is_valid, pdf_bytes, error_message).
@@ -172,65 +158,74 @@ async def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
     try:
         max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
         current_url = url
-        session = requests.Session()
-        session.trust_env = False
-        response: requests.Response | None = None
+        with requests.Session() as session:
+            session.trust_env = False
+            response: requests.Response | None = None
 
-        for redirect_count in range(MAX_URL_REDIRECTS + 1):
-            _validate_public_http_url(current_url)
-            response = session.get(
-                current_url,
-                timeout=URL_DOWNLOAD_TIMEOUT_SECONDS,
-                stream=True,
-                allow_redirects=False,
-                headers={"Accept": "application/pdf"},
-            )
-            _validate_public_response_peer(response)
-            if response.is_redirect or response.is_permanent_redirect:
-                response.close()
-                location = response.headers.get("location")
-                if not location or redirect_count == MAX_URL_REDIRECTS:
-                    return False, b"", "PDF URL has too many redirects"
-                current_url = urljoin(current_url, location)
-                continue
-            break
+            for redirect_count in range(MAX_URL_REDIRECTS + 1):
+                _validate_public_http_url(current_url)
+                response = session.get(
+                    current_url,
+                    timeout=URL_DOWNLOAD_TIMEOUT_SECONDS,
+                    stream=True,
+                    allow_redirects=False,
+                    headers={"Accept": "application/pdf"},
+                )
+                _validate_public_response_peer(response)
+                if response.is_redirect or response.is_permanent_redirect:
+                    response.close()
+                    location = response.headers.get("location")
+                    if not location or redirect_count == MAX_URL_REDIRECTS:
+                        return False, b"", "PDF URL has too many redirects"
+                    current_url = urljoin(current_url, location)
+                    continue
+                break
 
-        if response is None:
-            return False, b"", "PDF download failed"
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-        if content_type not in ALLOWED_PDF_CONTENT_TYPES:
-            response.close()
-            return False, b"", "URL did not return a PDF content type"
+            if response is None:
+                return False, b"", "PDF download failed"
+            with response:
+                response.raise_for_status()
+                content_type = (
+                    response.headers.get("content-type", "").split(";", 1)[0].lower()
+                )
+                if content_type not in ALLOWED_PDF_CONTENT_TYPES:
+                    return False, b"", "URL did not return a PDF content type"
 
-        content_length = response.headers.get("content-length")
-        if content_length:
-            if not content_length.isdigit():
-                response.close()
-                return False, b"", "PDF server returned an invalid content length"
-            declared_size = int(content_length)
-            if declared_size > max_bytes:
-                response.close()
-                return False, b"", f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)"
-            if declared_size < 1024:
-                response.close()
-                return False, b"", "File too small to be a valid PDF"
+                content_length = response.headers.get("content-length")
+                if content_length:
+                    if not content_length.isdigit():
+                        return (
+                            False,
+                            b"",
+                            "PDF server returned an invalid content length",
+                        )
+                    declared_size = int(content_length)
+                    if declared_size > max_bytes:
+                        return (
+                            False,
+                            b"",
+                            f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
+                        )
+                    if declared_size < 1024:
+                        return False, b"", "File too small to be a valid PDF"
 
-        chunks: list[bytes] = []
-        total = 0
-        for chunk in response.iter_content(chunk_size=65536):
-            if not chunk:
-                continue
-            total += len(chunk)
-            if total > max_bytes:
-                response.close()
-                return False, b"", f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)"
-            chunks.append(chunk)
-        response.close()
-        pdf_bytes = b"".join(chunks)
+                chunks: list[bytes] = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=65536):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > max_bytes:
+                        return (
+                            False,
+                            b"",
+                            f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
+                        )
+                    chunks.append(chunk)
+                pdf_bytes = b"".join(chunks)
 
         # Validate the downloaded content
-        is_valid, error_msg = await validate_pdf_content(pdf_bytes, "URL")
+        is_valid, error_msg = validate_pdf_content(pdf_bytes, "URL")
         if not is_valid:
             return False, b"", error_msg
 
