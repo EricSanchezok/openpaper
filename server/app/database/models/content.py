@@ -140,9 +140,7 @@ class Message(Base):
 
     # Agent trajectory (tool calls / thinking / subagent steps) for this turn,
     # so the user can inspect what the model did. See schemas for shape.
-    trace: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    trace: Mapped[dict[str, JsonValue] | None] = mapped_column(JSONB, nullable=True)
     # @-mention context the user attached to this (user) turn: a denormalized
     # snapshot list of [{kind, id, title}] so it renders faithfully even if the
     # mentioned paper/project is later renamed or deleted.

@@ -16,7 +16,7 @@ from app.llm.conversation_operations import conversation_operations
 from app.schemas.user import CurrentUser
 from app.schemas.orm_responses import serialize_messages
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -144,48 +144,36 @@ async def get_shared_paper_conversation(
 
 @conversation_router.get("/{conversation_id}")
 async def get_conversation(
-    conversation_id: str,
+    conversation_id: uuid.UUID,
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> JSONResponse:
     """Get a specific conversation by ID"""
-    try:
-        conversation: Conversation | None = conversation_crud.get(
-            db, conversation_id, user=current_user
-        )
-        if not conversation:
-            raise ValueError(f"Conversation with ID {conversation_id} not found.")
+    conversation: Conversation | None = conversation_crud.get(
+        db, conversation_id, user=current_user
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="conversation_not_found")
 
-        # Fetch messages for the conversation
-        casted_conversation_id = uuid.UUID(conversation_id)
+    messages = message_crud.get_conversation_messages(
+        db,
+        conversation_id=conversation_id,
+        current_user=current_user,
+        page=page,
+        page_size=page_size,
+    )
+    formatted_messages = serialize_messages(messages)
 
-        messages = message_crud.get_conversation_messages(
-            db,
-            conversation_id=casted_conversation_id,
-            current_user=current_user,
-            page=page,
-            page_size=page_size,
-        )
-        formatted_messages = serialize_messages(messages)
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "id": str(conversation.id),
-                "title": conversation.title,
-                "messages": formatted_messages,
-            },
-        )
-    except ValueError:
-        return JSONResponse(status_code=404, content={"code": "request_failed"})
-    except Exception as e:
-        logger.error(f"Error fetching conversation: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Failed to fetch conversation"},
-        )
+    return JSONResponse(
+        status_code=200,
+        content={
+            "id": str(conversation.id),
+            "title": conversation.title,
+            "messages": formatted_messages,
+        },
+    )
 
 
 @conversation_router.post("/paper/{paper_id}")

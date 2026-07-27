@@ -149,7 +149,7 @@ class MessageResponse(OrmResponse):
     content: str
     references: dict[str, JsonValue] | None
     artifacts: list[dict[str, JsonValue]] | None
-    trace: list[dict[str, JsonValue]] | None
+    trace: dict[str, JsonValue] | None
     scope: list[dict[str, JsonValue]] | None
     sequence: int
 
