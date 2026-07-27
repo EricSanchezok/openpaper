@@ -201,7 +201,7 @@ def test_global_discovery_surfaces_are_absent_from_client_sources() -> None:
             ROOT / "client" / "src" / "components" / "sidebar" / "navItems.ts",
             ROOT / "client" / "src" / "content" / "introducing.mdx",
             ROOT / "client" / "src" / "content" / "systematic_review.mdx",
-            ROOT / "server" / "app" / "helpers" / "templates" / "onboarding.html",
+            ROOT / "server" / "app" / "helpers" / "templates" / "project_invite.html",
         )
     )
     for removed_identifier in (

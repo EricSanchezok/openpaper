@@ -217,9 +217,5 @@ def server_for_tool(
     return matches[0]
 
 
-async def call_remote_tool(tool_name: str, arguments: dict[str, Any]) -> Any:
-    return await server_for_tool(tool_name).call_tool(tool_name, arguments)
-
-
 def call_remote_tool_sync(tool_name: str, arguments: dict[str, Any]) -> Any:
     return server_for_tool(tool_name).call_tool_sync(tool_name, arguments)

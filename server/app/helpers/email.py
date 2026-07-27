@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 
@@ -11,8 +10,6 @@ from app.schemas.orm_responses import serialize_onboarding
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-RESEND_MAIN_AUDIENCE_ID = os.getenv("RESEND_MAIN_AUDIENCE_ID")
-
 resend.api_key = RESEND_API_KEY
 
 CLIENT_DOMAIN = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
@@ -51,104 +48,6 @@ def load_email_template(template_name: str) -> str:
         raise FileNotFoundError(
             f"Template {template_name} not found at {template_path}"
         )
-
-
-def add_to_default_audience(email: str, name: str | None = None) -> None:
-    """
-    Add a user to the default audience in Resend.
-
-    Args:
-        email (str): The email address of the user.
-        name (str): The name of the user.
-    """
-    if not RESEND_MAIN_AUDIENCE_ID:
-        logger.warning("Skipping audience sync: RESEND_MAIN_AUDIENCE_ID is not set")
-        return
-
-    try:
-        split_name = name.split() if name else []
-        fname = split_name[0] if len(split_name) > 0 else ""
-        lname = " ".join(split_name[1:]) if len(split_name) > 1 else ""
-        payload: resend.Contacts.CreateParams = {
-            "email": email,
-            "first_name": fname,
-            "last_name": lname,
-            "unsubscribed": False,
-            "audience_id": RESEND_MAIN_AUDIENCE_ID,
-        }
-        resend.Contacts.create(payload)
-
-    except Exception as e:
-        logger.error(f"Failed to add user to audience: {e}", exc_info=True)
-
-
-def send_onboarding_email(email: str, name: str | None = None) -> None:
-    """
-    Send an onboarding email to a new user.
-
-    Args:
-        email (str): The email address of the user.
-        name (str): The name of the user.
-    """
-
-    try:
-        one_minute_from_now = (
-            datetime.now(timezone.utc) + timedelta(minutes=2)
-        ).isoformat()
-        split_name = name.split() if name else []
-        fname = split_name[0] if split_name else ""
-        formatted_name = f", {fname}" if fname else ""
-        payload: resend.Emails.SendParams = {
-            "from": DEFAULT_FROM,
-            "to": [email],
-            "subject": "Welcome to Scholens!",
-            "html": load_email_template("onboarding.html").replace(
-                "{{user_name}}", formatted_name
-            ),
-            "scheduled_at": one_minute_from_now,
-            "reply_to": REPLY_TO_DEFAULT_EMAIL,
-        }
-
-        first_email = resend.Emails.send(payload)
-
-        two_days_from_now = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
-
-        payload = {
-            "from": DEFAULT_FROM,
-            "to": [email],
-            "subject": "How Researchers are Using AI to Read Papers",
-            "html": load_email_template("some_tips.html"),
-            "scheduled_at": two_days_from_now,
-            "reply_to": REPLY_TO_DEFAULT_EMAIL,
-        }
-
-        second_email = resend.Emails.send(payload)
-
-        four_days_from_now = (
-            datetime.now(timezone.utc) + timedelta(days=4)
-        ).isoformat()
-
-        formatted_name = f" {fname}" if fname else ""
-
-        payload = {
-            "from": DEFAULT_FROM,
-            "to": [email],
-            "subject": "Design Principles by Scholens",
-            "html": load_email_template("design_principles.html").replace(
-                "{{user_name}}", formatted_name
-            ),
-            "scheduled_at": four_days_from_now,
-            "reply_to": REPLY_TO_DEFAULT_EMAIL,
-        }
-
-        third_email = resend.Emails.send(payload)
-
-        logger.info(
-            f"Onboarding emails sent successfully: {first_email['id'] if first_email else ''}, {second_email['id'] if second_email else ''}, {third_email['id'] if third_email else ''}"
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to send onboarding email: {e}", exc_info=True)
 
 
 def notify_converted_billing_interval(
@@ -265,44 +164,6 @@ def send_profile_email(
 
     except Exception as e:
         logger.error(f"Failed to send profile email: {e}", exc_info=True)
-
-
-def send_general_invite_email(
-    to_email: str,
-    from_name: str,
-) -> bool:
-    """
-    Send a general invitation email using Resend.
-
-    Args:
-        to_email: Recipient email address
-        from_name: Name of the person sending the invite
-
-    Returns:
-        bool: True if email was sent successfully, False otherwise
-    """
-    try:
-        signup_link = f"{CLIENT_DOMAIN.rstrip('/')}/login"
-        subject = f"{from_name} invited you to join Scholens"
-        html_content = (
-            load_email_template("general_invite.html")
-            .replace("{{from_name}}", from_name)
-            .replace("{{signup_link}}", signup_link)
-        )
-
-        payload: resend.Emails.SendParams = {
-            "from": DEFAULT_FROM,
-            "to": to_email,
-            "subject": subject,
-            "html": html_content,
-        }
-
-        resend.Emails.send(payload)
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to send invite email to {to_email}: {e}", exc_info=True)
-        return False
 
 
 def send_project_invite_email(
@@ -438,47 +299,4 @@ def send_data_table_complete_email(
             f"Failed to send data table complete email to {to_email}: {e}",
             exc_info=True,
         )
-        return False
-
-
-def send_email(
-    to_email: str,
-    subject: str,
-    html_content: str,
-    text_content: str = "",
-    from_name: str = "Scholens",
-    from_address: str = DEFAULT_FROM_ADDRESS,
-) -> bool:
-    """
-    Send a generic email using Resend.
-
-    Args:
-        to_email: Recipient email address
-        subject: Email subject
-        html_content: HTML content of the email
-        text_content: Plain text content (optional)
-        from_name: Sender name
-        from_address: Sender email address
-
-    Returns:
-        bool: True if email was sent successfully, False otherwise
-    """
-    try:
-        payload: resend.Emails.SendParams = {
-            "from": f"{from_name} <{from_address}>",
-            "to": to_email,
-            "subject": subject,
-            "html": html_content,
-        }
-
-        # Add text content if provided
-        if text_content:
-            payload["text"] = text_content
-
-        resend.Emails.send(payload)
-        logger.info(f"Email sent successfully to {to_email}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}", exc_info=True)
         return False

@@ -131,20 +131,3 @@ def require_document_access(
             status_code=404,
         )
     return access
-
-
-def require_library_paper(
-    db: Session, *, document_id: uuid.UUID, user_id: int
-) -> LibraryPaper:
-    library_paper = get_library_paper(
-        db,
-        document_id=document_id,
-        user_id=user_id,
-    )
-    if library_paper is None:
-        raise AppError(
-            code="library_paper_not_found",
-            message="Paper is not in your library",
-            status_code=404,
-        )
-    return library_paper
