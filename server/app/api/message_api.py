@@ -171,7 +171,6 @@ class MultiPaperChatRequest(BaseModel):
     user_query: str = Field(min_length=1, max_length=20_000)
     user_references: list[str] | None = Field(default=None, max_length=50)
     reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
-    project_id: str | None = None
     # @-mention scoping: when any of these are set, the chat's search space is
     # hard-limited to the union of the mentioned papers, the papers in the
     # mentioned projects, and the parent papers of the mentioned highlights.
@@ -179,11 +178,10 @@ class MultiPaperChatRequest(BaseModel):
     mentioned_project_ids: list[str] | None = Field(default=None, max_length=20)
     mentioned_highlight_ids: list[str] | None = Field(default=None, max_length=50)
 
-    @field_validator("conversation_id", "project_id")
+    @field_validator("conversation_id")
     @classmethod
-    def validate_single_uuid(_cls, value: str | None) -> str | None:
-        if value is not None:
-            uuid.UUID(value)
+    def validate_single_uuid(_cls, value: str) -> str:
+        uuid.UUID(value)
         return value
 
     @field_validator(
@@ -210,6 +208,8 @@ def _resolve_mention_scope(
     db: Session,
     current_user: CurrentUser,
     request: "MultiPaperChatRequest",
+    *,
+    project_id: uuid.UUID | None,
 ) -> tuple[
     list[str] | None,
     list[dict[str, object]] | None,
@@ -245,11 +245,11 @@ def _resolve_mention_scope(
     for paper_id in request.mentioned_paper_ids or []:
         # In a project chat, resolve via project access (papers may be shared,
         # i.e. not owned by the current user); otherwise resolve by ownership.
-        if request.project_id:
+        if project_id is not None:
             paper = project_paper_crud.get_paper_by_project(
                 db,
                 paper_id=uuid.UUID(paper_id),
-                project_id=uuid.UUID(request.project_id),
+                project_id=project_id,
                 user=current_user,
             )
         else:
@@ -260,17 +260,17 @@ def _resolve_mention_scope(
                 {"kind": "paper", "id": str(paper.id), "title": paper.title}
             )
 
-    for project_id in request.mentioned_project_ids or []:
+    for mentioned_project_id in request.mentioned_project_ids or []:
         project_access = get_project_access(
             db,
-            project_id=uuid.UUID(project_id),
+            project_id=uuid.UUID(mentioned_project_id),
             user_id=current_user.id,
         )
         if project_access is None:
             continue
         project = project_access.project
         paper_ids = project_paper_crud.get_project_paper_ids_by_project_id(
-            db, project_id=uuid.UUID(project_id), user=current_user
+            db, project_id=uuid.UUID(mentioned_project_id), user=current_user
         )
         scoped.update(str(pid) for pid in paper_ids)
         snapshot.append(
@@ -397,38 +397,15 @@ async def chat_message_multipaper(
                     db,
                     conversation=conversation,
                 )
-                if request.project_id:
-                    project_id = uuid.UUID(request.project_id)
-                    project_access = get_project_access(
-                        db,
-                        project_id=project_id,
-                        user_id=current_user.id,
+                if conversation.scope_type not in {
+                    ConversationScopeType.GLOBAL.value,
+                    ConversationScopeType.PROJECT.value,
+                }:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "conversation_scope_mismatch"},
                     )
-
-                    if project_access is None:
-                        raise ValueError("Project not found.")
-                    if (
-                        conversation.scope_type != ConversationScopeType.PROJECT.value
-                        or conversation.project_id != project_id
-                    ):
-                        raise HTTPException(
-                            status_code=409,
-                            detail="conversation_scope_mismatch",
-                        )
-
-                # Multi-paper conversation must either be of type EVERYTHING or PROJECT. If it is a PROJECT conversation, naturally we need a `project_id`.
-
-                if (
-                    conversation.scope_type != ConversationScopeType.GLOBAL.value
-                    and not request.project_id
-                ):
-                    raise ValueError("Conversation is not global.")
-
-                if (
-                    request.project_id
-                    and conversation.scope_type != ConversationScopeType.PROJECT.value
-                ):
-                    raise ValueError("Conversation is not of type PROJECT.")
+                project_id = conversation.project_id
 
                 # @-mention scoping: resolve mentioned papers/projects/highlights
                 # into a flat set of in-scope paper ids (None == no scoping), a
@@ -438,14 +415,19 @@ async def chat_message_multipaper(
                     scoped_paper_ids,
                     scope_snapshot,
                     mentioned_highlights,
-                ) = _resolve_mention_scope(db, current_user, request)
+                ) = _resolve_mention_scope(
+                    db,
+                    current_user,
+                    request,
+                    project_id=project_id,
+                )
 
                 async for chunk in multi_paper_operations.gather_evidence(
                     conversation_id=request.conversation_id,
                     question=request.user_query,
                     current_user=current_user,
                     db=db,
-                    project_id=request.project_id,
+                    project_id=str(project_id) if project_id is not None else None,
                     restrict_to_paper_ids=scoped_paper_ids,
                 ):
                     # Parse the chunk as a dictionary
@@ -482,9 +464,9 @@ async def chat_message_multipaper(
 
                 yield f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}{END_DELIMITER}"
 
-                if request.project_id:
+                if project_id is not None:
                     all_papers = project_paper_crud.get_all_papers_by_project_id(
-                        db, project_id=uuid.UUID(request.project_id), user=current_user
+                        db, project_id=project_id, user=current_user
                     )
                 else:
                     all_papers = paper_crud.get_all_available_papers(
@@ -632,7 +614,7 @@ async def chat_message_multipaper(
                             datetime.now(timezone.utc) - start_time
                         ).total_seconds(),
                         "type": conversation.scope_type,
-                        "project_id": request.project_id,
+                        "project_id": str(project_id) if project_id is not None else None,
                         **mention_scope_props,
                     },
                     user_id=str(current_user.id),
@@ -679,14 +661,13 @@ async def chat_message_multipaper(
 class ChatMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    paper_id: str
     conversation_id: str
     user_query: str = Field(min_length=1, max_length=20_000)
     user_references: list[str] | None = Field(default=None, max_length=50)
     style: ResponseStyle | None = ResponseStyle.NORMAL
     reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
 
-    @field_validator("paper_id", "conversation_id")
+    @field_validator("conversation_id")
     @classmethod
     def validate_uuid(_cls, value: str) -> str:
         uuid.UUID(value)
@@ -740,6 +721,7 @@ async def chat_message_stream(
     try:
 
         async def run_response_generator() -> AsyncGenerator[str, None]:
+            paper_id: str | None = None
             try:
                 content_chunks: list[str] = []
                 reasoning_chunks: list[str] = []
@@ -756,15 +738,16 @@ async def chat_message_stream(
                 )
                 if (
                     conversation.scope_type != ConversationScopeType.PAPER.value
-                    or conversation.document_id != uuid.UUID(request.paper_id)
+                    or conversation.document_id is None
                 ):
                     raise HTTPException(
                         status_code=409,
-                        detail="conversation_scope_mismatch",
+                        detail={"code": "conversation_scope_mismatch"},
                     )
+                paper_id = str(conversation.document_id)
 
                 chat_generator = paper_operations.chat_with_paper(
-                    paper_id=request.paper_id,
+                    paper_id=paper_id,
                     conversation_id=request.conversation_id,
                     question=request.user_query,
                     current_user=current_user,
@@ -844,7 +827,7 @@ async def chat_message_stream(
                         "time_taken": (
                             datetime.now(timezone.utc) - start_time
                         ).total_seconds(),
-                        "paper_id": str(request.paper_id),
+                        "paper_id": paper_id,
                         "type": "paper",
                     },
                     user_id=str(current_user.id),
@@ -857,7 +840,7 @@ async def chat_message_stream(
                     "chat_message_error",
                     properties={
                         "error_type": type(e).__name__,
-                        "paper_id": str(request.paper_id),
+                        "paper_id": paper_id,
                         "conversation_id": str(request.conversation_id),
                     },
                     user_id=str(current_user.id),

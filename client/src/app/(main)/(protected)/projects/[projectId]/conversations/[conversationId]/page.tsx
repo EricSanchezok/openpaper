@@ -25,7 +25,6 @@ import {
 interface ChatRequestBody {
     user_query: string;
     conversation_id: string | null;
-    project_id?: string;
     mentioned_paper_ids?: string[];
     reasoning_level: "standard" | "deep";
 }
@@ -319,7 +318,6 @@ function ProjectConversationPageContent() {
         const requestBody: ChatRequestBody = {
             user_query: query,
             conversation_id: conversationId,
-            project_id: projectId,
             reasoning_level: reasoningLevel,
         };
         if (submittedMentions.paperIds.length > 0) {

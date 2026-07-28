@@ -152,12 +152,25 @@ def test_stream_records_unknown_usage_when_final_usage_is_missing(
 
 def test_chat_requests_reject_legacy_provider_fields() -> None:
     base = {
-        "paper_id": "00000000-0000-0000-0000-000000000001",
         "conversation_id": "00000000-0000-0000-0000-000000000002",
         "user_query": "Explain the result",
     }
     with pytest.raises(ValidationError):
         ChatMessageRequest.model_validate({**base, "llm_provider": "gemini"})
+    with pytest.raises(ValidationError):
+        ChatMessageRequest.model_validate(
+            {
+                **base,
+                "paper_id": "00000000-0000-0000-0000-000000000001",
+            }
+        )
+    with pytest.raises(ValidationError):
+        MultiPaperChatRequest.model_validate(
+            {
+                **base,
+                "project_id": "00000000-0000-0000-0000-000000000003",
+            }
+        )
     with pytest.raises(ValidationError):
         MultiPaperChatRequest.model_validate(
             {

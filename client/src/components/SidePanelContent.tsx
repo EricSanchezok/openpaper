@@ -83,7 +83,6 @@ interface SidePanelContentProps {
 interface ChatRequestBody {
     user_query: string;
     conversation_id: string | null;
-    paper_id: string;
     user_references: string[];
     reasoning_level: 'standard' | 'deep';
 }
@@ -354,7 +353,6 @@ export function SidePanelContent({
         const requestBody: ChatRequestBody = {
             user_query: userMessage.content,
             conversation_id: conversationId,
-            paper_id: id,
             user_references: userMessageReferences,
             reasoning_level: reasoningLevel,
         };
