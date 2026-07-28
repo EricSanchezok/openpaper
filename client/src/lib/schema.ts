@@ -429,19 +429,6 @@ export interface SearchResults {
     total_annotations: number;
 }
 
-export interface PaperImage {
-    paper_id: string;
-    s3_object_key: string;
-    image_url: string;
-    format: string;
-    size_bytes: number;
-    width: number;
-    height: number;
-    page_number: number;
-    image_index: number;
-    caption: string | null;
-}
-
 export interface JobStatusResponse {
     job_id: string;
     status: JobStatus;

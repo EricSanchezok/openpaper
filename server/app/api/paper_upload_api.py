@@ -14,7 +14,6 @@ PDF processing microservice. The architecture is:
 The client can poll the job status using the same job_id throughout the process.
 """
 
-from starlette.responses import Response as ApiResponse
 from starlette.concurrency import run_in_threadpool
 
 import logging
@@ -27,14 +26,12 @@ from app.auth.dependencies import get_required_user
 from app.repositories.documents import document_repository
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.database import get_db
-from app.database.models import JobStatus, UploadReservation
-from app.database.telemetry import track_event
+from app.database.models import JobStatus
 from app.errors import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
     enforce_rate_limit,
-    release_concurrency_by_id,
 )
 from app.helpers.parser import (
     MAX_UPLOAD_SIZE_MB,
@@ -42,8 +39,12 @@ from app.helpers.parser import (
     validate_url_and_fetch_pdf,
 )
 from app.schemas.user import CurrentUser
-from app.schemas.uploads import UploadFromUrlRequest
-from app.services.document_submission import submit_reserved_document
+from app.schemas.uploads import (
+    UploadAcceptedResponse,
+    UploadFromUrlRequest,
+    UploadStatusResponse,
+)
+from app.services.document_submission import dispatch_reserved_document
 from app.services.upload_reservations import reserve_upload
 from dotenv import load_dotenv
 from fastapi import (
@@ -54,7 +55,6 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -65,12 +65,12 @@ logger = logging.getLogger(__name__)
 paper_upload_router = APIRouter()
 
 
-@paper_upload_router.get("/status/{job_id}")
+@paper_upload_router.get("/status/{job_id}", response_model=UploadStatusResponse)
 async def get_upload_status(
     job_id: str,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> UploadStatusResponse:
     """
     Get the durable status of a paper ingestion from PostgreSQL.
     """
@@ -79,7 +79,11 @@ async def get_upload_status(
     )
 
     if not paper_upload_job:
-        return JSONResponse(status_code=404, content={"message": "Job not found"})
+        raise AppError(
+            code="upload_job_not_found",
+            message="Upload job not found",
+            status_code=404,
+        )
 
     paper = document_repository.find_by_upload_job(
         db=db, upload_job_id=str(paper_upload_job.id), user=current_user
@@ -89,44 +93,41 @@ async def get_upload_status(
     if durable_job.status == JobStatus.COMPLETED:
         # Verify the paper exists
         if not paper:
-            return JSONResponse(status_code=404, content={"message": "Paper not found"})
+            raise AppError(
+                code="document_not_found",
+                message="Processed document not found",
+                status_code=404,
+            )
 
     # Build response with both job status and task status
-    response_content = {
-        "job_id": str(paper_upload_job.id),
-        "status": durable_job.status,
-        "task_id": str(durable_job.id) if durable_job.dispatch is not None else None,
-        "started_at": (
-            durable_job.started_at.isoformat() if durable_job.started_at else None
-        ),
-        "completed_at": (
-            durable_job.completed_at.isoformat() if durable_job.completed_at else None
-        ),
-        "has_file": bool(paper.s3_object_key) if paper else False,
-        "has_metadata": bool(paper.abstract) if paper else False,
-        "paper_id": str(paper.id) if paper else None,
-        "parser_quality": paper.parser_quality if paper else None,
-        "parser_warning_code": paper.parser_warning_code if paper else None,
-    }
-
-    response_content.update(
-        {
-            "progress_message": durable_job.progress_message,
-            "error_code": durable_job.error_code,
-        }
+    return UploadStatusResponse(
+        job_id=paper_upload_job.id,
+        status=JobStatus(durable_job.status),
+        task_id=durable_job.id if durable_job.dispatch is not None else None,
+        started_at=durable_job.started_at,
+        completed_at=durable_job.completed_at,
+        has_file=bool(paper.s3_object_key) if paper else False,
+        has_metadata=bool(paper.abstract) if paper else False,
+        paper_id=paper.id if paper else None,
+        parser_quality=paper.parser_quality if paper else None,
+        parser_warning_code=paper.parser_warning_code if paper else None,
+        progress_message=durable_job.progress_message,
+        error_code=durable_job.error_code,
     )
 
-    return JSONResponse(status_code=200, content=response_content)
 
-
-@paper_upload_router.post("/from-url/")
+@paper_upload_router.post(
+    "/from-url/",
+    response_model=UploadAcceptedResponse,
+    status_code=202,
+)
 async def upload_pdf_from_url(
     request: UploadFromUrlRequest,
     http_request: Request,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
-) -> ApiResponse:
+) -> UploadAcceptedResponse:
     """
     Upload a document from a given URL, rather than the raw file.
     """
@@ -146,7 +147,11 @@ async def upload_pdf_from_url(
         url,
     )
     if not is_valid:
-        return JSONResponse(status_code=400, content={"message": error_message})
+        raise AppError(
+            code="invalid_pdf_url",
+            message=error_message or "The URL did not return a valid PDF",
+            status_code=400,
+        )
 
     filename = PurePosixPath(unquote(urlparse(url).path)).name or "downloaded-paper.pdf"
     paper_upload_job = reserve_upload(
@@ -172,30 +177,27 @@ async def upload_pdf_from_url(
         )
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    await upload_raw_file_microservice(
-        file_contents=pdf_bytes,
-        paper_upload_job=paper_upload_job,
-        current_user=current_user,
+    await dispatch_reserved_document(
+        pdf_bytes=pdf_bytes,
+        upload_job=paper_upload_job,
+        user=current_user,
         db=db,
     )
-
-    return JSONResponse(
-        status_code=202,
-        content={
-            "message": "File upload started",
-            "job_id": str(paper_upload_job.id),
-        },
-    )
+    return UploadAcceptedResponse(job_id=paper_upload_job.id)
 
 
-@paper_upload_router.post("/")
+@paper_upload_router.post(
+    "/",
+    response_model=UploadAcceptedResponse,
+    status_code=202,
+)
 async def upload_pdf(
     request: Request,
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
-) -> ApiResponse:
+) -> UploadAcceptedResponse:
     """
     Upload a PDF file
     """
@@ -212,14 +214,16 @@ async def upload_pdf(
     if declared_size and (
         not declared_size.isdigit() or int(declared_size) > max_bytes + 1024 * 1024
     ):
-        return JSONResponse(
+        raise AppError(
+            code="upload_too_large",
+            message=f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
             status_code=413,
-            content={"message": f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)"},
         )
     if file.content_type not in {"application/pdf", "application/octet-stream"}:
-        return JSONResponse(
+        raise AppError(
+            code="invalid_pdf_content_type",
+            message="Uploaded file must use a PDF content type",
             status_code=400,
-            content={"message": "Uploaded file must use a PDF content type"},
         )
 
     # Starlette spools multipart files, but an explicit running cap prevents an
@@ -230,17 +234,20 @@ async def upload_pdf(
         while chunk := await file.read(65536):
             total += len(chunk)
             if total > max_bytes:
-                return JSONResponse(
+                raise AppError(
+                    code="upload_too_large",
+                    message=f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
                     status_code=413,
-                    content={"message": f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)"},
                 )
             chunks.append(chunk)
         file_contents = b"".join(chunks)
         filename = file.filename
-    except Exception:
+    except (OSError, RuntimeError):
         logger.exception("Error reading uploaded file")
-        return JSONResponse(
-            status_code=400, content={"message": "Error reading uploaded file"}
+        raise AppError(
+            code="upload_read_failed",
+            message="The uploaded file could not be read",
+            status_code=400,
         )
 
     # Validate PDF content
@@ -250,7 +257,11 @@ async def upload_pdf(
         "upload",
     )
     if not is_valid:
-        return JSONResponse(status_code=400, content={"message": error_message})
+        raise AppError(
+            code="invalid_pdf",
+            message=error_message or "The uploaded file is not a valid PDF",
+            status_code=400,
+        )
 
     paper_upload_job = reserve_upload(
         db,
@@ -275,77 +286,10 @@ async def upload_pdf(
         )
         raise HTTPException(status_code=429, detail={"code": exc.code}) from None
 
-    await upload_raw_file_microservice(
-        file_contents=file_contents,
-        paper_upload_job=paper_upload_job,
-        current_user=current_user,
+    await dispatch_reserved_document(
+        pdf_bytes=file_contents,
+        upload_job=paper_upload_job,
+        user=current_user,
         db=db,
     )
-
-    return JSONResponse(
-        status_code=202,
-        content={
-            "message": "File upload started",
-            "job_id": str(paper_upload_job.id),
-        },
-    )
-
-
-async def upload_raw_file_microservice(
-    file_contents: bytes,
-    paper_upload_job: UploadReservation,
-    current_user: CurrentUser,
-    db: Session,
-) -> str:
-    """
-    Helper function to upload a raw file using the microservice.
-    """
-
-    try:
-        # Submit to microservice
-        task_id = await submit_reserved_document(
-            pdf_bytes=file_contents,
-            upload_job=paper_upload_job,
-            db=db,
-            user=current_user,
-        )
-        # A content-addressed duplicate may complete immediately or attach to an
-        # already-running canonical parse. This request did not create a worker
-        # operation, so its concurrency lease must not wait for another job's
-        # callback.
-        if task_id.startswith("reused:") or task_id != str(paper_upload_job.id):
-            await release_concurrency_by_id(
-                user_id=int(current_user.id),
-                category="background",
-                operation_id=str(paper_upload_job.id),
-            )
-
-        # Track paper upload event
-        track_event(
-            "paper_upload_submitted_to_microservice",
-            properties={
-                "task_id": task_id,
-            },
-            user_id=str(current_user.id),
-            db=db,
-        )
-        return task_id
-
-    except Exception as exc:
-        logger.error("Error submitting file to microservice", exc_info=True)
-        upload_reservation_repository.mark_as_failed(
-            db=db,
-            job_id=str(paper_upload_job.id),
-            user=current_user,
-            error_code="jobs_submission_failed",
-        )
-        await release_concurrency_by_id(
-            user_id=int(current_user.id),
-            category="background",
-            operation_id=str(paper_upload_job.id),
-        )
-        raise AppError(
-            code="jobs_submission_failed",
-            message="The document processing job could not be started",
-            status_code=503,
-        ) from exc
+    return UploadAcceptedResponse(job_id=paper_upload_job.id)

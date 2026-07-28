@@ -1,6 +1,3 @@
-from starlette.responses import Response as ApiResponse
-import logging
-
 from app.auth.dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import (
@@ -9,15 +6,12 @@ from app.database.models import (
     ResearchItem,
     ResearchItemKind,
 )
-from app.database.queries.search import search_knowledge_base
+from app.database.queries.search import SearchResults, search_knowledge_base
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
-logger = logging.getLogger(__name__)
 
 # API router for knowledge base search functionality
 search_router = APIRouter()
@@ -36,7 +30,7 @@ async def search_knowledge_base_endpoint(
     ),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> SearchResults:
     """
     Search across papers, annotations, and highlights in the user's knowledge base.
 
@@ -49,104 +43,73 @@ async def search_knowledge_base_endpoint(
     Results are organized by paper, with matching highlights and annotations
     sub-referenced under each paper's metadata.
     """
-    try:
-        # Validate search query
-        if not q or len(q.strip()) < 2:
-            raise HTTPException(
-                status_code=400,
-                detail="Search query must be at least 2 characters long",
-            )
-
-        kb_papers_filter = papers_filter.split(",") if papers_filter else None
-
-        # Perform the search
-        results = search_knowledge_base(
-            db=db,
-            user=current_user,
-            query=q.strip(),
-            limit=limit,
-            offset=offset,
-            papers_filter=kb_papers_filter,
-        )
-
-        # Track the search event for analytics
-        track_event(
-            "knowledge_base_search",
-            user_id=str(current_user.id),
-            properties={
-                "query": q.strip(),
-                "total_papers": results.total_papers,
-                "total_highlights": results.total_highlights,
-                "total_annotations": results.total_annotations,
-                "limit": limit,
-                "offset": offset,
-            },
-            db=db,
-        )
-
-        return JSONResponse(status_code=200, content=results.model_dump(mode="json"))
-
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except Exception as e:
-        logger.error(f"Error searching knowledge base: {e}", exc_info=True)
+    if not q or len(q.strip()) < 2:
         raise HTTPException(
-            status_code=500,
-            detail="An error occurred while searching your knowledge base",
+            status_code=400,
+            detail="Search query must be at least 2 characters long",
         )
+    results = search_knowledge_base(
+        db=db,
+        user=current_user,
+        query=q.strip(),
+        limit=limit,
+        offset=offset,
+        papers_filter=papers_filter.split(",") if papers_filter else None,
+    )
+    track_event(
+        "knowledge_base_search",
+        user_id=str(current_user.id),
+        properties={
+            "query": q.strip(),
+            "total_papers": results.total_papers,
+            "total_highlights": results.total_highlights,
+            "total_annotations": results.total_annotations,
+            "limit": limit,
+            "offset": offset,
+        },
+        db=db,
+    )
+    return results
 
 
 @search_router.get("/stats")
 async def get_search_stats(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> dict[str, int]:
     """
     Get statistics about the user's knowledge base for search context.
 
     Returns counts of papers, highlights, and annotations.
     """
-    try:
-        # Count total items in user's knowledge base
-        total_papers = int(
-            db.scalar(
-                select(func.count(LibraryPaper.id)).where(
-                    LibraryPaper.user_id == current_user.id
-                )
+    total_papers = int(
+        db.scalar(
+            select(func.count(LibraryPaper.id)).where(
+                LibraryPaper.user_id == current_user.id
             )
-            or 0
         )
-        total_highlights = int(
-            db.scalar(
-                select(func.count(ResearchItem.id)).where(
-                    ResearchItem.created_by_id == current_user.id,
-                    ResearchItem.kind == ResearchItemKind.HIGHLIGHT_THREAD.value,
-                )
+        or 0
+    )
+    total_highlights = int(
+        db.scalar(
+            select(func.count(ResearchItem.id)).where(
+                ResearchItem.created_by_id == current_user.id,
+                ResearchItem.kind == ResearchItemKind.HIGHLIGHT_THREAD.value,
             )
-            or 0
         )
-        total_annotations = int(
-            db.scalar(
-                select(func.count(AnnotationComment.id)).where(
-                    AnnotationComment.created_by_id == current_user.id
-                )
+        or 0
+    )
+    total_annotations = int(
+        db.scalar(
+            select(func.count(AnnotationComment.id)).where(
+                AnnotationComment.created_by_id == current_user.id
             )
-            or 0
         )
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "total_papers": total_papers,
-                "total_highlights": total_highlights,
-                "total_annotations": total_annotations,
-                "searchable_items": total_papers + total_highlights + total_annotations,
-            },
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting search stats: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail="An error occurred while getting search statistics"
-        )
+        or 0
+    )
+    return {
+        "total_papers": total_papers,
+        "total_highlights": total_highlights,
+        "total_annotations": total_annotations,
+        "searchable_items": total_papers + total_highlights + total_annotations,
+    }

@@ -11,7 +11,6 @@ from app.database.models import (
     ConversationScopeType,
     Document,
     LibraryPaper,
-    PaperImage,
     ProjectPaper,
     JobOperation,
     ResearchAudioOverview,
@@ -125,9 +124,6 @@ def collect_document_if_due(
         document.preview_s3_key,
         document.parser_markdown_s3_key,
         document.parser_archive_s3_key,
-        *db.scalars(
-            select(PaperImage.s3_object_key).where(PaperImage.paper_id == document_id)
-        ).all(),
         *db.scalars(
             select(ResearchAudioOverview.s3_object_key)
             .join(

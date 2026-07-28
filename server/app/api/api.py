@@ -1,9 +1,7 @@
-from starlette.responses import Response as ApiResponse
 from app.auth.dependencies import get_required_user
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
 
 load_dotenv()
 
@@ -19,10 +17,8 @@ async def get_me(
 
 
 @router.get("/health")
-async def health_check() -> ApiResponse:
+async def health_check() -> dict[str, str]:
     """
     Health check endpoint to verify the API is running
     """
-    return JSONResponse(
-        status_code=200, content={"status": "healthy", "message": "Service is running"}
-    )
+    return {"status": "healthy", "message": "Service is running"}

@@ -87,9 +87,6 @@ def bulk_add_tags(
         return {"message": "Tags applied successfully."}
     except ValueError:
         raise HTTPException(status_code=404, detail="internal_error")
-    except Exception as e:
-        logger.error(f"Failed to apply tags in bulk: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to apply tags.")
 
 
 @paper_tag_router.delete("/papers/{paper_id}/tags/{tag_id}", status_code=204)

@@ -11,7 +11,6 @@ from app.database.models import (
     JsonValue,
     Message,
     Onboarding,
-    PaperImage,
     Project,
 )
 from pydantic import BaseModel, ConfigDict
@@ -28,22 +27,6 @@ class ProjectResponse(OrmResponse):
     id: UUID
     title: str | None
     description: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class PaperImageResponse(OrmResponse):
-    id: UUID
-    paper_id: UUID
-    s3_object_key: str
-    format: str
-    size_bytes: int
-    width: int
-    height: int
-    page_number: int
-    image_index: int
-    caption: str | None
-    placeholder_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -75,10 +58,6 @@ class MessageResponse(OrmResponse):
 
 def serialize_project(project: Project) -> dict[str, JsonValue]:
     return ProjectResponse.model_validate(project).to_json()
-
-
-def serialize_paper_image(image: PaperImage) -> dict[str, JsonValue]:
-    return PaperImageResponse.model_validate(image).to_json()
 
 
 def serialize_onboarding(onboarding: Onboarding) -> dict[str, JsonValue]:

@@ -1,5 +1,3 @@
-import logging
-
 from app.auth.dependencies import get_required_user
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -23,8 +21,6 @@ from app.services.zotero.service import import_batch, list_library, sync_batch
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 zotero_router = APIRouter()
 
 
@@ -40,14 +36,7 @@ def zotero_library(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Zotero account not connected",
         )
-    try:
-        result = list_library(db, user=current_user)
-    except Exception as e:
-        logger.error("Zotero library fetch failed: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to fetch Zotero library",
-        ) from e
+    result = list_library(db, user=current_user)
 
     return ZoteroLibraryResponse(
         items=[ZoteroLibraryItem(**item) for item in result["items"]],
@@ -83,12 +72,6 @@ async def zotero_import(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="internal_error",
         ) from e
-    except Exception as e:
-        logger.error("Zotero import failed: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to import from Zotero",
-        ) from e
 
     if result["imported_count"] > 0:
         track_event(
@@ -120,14 +103,7 @@ async def zotero_sync(
             detail="Zotero account not connected",
         )
 
-    try:
-        result = await sync_batch(db, user=current_user, limit=50)
-    except Exception as e:
-        logger.error("Zotero manual sync failed: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to sync Zotero annotations",
-        ) from e
+    result = await sync_batch(db, user=current_user, limit=50)
 
     if result.get("new_annotations_count", 0) > 0:
         track_event(

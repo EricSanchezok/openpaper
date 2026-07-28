@@ -18,6 +18,8 @@ from app.repositories.documents import document_repository
 from app.repositories.jobs import job_repository
 from app.schemas.user import CurrentUser
 from app.helpers.celery_config import get_webhook_base_url
+from app.helpers.ai_limits import release_concurrency_by_id
+from app.errors import AppError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -155,3 +157,53 @@ async def submit_reserved_document(
     )
     db.commit()
     return str(upload_job.id)
+
+
+async def dispatch_reserved_document(
+    *,
+    pdf_bytes: bytes,
+    upload_job: UploadReservation,
+    db: Session,
+    user: CurrentUser,
+) -> str:
+    """Submit a reserved upload and close its concurrency lease on terminal paths."""
+    try:
+        task_id = await submit_reserved_document(
+            pdf_bytes=pdf_bytes,
+            upload_job=upload_job,
+            db=db,
+            user=user,
+        )
+        if task_id.startswith("reused:") or task_id != str(upload_job.id):
+            await release_concurrency_by_id(
+                user_id=int(user.id),
+                category="background",
+                operation_id=str(upload_job.id),
+            )
+        track_event(
+            "paper_upload_submitted_to_microservice",
+            properties={"task_id": task_id},
+            user_id=str(user.id),
+            db=db,
+        )
+        return task_id
+    except Exception as exc:
+        logger.error("Document processing job submission failed", exc_info=True)
+        from app.repositories.upload_reservations import upload_reservation_repository
+
+        upload_reservation_repository.mark_as_failed(
+            db=db,
+            job_id=str(upload_job.id),
+            user=user,
+            error_code="jobs_submission_failed",
+        )
+        await release_concurrency_by_id(
+            user_id=int(user.id),
+            category="background",
+            operation_id=str(upload_job.id),
+        )
+        raise AppError(
+            code="jobs_submission_failed",
+            message="The document processing job could not be started",
+            status_code=503,
+        ) from exc

@@ -11,7 +11,6 @@ from app.api.conversation_api import conversation_router
 from app.api.documents import document_router, library_router, public_document_router
 from app.api.message_api import message_router
 from app.api.onboarding_api import onboarding_router
-from app.api.paper_image_api import paper_image_router
 from app.api.paper_search_api import paper_search_router
 from app.api.paper_tag_api import paper_tag_router
 from app.api.paper_upload_api import paper_upload_router
@@ -117,7 +116,6 @@ app.include_router(project_papers_router, prefix="/api/projects")
 app.include_router(projects_invitation_router, prefix="/api")
 app.include_router(paper_search_router, prefix="/api/search/global")
 app.include_router(search_router, prefix="/api/search/local")
-app.include_router(paper_image_router, prefix="/api/paper/image")
 app.include_router(paper_upload_router, prefix="/api/paper/upload")
 app.include_router(document_research_router, prefix="/api/documents")
 app.include_router(project_research_router, prefix="/api/projects")

@@ -27,6 +27,7 @@ def test_removed_domain_concepts_do_not_return() -> None:
         "ProjectRole",
         "ProjectAudioOverview",
         "PaperNote",
+        "PaperImage",
         "_filter_by_user",
         "get_cached_presigned_url_by_owner",
         "cached_presigned_url",

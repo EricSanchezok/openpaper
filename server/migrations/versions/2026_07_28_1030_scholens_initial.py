@@ -628,37 +628,6 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "paper_images",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("paper_id", sa.UUID(), nullable=False),
-        sa.Column("s3_object_key", sa.String(), nullable=False),
-        sa.Column("format", sa.String(), nullable=False),
-        sa.Column("size_bytes", sa.Integer(), nullable=False),
-        sa.Column("width", sa.Integer(), nullable=False),
-        sa.Column("height", sa.Integer(), nullable=False),
-        sa.Column("page_number", sa.Integer(), nullable=False),
-        sa.Column("image_index", sa.Integer(), nullable=False),
-        sa.Column("caption", sa.Text(), nullable=True),
-        sa.Column("placeholder_id", sa.String(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        schema="scholens",
-    )
-    op.create_table(
         "paper_passages",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=True), nullable=False),
         sa.Column("paper_id", sa.UUID(), nullable=False),
@@ -1449,7 +1418,6 @@ def downgrade() -> None:
         postgresql_using="gin",
     )
     op.drop_table("paper_passages", schema="scholens")
-    op.drop_table("paper_images", schema="scholens")
     op.drop_index(
         op.f("ix_scholens_library_papers_user_id"),
         table_name="library_papers",

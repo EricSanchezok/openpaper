@@ -225,10 +225,6 @@ class Document(Base):
         foreign_keys="Conversation.document_id",
         passive_deletes=True,
     )
-    paper_images: Mapped[list["PaperImage"]] = relationship(
-        "PaperImage", back_populates="paper", cascade="all, delete-orphan"
-    )
-
     project_papers: Mapped[list["ProjectPaper"]] = relationship(
         "ProjectPaper", back_populates="document"
     )
@@ -316,45 +312,3 @@ class PaperPassage(Base):
     ts_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     paper: Mapped["Document"] = relationship("Document")
-
-
-class PaperImage(Base):
-    __tablename__ = "paper_images"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    s3_object_key: Mapped[str] = mapped_column(String, nullable=False)
-    format: Mapped[str] = mapped_column(String, nullable=False)  # e.g., 'png', 'jpg'
-
-    size_bytes: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # Size of the image in bytes
-    width: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # Width of the image in pixels
-    height: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # Height of the image in pixels
-
-    page_number: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # Page number where the image is located
-    image_index: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # Index of the image in the paper
-
-    caption: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )  # Optional caption for the image
-
-    placeholder_id: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # Placeholder ID for the image
-
-    paper: Mapped["Document"] = relationship("Document", back_populates="paper_images")
