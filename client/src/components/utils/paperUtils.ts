@@ -243,15 +243,17 @@ export const copyToClipboard = (text: string, styleName: string) => {
 
 // Function to handle status changes
 export const handleStatusChange = async <T extends PaperBase>(
-    paper: T,
+    paper: T & { library_paper_id?: string },
     status: PaperStatus,
     setPaper: (paperId: string, paper: T) => void
 ): Promise<void> => {
     try {
-        const url = `/api/paper/status?status=${status}&paper_id=${paper?.id}`;
-        const response: T = await fetchFromApi(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+        if (!paper.library_paper_id) {
+            throw new Error("Library paper is unavailable");
+        }
+        await fetchFromApi(`/api/library/papers/${paper.library_paper_id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status }),
         });
 
         if (status === PaperStatusEnum.COMPLETED) {
@@ -271,7 +273,7 @@ export const handleStatusChange = async <T extends PaperBase>(
                 }
             );
         }
-        setPaper(paper.id, response);
+        setPaper(paper.id, { ...paper, status });
     } catch (error) {
         console.error('Error updating paper status:', error);
         toast.error("Failed to update paper status.");

@@ -1,8 +1,11 @@
 import type {
     DurableJob,
+    PaperData,
     PaperItem,
     PaperTag,
     PaperUploadJobStatusResponse,
+    ReferenceCitation,
+    SharedPaper,
 } from "@/lib/schema";
 import { fetchFromApi } from "@/lib/api";
 
@@ -21,7 +24,7 @@ export interface LibraryDocument {
     publisher: string | null;
     publish_date: string | null;
     summary: string | null;
-    summary_citations: Record<string, unknown>[] | null;
+    summary_citations: ReferenceCitation[] | null;
     starter_questions: string[] | null;
     processing_status: "pending" | "processing" | "completed" | "failed";
     parser_quality: "full" | "text_only" | null;
@@ -33,7 +36,7 @@ export interface LibraryDocument {
 export interface LibraryPaper {
     id: string;
     user_id: number;
-    status: PaperItem["status"];
+    status: NonNullable<PaperItem["status"]>;
     last_accessed_at: string;
     metadata_overrides: Partial<
         Pick<
@@ -58,6 +61,111 @@ export interface LibraryPaper {
 
 export interface LibraryPaperList {
     items: LibraryPaper[];
+}
+
+interface DocumentFileUrlResponse {
+    file_url: string;
+}
+
+interface PublicPaperResponse {
+    document: LibraryDocument;
+    file_url: string;
+    owner: {
+        id: number;
+        display_name: string;
+    };
+}
+
+function resolvedMetadata(entry: LibraryPaper) {
+    return {
+        title:
+            entry.metadata_overrides.title
+            ?? entry.document.title
+            ?? entry.document.original_filename,
+        authors:
+            entry.metadata_overrides.authors ?? entry.document.authors ?? [],
+        abstract:
+            entry.metadata_overrides.abstract ?? entry.document.abstract ?? "",
+        institutions:
+            entry.metadata_overrides.institutions
+            ?? entry.document.institutions
+            ?? [],
+        publish_date:
+            entry.metadata_overrides.publish_date
+            ?? entry.document.publish_date
+            ?? "",
+        journal:
+            entry.metadata_overrides.journal ?? entry.document.journal ?? undefined,
+        doi: entry.metadata_overrides.doi ?? entry.document.doi ?? undefined,
+        publisher:
+            entry.metadata_overrides.publisher
+            ?? entry.document.publisher
+            ?? undefined,
+    };
+}
+
+export async function fetchLibraryPaperByDocument(
+    documentId: string,
+): Promise<LibraryPaper> {
+    return await fetchFromApi(
+        `/api/library/papers/by-document/${documentId}`,
+    ) as LibraryPaper;
+}
+
+export async function fetchPaperData(documentId: string): Promise<PaperData> {
+    const [entry, file] = await Promise.all([
+        fetchLibraryPaperByDocument(documentId),
+        fetchFromApi(
+            `/api/documents/${documentId}/file-url`,
+        ) as Promise<DocumentFileUrlResponse>,
+    ]);
+    const metadata = resolvedMetadata(entry);
+    return {
+        library_paper_id: entry.id,
+        filename: entry.document.original_filename,
+        file_url: file.file_url,
+        ...metadata,
+        summary: entry.document.summary ?? "",
+        summary_citations: entry.document.summary_citations ?? [],
+        tags: entry.tags,
+        starter_questions: entry.document.starter_questions ?? [],
+        is_public: entry.is_public,
+        share_id: null,
+        status: entry.status,
+        zotero_synced: false,
+        parser_quality: entry.document.parser_quality,
+        parser_warning_code: entry.document.parser_warning_code,
+    };
+}
+
+export async function fetchPublicPaper(shareToken: string): Promise<SharedPaper> {
+    const response = await fetchFromApi(
+        `/api/public/papers/${encodeURIComponent(shareToken)}`,
+    ) as PublicPaperResponse;
+    const document = response.document;
+    return {
+        paper: {
+            filename: document.original_filename,
+            file_url: response.file_url,
+            authors: document.authors ?? [],
+            title: document.title ?? document.original_filename,
+            abstract: document.abstract ?? "",
+            publish_date: document.publish_date ?? "",
+            summary: document.summary ?? "",
+            summary_citations: document.summary_citations ?? [],
+            institutions: document.institutions ?? [],
+            starter_questions: document.starter_questions ?? [],
+            is_public: true,
+            share_id: shareToken,
+            status: "reading",
+            journal: document.journal ?? undefined,
+            doi: document.doi ?? undefined,
+            publisher: document.publisher ?? undefined,
+            parser_quality: document.parser_quality,
+            parser_warning_code: document.parser_warning_code,
+        },
+        owner: response.owner,
+    };
 }
 
 export function libraryPaperToPaperItem(entry: LibraryPaper): PaperItem {

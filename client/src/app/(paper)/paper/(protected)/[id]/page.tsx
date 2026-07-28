@@ -28,6 +28,7 @@ import {
     PaperHighlight,
     PaperUploadJobStatusResponse,
 } from '@/lib/schema';
+import { fetchPaperData } from '@/lib/documents';
 
 import { PaperSidebar } from '@/components/PaperSidebar';
 import { PaperStatus, PaperStatusEnum } from '@/components/utils/PdfStatus';
@@ -478,7 +479,7 @@ export default function PaperView() {
 
         async function fetchPaper() {
             try {
-                const response: PaperData = await fetchFromApi(`/api/paper?id=${id}`);
+                const response = await fetchPaperData(id);
                 setPaperData(response);
             } catch (error) {
                 console.error('Error fetching paper:', error);
@@ -507,7 +508,7 @@ export default function PaperView() {
 
     const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
         try {
-            const response: PaperData = await fetchFromApi(`/api/paper?id=${id}`);
+            const response = await fetchPaperData(id);
             if (response.file_url) {
                 setPaperData(response);
                 return response.file_url;
@@ -523,11 +524,17 @@ export default function PaperView() {
         if (!id || !paperData || isSharing) return;
         setIsSharing(true);
         try {
-            const response = await fetchFromApi(`/api/paper/share?id=${id}`, {
+            if (!paperData.library_paper_id) {
+                throw new Error("Library paper is unavailable");
+            }
+            const response = await fetchFromApi(
+                `/api/library/papers/${paperData.library_paper_id}/share`,
+                {
                 method: 'POST',
-            });
-            setPaperData(prev => prev ? { ...prev, share_id: response.share_id, is_public: response.is_public } : null);
-            const shareUrl = `${window.location.origin}/paper/share/${response.share_id}`;
+                },
+            );
+            setPaperData(prev => prev ? { ...prev, share_id: response.share_token, is_public: response.is_public } : null);
+            const shareUrl = `${window.location.origin}/paper/share/${response.share_token}`;
             await navigator.clipboard.writeText(shareUrl);
             toast.success("Sharing link copied to clipboard!");
         } catch (error) {
@@ -539,13 +546,13 @@ export default function PaperView() {
     }, [id, paperData, isSharing]);
 
     const handleUnshare = useCallback(async () => {
-        if (!id || !paperData || !paperData.is_public || isSharing) return;
+        if (!id || !paperData?.library_paper_id || !paperData.is_public || isSharing) return;
         setIsSharing(true);
         try {
-            const response = await fetchFromApi(`/api/paper/unshare?id=${id}`, {
-                method: 'POST',
+            await fetchFromApi(`/api/library/papers/${paperData.library_paper_id}/share`, {
+                method: 'DELETE',
             });
-            setPaperData(prev => prev ? { ...prev, share_id: response.share_id, is_public: response.is_public } : null);
+            setPaperData(prev => prev ? { ...prev, share_id: null, is_public: false } : null);
             toast.success("Paper is now private.");
         } catch (error) {
             console.error('Error unsharing paper:', error);
@@ -557,10 +564,10 @@ export default function PaperView() {
 
     const handleStatusChange = useCallback((status: PaperStatus) => {
         try {
-            const url = `/api/paper/status?status=${status}&paper_id=${id}`;
-            fetchFromApi(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+            if (!paperData?.library_paper_id) return;
+            fetchFromApi(`/api/library/papers/${paperData.library_paper_id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status }),
             });
             setPaperData(prev => prev ? { ...prev, status: status } : null);
             if (status === PaperStatusEnum.COMPLETED) {

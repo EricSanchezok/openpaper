@@ -11,7 +11,6 @@ from app.database.models import (
     JsonValue,
     Message,
     Onboarding,
-    Document,
     PaperImage,
     Project,
 )
@@ -63,31 +62,6 @@ class OnboardingResponse(OrmResponse):
     updated_at: datetime
 
 
-class PaperResponse(OrmResponse):
-    id: UUID
-    sha256: str
-    original_filename: str
-    mime_type: str
-    size_bytes: int
-    authors: list[str] | None
-    title: str | None
-    abstract: str | None
-    institutions: list[str] | None
-    summary: str | None
-    summary_citations: list[dict[str, JsonValue]] | None
-    publish_date: datetime | None
-    starter_questions: list[str] | None
-    raw_content: str | None
-    parser_quality: str | None
-    parser_warning_code: str | None
-    page_offset_map: dict[int, list[int]] | None
-    doi: str | None
-    journal: str | None
-    publisher: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
 class MessageResponse(OrmResponse):
     id: UUID
     role: str
@@ -109,10 +83,6 @@ def serialize_paper_image(image: PaperImage) -> dict[str, JsonValue]:
 
 def serialize_onboarding(onboarding: Onboarding) -> dict[str, JsonValue]:
     return OnboardingResponse.model_validate(onboarding).to_json()
-
-
-def serialize_paper(paper: Document) -> dict[str, JsonValue]:
-    return PaperResponse.model_validate(paper).to_json()
 
 
 def serialize_messages(messages: list[Message]) -> list[dict[str, JsonValue]]:

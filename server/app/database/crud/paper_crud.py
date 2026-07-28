@@ -1,7 +1,5 @@
-import hashlib
 import logging
 import re
-import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import TypedDict
@@ -9,7 +7,6 @@ from typing import TypedDict
 from app.database.crud.paper_image_crud import paper_image_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
-    AuthUser,
     Document,
     DocumentProcessingStatus,
     DurableJob,
@@ -35,7 +32,7 @@ from app.schemas.responses import PaperMetadataExtraction, ResponseCitation
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session, load_only, selectinload
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -278,32 +275,6 @@ class PaperCRUD:
         db.commit()
         return True
 
-    def get_library_paper(
-        self, db: Session, *, document_id: uuid.UUID, user: CurrentUser
-    ) -> LibraryPaper | None:
-        return get_library_paper(
-            db,
-            document_id=document_id,
-            user_id=user.id,
-        )
-
-    def get_library_papers(
-        self,
-        db: Session,
-        *,
-        document_ids: list[uuid.UUID],
-        user: CurrentUser,
-    ) -> dict[uuid.UUID, LibraryPaper]:
-        if not document_ids:
-            return {}
-        entries = db.scalars(
-            select(LibraryPaper).where(
-                LibraryPaper.user_id == user.id,
-                LibraryPaper.document_id.in_(document_ids),
-            )
-        ).all()
-        return {entry.document_id: entry for entry in entries}
-
     def read_raw_document_content(
         self,
         db: Session,
@@ -332,51 +303,6 @@ class PaperCRUD:
             raw_content=str(paper.raw_content),
             page_offsets=offsets,
         )
-
-    def get_top_relevant_papers(
-        self, db: Session, *, user: CurrentUser, limit: int = 3
-    ) -> list[Document]:
-        """
-        Get recent papers with priority logic:
-        1. Order by most recently uploaded
-        2. First get papers with 'reading' status
-        3. If under limit, fill with 'todo' status papers
-        4. Return up to limit papers
-        """
-        # First, get reading papers
-        reading_papers = db.scalars(
-            select(Document)
-            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-            .where(
-                LibraryPaper.user_id == user.id,
-                LibraryPaper.status == PaperStatus.reading,
-            )
-            .where(Document.processing_status == DocumentProcessingStatus.COMPLETED)
-            .order_by(LibraryPaper.last_accessed_at.desc())
-            .limit(limit)
-        ).all()
-
-        # If we have enough reading papers, return them
-        if len(reading_papers) >= limit:
-            return list(reading_papers)
-
-        # Calculate how many more papers we need
-        remaining_limit = limit - len(reading_papers)
-
-        # Get todo papers to fill the remaining slots
-        todo_papers = db.scalars(
-            select(Document)
-            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-            .where(
-                LibraryPaper.user_id == user.id,
-                LibraryPaper.status == PaperStatus.todo,
-            )
-            .order_by(LibraryPaper.last_accessed_at.desc())
-            .limit(remaining_limit)
-        ).all()
-
-        # Combine and return
-        return list(reading_papers) + list(todo_papers)
 
     def get_size_of_knowledge_base(self, db: Session, *, user: CurrentUser) -> int:
         """Return logical reference storage billed to the account in KB."""
@@ -413,67 +339,6 @@ class PaperCRUD:
     ) -> bool:
         """Canonical documents always persist exact byte size."""
         return False
-
-    def make_public(
-        self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> tuple[Document, str] | None:
-        """Create a rotating public share token and persist only its hash."""
-        paper = self.get(db, id=paper_id, user=user)
-        if paper:
-            library_paper = get_library_paper(
-                db,
-                document_id=paper.id,
-                user_id=user.id,
-            )
-            if library_paper is None:
-                return None
-            token = secrets.token_urlsafe(32)
-            library_paper.share_token_hash = hashlib.sha256(token.encode()).hexdigest()
-            library_paper.is_public = True
-            db.commit()
-            return paper, token
-        return None
-
-    def make_private(
-        self, db: Session, *, paper_id: str, user: CurrentUser
-    ) -> Document | None:
-        """Make a paper private (not publicly accessible)"""
-        paper = self.get(db, id=paper_id, user=user)
-        if paper:
-            library_paper = get_library_paper(
-                db,
-                document_id=paper.id,
-                user_id=user.id,
-            )
-            if library_paper is None:
-                return None
-            library_paper.is_public = False
-            library_paper.share_token_hash = None
-            db.commit()
-        return paper
-
-    def get_public_paper(self, db: Session, *, share_id: str) -> Document | None:
-        """Resolve a raw public token without persisting it."""
-        token_hash = hashlib.sha256(share_id.encode()).hexdigest()
-        return db.scalar(
-            select(Document)
-            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-            .where(
-                LibraryPaper.share_token_hash == token_hash,
-                LibraryPaper.is_public.is_(True),
-            )
-        )
-
-    def get_public_library_paper(
-        self, db: Session, *, share_id: str
-    ) -> LibraryPaper | None:
-        token_hash = hashlib.sha256(share_id.encode()).hexdigest()
-        return db.scalar(
-            select(LibraryPaper).where(
-                LibraryPaper.share_token_hash == token_hash,
-                LibraryPaper.is_public.is_(True),
-            )
-        )
 
     def get_by_upload_job_id(
         self, db: Session, *, upload_job_id: str, user: CurrentUser
@@ -515,65 +380,6 @@ class PaperCRUD:
             or 0
         )
         return library_count + project_count
-
-    def get_multi_uploads_completed(
-        self,
-        db: Session,
-        *,
-        user: CurrentUser,
-        skip: int = 0,
-        limit: int = 500,
-        status: PaperStatus | None = None,
-    ) -> list[Document]:
-        """
-        Get completed canonical documents referenced by the user's Library.
-        """
-        statement = (
-            select(Document)
-            .options(
-                load_only(
-                    Document.title,
-                    Document.created_at,
-                    Document.updated_at,
-                    Document.abstract,
-                    Document.authors,
-                    Document.institutions,
-                    Document.preview_s3_key,
-                    Document.size_bytes,
-                    Document.publish_date,
-                ),
-            )
-            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-            .where(
-                LibraryPaper.user_id == user.id,
-                Document.processing_status == DocumentProcessingStatus.COMPLETED,
-            )
-            .order_by(LibraryPaper.updated_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        if status:
-            statement = statement.where(LibraryPaper.status == status)
-        return list(db.scalars(statement).all())
-
-    def get_tags_by_document_ids(
-        self,
-        db: Session,
-        *,
-        document_ids: list[uuid.UUID],
-        user: CurrentUser,
-    ) -> dict[uuid.UUID, list[PaperTag]]:
-        if not document_ids:
-            return {}
-        entries = db.scalars(
-            select(LibraryPaper)
-            .options(selectinload(LibraryPaper.tags))
-            .where(
-                LibraryPaper.user_id == user.id,
-                LibraryPaper.document_id.in_(document_ids),
-            )
-        ).all()
-        return {entry.document_id: list(entry.tags) for entry in entries}
 
     def create_ai_annotations(
         self,
@@ -705,41 +511,6 @@ class PaperCRUD:
         )
 
         return image_placeholders
-
-    def get_summary_replace_image_placeholders_shared_paper(
-        self, db: Session, *, paper_id: str
-    ) -> str:
-        """Replace image placeholders with actual images in a shared paper.
-
-        Args:
-            db (Session): Database session.
-            paper_id (str): ID of the paper to update.
-        """
-        # Get the paper without a user context first
-        paper = db.get(Document, paper_id)
-
-        if not paper:
-            raise ValueError(f"Paper with ID {paper_id} not found")
-
-        public_entry = db.scalar(
-            select(LibraryPaper).where(
-                LibraryPaper.document_id == paper.id,
-                LibraryPaper.is_public.is_(True),
-            )
-        )
-        if public_entry is None:
-            raise ValueError(f"Paper with ID {paper_id} is not a shared paper")
-
-        user = db.get(AuthUser, public_entry.user_id)
-        if not user:
-            raise ValueError(f"User for paper with ID {paper_id} not found")
-
-        current_user = CurrentUser.from_auth_user(user)
-
-        # Call the original method with the created user
-        return self.get_summary_replace_image_placeholders(
-            db, paper_id=paper_id, current_user=current_user
-        )
 
     def get_all_available_papers(
         self,
@@ -918,30 +689,6 @@ class PaperCRUD:
         ).all()
 
         return [name.strip() for name in rows if name and name.strip()]
-
-    def add_to_library(
-        self,
-        db: Session,
-        *,
-        document: Document,
-        user: CurrentUser,
-    ) -> Document | None:
-        existing = get_library_paper(
-            db,
-            document_id=document.id,
-            user_id=user.id,
-        )
-        if existing is not None:
-            return document
-        db.add(
-            LibraryPaper(
-                user_id=user.id,
-                document_id=document.id,
-                status=PaperStatus.reading,
-            )
-        )
-        db.commit()
-        return document
 
     def get_by_doi_for_user(
         self, db: Session, *, user_id: int, doi: str

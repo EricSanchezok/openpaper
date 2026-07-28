@@ -266,9 +266,14 @@ def test_document_and_library_api_expose_canonical_asset_boundaries() -> None:
 
     assert "/api/library/papers" in paths
     assert "/api/library/papers/{library_paper_id}" in paths
+    assert "/api/library/papers/by-document/{document_id}" in paths
+    assert "/api/library/papers/{library_paper_id}/share" in paths
     assert "/api/documents/{document_id}" in paths
     assert "/api/documents/{document_id}/file-url" in paths
     assert "/api/documents/{document_id}/research-items" in paths
+    assert "/api/public/papers/{share_token}" in paths
+    assert "/api/public/papers/{share_token}/collect" in paths
+    assert "/api/paper" not in paths
 
 
 def test_metadata_and_baseline_have_only_the_new_project_tables() -> None:

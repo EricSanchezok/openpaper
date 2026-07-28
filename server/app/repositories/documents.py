@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import uuid
+import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.database.models import (
+    AuthUser,
     Document,
     DocumentProcessingStatus,
     LibraryPaper,
@@ -29,6 +32,13 @@ class CanonicalDocumentResult:
 @dataclass(frozen=True, slots=True)
 class ReferenceResult:
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLibraryPaper:
+    entry: LibraryPaper
+    document: Document
+    owner: AuthUser
 
 
 class DocumentRepository:
@@ -56,6 +66,36 @@ class DocumentRepository:
         statement = select(LibraryPaper).where(
             LibraryPaper.id == library_paper_id,
             LibraryPaper.user_id == user_id,
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        entry = db.scalar(statement)
+        if entry is None:
+            raise AppError(
+                code="library_paper_not_found",
+                message="Library paper not found",
+                status_code=404,
+            )
+        return entry
+
+    def require_library_paper_by_document(
+        self,
+        db: Session,
+        *,
+        document_id: uuid.UUID,
+        user_id: int,
+        for_update: bool = False,
+    ) -> LibraryPaper:
+        statement = (
+            select(LibraryPaper)
+            .options(
+                selectinload(LibraryPaper.document),
+                selectinload(LibraryPaper.tags),
+            )
+            .where(
+                LibraryPaper.document_id == document_id,
+                LibraryPaper.user_id == user_id,
+            )
         )
         if for_update:
             statement = statement.with_for_update()
@@ -114,6 +154,78 @@ class DocumentRepository:
 
         schedule_document_gc(db, document_id=document_id)
         db.commit()
+
+    def rotate_public_share(
+        self,
+        db: Session,
+        *,
+        library_paper_id: uuid.UUID,
+        user_id: int,
+    ) -> str:
+        entry = self.require_library_paper(
+            db,
+            library_paper_id=library_paper_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        token = secrets.token_urlsafe(32)
+        entry.share_token_hash = hashlib.sha256(token.encode()).hexdigest()
+        entry.is_public = True
+        db.commit()
+        return token
+
+    def revoke_public_share(
+        self,
+        db: Session,
+        *,
+        library_paper_id: uuid.UUID,
+        user_id: int,
+    ) -> None:
+        entry = self.require_library_paper(
+            db,
+            library_paper_id=library_paper_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        entry.share_token_hash = None
+        entry.is_public = False
+        db.commit()
+
+    def require_public_share(
+        self,
+        db: Session,
+        *,
+        token: str,
+    ) -> PublicLibraryPaper:
+        if not token or len(token) > 512:
+            raise AppError(
+                code="public_paper_not_found",
+                message="Public paper not found",
+                status_code=404,
+            )
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        entry = db.scalar(
+            select(LibraryPaper)
+            .options(
+                selectinload(LibraryPaper.document),
+                selectinload(LibraryPaper.user),
+            )
+            .where(
+                LibraryPaper.share_token_hash == token_hash,
+                LibraryPaper.is_public.is_(True),
+            )
+        )
+        if entry is None:
+            raise AppError(
+                code="public_paper_not_found",
+                message="Public paper not found",
+                status_code=404,
+            )
+        return PublicLibraryPaper(
+            entry=entry,
+            document=entry.document,
+            owner=entry.user,
+        )
 
     def get_by_sha256(
         self,

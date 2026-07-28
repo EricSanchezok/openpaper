@@ -10,6 +10,7 @@ export interface ReferenceCitation {
 }
 
 export interface PaperData {
+    library_paper_id?: string;
     filename: string;
     file_url: string;
     authors: string[];
@@ -22,7 +23,7 @@ export interface PaperData {
     tags?: PaperTag[];
     starter_questions: string[];
     is_public: boolean;
-    share_id: string;
+    share_id: string | null;
     status: PaperStatus;
     journal?: string;
     doi?: string;

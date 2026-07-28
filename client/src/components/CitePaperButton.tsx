@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/select";
 import { citationStyles, copyToClipboard, PaperBase } from '@/components/utils/paperUtils';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { fetchFromApi } from '@/lib/api';
 import { PaperData, PaperItem } from '@/lib/schema';
+import { fetchPaperData as fetchDocumentPaperData } from '@/lib/documents';
 import { Check, Copy, Loader, Quote } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -83,7 +83,7 @@ export function CitePaperButton({ paper, paperId: providedPaperId, minimalist = 
 
         const fetchPaperData = async () => {
             try {
-                const data = await fetchFromApi(`/api/paper?id=${effectivePaperId}`);
+                const data = await fetchDocumentPaperData(effectivePaperId);
                 // Wrap single paper in array
                 setPaperData([data]);
             } catch {

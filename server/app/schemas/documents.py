@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.database.models import DocumentProcessingStatus, PaperStatus
-from app.database.models.base import JsonValue
+from app.schemas.responses import ResponseCitation
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -57,7 +57,7 @@ class DocumentResponse(BaseModel):
     publisher: str | None
     publish_date: datetime | None
     summary: str | None
-    summary_citations: list[dict[str, JsonValue]] | None
+    summary_citations: list[ResponseCitation] | None
     starter_questions: list[str] | None
     processing_status: DocumentProcessingStatus
     parser_quality: str | None
@@ -88,6 +88,28 @@ class LibraryPaperResponse(BaseModel):
 
 class LibraryPaperListResponse(BaseModel):
     items: list[LibraryPaperResponse]
+
+
+class LibraryPaperShareResponse(BaseModel):
+    share_token: str
+    is_public: bool
+
+
+class PublicPaperOwnerResponse(BaseModel):
+    id: int
+    display_name: str
+
+
+class PublicPaperResponse(BaseModel):
+    document: DocumentResponse
+    file_url: str
+    owner: PublicPaperOwnerResponse
+
+
+class CollectPublicPaperResponse(BaseModel):
+    document_id: UUID
+    library_paper_id: UUID
+    already_exists: bool
 
 
 class DocumentFileUrlResponse(BaseModel):

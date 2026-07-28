@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.api.jobs_webhooks import webhook_router
 from app.api.jobs_webhooks.router import handle_paper_parser_upgrade_webhook
-from app.api.paper_api import _serialize_paper_for_client
+from app.api.documents.router import _document_response
 from app.database.models import Document, JobOperation
 from app.schemas.jobs import (
     PDFParserUpgradeResult,
@@ -111,8 +111,9 @@ def test_client_paper_contract_hides_parser_provider_details() -> None:
         parser_version="mineru-v4/vlm",
         parser_quality="text_only",
         parser_warning_code="text_only_fallback",
+        processing_status="completed",
     )
-    result = _serialize_paper_for_client(paper)
+    result = _document_response(paper).model_dump(mode="json")
 
     assert "parser_backend" not in result
     assert "parser_version" not in result

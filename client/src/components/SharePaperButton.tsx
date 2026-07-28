@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { fetchFromApi } from '@/lib/api';
 import { PaperData } from '@/lib/schema';
+import { fetchPaperData as fetchDocumentPaperData } from '@/lib/documents';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export function SharePaperButton() {
@@ -34,28 +35,34 @@ export function SharePaperButton() {
     useEffect(() => {
         if (!paperId || !isOpen) return;
 
-        const fetchPaperData = async () => {
+        const loadPaperData = async () => {
             try {
-                const data = await fetchFromApi(`/api/paper?id=${paperId}`);
+                const data = await fetchDocumentPaperData(paperId);
                 setPaperData(data);
             } catch {
                 toast.error("Failed to fetch paper details.");
             }
         };
 
-        fetchPaperData();
+        loadPaperData();
     }, [paperId, isOpen]);
 
     const handleShare = useCallback(async () => {
         if (!paperId) return;
         setIsSharing(true);
         try {
-            const response = await fetchFromApi(`/api/paper/share?id=${paperId}`, { method: 'POST' });
+            const current = paperData ?? await fetchDocumentPaperData(paperId);
+            if (!current.library_paper_id) {
+                throw new Error("Library paper is unavailable");
+            }
+            const response = await fetchFromApi(
+                `/api/library/papers/${current.library_paper_id}/share`,
+                { method: 'POST' },
+            );
             if (paperData) {
-                setPaperData({ ...paperData, share_id: response.share_id, is_public: response.is_public });
+                setPaperData({ ...paperData, share_id: response.share_token, is_public: response.is_public });
             } else {
-                const data = await fetchFromApi(`/api/paper?id=${paperId}`);
-                setPaperData(data);
+                setPaperData({ ...current, share_id: response.share_token, is_public: true });
             }
             toast.success("Paper shared successfully!");
         } catch {
@@ -69,10 +76,13 @@ export function SharePaperButton() {
         if (!paperId || !paperData || !paperData.is_public || isSharing) return;
         setIsSharing(true);
         try {
-            const response = await fetchFromApi(`/api/paper/unshare?id=${paperId}`, {
-                method: 'POST',
+            if (!paperData.library_paper_id) {
+                throw new Error("Library paper is unavailable");
+            }
+            await fetchFromApi(`/api/library/papers/${paperData.library_paper_id}/share`, {
+                method: 'DELETE',
             });
-            setPaperData(prev => prev ? { ...prev, share_id: response.share_id, is_public: response.is_public } : null);
+            setPaperData(prev => prev ? { ...prev, share_id: null, is_public: false } : null);
             toast.success("Paper is now private.");
         } catch (error) {
             console.error('Error unsharing paper:', error);
@@ -104,23 +114,33 @@ export function SharePaperButton() {
                     {paperData.is_public ? (
                         <div className="space-y-3">
                             <p className="text-sm text-muted-foreground">This paper is currently public. Anyone with the link can view it.</p>
-                            <div className="flex items-center space-x-2">
-                                <Input
-                                    readOnly
-                                    value={`${window.location.origin}/paper/share/${paperData.share_id}`}
-                                    className="flex-1"
-                                />
+                            {paperData.share_id ? (
+                                <div className="flex items-center space-x-2">
+                                    <Input
+                                        readOnly
+                                        value={`${window.location.origin}/paper/share/${paperData.share_id}`}
+                                        className="flex-1"
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={async () => {
+                                            await navigator.clipboard.writeText(`${window.location.origin}/paper/share/${paperData.share_id}`);
+                                            toast.success("Link copied!");
+                                        }}
+                                    >
+                                        Copy
+                                    </Button>
+                                </div>
+                            ) : (
                                 <Button
                                     variant="outline"
-                                    size="sm"
-                                    onClick={async () => {
-                                        await navigator.clipboard.writeText(`${window.location.origin}/paper/share/${paperData.share_id}`);
-                                        toast.success("Link copied!");
-                                    }}
+                                    onClick={handleShare}
+                                    disabled={isSharing}
                                 >
-                                    Copy
+                                    Generate a new sharing link
                                 </Button>
-                            </div>
+                            )}
                             <Button
                                 variant="destructive"
                                 onClick={handleUnshare}

@@ -1,6 +1,7 @@
 "use client";
 
 import { PaperData, PaperItem } from "@/lib/schema";
+import { fetchPaperData } from "@/lib/documents";
 import { Button } from "./ui/button";
 import { X, ExternalLink, Highlighter, Plus, FileText, Download, Pencil } from "lucide-react";
 import Link from "next/link";
@@ -206,7 +207,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
         // Fetch the full paper data to get tags and other details
         setLoadedPaper(null);
         setPreviewLoaded(false);
-        fetchFromApi(`/api/paper?id=${paper.id}`)
+        fetchPaperData(paper.id)
             .then(data => setLoadedPaper(data))
             .catch(error => console.error("Failed to load paper data", error));
     }, [paper.id]);
@@ -215,9 +216,12 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const updateField = async (fields: Partial<PaperItem>) => {
         try {
-            await fetchFromApi(`/api/paper?paper_id=${paper.id}`, {
+            if (!paper.library_paper_id) {
+                throw new Error("Library paper is unavailable");
+            }
+            await fetchFromApi(`/api/library/papers/${paper.library_paper_id}`, {
                 method: "PATCH",
-                body: JSON.stringify(fields),
+                body: JSON.stringify({ metadata_overrides: fields }),
             });
             const updatedPaper = { ...paper, ...fields };
             setPaper(paper.id, updatedPaper);
@@ -248,8 +252,9 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const onTagsApplied = () => {
         // Let's try to update the paper by refetching it.
-        fetchFromApi(`/api/paper?id=${paper.id}`).then(updatedPaper => {
-            setPaper(paper.id, updatedPaper);
+        fetchPaperData(paper.id).then(updatedPaper => {
+            setLoadedPaper(updatedPaper);
+            setPaper(paper.id, { ...paper, tags: updatedPaper.tags });
         });
     };
 

@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PdfHighlighterViewer } from '@/components/PdfHighlighterViewer';
-import { fetchFromApi } from '@/lib/api';
 import {
     PaperData,
-    SharedPaper,
 } from '@/lib/schema';
+import { fetchPublicPaper } from '@/lib/documents';
 import PaperMetadata from '@/components/PaperMetadata';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Book, Box } from 'lucide-react';
@@ -141,7 +140,7 @@ export default function SharedPaperView() {
             setLoading(true);
             setError(null);
             try {
-                const response: SharedPaper = await fetchFromApi(`/api/paper/share?id=${shareId}`);
+                const response = await fetchPublicPaper(shareId);
                 setPaperData(response.paper);
             } catch (err) {
                 console.error("Error fetching shared paper data:", err);
@@ -157,7 +156,7 @@ export default function SharedPaperView() {
 
     const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
         try {
-            const response: SharedPaper = await fetchFromApi(`/api/paper/share?id=${shareId}`);
+            const response = await fetchPublicPaper(shareId);
             if (response.paper?.file_url) {
                 setPaperData(response.paper);
                 return response.paper.file_url;

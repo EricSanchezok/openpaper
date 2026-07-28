@@ -4,8 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { SquareLibrary } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fetchFromApi } from '@/lib/api';
-import { PaperData } from '@/lib/schema';
+import { fetchPaperData as fetchDocumentPaperData } from '@/lib/documents';
 import Link from 'next/link';
 
 export function CitationGraphButton() {
@@ -29,7 +28,7 @@ export function CitationGraphButton() {
 
         const fetchPaperData = async () => {
             try {
-                const data: PaperData = await fetchFromApi(`/api/paper?id=${paperId}`);
+                const data = await fetchDocumentPaperData(paperId);
                 setPaperDoi(data.doi || null);
             } catch {
                 setPaperDoi(null);

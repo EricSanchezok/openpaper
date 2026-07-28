@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { fetchFromApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { fetchPublicPaper } from '@/lib/documents';
 
 interface ShareOwnerInfo {
-    owner_id?: string;
+    owner_id?: string | number;
 }
 
 export function ImportPaperButton() {
@@ -44,7 +45,7 @@ export function ImportPaperButton() {
         const fetchOwnerInfo = async () => {
             setIsLoading(true);
             try {
-                const response = await fetchFromApi(`/api/paper/share?id=${shareId}`);
+                const response = await fetchPublicPaper(shareId);
                 setOwnerInfo({ owner_id: response.owner?.id });
             } catch {
                 // If we can't fetch owner info, we'll still show the button
@@ -71,18 +72,20 @@ export function ImportPaperButton() {
         const toastId = toast.loading("Importing paper to your library...");
 
         try {
-            const response = await fetchFromApi('/api/paper/collect', {
+            const response = await fetchFromApi(
+                `/api/public/papers/${encodeURIComponent(shareId)}/collect`,
+                {
                 method: 'POST',
-                body: JSON.stringify({ share_id: shareId }),
-            });
+                },
+            );
 
-            if (response.paper_id) {
+            if (response.document_id) {
                 toast.success("Paper imported!", {
                     id: toastId,
                     description: "The paper has been added to your library.",
                     richColors: true,
                 });
-                router.push(`/paper/${response.paper_id}`);
+                router.push(`/paper/${response.document_id}`);
             } else {
                 throw new Error("Invalid response from server.");
             }
