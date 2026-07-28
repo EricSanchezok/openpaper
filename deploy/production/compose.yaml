@@ -179,12 +179,12 @@ services:
       - worker
       - --loglevel=info
       - --concurrency=${SCHOLENS_CELERY_CONCURRENCY:-2}
-      - --queues=pdf_processing,user_processing,zotero_sync
+      - --queues=pdf_processing,zotero_sync
       - --max-tasks-per-child=1000
       - --without-gossip
       - --without-mingle
-      - --time-limit=300
-      - --soft-time-limit=240
+      - --time-limit=960
+      - --soft-time-limit=900
     environment:
       <<: *jobs-environment
     networks:

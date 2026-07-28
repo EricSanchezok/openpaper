@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from src.app import app
 from src.celery_app import celery_app
+from src.tasks import _parser_upgrade_webhook_url, _schedule_parser_upgrade
 
 
 def test_jobs_api_exposes_only_health_and_status(monkeypatch) -> None:
@@ -70,3 +72,45 @@ def test_worker_has_no_referral_task_or_queue() -> None:
 
     assert "delayed_referral_settlement_callback" not in task_routes
     assert "user_processing" not in worker_script
+
+
+def test_worker_runtime_budget_covers_mineru_deadline_and_upgrade_task() -> None:
+    worker_script = (
+        Path(__file__).parents[1] / "scripts" / "start_worker.sh"
+    ).read_text(encoding="utf-8")
+
+    task_routes = celery_app.conf.task_routes
+    assert task_routes
+    assert task_routes["upgrade_pdf_parser"] == {"queue": "pdf_processing"}
+    assert "--soft-time-limit=900" in worker_script
+    assert "--time-limit=960" in worker_script
+
+
+def test_parser_upgrade_is_scheduled_with_a_deterministic_task_identity(
+    monkeypatch,
+) -> None:
+    apply_async = MagicMock()
+    monkeypatch.setattr("src.tasks.upgrade_pdf_parser.apply_async", apply_async)
+    initial_url = (
+        "https://api.example/api/webhooks/paper-processing/"
+        "00000000-0000-0000-0000-000000000001"
+    )
+
+    _schedule_parser_upgrade(job_id="job-1", webhook_url=initial_url)
+
+    assert _parser_upgrade_webhook_url(initial_url) == (
+        "https://api.example/api/webhooks/paper-parser-upgrade/"
+        "00000000-0000-0000-0000-000000000001"
+    )
+    apply_async.assert_called_once_with(
+        kwargs={
+            "job_id": "job-1",
+            "webhook_url": (
+                "https://api.example/api/webhooks/paper-parser-upgrade/"
+                "00000000-0000-0000-0000-000000000001"
+            ),
+        },
+        countdown=30,
+        task_id="job-1:mineru-upgrade",
+        queue="pdf_processing",
+    )

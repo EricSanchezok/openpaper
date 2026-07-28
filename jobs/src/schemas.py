@@ -234,6 +234,7 @@ class PDFProcessingResult(BaseModel):
     parser_quality: Literal["full", "text_only"] | None = None
     parser_version: str | None = None
     parser_warning_code: str | None = None
+    parser_upgrade_pending: bool = False
     error: str | None = None
     duration: float | None = None
 
@@ -250,6 +251,28 @@ class PDFProcessingResult(BaseModel):
                 raise ValueError("successful PDF result is incomplete")
         elif not self.error:
             raise ValueError("failed PDF result requires an error code")
+        return self
+
+
+class PDFParserUpgradeResult(BaseModel):
+    """A completed MinerU result that replaces a text-only parse."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str
+    raw_content: str = Field(min_length=1)
+    page_offset_map: dict[int, list[int]]
+    parser_markdown_s3_key: str = Field(min_length=1)
+    parser_archive_s3_key: str = Field(min_length=1)
+    parser_backend: Literal["mineru"] = "mineru"
+    parser_quality: Literal["full"] = "full"
+    parser_version: str = Field(min_length=1)
+    parser_warning_code: None = None
+
+    @model_validator(mode="after")
+    def validate_upgrade(self) -> "PDFParserUpgradeResult":
+        if not self.page_offset_map:
+            raise ValueError("PDF parser upgrade requires page offsets")
         return self
 
 

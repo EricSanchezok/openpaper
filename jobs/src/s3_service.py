@@ -4,7 +4,6 @@ S3 service for file uploads and management.
 
 import logging
 import os
-import uuid
 
 import boto3
 from botocore.config import Config
@@ -17,7 +16,6 @@ logger = logging.getLogger(__name__)
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 
 
 def _required_env(name: str) -> str:
@@ -76,76 +74,20 @@ class S3Service:
             ExpiresIn=expiration_seconds,
         )
 
-    def upload_any_file_from_bytes(
+    def upload_bytes_to_key(
         self,
         file_bytes: bytes,
-        original_filename: str,
+        object_key: str,
         content_type: str,
-    ) -> tuple[str, str]:
-        """Upload a file from bytes to S3
-
-        Args:
-            file_bytes (bytes): The file content as bytes
-            original_filename (str): The original filename
-            content_type (str): The MIME type of the file
-
-        Returns:
-            tuple[str, str]: The S3 object key and public URL
-        """
-        object_key = f"{UPLOAD_DIR}/{uuid.uuid4()}-{original_filename}"
+    ) -> str:
+        """Idempotently write generated content to a deterministic S3 key."""
         self.s3_client.put_object(
             Bucket=self.bucket_name,
             Key=object_key,
             Body=file_bytes,
             ContentType=content_type,
         )
-        file_url = f"https://{self.cloudflare_bucket_name}/{object_key}"
-        return object_key, file_url
-
-    def upload_any_file(
-        self, file_path: str, original_filename: str, content_type: str
-    ) -> tuple[str, str]:
-        """
-        Upload any file to S3
-        Args:
-            file_path: The path to the file to upload
-            original_filename: The original name of the file
-            content_type: The MIME type of the file
-        Returns:
-            tuple: S3 object key and public URL
-        """
-
-        try:
-            # Generate a unique key for the S3 object
-            # Use a UUID prefix to avoid naming conflicts
-            object_key = f"{UPLOAD_DIR}/{uuid.uuid4()}-{original_filename}"
-
-            logger.info(
-                f"Uploading file {original_filename} to S3 with key {object_key}"
-            )
-            logger.info(
-                f"bucket_name: {self.bucket_name}, cloudflare_bucket_name: {self.cloudflare_bucket_name}"
-            )
-
-            # Upload to S3
-            with open(file_path, "rb") as file_obj:
-                self.s3_client.put_object(
-                    Bucket=self.bucket_name,
-                    Key=object_key,
-                    Body=file_obj,
-                    ContentType=content_type,
-                )
-
-            # Generate the URL for the uploaded file
-            file_url = f"https://{self.cloudflare_bucket_name}/{object_key}"
-
-            return object_key, file_url
-        except ClientError as e:
-            logger.error(f"Error uploading file to S3: {e}")
-            raise
-        except FileNotFoundError:
-            logger.error(f"File not found: {file_path}")
-            raise ValueError(f"File not found: {file_path}")
+        return object_key
 
     def delete_file(self, object_key: str) -> bool:
         """

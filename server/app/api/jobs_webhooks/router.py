@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
+from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.crud.projects.project_data_table_crud import (
     DataTableResultCreate,
@@ -21,6 +22,7 @@ from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal, engine, get_db
 from app.database.models import (
     ConversableType,
+    Document,
     JobStatus,
     ZoteroImportStatus,
 )
@@ -38,6 +40,7 @@ from app.schemas.conversations import ConversationCreateRequest
 from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.schemas.jobs import (
+    PdfParserUpgradeWebhookData,
     PDFProcessingResult,
     PdfProcessingWebhookData,
     TokenUsageEventPayload,
@@ -51,6 +54,7 @@ from app.services.zotero.service import (
 )
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -644,6 +648,92 @@ async def handle_paper_processing_webhook(
         )
 
     return {"status": "webhook processed"}
+
+
+@webhook_router.post("/paper-parser-upgrade/{job_id}")
+def handle_paper_parser_upgrade_webhook(
+    job_id: str,
+    webhook_data: PdfParserUpgradeWebhookData,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Atomically replace a completed text-only parse with MinerU output."""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_job_id") from exc
+    if webhook_data.result.job_id != job_id:
+        raise HTTPException(status_code=422, detail="parser_upgrade_job_mismatch")
+
+    job = paper_upload_job_crud.get_by(db=db, id=job_uuid)
+    if not job:
+        raise HTTPException(status_code=404, detail="upload_job_not_found")
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="upload_job_not_completed")
+
+    upgrade_lock = AdvisoryLock(
+        engine,
+        namespace=AdvisoryLockNamespace.PAPER_PROCESSING_WEBHOOK,
+        key=job_id,
+    )
+    if not upgrade_lock.acquire():
+        raise HTTPException(status_code=409, detail="paper_update_in_progress")
+
+    try:
+        paper = db.scalar(select(Document).where(Document.upload_job_id == job_uuid))
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper_not_found")
+        if paper.parser_quality == "full":
+            return {
+                "status": "parser upgrade already applied",
+                "paper_id": str(paper.id),
+            }
+        if paper.parser_quality != "text_only":
+            raise HTTPException(status_code=409, detail="paper_not_text_only")
+
+        result = webhook_data.result
+        paper.raw_content = str(sanitize_for_postgres(result.raw_content))
+        paper.page_offset_map = result.page_offset_map
+        paper.parser_markdown_s3_key = result.parser_markdown_s3_key
+        paper.parser_archive_s3_key = result.parser_archive_s3_key
+        paper.parser_backend = result.parser_backend
+        paper.parser_quality = result.parser_quality
+        paper.parser_version = result.parser_version
+        paper.parser_warning_code = None
+
+        paper_crud.index_paper_passages(
+            db,
+            paper_id=uuid.UUID(str(paper.id)),
+            raw_content=paper.raw_content,
+        )
+        db.commit()
+        logger.info(
+            "Applied MinerU parser upgrade",
+            extra={
+                "job_id": job_id,
+                "paper_id": str(paper.id),
+                "task_id": webhook_data.task_id,
+                "phase": "parser_upgrade",
+            },
+        )
+        return {
+            "status": "parser upgrade applied",
+            "paper_id": str(paper.id),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Failed to apply MinerU parser upgrade",
+            extra={"job_id": job_id, "phase": "parser_upgrade"},
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="parser_upgrade_failed",
+        ) from exc
+    finally:
+        upgrade_lock.release()
 
 
 class DataTableProcessingResultWebhookData(BaseModel):

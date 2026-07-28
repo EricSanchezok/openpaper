@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -16,9 +17,14 @@ from src.pdf.models import (
     ParserConfigurationError,
     ParserContentError,
     ParserSecurityError,
+    ParserTransientError,
 )
 from src.s3_service import s3_service
-from src.schemas import PDFProcessingResult, PaperMetadataExtraction
+from src.schemas import (
+    PDFParserUpgradeResult,
+    PDFProcessingResult,
+    PaperMetadataExtraction,
+)
 from src.utils import time_it
 
 logger = logging.getLogger(__name__)
@@ -31,11 +37,16 @@ async def _upload_preview(
     if isinstance(analysis, BaseException) or analysis.preview_bytes is None:
         return None, None
     try:
-        return await asyncio.to_thread(
-            s3_service.upload_any_file_from_bytes,
+        object_key = _parser_artifact_key(job_id, "preview.png")
+        await asyncio.to_thread(
+            s3_service.upload_bytes_to_key,
             analysis.preview_bytes,
-            f"preview-{job_id}.png",
+            object_key,
             "image/png",
+        )
+        return (
+            object_key,
+            f"https://{s3_service.cloudflare_bucket_name}/{object_key}",
         )
     except Exception:
         logger.warning("Preview upload failed for %s", job_id, exc_info=True)
@@ -53,16 +64,55 @@ def _select_document(
     if isinstance(mineru_result, (ParserConfigurationError, ParserSecurityError)):
         raise mineru_result
     if mineru_result is not None:
+        diagnostics = (
+            mineru_result.diagnostic_fields()
+            if isinstance(mineru_result, ParserTransientError)
+            else {"exception_type": type(mineru_result).__name__}
+        )
         logger.warning(
-            "MinerU parsing degraded for %s: %s",
-            job_id,
-            type(mineru_result).__name__,
+            "MinerU parsing degraded; using local text extraction; diagnostics=%s",
+            diagnostics,
+            extra={"job_id": job_id, **diagnostics},
         )
     if isinstance(local_result, BaseException):
         if isinstance(local_result, ParserContentError):
             raise local_result
         raise ParserContentError("Local PDF analysis failed") from local_result
     return build_text_fallback(local_result)
+
+
+def _parser_artifact_key(job_id: str, filename: str) -> str:
+    upload_dir = os.getenv("UPLOAD_DIR", "uploads").strip("/")
+    return f"{upload_dir}/pdf-parses/{job_id}/{filename}"
+
+
+async def _upload_full_parser_artifacts(
+    document: ParsedDocument,
+    *,
+    job_id: str,
+) -> tuple[str, str]:
+    if document.archive_bytes is None:
+        raise ParserContentError(
+            "MinerU full parse has no audit archive",
+            phase="archive",
+        )
+    markdown_key = _parser_artifact_key(job_id, "full.md")
+    archive_key = _parser_artifact_key(job_id, "mineru.zip")
+    await asyncio.gather(
+        asyncio.to_thread(
+            s3_service.upload_bytes_to_key,
+            document.markdown.encode("utf-8"),
+            markdown_key,
+            "text/markdown; charset=utf-8",
+        ),
+        asyncio.to_thread(
+            s3_service.upload_bytes_to_key,
+            document.archive_bytes,
+            archive_key,
+            "application/zip",
+        ),
+    )
+    return markdown_key, archive_key
 
 
 async def process_pdf_file(
@@ -113,24 +163,33 @@ async def process_pdf_file(
         if document.quality == "text_only":
             status_callback("Using local text extraction")
 
+        parser_upgrade_pending = False
+        if (
+            isinstance(mineru_result, ParserTransientError)
+            and mineru_client is not None
+        ):
+            parser_upgrade_pending = (
+                await mineru_client.state_store.get_task_id(job_id) is not None
+            )
+
         preview_object_key, preview_url = await _upload_preview(
             parsed_local,
             job_id,
         )
 
-        markdown_key, _ = await asyncio.to_thread(
-            s3_service.upload_any_file_from_bytes,
-            document.markdown.encode("utf-8"),
-            f"{job_id}-full.md",
-            "text/markdown; charset=utf-8",
-        )
         archive_key: str | None = None
         if document.archive_bytes is not None:
-            archive_key, _ = await asyncio.to_thread(
-                s3_service.upload_any_file_from_bytes,
-                document.archive_bytes,
-                f"{job_id}-mineru.zip",
-                "application/zip",
+            markdown_key, archive_key = await _upload_full_parser_artifacts(
+                document,
+                job_id=job_id,
+            )
+        else:
+            markdown_key = _parser_artifact_key(job_id, "full.md")
+            await asyncio.to_thread(
+                s3_service.upload_bytes_to_key,
+                document.markdown.encode("utf-8"),
+                markdown_key,
+                "text/markdown; charset=utf-8",
             )
 
         metadata: PaperMetadataExtraction | None = None
@@ -142,16 +201,6 @@ async def process_pdf_file(
             )
             if not metadata.title:
                 raise ValueError("DeepSeek metadata extraction returned no title")
-
-        if mineru_client is not None:
-            try:
-                await mineru_client.state_store.clear(job_id)
-            except Exception:
-                logger.warning(
-                    "Could not clear parser state for %s",
-                    job_id,
-                    exc_info=True,
-                )
 
         return PDFProcessingResult(
             success=True,
@@ -166,6 +215,7 @@ async def process_pdf_file(
             parser_quality=document.quality.value,
             parser_version=document.parser_version,
             parser_warning_code=document.warning_code,
+            parser_upgrade_pending=parser_upgrade_pending,
             job_id=job_id,
             raw_content=document.markdown,
             page_offset_map=document.page_offset_map,
@@ -182,3 +232,30 @@ async def process_pdf_file(
     finally:
         if mineru_client is not None:
             await mineru_client.close()
+
+
+async def upgrade_pdf_from_checkpoint(job_id: str) -> PDFParserUpgradeResult:
+    """Resume MinerU and build an idempotent full-quality replacement payload."""
+    config = MinerUConfig.from_env()
+    if config is None:
+        raise ParserConfigurationError(
+            "MinerU is not configured for parser upgrades",
+            phase="configuration",
+        )
+    client = MinerUClient(config)
+    try:
+        document = await client.parse_existing(data_id=job_id)
+        markdown_key, archive_key = await _upload_full_parser_artifacts(
+            document,
+            job_id=job_id,
+        )
+        return PDFParserUpgradeResult(
+            job_id=job_id,
+            raw_content=document.markdown,
+            page_offset_map=document.page_offset_map,
+            parser_markdown_s3_key=markdown_key,
+            parser_archive_s3_key=archive_key,
+            parser_version=document.parser_version,
+        )
+    finally:
+        await client.close()

@@ -78,7 +78,11 @@ def _archive() -> bytes:
     return output.getvalue()
 
 
-async def _no_backoff(_attempt: int, _error: ParserTransientError) -> None:
+async def _no_backoff(
+    _attempt: int,
+    _error: ParserTransientError,
+    **_kwargs: object,
+) -> None:
     return None
 
 
@@ -161,13 +165,24 @@ def test_resumes_existing_task_without_resubmitting(
         MemoryStateStore("existing-task"),
         transport=httpx.MockTransport(handler),
     )
+    phases: list[tuple[str, str | None]] = []
 
     result = asyncio.run(
-        client.parse_url("https://source.example/paper.pdf", data_id="job-1")
+        client.parse_url(
+            "https://source.example/paper.pdf",
+            data_id="job-1",
+            phase_callback=lambda phase, task_id: phases.append((phase, task_id)),
+        )
     )
 
     assert result.quality.value == "full"
     assert calls["post"] == 0
+    assert phases == [
+        ("submit", None),
+        ("poll", "existing-task"),
+        ("download", "existing-task"),
+        ("archive", "existing-task"),
+    ]
 
 
 def test_download_retry_refreshes_task_without_resubmitting(
@@ -220,6 +235,51 @@ def test_download_retry_refreshes_task_without_resubmitting(
     assert calls == {"post": 1, "download": 2, "poll": 2}
 
 
+def test_download_survives_more_than_four_consecutive_tls_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"download": 0, "poll": 0}
+    archive_bytes = _archive()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cdn.example":
+            calls["download"] += 1
+            if calls["download"] <= 5:
+                raise httpx.ConnectError("TLS handshake failed", request=request)
+            return httpx.Response(200, content=archive_bytes, request=request)
+        calls["poll"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "state": "done",
+                    "full_zip_url": "https://cdn.example/result.zip",
+                },
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(
+        MinerUClient,
+        "_validate_archive_url",
+        staticmethod(lambda _: None),
+    )
+    monkeypatch.setattr(MinerUClient, "_backoff", staticmethod(_no_backoff))
+    client = MinerUClient(
+        _config(),
+        MemoryStateStore("existing-task"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = asyncio.run(
+        client.parse_url("https://source.example/paper.pdf", data_id="job-1")
+    )
+
+    assert result.quality.value == "full"
+    assert calls == {"download": 6, "poll": 6}
+
+
 def test_submit_transport_failure_is_not_blindly_retried() -> None:
     calls = 0
 
@@ -259,3 +319,77 @@ def test_authorization_failure_is_configuration_error() -> None:
                 data_id="job-1",
             )
         )
+
+
+def test_poll_survives_more_than_four_consecutive_network_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    archive_bytes = _archive()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        if request.url.host == "cdn.example":
+            return httpx.Response(200, content=archive_bytes, request=request)
+        calls += 1
+        if calls <= 5:
+            raise httpx.ConnectTimeout("temporary TLS failure", request=request)
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "state": "done",
+                    "full_zip_url": "https://cdn.example/result.zip",
+                },
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(
+        MinerUClient,
+        "_validate_archive_url",
+        staticmethod(lambda _: None),
+    )
+    monkeypatch.setattr(MinerUClient, "_backoff", staticmethod(_no_backoff))
+    client = MinerUClient(
+        _config(),
+        MemoryStateStore("existing-task"),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = asyncio.run(
+        client.parse_url("https://source.example/paper.pdf", data_id="job-1")
+    )
+
+    assert result.quality.value == "full"
+    assert calls == 6
+
+
+def test_transient_error_carries_safe_structured_diagnostics() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            headers={"x-trace-id": "trace-123"},
+            request=request,
+        )
+
+    client = MinerUClient(
+        _config(),
+        MemoryStateStore("task-123"),
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ParserTransientError) as captured:
+        asyncio.run(
+            client.parse_existing(
+                data_id="job-1",
+            )
+        )
+
+    assert captured.value.diagnostic_fields() == {
+        "phase": "poll",
+        "task_id": "task-123",
+        "trace_id": "trace-123",
+        "http_status": 503,
+        "exception_type": "ParserTransientError",
+    }

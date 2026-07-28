@@ -86,6 +86,8 @@ MINERU_MODEL_VERSION=vlm
 
 Scholens Jobs 会给 MinerU 提交一个短期 S3 签名 URL，轮询解析结果，并将 Markdown 与解析 ZIP 重新保存到自己的 S3。真实论文会离开 AWS 边界并交给 MinerU 处理，因此在上传敏感或未公开论文前，需要确认其隐私条款和数据保留政策。
 
+MinerU 的提交、轮询和结果下载共享一个 600 秒 deadline。网络连续失败 4 次后会进入较慢退避，而不是立即结束；deadline 到期且本地文本质量合格时，论文先以 `text_only` 可用。运行中的 MinerU task checkpoint 会继续保留，后台恢复任务取得完整结果后会自动替换正文、页码映射和全文索引，并将解析质量升级为 `full`。
+
 ## 3. MOSS Voice
 
 1. 打开 [MOSS 平台](https://platform.mosi.cn/) 并注册或登录。

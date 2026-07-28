@@ -17,5 +17,5 @@ python -m celery --app src.celery_app worker \
     --without-gossip \
     --without-mingle \
     --without-heartbeat \
-    --time-limit=300 \
-    --soft-time-limit=240
+    --time-limit=960 \
+    --soft-time-limit=900

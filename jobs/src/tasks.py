@@ -15,7 +15,15 @@ import requests
 
 from src.schemas import DataTableSchema
 from src.data_table_processor import construct_data_table
-from src.pdf.pipeline import process_pdf_file
+from src.pdf.models import (
+    ParserConfigurationError,
+    ParserContentError,
+    ParserError,
+    ParserSecurityError,
+    ParserTransientError,
+)
+from src.pdf.pipeline import process_pdf_file, upgrade_pdf_from_checkpoint
+from src.pdf.state import ParserStateStore
 from src.celery_app import celery_app, ZOTERO_SYNC_INTERVAL_SECONDS
 from src.s3_service import s3_service
 from src.token_usage import collect_token_usage
@@ -23,6 +31,10 @@ from src.utils import time_it
 from src.webhook_signing import post_signed_json
 
 logger = logging.getLogger(__name__)
+
+PARSER_UPGRADE_INITIAL_DELAY_SECONDS = 30
+PARSER_UPGRADE_MAX_RETRIES = 16
+PARSER_UPGRADE_MAX_RETRY_DELAY_SECONDS = 15 * 60
 
 
 def _update_status(task: Any, task_id: str, status: str) -> None:
@@ -47,6 +59,29 @@ def _deliver_webhook(
     except requests.RequestException:
         logger.exception("Failed to send webhook for task %s", task_id)
         return False
+
+
+def _parser_upgrade_webhook_url(webhook_url: str) -> str:
+    marker = "/paper-processing/"
+    if marker not in webhook_url:
+        raise ValueError("paper processing webhook URL has an invalid path")
+    return webhook_url.replace(marker, "/paper-parser-upgrade/", 1)
+
+
+def _schedule_parser_upgrade(*, job_id: str, webhook_url: str) -> None:
+    upgrade_pdf_parser.apply_async(
+        kwargs={
+            "job_id": job_id,
+            "webhook_url": _parser_upgrade_webhook_url(webhook_url),
+        },
+        countdown=PARSER_UPGRADE_INITIAL_DELAY_SECONDS,
+        task_id=f"{job_id}:mineru-upgrade",
+        queue="pdf_processing",
+    )
+    logger.info(
+        "Scheduled resumable MinerU upgrade",
+        extra={"job_id": job_id, "phase": "upgrade_schedule"},
+    )
 
 
 @celery_app.task(bind=True, name="upload_and_process_file")
@@ -106,14 +141,39 @@ def upload_and_process_file(
             "usage_events": usage_events,
         }
 
-        if not _deliver_webhook(webhook_url, webhook_payload, task_id=task_id):
+        webhook_delivered = _deliver_webhook(
+            webhook_url,
+            webhook_payload,
+            task_id=task_id,
+        )
+        if not webhook_delivered:
             webhook_payload["webhook_error"] = "webhook_delivery_failed"
+        elif result.parser_upgrade_pending:
+            _schedule_parser_upgrade(job_id=task_id, webhook_url=webhook_url)
+        elif result.parser_backend == "mineru" and result.parser_quality == "full":
+            try:
+                asyncio.run(_clear_parser_checkpoint(task_id))
+            except ParserTransientError as exc:
+                logger.warning(
+                    "Could not clear completed MinerU checkpoint; diagnostics=%s",
+                    exc.diagnostic_fields(),
+                    extra={"job_id": task_id, **exc.diagnostic_fields()},
+                )
 
         logger.info("Task %s completed", task_id)
         return webhook_payload
 
-    except Exception:
-        logger.exception("Task %s failed", task_id)
+    except Exception as exc:
+        diagnostics = (
+            exc.diagnostic_fields()
+            if isinstance(exc, ParserError)
+            else {"exception_type": type(exc).__name__}
+        )
+        logger.exception(
+            "PDF processing task failed; diagnostics=%s",
+            diagnostics,
+            extra={"job_id": task_id, **diagnostics},
+        )
         failure_payload = {
             "task_id": task_id,
             "status": "failed",
@@ -126,6 +186,89 @@ def upload_and_process_file(
             "usage_events": usage_events,
         }
         _deliver_webhook(webhook_url, failure_payload, task_id=task_id)
+        raise
+
+
+async def _clear_parser_checkpoint(job_id: str) -> None:
+    state_store = ParserStateStore()
+    try:
+        await state_store.clear(job_id)
+    finally:
+        await state_store.close()
+
+
+@celery_app.task(
+    bind=True,
+    name="upgrade_pdf_parser",
+    max_retries=PARSER_UPGRADE_MAX_RETRIES,
+    soft_time_limit=900,
+    time_limit=960,
+)
+def upgrade_pdf_parser(
+    self,
+    job_id: str,
+    webhook_url: str,
+) -> dict[str, Any]:
+    """Resume a MinerU checkpoint and atomically upgrade a text-only paper."""
+    task_id = self.request.id
+    try:
+        result = asyncio.run(upgrade_pdf_from_checkpoint(job_id))
+        payload = {
+            "task_id": task_id,
+            "result": result.model_dump(),
+        }
+        if not _deliver_webhook(webhook_url, payload, task_id=task_id):
+            raise ParserTransientError(
+                "Parser upgrade webhook delivery failed",
+                phase="webhook",
+                task_id=task_id,
+            )
+        asyncio.run(_clear_parser_checkpoint(job_id))
+        logger.info(
+            "MinerU parser upgrade completed",
+            extra={"job_id": job_id, "task_id": task_id, "phase": "upgrade"},
+        )
+        return payload
+    except ParserTransientError as exc:
+        retry_number = int(self.request.retries) + 1
+        countdown = min(
+            PARSER_UPGRADE_MAX_RETRY_DELAY_SECONDS,
+            PARSER_UPGRADE_INITIAL_DELAY_SECONDS * (2 ** min(retry_number - 1, 5)),
+        )
+        logger.warning(
+            "MinerU parser upgrade remains pending; diagnostics=%s",
+            exc.diagnostic_fields(),
+            extra={
+                "job_id": job_id,
+                **exc.diagnostic_fields(),
+                "retry_number": retry_number,
+                "retry_in_seconds": countdown,
+            },
+        )
+        raise self.retry(exc=exc, countdown=countdown) from exc
+    except ParserContentError as exc:
+        logger.warning(
+            "MinerU parser upgrade reached a terminal content state; diagnostics=%s",
+            exc.diagnostic_fields(),
+            extra={"job_id": job_id, **exc.diagnostic_fields()},
+        )
+        asyncio.run(_clear_parser_checkpoint(job_id))
+        return {"task_id": task_id, "status": "terminal"}
+    except (ParserConfigurationError, ParserSecurityError) as exc:
+        logger.error(
+            "MinerU parser upgrade stopped at a fail-closed boundary; diagnostics=%s",
+            exc.diagnostic_fields(),
+            extra={"job_id": job_id, **exc.diagnostic_fields()},
+            exc_info=True,
+        )
+        raise
+    except ParserError as exc:
+        logger.error(
+            "MinerU parser upgrade failed; diagnostics=%s",
+            exc.diagnostic_fields(),
+            extra={"job_id": job_id, **exc.diagnostic_fields()},
+            exc_info=True,
+        )
         raise
 
 

@@ -11,9 +11,10 @@ The PDF worker follows one explicit pipeline:
 1. Download the original PDF from private S3 storage.
 2. Generate a short-lived S3 URL for MinerU.
 3. Analyze the local PDF with PyMuPDF for preview and deterministic page text.
-4. Submit or resume the MinerU task and poll for its result.
+4. Submit or resume the MinerU task and share one 600-second deadline across
+   polling and archive download.
 5. Validate and normalize MinerU's archive into canonical Markdown.
-6. If MinerU has a transient or content failure, accept PyMuPDF text only when
+6. If the MinerU lifecycle reaches that deadline, accept PyMuPDF text only when
    it passes the local quality gate.
 7. Store Markdown, preview, and the MinerU archive when available.
 8. Extract metadata with DeepSeek unless the caller supplied authoritative
@@ -25,9 +26,17 @@ native-text PDFs; it does not attempt OCR, table reconstruction, or formula
 recognition. A fallback result is persisted as `text_only` so the client can
 warn that layout-dependent content may be incomplete.
 
-MinerU task IDs are checkpointed in Redis under the job ID. A redelivered
-Celery task resumes polling or downloading instead of creating another provider
-task.
+MinerU task IDs are checkpointed in Redis under the job ID. Four consecutive
+network failures switch polling or downloading to a slower bounded backoff;
+they do not end the task before its deadline. A redelivered Celery task resumes
+the same provider task instead of submitting another one.
+
+When a running MinerU task outlives the initial deadline, Scholens keeps its
+checkpoint after persisting the `text_only` result. A dedicated Celery task
+continues the existing MinerU lifecycle. Once the full result is available,
+Jobs writes deterministic Markdown and audit ZIP keys and Server atomically
+replaces the paper content, page offsets, parser quality, and passage index.
+The checkpoint is cleared only after Server acknowledges the full result.
 
 ## Code layout
 
@@ -90,3 +99,6 @@ uv run python scripts/smoke_mineru.py "https://example.com/test-paper.pdf"
 ```
 
 The smoke test uses real provider quota and is intentionally excluded from CI.
+It prints the `submit`, `poll`, `download`, and `archive` stages independently,
+plus safe IDs, timings, output size, and classified diagnostics. It never prints
+credentials or the signed source URL.

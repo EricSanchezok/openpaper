@@ -8,12 +8,31 @@ import pytest
 from src.pdf.mineru import MinerUConfig
 from src.pdf.models import (
     LocalPDFAnalysis,
+    ParsedDocument,
+    ParserBackend,
     ParserConfigurationError,
     ParserContentError,
+    ParserQuality,
     ParserTransientError,
 )
-from src.pdf.pipeline import _select_document, process_pdf_file
+from src.pdf.pipeline import (
+    _select_document,
+    process_pdf_file,
+    upgrade_pdf_from_checkpoint,
+)
 from src.schemas import PDFProcessingResult, PaperMetadataExtraction
+
+
+def _mineru_config() -> MinerUConfig:
+    return MinerUConfig(
+        token="test-token",
+        base_url="https://mineru.example/api/v4",
+        model_version="vlm",
+        poll_seconds=0.001,
+        task_timeout_seconds=1,
+        request_timeout_seconds=1,
+        max_archive_bytes=4 * 1024 * 1024,
+    )
 
 
 def _usable_local_analysis() -> LocalPDFAnalysis:
@@ -83,9 +102,9 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
 
     uploaded_names: list[str] = []
 
-    def upload(_payload: bytes, name: str, _content_type: str) -> tuple[str, str]:
-        uploaded_names.append(name)
-        return f"uploads/{name}", f"https://assets.example/{name}"
+    def upload(_payload: bytes, key: str, _content_type: str) -> str:
+        uploaded_names.append(key)
+        return key
 
     async def extract_metadata(
         _markdown: str,
@@ -102,7 +121,7 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
         classmethod(lambda _cls: None),
     )
     monkeypatch.setattr(
-        "src.pdf.pipeline.s3_service.upload_any_file_from_bytes",
+        "src.pdf.pipeline.s3_service.upload_bytes_to_key",
         upload,
     )
     monkeypatch.setattr(
@@ -130,4 +149,142 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
     assert result.metadata is not None
     assert result.metadata.title == "Fallback paper"
     assert result.parser_archive_s3_key is None
-    assert "job-1-full.md" in uploaded_names
+    assert "uploads/pdf-parses/job-1/full.md" in uploaded_names
+
+
+def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = pymupdf.open()
+    for page_number in range(2):
+        page = document.new_page()
+        page.insert_textbox(
+            (72, 72, 520, 770),
+            "\n".join(
+                f"Usable local research text line {page_number}-{index}."
+                for index in range(30)
+            ),
+            fontsize=10,
+        )
+    pdf_bytes = document.tobytes()
+    document.close()
+
+    class MemoryState:
+        cleared = False
+
+        async def get_task_id(self, _job_id: str) -> str | None:
+            return "running-mineru-task"
+
+        async def clear(self, _job_id: str) -> None:
+            self.cleared = True
+
+    state = MemoryState()
+
+    class FailingMinerUClient:
+        def __init__(self, _config: MinerUConfig) -> None:
+            self.state_store = state
+
+        async def parse_url(self, _source_url: str, *, data_id: str) -> ParsedDocument:
+            raise ParserTransientError(
+                "poll deadline expired",
+                phase="poll",
+                task_id="running-mineru-task",
+            )
+
+        async def close(self) -> None:
+            return None
+
+    async def extract_metadata(
+        _markdown: str,
+        *,
+        job_id: str,
+        status_callback,
+    ) -> PaperMetadataExtraction:
+        del job_id, status_callback
+        return PaperMetadataExtraction(title="Fallback with pending upgrade")
+
+    monkeypatch.setattr(
+        MinerUConfig,
+        "from_env",
+        classmethod(lambda _cls: _mineru_config()),
+    )
+    monkeypatch.setattr("src.pdf.pipeline.MinerUClient", FailingMinerUClient)
+    monkeypatch.setattr(
+        "src.pdf.pipeline.s3_service.upload_bytes_to_key",
+        lambda _payload, key, _content_type: key,
+    )
+    monkeypatch.setattr(
+        "src.pdf.pipeline.s3_service.cloudflare_bucket_name",
+        "assets.example",
+    )
+    monkeypatch.setattr(
+        "src.pdf.pipeline.llm_client.extract_paper_metadata",
+        extract_metadata,
+    )
+
+    result = asyncio.run(
+        process_pdf_file(
+            pdf_bytes,
+            "https://source.example/paper.pdf",
+            "uploads/original.pdf",
+            "job-1",
+            status_callback=lambda _status: None,
+        )
+    )
+
+    assert result.success
+    assert result.parser_quality == "text_only"
+    assert result.parser_upgrade_pending is True
+    assert state.cleared is False
+
+
+def test_upgrade_resumes_checkpoint_and_uses_idempotent_artifact_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    markdown = "MinerU full content " * 100
+    parsed = ParsedDocument(
+        markdown=markdown,
+        page_offset_map={1: [0, len(markdown)]},
+        backend=ParserBackend.MINERU,
+        quality=ParserQuality.FULL,
+        parser_version="mineru-v4/vlm",
+        archive_bytes=b"zip-audit-artifact",
+    )
+    uploaded: list[tuple[str, str]] = []
+
+    class UpgradeMinerUClient:
+        def __init__(self, _config: MinerUConfig) -> None:
+            pass
+
+        async def parse_existing(self, *, data_id: str) -> ParsedDocument:
+            assert data_id == "job-1"
+            return parsed
+
+        async def close(self) -> None:
+            return None
+
+    def upload_to_key(_payload: bytes, key: str, content_type: str) -> str:
+        uploaded.append((key, content_type))
+        return key
+
+    monkeypatch.setattr(
+        MinerUConfig,
+        "from_env",
+        classmethod(lambda _cls: _mineru_config()),
+    )
+    monkeypatch.setattr("src.pdf.pipeline.MinerUClient", UpgradeMinerUClient)
+    monkeypatch.setattr(
+        "src.pdf.pipeline.s3_service.upload_bytes_to_key",
+        upload_to_key,
+    )
+
+    result = asyncio.run(upgrade_pdf_from_checkpoint("job-1"))
+
+    assert result.parser_quality == "full"
+    assert result.parser_warning_code is None
+    assert result.parser_markdown_s3_key == "uploads/pdf-parses/job-1/full.md"
+    assert result.parser_archive_s3_key == "uploads/pdf-parses/job-1/mineru.zip"
+    assert sorted(uploaded) == [
+        ("uploads/pdf-parses/job-1/full.md", "text/markdown; charset=utf-8"),
+        ("uploads/pdf-parses/job-1/mineru.zip", "application/zip"),
+    ]
