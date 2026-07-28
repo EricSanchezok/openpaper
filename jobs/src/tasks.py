@@ -3,7 +3,6 @@ Celery tasks for Scholens jobs
 """
 
 import asyncio
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -34,7 +33,6 @@ from src.schemas import AudioOverviewRequest
 
 logger = logging.getLogger(__name__)
 
-PARSER_UPGRADE_INITIAL_DELAY_SECONDS = 30
 PARSER_UPGRADE_MAX_RETRIES = 16
 PARSER_UPGRADE_MAX_RETRY_DELAY_SECONDS = 15 * 60
 
@@ -78,34 +76,12 @@ def _claim_job(claim_url: str | None, *, task_id: str) -> bool:
         raise
 
 
-def _parser_upgrade_webhook_url(webhook_url: str) -> str:
-    marker = "/paper-processing/"
-    if marker not in webhook_url:
-        raise ValueError("paper processing webhook URL has an invalid path")
-    return webhook_url.replace(marker, "/paper-parser-upgrade/", 1)
-
-
-def _schedule_parser_upgrade(*, job_id: str, webhook_url: str) -> None:
-    upgrade_pdf_parser.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "webhook_url": _parser_upgrade_webhook_url(webhook_url),
-        },
-        countdown=PARSER_UPGRADE_INITIAL_DELAY_SECONDS,
-        task_id=f"{job_id}:mineru-upgrade",
-        queue="pdf_processing",
-    )
-    logger.info(
-        "Scheduled resumable MinerU upgrade",
-        extra={"job_id": job_id, "phase": "upgrade_schedule"},
-    )
-
-
 @celery_app.task(bind=True, name="upload_and_process_file")
 def upload_and_process_file(
     self,
     s3_object_key: str,
     webhook_url: str,
+    claim_url: str | None = None,
     skip_metadata_extraction: bool = False,
 ) -> dict[str, Any]:
     """
@@ -116,6 +92,8 @@ def upload_and_process_file(
     are produced. Used by the Zotero import path.
     """
     task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
     usage_events: list[dict[str, Any]] = []
     write_to_status = partial(_update_status, self, task_id)
 
@@ -165,8 +143,6 @@ def upload_and_process_file(
         )
         if not webhook_delivered:
             webhook_payload["webhook_error"] = "webhook_delivery_failed"
-        elif result.parser_upgrade_pending:
-            _schedule_parser_upgrade(job_id=task_id, webhook_url=webhook_url)
         elif result.parser_backend == "mineru" and result.parser_quality == "full":
             try:
                 asyncio.run(_clear_parser_checkpoint(task_id))
@@ -225,9 +201,15 @@ def upgrade_pdf_parser(
     self,
     job_id: str,
     webhook_url: str,
+    claim_url: str | None = None,
 ) -> dict[str, Any]:
     """Resume a MinerU checkpoint and atomically upgrade a text-only paper."""
     task_id = self.request.id
+    if int(self.request.retries) == 0 and not _claim_job(
+        claim_url,
+        task_id=task_id,
+    ):
+        return {"task_id": task_id, "status": "duplicate"}
     try:
         result = asyncio.run(upgrade_pdf_from_checkpoint(job_id))
         payload = {
@@ -250,7 +232,7 @@ def upgrade_pdf_parser(
         retry_number = int(self.request.retries) + 1
         countdown = min(
             PARSER_UPGRADE_MAX_RETRY_DELAY_SECONDS,
-            PARSER_UPGRADE_INITIAL_DELAY_SECONDS * (2 ** min(retry_number - 1, 5)),
+            30 * (2 ** min(retry_number - 1, 5)),
         )
         logger.warning(
             "MinerU parser upgrade remains pending; diagnostics=%s",
@@ -403,6 +385,62 @@ def generate_audio_overview_task(
         raise
 
 
+@celery_app.task(bind=True, name="postprocess_pdf")
+def postprocess_pdf_task(
+    self,
+    callback_url: str,
+    claim_url: str | None = None,
+) -> dict[str, Any]:
+    """Trigger idempotent Server-side persistence work under a durable lease."""
+    task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
+    payload = {"task_id": task_id}
+    if not _deliver_webhook(callback_url, payload, task_id=task_id):
+        raise RuntimeError("pdf_postprocess_callback_failed")
+    return {**payload, "status": "completed"}
+
+
+@celery_app.task(bind=True, name="collect_document")
+def collect_document_task(
+    self,
+    callback_url: str,
+    claim_url: str | None = None,
+) -> dict[str, Any]:
+    """Execute reference-safe, idempotent storage collection through Server."""
+    task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
+    payload = {"task_id": task_id}
+    if not _deliver_webhook(callback_url, payload, task_id=task_id):
+        raise RuntimeError("document_gc_callback_failed")
+    return {**payload, "status": "completed"}
+
+
+@celery_app.task(bind=True, name="delete_storage_objects")
+def delete_storage_objects_task(
+    self,
+    object_keys: list[str],
+    callback_url: str,
+    claim_url: str | None = None,
+) -> dict[str, Any]:
+    """Idempotently remove generated objects and acknowledge the durable job."""
+    task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
+    failed = [key for key in object_keys if not s3_service.delete_file(key)]
+    if failed:
+        logger.error(
+            "Storage cleanup failed",
+            extra={"job_id": task_id, "failed_object_count": len(failed)},
+        )
+        raise RuntimeError("storage_delete_failed")
+    payload = {"task_id": task_id, "deleted_count": len(object_keys)}
+    if not _deliver_webhook(callback_url, payload, task_id=task_id):
+        raise RuntimeError("storage_delete_callback_failed")
+    return {**payload, "status": "completed"}
+
+
 @celery_app.task(bind=True, name="health_check")
 def health_check(self):
     """
@@ -460,32 +498,34 @@ def health_check(self):
 
 @celery_app.task(bind=True, name="periodic_zotero_sync")
 def periodic_zotero_sync(self):
-    """
-    Periodic task that triggers the server to sync new Zotero annotations
-    for all users whose items haven't been synced in the past 24 hours.
-    Fires at the interval configured by ZOTERO_SYNC_INTERVAL_SECONDS (default 24h).
-    """
+    """Ask Server to persist due per-user Zotero jobs in its outbox."""
     webhook_base = os.getenv("WEBHOOK_BASE_URL", "http://localhost:8000")
     sync_interval = int(ZOTERO_SYNC_INTERVAL_SECONDS)
-    url = f"{webhook_base}/api/webhooks/internal/zotero-sync-all?threshold_seconds={sync_interval}"
-    logger.info(f"Triggering periodic Zotero sync via {url}")
+    url = (
+        f"{webhook_base}/api/webhooks/internal/zotero-schedule"
+        f"?threshold_seconds={sync_interval}"
+    )
+    logger.info("Scheduling due Zotero jobs")
     resp = post_signed_json(url, timeout=120)
     resp.raise_for_status()
     result = resp.json()
     logger.info(
-        f"Periodic Zotero sync complete: {result.get('synced_users', 0)} users synced"
+        "Periodic Zotero scheduling complete: %s jobs",
+        result.get("scheduled_jobs", 0),
     )
-
-    # Celery's task-success log runs the return value through a bounded saferepr,
-    # which collapses nested lists to "[...]" — so per-user sync errors never show
-    # up there. Log them explicitly here where they won't be truncated.
-    for user_result in result.get("results", []):
-        user_errors = user_result.get("errors") or []
-        if user_errors:
-            logger.warning(
-                "Zotero sync errors for user %s: %s",
-                user_result.get("user_id"),
-                json.dumps(user_errors),
-            )
-
     return result
+
+
+@celery_app.task(bind=True, name="postprocess_zotero")
+def postprocess_zotero_task(
+    self,
+    callback_url: str,
+    claim_url: str | None = None,
+) -> dict[str, Any]:
+    task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
+    payload = {"task_id": task_id}
+    if not _deliver_webhook(callback_url, payload, task_id=task_id):
+        raise RuntimeError("zotero_postprocess_callback_failed")
+    return {**payload, "status": "completed"}

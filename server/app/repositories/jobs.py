@@ -34,6 +34,7 @@ class EnqueueJob:
     job_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     document_id: uuid.UUID | None = None
+    available_at: datetime | None = None
 
 
 class JobRepository:
@@ -73,6 +74,7 @@ class JobRepository:
                 task_name=request.task_name,
                 queue=request.queue,
                 kwargs=request.task_kwargs,
+                available_at=request.available_at or datetime.now(UTC),
             )
         )
         db.flush()

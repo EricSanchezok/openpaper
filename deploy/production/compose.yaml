@@ -180,7 +180,7 @@ services:
       - worker
       - --loglevel=info
       - --concurrency=${SCHOLENS_CELERY_CONCURRENCY:-2}
-      - --queues=pdf_processing,zotero_sync,audio,data_table
+      - --queues=pdf_processing,zotero_sync,audio,data_table,storage_gc
       - --max-tasks-per-child=1000
       - --without-gossip
       - --without-mingle

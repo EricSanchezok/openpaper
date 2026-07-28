@@ -245,6 +245,16 @@ def reserve_upload(
                 )
             )
         )
+    if reference_already_exists:
+        raise AppError(
+            code=(
+                "document_already_in_project"
+                if project_id is not None
+                else "document_already_in_library"
+            ),
+            message="This document is already in the selected collection",
+            status_code=409,
+        )
 
     lock_account_resource_quota(db, user_id=owner_id)
     cleanup_plan = reap_stale_uploads(db, quota_owner_id=owner_id)

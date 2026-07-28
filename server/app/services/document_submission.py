@@ -11,14 +11,16 @@ from datetime import datetime, timezone
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.models import (
     DocumentProcessingStatus,
+    JobOperation,
     JobStatus,
     PaperUploadJob,
 )
 from app.database.telemetry import track_event
 from app.helpers.s3 import document_source_key, s3_service
-from app.integrations.jobs_client import jobs_client
 from app.repositories.documents import document_repository
+from app.repositories.jobs import EnqueueJob, job_repository
 from app.schemas.user import CurrentUser
+from app.helpers.celery_config import get_webhook_base_url
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -127,29 +129,33 @@ async def submit_reserved_document(
     document.processing_job_id = upload_job.id
     db.commit()
 
-    try:
-        return jobs_client.submit_pdf_processing_job(
-            document.s3_object_key,
-            str(upload_job.id),
-            skip_metadata_extraction,
-        )
-    except Exception:
-        db.rollback()
-        locked_job = db.get(PaperUploadJob, upload_job.id)
-        locked_document = document_repository.get_by_sha256(
-            db,
-            sha256=digest,
-            for_update=True,
-        )
-        if locked_job is not None:
-            locked_job.status = JobStatus.FAILED.value
-            locked_job.error_code = "jobs_submission_failed"
-            locked_job.completed_at = datetime.now(timezone.utc)
-        if (
-            locked_document is not None
-            and locked_document.processing_job_id == upload_job.id
-        ):
-            locked_document.processing_status = DocumentProcessingStatus.FAILED.value
-        db.commit()
-        logger.exception("Canonical PDF job publication failed for %s", upload_job.id)
-        raise RuntimeError("pdf_upload_submission_failed") from None
+    base_url = get_webhook_base_url().rstrip("/")
+    job_repository.enqueue(
+        db,
+        request=EnqueueJob(
+            operation=JobOperation.PDF_PROCESS,
+            requested_by_id=user.id,
+            project_id=upload_job.project_id,
+            document_id=document.id,
+            idempotency_key=f"pdf-ingest:{upload_job.id}",
+            payload={
+                "s3_object_key": document.s3_object_key,
+                "skip_metadata_extraction": skip_metadata_extraction,
+            },
+            task_name="upload_and_process_file",
+            queue="pdf_processing",
+            task_kwargs={
+                "s3_object_key": document.s3_object_key,
+                "webhook_url": (
+                    f"{base_url}/api/webhooks/paper-processing/{upload_job.id}"
+                ),
+                "claim_url": (
+                    f"{base_url}/api/webhooks/jobs/{upload_job.id}/claim"
+                ),
+                "skip_metadata_extraction": skip_metadata_extraction,
+            },
+            job_id=upload_job.id,
+        ),
+    )
+    db.commit()
+    return str(upload_job.id)

@@ -11,7 +11,7 @@ from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
-from app.database.database import SessionLocal, engine, get_db
+from app.database.database import engine, get_db
 from app.database.models import (
     ConversationScopeType,
     Document,
@@ -34,10 +34,12 @@ from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.jobs_webhooks import verify_jobs_webhook
 from app.helpers.ai_limits import release_concurrency_by_id
+from app.helpers.celery_config import get_webhook_base_url
 from app.services.resource_quotas import can_user_auto_sync_zotero
+from app.services.document_gc import collect_document_if_due
 from app.llm.citation_handler import CitationHandler
 from app.repositories.conversations import conversation_repository
-from app.repositories.jobs import job_repository
+from app.repositories.jobs import EnqueueJob, job_repository
 from app.schemas.conversations import ConversationCreateRequest
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.schemas.jobs import (
@@ -56,7 +58,7 @@ from app.services.zotero.service import (
     auto_import_new_papers,
     sync_batch,
 )
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -68,6 +70,14 @@ webhook_router = APIRouter(dependencies=[Depends(verify_jobs_webhook)])
 
 class JobClaimResponse(BaseModel):
     claimed: bool
+
+
+class JobCallbackIdentity(BaseModel):
+    task_id: uuid.UUID
+
+
+class StorageDeleteCallback(JobCallbackIdentity):
+    deleted_count: int
 
 
 @webhook_router.post("/jobs/{job_id}/claim", response_model=JobClaimResponse)
@@ -276,6 +286,91 @@ def _settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> No
             )
 
 
+def _complete_pdf_job(
+    db: Session,
+    *,
+    job_id: uuid.UUID,
+    result: PDFProcessingResult,
+) -> bool:
+    _, changed = job_repository.complete(
+        db,
+        job_id=job_id,
+        result=result.model_dump(mode="json"),
+    )
+    return changed
+
+
+def _enqueue_parser_upgrade(
+    db: Session,
+    *,
+    ingestion_job_id: uuid.UUID,
+    document_id: uuid.UUID,
+) -> uuid.UUID:
+    """Persist MinerU continuation before publishing it to the worker."""
+    upgrade_job_id = uuid.uuid4()
+    base_url = get_webhook_base_url().rstrip("/")
+    job_repository.enqueue(
+        db,
+        request=EnqueueJob(
+            operation=JobOperation.PDF_PARSER_UPGRADE,
+            requested_by_id=None,
+            document_id=document_id,
+            idempotency_key=f"pdf-parser-upgrade:{ingestion_job_id}",
+            payload={
+                "checkpoint_job_id": str(ingestion_job_id),
+                "document_id": str(document_id),
+            },
+            task_name="upgrade_pdf_parser",
+            queue="pdf_processing",
+            task_kwargs={
+                "job_id": str(ingestion_job_id),
+                "webhook_url": (
+                    f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/pdf-upgrade"
+                ),
+                "claim_url": (
+                    f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/claim"
+                ),
+            },
+            job_id=upgrade_job_id,
+        ),
+    )
+    return upgrade_job_id
+
+
+def _enqueue_pdf_postprocess(
+    db: Session,
+    *,
+    ingestion_job_id: uuid.UUID,
+    document_id: uuid.UUID,
+    user_id: int,
+) -> uuid.UUID:
+    postprocess_job_id = uuid.uuid4()
+    base_url = get_webhook_base_url().rstrip("/")
+    job_repository.enqueue(
+        db,
+        request=EnqueueJob(
+            operation=JobOperation.PDF_POSTPROCESS,
+            requested_by_id=user_id,
+            document_id=document_id,
+            idempotency_key=f"pdf-postprocess:{ingestion_job_id}",
+            payload={"ingestion_job_id": str(ingestion_job_id)},
+            task_name="postprocess_pdf",
+            queue="pdf_processing",
+            task_kwargs={
+                "callback_url": (
+                    f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/"
+                    "pdf-postprocess"
+                ),
+                "claim_url": (
+                    f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/claim"
+                ),
+            },
+            job_id=postprocess_job_id,
+        ),
+    )
+    return postprocess_job_id
+
+
 def _finalize_zotero_import(
     db: Session,
     job_id: str,
@@ -422,6 +517,16 @@ def handle_failed_upload(
             schedule_document_gc(db, document_id=job.document_id)
 
     paper_upload_job_crud.mark_as_failed(db=db, job_id=job_id, user=job_user)
+    try:
+        job_repository.fail(
+            db,
+            job_id=uuid.UUID(job_id),
+            error_code="pdf_processing_failed",
+        )
+        db.commit()
+    except AppError as exc:
+        if exc.code != "job_not_found":
+            raise
 
     zotero_import = zotero_import_crud.get_by_upload_job_id(
         db, upload_job_id=uuid.UUID(job_id)
@@ -438,72 +543,172 @@ def handle_failed_upload(
 
 def post_process_paper(
     *,
-    paper_id: uuid.UUID,
-    raw_content: str,
-    title: str,
-    authors: list[str],
+    db: Session,
+    paper: Document,
     job_user: CurrentUser,
 ) -> None:
-    """Run paper post-processing (passage FTS indexing, DOI lookup) off the webhook hot path."""
-    db = SessionLocal()
-    try:
-        # Stamp attempted_metadata_at up front so a concurrent GET /paper
-        # short-circuits its own synchronous DOI lookup while we work.
-        try:
-            paper = paper_crud.get(db=db, id=paper_id, user=job_user)
-            if paper:
-                paper_crud.update(
-                    db=db,
-                    obj_in=PaperUpdate(
-                        attempted_metadata_at=datetime.now(timezone.utc)
-                    ),
-                    db_obj=paper,
-                    user=job_user,
-                )
-        except Exception:
-            db.rollback()
-            logger.exception(
-                "Error stamping attempted_metadata_at for paper %s", paper_id
-            )
+    """Build search passages and hydrate metadata under a durable job lease."""
+    if not paper.raw_content:
+        raise RuntimeError("pdf_postprocess_content_missing")
+    paper.attempted_metadata_at = datetime.now(timezone.utc)
+    paper_crud.index_paper_passages(
+        db,
+        paper_id=paper.id,
+        raw_content=paper.raw_content,
+    )
+    hydrated = hydrate_paper_metadata(
+        db=db,
+        paper=paper,
+        user=job_user,
+        force=True,
+        agentic=True,
+    )
+    track_event(
+        "doi_resolved",
+        properties={"has_doi": bool(hydrated.doi)},
+        user_id=str(job_user.id),
+        db=db,
+    )
 
-        try:
-            paper_crud.index_paper_passages(
-                db,
-                paper_id=paper_id,
-                raw_content=raw_content,
-            )
-            db.commit()
-        except Exception:
-            db.rollback()
-            logger.exception("Error indexing passages for paper %s", paper_id)
 
-        doi: str | None = None
-        try:
-            paper = paper_crud.get(db=db, id=paper_id, user=job_user)
-            if paper:
-                paper = hydrate_paper_metadata(
-                    db=db, paper=paper, user=job_user, force=True, agentic=True
-                )
-                doi = str(paper.doi) if paper.doi else None
-        except Exception:
-            db.rollback()
-            logger.exception("Error hydrating metadata for paper %s", paper_id)
-
-        track_event(
-            "doi_resolved",
-            properties={"has_doi": bool(doi)},
-            user_id=str(job_user.id),
-            db=db,
+@webhook_router.post(
+    "/jobs/{job_id}/pdf-postprocess",
+    response_model=JobClaimResponse,
+)
+def complete_pdf_postprocess_job(
+    job_id: uuid.UUID,
+    callback: JobCallbackIdentity,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    job = job_repository.require(db, job_id=job_id)
+    if (
+        job.operation != JobOperation.PDF_POSTPROCESS.value
+        or callback.task_id != job_id
+    ):
+        raise AppError(
+            code="job_callback_mismatch",
+            message="Job callback does not match",
+            status_code=409,
         )
-    finally:
-        db.close()
+    if job.status == JobStatus.COMPLETED.value:
+        return JobClaimResponse(claimed=False)
+    if job.document_id is None or job.requested_by_id is None:
+        raise AppError(
+            code="job_scope_missing",
+            message="Job scope is incomplete",
+            status_code=409,
+        )
+    paper = db.get(Document, job.document_id)
+    user = user_repository.get(db, id=job.requested_by_id)
+    if paper is None or user is None:
+        raise AppError(
+            code="job_scope_missing",
+            message="Job scope is no longer available",
+            status_code=409,
+        )
+    try:
+        post_process_paper(
+            db=db,
+            paper=paper,
+            job_user=CurrentUser.from_auth_user(user),
+        )
+        job_repository.complete(
+            db,
+            job_id=job_id,
+            result={"document_id": str(paper.id)},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "PDF post-processing failed",
+            extra={"job_id": str(job_id), "document_id": str(paper.id)},
+        )
+        raise
+    return JobClaimResponse(claimed=True)
+
+
+@webhook_router.post(
+    "/jobs/{job_id}/document-gc",
+    response_model=JobClaimResponse,
+)
+def complete_document_gc_job(
+    job_id: uuid.UUID,
+    callback: JobCallbackIdentity,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    job = job_repository.require(db, job_id=job_id)
+    if job.operation != JobOperation.DOCUMENT_GC.value or callback.task_id != job_id:
+        raise AppError(
+            code="job_callback_mismatch",
+            message="Job callback does not match",
+            status_code=409,
+        )
+    if job.status == JobStatus.COMPLETED.value:
+        return JobClaimResponse(claimed=False)
+    if job.document_id is None:
+        job_repository.complete(
+            db,
+            job_id=job_id,
+            result={"deleted": True, "cancelled": False},
+        )
+        db.commit()
+        return JobClaimResponse(claimed=True)
+
+    result = collect_document_if_due(db, document_id=job.document_id)
+    if result.retry_required:
+        raise AppError(
+            code="document_gc_retry_required",
+            message="Document cleanup will be retried",
+            status_code=503,
+        )
+    if not result.deleted and not result.cancelled:
+        raise AppError(
+            code="document_gc_not_due",
+            message="Document cleanup is not due",
+            status_code=503,
+        )
+    job_repository.complete(
+        db,
+        job_id=job_id,
+        result={
+            "deleted": result.deleted,
+            "cancelled": result.cancelled,
+        },
+    )
+    db.commit()
+    return JobClaimResponse(claimed=True)
+
+
+@webhook_router.post(
+    "/jobs/{job_id}/storage-delete",
+    response_model=JobClaimResponse,
+)
+def complete_storage_delete_job(
+    job_id: uuid.UUID,
+    callback: StorageDeleteCallback,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    job = job_repository.require(db, job_id=job_id)
+    if job.operation != JobOperation.STORAGE_DELETE.value or callback.task_id != job_id:
+        raise AppError(
+            code="job_callback_mismatch",
+            message="Job callback does not match",
+            status_code=409,
+        )
+    _, changed = job_repository.complete(
+        db,
+        job_id=job_id,
+        result={"deleted_count": callback.deleted_count},
+    )
+    db.commit()
+    return JobClaimResponse(claimed=changed)
 
 
 @webhook_router.post("/paper-processing/{job_id}")
 async def handle_paper_processing_webhook(
     job_id: str,
     webhook_data: PdfProcessingWebhookData,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     """Handle webhook from paper processing jobs service."""
@@ -514,6 +719,13 @@ async def handle_paper_processing_webhook(
         raise HTTPException(status_code=404, detail="Job not found")
 
     job_id = str(job.id)
+    durable_job = job_repository.require(db, job_id=job.id)
+    if durable_job.operation != JobOperation.PDF_PROCESS.value:
+        raise AppError(
+            code="job_operation_mismatch",
+            message="Job operation does not match callback",
+            status_code=409,
+        )
 
     if job.status == JobStatus.COMPLETED:
         logger.warning(f"Received webhook for already completed job {job_id}, ignoring")
@@ -600,6 +812,14 @@ async def handle_paper_processing_webhook(
                     db=db, job_id=job_id, job_user=job_user, result=result
                 )
                 if finalized:
+                    _complete_pdf_job(db, job_id=job.id, result=result)
+                    if result.parser_upgrade_pending and job.document_id is not None:
+                        _enqueue_parser_upgrade(
+                            db,
+                            ingestion_job_id=job.id,
+                            document_id=job.document_id,
+                        )
+                    db.commit()
                     track_event(
                         "zotero_paper_processed",
                         properties={"worker_duration": result.duration},
@@ -756,6 +976,11 @@ async def handle_paper_processing_webhook(
 
             # Mark job as completed
             paper_upload_job_crud.mark_as_completed(db=db, job_id=job_id, user=job_user)
+            _complete_pdf_job(
+                db,
+                job_id=uuid.UUID(job_id),
+                result=result,
+            )
             if paper is not None:
                 db.execute(
                     update(PaperUploadJob)
@@ -772,16 +997,22 @@ async def handle_paper_processing_webhook(
                     )
                 )
                 db.commit()
+                if result.parser_upgrade_pending:
+                    _enqueue_parser_upgrade(
+                        db,
+                        ingestion_job_id=uuid.UUID(job_id),
+                        document_id=uuid.UUID(str(paper.id)),
+                    )
+                    db.commit()
 
             if paper:
-                background_tasks.add_task(
-                    post_process_paper,
-                    paper_id=uuid.UUID(str(paper.id)),
-                    raw_content=result.raw_content,
-                    title=metadata.title,
-                    authors=metadata.authors,
-                    job_user=job_user,
+                _enqueue_pdf_postprocess(
+                    db,
+                    ingestion_job_id=uuid.UUID(job_id),
+                    document_id=uuid.UUID(str(paper.id)),
+                    user_id=job_user.id,
                 )
+                db.commit()
 
         else:
             # Processing failed.
@@ -799,6 +1030,14 @@ async def handle_paper_processing_webhook(
                     error_message=error_message,
                 )
                 if salvaged:
+                    _complete_pdf_job(db, job_id=job.id, result=result)
+                    if result.parser_upgrade_pending and job.document_id is not None:
+                        _enqueue_parser_upgrade(
+                            db,
+                            ingestion_job_id=job.id,
+                            document_id=job.document_id,
+                        )
+                    db.commit()
                     return {
                         "status": "webhook processed - zotero salvage",
                         "paper_id": salvaged,
@@ -839,39 +1078,48 @@ async def handle_paper_processing_webhook(
     return {"status": "webhook processed"}
 
 
-@webhook_router.post("/paper-parser-upgrade/{job_id}")
+@webhook_router.post("/jobs/{job_id}/pdf-upgrade")
 def handle_paper_parser_upgrade_webhook(
-    job_id: str,
+    job_id: uuid.UUID,
     webhook_data: PdfParserUpgradeWebhookData,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     """Atomically replace a completed text-only parse with MinerU output."""
-    try:
-        job_uuid = uuid.UUID(job_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="invalid_job_id") from exc
-    if webhook_data.result.job_id != job_id:
+    job = job_repository.require(db, job_id=job_id)
+    if job.operation != JobOperation.PDF_PARSER_UPGRADE.value:
+        raise AppError(
+            code="job_operation_mismatch",
+            message="Job operation does not match callback",
+            status_code=409,
+        )
+    checkpoint_job_id = str(job.payload.get("checkpoint_job_id", ""))
+    if webhook_data.result.job_id != checkpoint_job_id:
         raise HTTPException(status_code=422, detail="parser_upgrade_job_mismatch")
-
-    job = paper_upload_job_crud.get_by(db=db, id=job_uuid)
-    if not job:
-        raise HTTPException(status_code=404, detail="upload_job_not_found")
-    if job.status != JobStatus.COMPLETED:
-        raise HTTPException(status_code=409, detail="upload_job_not_completed")
+    if webhook_data.task_id != str(job_id):
+        raise HTTPException(status_code=422, detail="parser_upgrade_task_mismatch")
+    document_id = job.document_id
+    if document_id is None:
+        raise HTTPException(status_code=409, detail="parser_upgrade_document_missing")
 
     upgrade_lock = AdvisoryLock(
         engine,
         namespace=AdvisoryLockNamespace.PAPER_PROCESSING_WEBHOOK,
-        key=job_id,
+        key=str(document_id),
     )
     if not upgrade_lock.acquire():
         raise HTTPException(status_code=409, detail="paper_update_in_progress")
 
     try:
-        paper = db.get(Document, job.document_id) if job.document_id else None
+        paper = db.get(Document, document_id)
         if paper is None:
             raise HTTPException(status_code=404, detail="paper_not_found")
         if paper.parser_quality == "full":
+            job_repository.complete(
+                db,
+                job_id=job_id,
+                result=webhook_data.result.model_dump(mode="json"),
+            )
+            db.commit()
             return {
                 "status": "parser upgrade already applied",
                 "paper_id": str(paper.id),
@@ -894,11 +1142,16 @@ def handle_paper_parser_upgrade_webhook(
             paper_id=uuid.UUID(str(paper.id)),
             raw_content=paper.raw_content,
         )
+        job_repository.complete(
+            db,
+            job_id=job_id,
+            result=result.model_dump(mode="json"),
+        )
         db.commit()
         logger.info(
             "Applied MinerU parser upgrade",
             extra={
-                "job_id": job_id,
+                "job_id": str(job_id),
                 "paper_id": str(paper.id),
                 "task_id": webhook_data.task_id,
                 "phase": "parser_upgrade",
@@ -915,7 +1168,7 @@ def handle_paper_parser_upgrade_webhook(
         db.rollback()
         logger.exception(
             "Failed to apply MinerU parser upgrade",
-            extra={"job_id": job_id, "phase": "parser_upgrade"},
+            extra={"job_id": str(job_id), "phase": "parser_upgrade"},
         )
         raise HTTPException(
             status_code=500,
@@ -925,99 +1178,151 @@ def handle_paper_parser_upgrade_webhook(
         upgrade_lock.release()
 
 
-@webhook_router.post("/internal/zotero-sync-all")
-async def trigger_zotero_sync_all(
+@webhook_router.post("/internal/zotero-schedule")
+def schedule_zotero_jobs(
     request: Request, db: Session = Depends(get_db)
 ) -> dict[str, object]:
-    """
-    Internal endpoint called by the Celery Beat periodic task to sync new Zotero
-    annotations for all users whose items haven't been synced in the past 24 hours.
-    Authentication is enforced by the router's signed Jobs request dependency.
-    """
+    """Persist one idempotent job per due and eligible Zotero user."""
     threshold_seconds = int(
         request.query_params.get("threshold_seconds", str(24 * 3600))
     )
+    if threshold_seconds < 60:
+        raise AppError(
+            code="zotero_sync_interval_invalid",
+            message="Zotero sync interval is invalid",
+            status_code=422,
+        )
     threshold_hours = threshold_seconds / 3600
     user_ids = zotero_import_crud.list_user_ids_due_for_sync(
         db, threshold_hours=threshold_hours
     )
-    logger.info(
-        f"Periodic Zotero sync: found {len(user_ids)} users due for sync (threshold={threshold_hours:.4f}h)"
-    )
-
-    results = []
-    skipped = []
+    scheduled = 0
+    skipped = 0
+    window = int(datetime.now(timezone.utc).timestamp()) // threshold_seconds
+    base_url = get_webhook_base_url().rstrip("/")
     for user_id in user_ids:
         user = user_repository.get(db, id=user_id)
         if not user:
-            logger.info(f"Skipping Zotero auto-sync for {user_id}: user not found")
-            skipped.append({"user_id": str(user_id), "reason": "user_not_found"})
+            skipped += 1
             continue
 
         current_user = CurrentUser.from_auth_user(user)
         if not can_user_auto_sync_zotero(db, current_user):
-            logger.info(
-                f"Skipping Zotero auto-sync for {user_id}: not eligible for auto-sync (basic plan)"
-            )
-            skipped.append(
-                {"user_id": str(user_id), "reason": "auto_sync_not_eligible"}
-            )
+            skipped += 1
             continue
 
         if not zotero_crud.get_by_user_id(db, user_id=user.id):
-            # The user disconnected Zotero but kept their imported papers, so
-            # their imported items still make them look "due for sync". This is
-            # an expected, benign state — skip quietly rather than erroring.
-            logger.info(
-                f"Skipping Zotero auto-sync for {user_id}: Zotero account not connected"
-            )
-            skipped.append({"user_id": str(user_id), "reason": "not_connected"})
+            skipped += 1
             continue
-
-        try:
-            result = await sync_batch(db, user=current_user, limit=50)
-            results.append({"user_id": str(user_id), **result})
-            if result.get("new_annotations_count", 0) > 0:
-                track_event(
-                    "zotero_auto_sync",
-                    user_id=str(user_id),
-                    properties={
-                        "papers": result.get("synced_papers_count", 0),
-                        "annotations": result.get("new_annotations_count", 0),
-                    },
-                    db=db,
-                )
-
-            # Auto-import is a best-effort secondary step. A failure here
-            # shouldn't fail the user's sync (which already succeeded above), but
-            # we still log it so the error is visible rather than swallowed.
-            try:
-                import_result = await auto_import_new_papers(db, user=current_user)
-                if import_result.get("auto_imported_count", 0) > 0:
-                    track_event(
-                        "zotero_auto_import_new_papers",
-                        user_id=str(user_id),
-                        properties={"count": import_result["auto_imported_count"]},
-                        db=db,
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Auto-import of new papers failed for user {user_id}: {e}",
-                    exc_info=True,
-                )
-        except Exception:
-            logger.exception("Auto-sync failed for user %s", user_id)
-            results.append({"user_id": str(user_id), "error": "zotero_sync_failed"})
-
-    synced_users = len([r for r in results if "error" not in r])
-    logger.info(
-        f"Periodic Zotero sync complete: {synced_users}/{len(user_ids)} users synced "
-        f"successfully, {len(skipped)} skipped"
-    )
+        job_id = uuid.uuid4()
+        job = job_repository.enqueue(
+            db,
+            request=EnqueueJob(
+                operation=JobOperation.ZOTERO_POSTPROCESS,
+                requested_by_id=user.id,
+                idempotency_key=f"zotero-postprocess:{user.id}:{window}",
+                payload={"threshold_seconds": threshold_seconds},
+                task_name="postprocess_zotero",
+                queue="zotero_sync",
+                task_kwargs={
+                    "callback_url": (
+                        f"{base_url}/api/webhooks/jobs/{job_id}/zotero-postprocess"
+                    ),
+                    "claim_url": f"{base_url}/api/webhooks/jobs/{job_id}/claim",
+                },
+                job_id=job_id,
+            ),
+        )
+        if job.id == job_id:
+            scheduled += 1
+    db.commit()
     return {
-        "synced_users": synced_users,
         "total_users": len(user_ids),
-        "skipped_users": len(skipped),
-        "results": results,
-        "skipped": skipped,
+        "scheduled_jobs": scheduled,
+        "skipped_users": skipped,
     }
+
+
+@webhook_router.post(
+    "/jobs/{job_id}/zotero-postprocess",
+    response_model=JobClaimResponse,
+)
+async def complete_zotero_postprocess_job(
+    job_id: uuid.UUID,
+    callback: JobCallbackIdentity,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    job = job_repository.require(db, job_id=job_id)
+    if (
+        job.operation != JobOperation.ZOTERO_POSTPROCESS.value
+        or callback.task_id != job_id
+    ):
+        raise AppError(
+            code="job_callback_mismatch",
+            message="Job callback does not match",
+            status_code=409,
+        )
+    if job.status == JobStatus.COMPLETED.value:
+        return JobClaimResponse(claimed=False)
+    if job.requested_by_id is None:
+        raise AppError(
+            code="job_scope_missing",
+            message="Job scope is incomplete",
+            status_code=409,
+        )
+    user = user_repository.get(db, id=job.requested_by_id)
+    if user is None:
+        job_repository.complete(
+            db,
+            job_id=job_id,
+            result={"skipped": "user_not_found"},
+        )
+        db.commit()
+        return JobClaimResponse(claimed=True)
+    current_user = CurrentUser.from_auth_user(user)
+    if (
+        not can_user_auto_sync_zotero(db, current_user)
+        or zotero_crud.get_by_user_id(db, user_id=user.id) is None
+    ):
+        job_repository.complete(
+            db,
+            job_id=job_id,
+            result={"skipped": "not_eligible_or_disconnected"},
+        )
+        db.commit()
+        return JobClaimResponse(claimed=True)
+
+    try:
+        sync_result = await sync_batch(db, user=current_user, limit=50)
+        import_result = await auto_import_new_papers(db, user=current_user)
+        synced_papers = int(sync_result.get("synced_papers_count", 0))
+        annotation_count = int(sync_result.get("new_annotations_count", 0))
+        imported_count = int(import_result.get("auto_imported_count", 0))
+        job_repository.complete(
+            db,
+            job_id=job_id,
+            result={
+                "synced_papers_count": synced_papers,
+                "new_annotations_count": annotation_count,
+                "auto_imported_count": imported_count,
+            },
+        )
+        db.commit()
+        track_event(
+            "zotero_auto_sync",
+            user_id=str(user.id),
+            properties={
+                "papers": synced_papers,
+                "annotations": annotation_count,
+                "auto_imported": imported_count,
+            },
+            db=db,
+        )
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Durable Zotero post-processing failed",
+            extra={"job_id": str(job_id), "user_id": user.id},
+        )
+        raise
+    return JobClaimResponse(claimed=True)

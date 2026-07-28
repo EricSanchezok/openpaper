@@ -23,12 +23,11 @@ from pathlib import PurePosixPath
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
-from app.api.jobs_webhooks.router import handle_failed_upload
 from app.auth.dependencies import get_required_user
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.database import get_db
-from app.database.models import JobStatus, PaperUploadJob
+from app.database.models import DurableJob, JobStatus, PaperUploadJob
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.ai_limits import (
@@ -42,7 +41,6 @@ from app.helpers.parser import (
     validate_pdf_content,
     validate_url_and_fetch_pdf,
 )
-from app.integrations.jobs_client import jobs_client
 from app.schemas.user import CurrentUser
 from app.services.document_submission import submit_reserved_document
 from app.services.upload_reservations import reserve_upload
@@ -80,7 +78,7 @@ async def get_upload_status(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     """
-    Get the status of a paper upload job, including real-time Celery task status.
+    Get the durable status of a paper ingestion from PostgreSQL.
     """
     paper_upload_job = paper_upload_job_crud.get(db=db, id=job_id, user=current_user)
 
@@ -96,39 +94,13 @@ async def get_upload_status(
         if not paper:
             return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    # Get real-time Celery task status if we have a task_id and job is still in progress
-    # (completed/failed jobs no longer have active Celery tasks)
-    celery_task_status = None
-    if paper_upload_job.task_id and paper_upload_job.status not in (
-        JobStatus.COMPLETED,
-        JobStatus.FAILED,
-    ):
-        try:
-            celery_task_status = jobs_client.check_celery_task_status(
-                str(paper_upload_job.task_id)
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to get Celery task status for {paper_upload_job.task_id}: {e}"
-            )
-
-    # If Celery reports failure, clean up and update the job status to match
-    if (
-        celery_task_status
-        and celery_task_status.get("status", "").lower() == JobStatus.FAILED
-    ):
-        handle_failed_upload(
-            db=db,
-            job_id=str(paper_upload_job.id),
-            job_user=current_user,
-            reason=celery_task_status.get("error", "Celery task failed"),
-        )
+    durable_job = db.get(DurableJob, paper_upload_job.id)
 
     # Build response with both job status and task status
     response_content = {
         "job_id": str(paper_upload_job.id),
-        "status": paper_upload_job.status,
-        "task_id": paper_upload_job.task_id,
+        "status": durable_job.status if durable_job else paper_upload_job.status,
+        "task_id": str(durable_job.id) if durable_job else paper_upload_job.task_id,
         "started_at": (
             paper_upload_job.started_at.isoformat()
             if paper_upload_job.started_at
@@ -146,13 +118,11 @@ async def get_upload_status(
         "parser_warning_code": paper.parser_warning_code if paper else None,
     }
 
-    # Add Celery task information if available
-    if celery_task_status:
+    if durable_job is not None:
         response_content.update(
             {
-                "celery_status": celery_task_status.get("status"),
-                "celery_progress_message": celery_task_status.get("progress_message"),
-                "celery_error": celery_task_status.get("error"),
+                "progress_message": durable_job.progress_message,
+                "error_code": durable_job.error_code,
             }
         )
 

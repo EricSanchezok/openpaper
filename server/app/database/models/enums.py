@@ -54,10 +54,12 @@ class JobStatus(str, Enum):
 class JobOperation(str, Enum):
     PDF_PROCESS = "pdf_process"
     PDF_PARSER_UPGRADE = "pdf_parser_upgrade"
+    PDF_POSTPROCESS = "pdf_postprocess"
     AUDIO_GENERATE = "audio_generate"
     DATA_TABLE_GENERATE = "data_table_generate"
     ZOTERO_POSTPROCESS = "zotero_postprocess"
     DOCUMENT_GC = "document_gc"
+    STORAGE_DELETE = "storage_delete"
 
 
 class JobDispatchStatus(str, Enum):

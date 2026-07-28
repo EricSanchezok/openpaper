@@ -13,8 +13,13 @@ from app.database.models import (
     LibraryPaper,
     PaperImage,
     ProjectPaper,
+    JobOperation,
+    ResearchAudioOverview,
+    ResearchItem,
 )
+from app.helpers.celery_config import get_webhook_base_url
 from app.helpers.s3 import s3_service
+from app.repositories.jobs import EnqueueJob, job_repository
 from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
@@ -57,6 +62,30 @@ def schedule_document_gc(
         document.gc_after = None
         return False
     document.gc_after = (now or datetime.now(timezone.utc)) + DOCUMENT_GC_GRACE_PERIOD
+    job_id = uuid.uuid4()
+    base_url = get_webhook_base_url().rstrip("/")
+    job_repository.enqueue(
+        db,
+        request=EnqueueJob(
+            operation=JobOperation.DOCUMENT_GC,
+            requested_by_id=None,
+            document_id=document.id,
+            idempotency_key=(
+                f"document-gc:{document.id}:{document.gc_after.isoformat()}"
+            ),
+            payload={"document_id": str(document.id)},
+            task_name="collect_document",
+            queue="storage_gc",
+            task_kwargs={
+                "callback_url": (
+                    f"{base_url}/api/webhooks/jobs/{job_id}/document-gc"
+                ),
+                "claim_url": f"{base_url}/api/webhooks/jobs/{job_id}/claim",
+            },
+            job_id=job_id,
+            available_at=document.gc_after,
+        ),
+    )
     return True
 
 
@@ -100,6 +129,14 @@ def collect_document_if_due(
         document.parser_archive_s3_key,
         *db.scalars(
             select(PaperImage.s3_object_key).where(PaperImage.paper_id == document_id)
+        ).all(),
+        *db.scalars(
+            select(ResearchAudioOverview.s3_object_key)
+            .join(
+                ResearchItem,
+                ResearchItem.id == ResearchAudioOverview.research_item_id,
+            )
+            .where(ResearchItem.document_id == document_id)
         ).all(),
     }
     failed = s3_service.delete_files(key for key in object_keys if key)

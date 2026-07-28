@@ -31,9 +31,13 @@ celery_app.conf.update(
     task_routes={
         "upload_and_process_file": {"queue": "pdf_processing"},
         "upgrade_pdf_parser": {"queue": "pdf_processing"},
+        "postprocess_pdf": {"queue": "pdf_processing"},
+        "collect_document": {"queue": "storage_gc"},
+        "delete_storage_objects": {"queue": "storage_gc"},
         "generate_audio_overview": {"queue": "audio"},
         "process_data_table": {"queue": "data_table"},
         "periodic_zotero_sync": {"queue": "zotero_sync"},
+        "postprocess_zotero": {"queue": "zotero_sync"},
     },
     worker_prefetch_multiplier=1,  # Process one task at a time
     task_acks_late=True,

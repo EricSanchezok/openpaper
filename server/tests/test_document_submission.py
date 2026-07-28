@@ -64,7 +64,7 @@ async def test_personal_submission_persists_identity_before_broker_publish(
         return_value=SimpleNamespace(document=document, created=True)
     )
     attach_library = MagicMock(return_value=SimpleNamespace(created=True))
-    submit_job = MagicMock(return_value=str(upload_job.id))
+    enqueue_job = MagicMock()
     monkeypatch.setattr(
         "app.services.document_submission.s3_service.upload_document_source",
         upload_source,
@@ -82,8 +82,8 @@ async def test_personal_submission_persists_identity_before_broker_publish(
         attach_library,
     )
     monkeypatch.setattr(
-        "app.services.document_submission.jobs_client.submit_pdf_processing_job",
-        submit_job,
+        "app.services.document_submission.job_repository.enqueue",
+        enqueue_job,
     )
     monkeypatch.setattr(
         "app.services.document_submission.track_event",
@@ -106,12 +106,12 @@ async def test_personal_submission_persists_identity_before_broker_publish(
         user_id=7,
     )
     upload_source.assert_called_once()
-    db.commit.assert_called_once()
-    submit_job.assert_called_once_with(
-        document.s3_object_key,
-        str(upload_job.id),
-        False,
-    )
+    assert db.commit.call_count == 2
+    request = enqueue_job.call_args.kwargs["request"]
+    assert request.job_id == upload_job.id
+    assert request.task_name == "upload_and_process_file"
+    assert request.task_kwargs["s3_object_key"] == document.s3_object_key
+    assert request.task_kwargs["claim_url"].endswith(f"/jobs/{upload_job.id}/claim")
 
 
 @pytest.mark.asyncio
@@ -140,8 +140,8 @@ async def test_project_submission_consumes_reserved_project_destination(
         attach,
     )
     monkeypatch.setattr(
-        "app.services.document_submission.jobs_client.submit_pdf_processing_job",
-        MagicMock(return_value=str(upload_job.id)),
+        "app.services.document_submission.job_repository.enqueue",
+        MagicMock(),
     )
     monkeypatch.setattr(
         "app.services.document_submission.track_event",

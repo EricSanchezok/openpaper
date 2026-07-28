@@ -1,12 +1,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from src.app import app
 from src.celery_app import celery_app
-from src.tasks import _parser_upgrade_webhook_url, _schedule_parser_upgrade
 
 
 def test_jobs_api_exposes_only_health_and_status(monkeypatch) -> None:
@@ -86,31 +84,7 @@ def test_worker_runtime_budget_covers_mineru_deadline_and_upgrade_task() -> None
     assert "--time-limit=960" in worker_script
 
 
-def test_parser_upgrade_is_scheduled_with_a_deterministic_task_identity(
-    monkeypatch,
-) -> None:
-    apply_async = MagicMock()
-    monkeypatch.setattr("src.tasks.upgrade_pdf_parser.apply_async", apply_async)
-    initial_url = (
-        "https://api.example/api/webhooks/paper-processing/"
-        "00000000-0000-0000-0000-000000000001"
-    )
+def test_parser_upgrade_is_dispatched_only_through_the_registered_queue() -> None:
+    task_routes = celery_app.conf.task_routes
 
-    _schedule_parser_upgrade(job_id="job-1", webhook_url=initial_url)
-
-    assert _parser_upgrade_webhook_url(initial_url) == (
-        "https://api.example/api/webhooks/paper-parser-upgrade/"
-        "00000000-0000-0000-0000-000000000001"
-    )
-    apply_async.assert_called_once_with(
-        kwargs={
-            "job_id": "job-1",
-            "webhook_url": (
-                "https://api.example/api/webhooks/paper-parser-upgrade/"
-                "00000000-0000-0000-0000-000000000001"
-            ),
-        },
-        countdown=30,
-        task_id="job-1:mineru-upgrade",
-        queue="pdf_processing",
-    )
+    assert task_routes["upgrade_pdf_parser"] == {"queue": "pdf_processing"}

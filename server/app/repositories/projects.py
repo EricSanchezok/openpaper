@@ -24,8 +24,8 @@ from app.policies.projects import (
 from app.schemas.projects import ProjectPermissionSet
 from app.services.project_lifecycle import (
     schedule_orphan_documents,
-    delete_project_storage,
     prepare_project_deletion,
+    schedule_project_storage_cleanup,
 )
 from app.services.upload_reservations import reassign_project_quota_owner
 from sqlalchemy import or_, select
@@ -169,8 +169,12 @@ class ProjectRepository:
         db.delete(project)
         db.flush()
         schedule_orphan_documents(db, plan=plan)
+        schedule_project_storage_cleanup(
+            db,
+            project_id=project_id,
+            plan=plan,
+        )
         db.commit()
-        delete_project_storage(plan=plan)
 
     def list_collaborators(
         self, db: Session, *, project_id: uuid.UUID, user_id: int

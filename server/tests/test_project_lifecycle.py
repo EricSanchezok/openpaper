@@ -6,9 +6,9 @@ from app.database.models import Document, Project
 from app.errors import AppError
 from app.services.project_lifecycle import (
     ProjectDeletionPlan,
-    delete_project_storage,
     prepare_project_deletion,
     schedule_orphan_documents,
+    schedule_project_storage_cleanup,
 )
 from sqlalchemy.orm import Session
 
@@ -76,21 +76,25 @@ def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
     db.execute.assert_not_called()
 
 
-def test_storage_cleanup_is_best_effort_after_database_commit(
+def test_storage_cleanup_is_persisted_before_project_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    delete_file = MagicMock(side_effect=[True, RuntimeError("S3 unavailable")])
+    schedule_delete = MagicMock()
     monkeypatch.setattr(
-        "app.services.project_lifecycle.s3_service.delete_file",
-        delete_file,
+        "app.services.storage_cleanup.schedule_storage_deletion",
+        schedule_delete,
     )
     plan = ProjectDeletionPlan(
         candidate_document_ids=(),
         storage_keys=("first", "second"),
     )
 
-    # Post-commit cleanup must never turn a successful Project deletion into a
-    # misleading 500 response.
-    delete_project_storage(plan=plan)
+    db = MagicMock(spec=Session)
+    project_id = uuid4()
+    schedule_project_storage_cleanup(db, project_id=project_id, plan=plan)
 
-    assert delete_file.call_count == 2
+    schedule_delete.assert_called_once_with(
+        db,
+        object_keys=("first", "second"),
+        idempotency_key=f"project:{project_id}",
+    )

@@ -534,7 +534,7 @@ class ResearchRepository:
         item_id: uuid.UUID,
         user_id: int,
         confirm_delete_replies: bool = False,
-    ) -> str | None:
+    ) -> None:
         item = self.require_creator_owned(
             db,
             item_id=item_id,
@@ -564,8 +564,16 @@ class ResearchRepository:
             else None
         )
         db.delete(item)
+        db.flush()
+        if object_key is not None:
+            from app.services.storage_cleanup import schedule_storage_deletion
+
+            schedule_storage_deletion(
+                db,
+                object_keys=[object_key],
+                idempotency_key=f"research-item:{item.id}",
+            )
         db.commit()
-        return object_key
 
     def serialize(
         self,

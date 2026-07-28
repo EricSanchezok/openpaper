@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.jobs_webhooks import webhook_router
 from app.api.jobs_webhooks.router import handle_paper_parser_upgrade_webhook
 from app.api.paper_api import _serialize_paper_for_client
-from app.database.models import Document, JobStatus
+from app.database.models import Document, JobOperation
 from app.schemas.jobs import (
     PDFParserUpgradeResult,
     PDFProcessingResult,
@@ -145,13 +145,14 @@ def test_parser_upgrade_contract_is_full_only_and_strict() -> None:
 
 def test_parser_upgrade_webhook_is_registered() -> None:
     paths = {route.path for route in webhook_router.routes}
-    assert "/paper-parser-upgrade/{job_id}" in paths
+    assert "/jobs/{job_id}/pdf-upgrade" in paths
 
 
 def test_parser_upgrade_replaces_content_and_passages_atomically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    job_id = uuid4()
+    ingestion_job_id = uuid4()
+    upgrade_job_id = uuid4()
     digest = "b" * 64
     paper = Document(
         id=uuid4(),
@@ -160,7 +161,7 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
         mime_type="application/pdf",
         size_bytes=1024,
         s3_object_key=f"documents/{digest}/source.pdf",
-        processing_job_id=job_id,
+        processing_job_id=ingestion_job_id,
         raw_content="text-only content",
         parser_quality="text_only",
         parser_backend="pymupdf",
@@ -172,10 +173,11 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
     index_passages = MagicMock()
     release_lock = MagicMock()
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.router.paper_upload_job_crud.get_by",
+        "app.api.jobs_webhooks.router.job_repository.require",
         MagicMock(
             return_value=SimpleNamespace(
-                status=JobStatus.COMPLETED,
+                operation=JobOperation.PDF_PARSER_UPGRADE.value,
+                payload={"checkpoint_job_id": str(ingestion_job_id)},
                 document_id=paper.id,
             )
         ),
@@ -193,19 +195,19 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
         index_passages,
     )
     payload = PdfParserUpgradeWebhookData(
-        task_id=f"{job_id}:mineru-upgrade",
+        task_id=str(upgrade_job_id),
         result=PDFParserUpgradeResult(
-            job_id=str(job_id),
+            job_id=str(ingestion_job_id),
             raw_content="full MinerU content",
             page_offset_map={1: [0, 20]},
-            parser_markdown_s3_key=f"uploads/pdf-parses/{job_id}/full.md",
-            parser_archive_s3_key=f"uploads/pdf-parses/{job_id}/mineru.zip",
+            parser_markdown_s3_key=f"uploads/pdf-parses/{ingestion_job_id}/full.md",
+            parser_archive_s3_key=f"uploads/pdf-parses/{ingestion_job_id}/mineru.zip",
             parser_version="mineru-v4/vlm",
         ),
     )
 
     response = handle_paper_parser_upgrade_webhook(
-        str(job_id),
+        upgrade_job_id,
         payload,
         db,
     )

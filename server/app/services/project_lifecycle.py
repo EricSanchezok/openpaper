@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -19,11 +18,8 @@ from app.database.models import (
     ResearchScopeType,
 )
 from app.errors import AppError
-from app.helpers.s3 import s3_service
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
-
-logger = logging.getLogger(__name__)
 
 ACTIVE_JOB_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
@@ -119,18 +115,16 @@ def schedule_orphan_documents(
         schedule_document_gc(db, document_id=document_id)
 
 
-def delete_project_storage(*, plan: ProjectDeletionPlan) -> None:
-    """Best-effort object cleanup after the database transaction commits."""
-    failed_keys: list[str] = []
-    for key in plan.storage_keys:
-        try:
-            if not s3_service.delete_file(object_key=key):
-                failed_keys.append(key)
-        except Exception:
-            logger.exception("Failed to delete Project storage object %s", key)
-            failed_keys.append(key)
-    if failed_keys:
-        logger.error(
-            "Project deletion left %d S3 objects for lifecycle cleanup",
-            len(failed_keys),
-        )
+def schedule_project_storage_cleanup(
+    db: Session,
+    *,
+    project_id: UUID,
+    plan: ProjectDeletionPlan,
+) -> None:
+    from app.services.storage_cleanup import schedule_storage_deletion
+
+    schedule_storage_deletion(
+        db,
+        object_keys=plan.storage_keys,
+        idempotency_key=f"project:{project_id}",
+    )
