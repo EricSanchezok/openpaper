@@ -13,7 +13,7 @@ from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
-from app.schemas.user import CurrentUser
+from app.schemas.user import BlockUserRequest, CurrentUser
 from app.schemas.zotero import (
     ZoteroConnectResponse,
     ZoteroDisconnectResponse,
@@ -21,17 +21,11 @@ from app.schemas.zotero import (
 )
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter()
 client_domain = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
-
-
-class BlockUserRequest(BaseModel):
-    user_id: int
-    blocked: bool
 
 
 @auth_router.get("/topics")

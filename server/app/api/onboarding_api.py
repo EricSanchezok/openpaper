@@ -6,28 +6,17 @@ from app.database.crud.onboarding_crud import OnboardingCreate, onboarding_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.email import send_profile_email
+from app.schemas.onboarding import CreateOnboardingRequest
 from app.schemas.orm_responses import serialize_onboarding
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 # Create API router
 onboarding_router = APIRouter()
-
-
-class CreateOnboardingRequest(BaseModel):
-    name: str
-    email: str
-    company: str | None = None
-    research_fields: str | None = None
-    research_fields_other: str | None = None
-    job_titles: str | None = None
-    job_titles_other: str | None = None
-    reading_frequency: str | None = None
 
 
 @onboarding_router.post("")

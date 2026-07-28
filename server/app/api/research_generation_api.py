@@ -22,6 +22,9 @@ from app.policies.documents import require_document_access
 from app.policies.projects import require_project_access
 from app.repositories.jobs import EnqueueJob, job_repository
 from app.schemas.jobs import (
+    CreateAudioOverviewRequest,
+    CreateDataTableRequest,
+    CreateJobResponse,
     AudioOverviewTaskPayload,
     AudioSourceDocumentPayload,
     JobResponse,
@@ -32,7 +35,7 @@ from app.schemas.jobs import (
 )
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, Header, Request, status
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -40,34 +43,6 @@ document_generation_router = APIRouter()
 project_generation_router = APIRouter()
 jobs_router = APIRouter()
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
-
-
-class CreateAudioOverviewRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    additional_instructions: str | None = Field(default=None, max_length=10_000)
-    length: Literal["short", "medium", "long"] = "medium"
-
-
-class CreateJobResponse(BaseModel):
-    job: JobResponse
-
-
-class CreateDataTableRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    title: str | None = Field(default=None, max_length=240)
-    columns: list[str] = Field(min_length=1, max_length=50)
-
-    @field_validator("columns")
-    @classmethod
-    def validate_columns(cls, columns: list[str]) -> list[str]:
-        normalized = [column.strip() for column in columns]
-        if any(not column or len(column) > 200 for column in normalized):
-            raise ValueError("columns must contain between 1 and 200 characters")
-        if len(set(normalized)) != len(normalized):
-            raise ValueError("columns must be unique")
-        return normalized
 
 
 def _job_response(job: object) -> JobResponse:

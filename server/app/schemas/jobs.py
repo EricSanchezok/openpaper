@@ -9,7 +9,19 @@ from uuid import UUID
 from app.database.models.base import JsonValue
 from app.schemas.responses import PaperMetadataExtraction
 from app.schemas.responses import DataTableRow
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class JobClaimResponse(BaseModel):
+    claimed: bool
+
+
+class JobCallbackIdentity(BaseModel):
+    task_id: UUID
+
+
+class StorageDeleteCallback(JobCallbackIdentity):
+    deleted_count: int
 
 
 class TokenUsageEventPayload(BaseModel):
@@ -115,6 +127,34 @@ class JobResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+
+
+class CreateAudioOverviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    additional_instructions: str | None = Field(default=None, max_length=10_000)
+    length: Literal["short", "medium", "long"] = "medium"
+
+
+class CreateJobResponse(BaseModel):
+    job: JobResponse
+
+
+class CreateDataTableRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str | None = Field(default=None, max_length=240)
+    columns: list[str] = Field(min_length=1, max_length=50)
+
+    @field_validator("columns")
+    @classmethod
+    def validate_columns(cls, columns: list[str]) -> list[str]:
+        normalized = [column.strip() for column in columns]
+        if any(not column or len(column) > 200 for column in normalized):
+            raise ValueError("columns must contain between 1 and 200 characters")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("columns must be unique")
+        return normalized
 
 
 class JobListResponse(BaseModel):

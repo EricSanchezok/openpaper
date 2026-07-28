@@ -31,12 +31,16 @@ from app.policies.projects import get_project_access
 from app.policies.conversations import conversation_policy
 from app.repositories.conversations import conversation_repository
 from app.repositories.research import research_repository
-from app.schemas.message import EvidenceCollection, ResponseStyle
+from app.schemas.message import (
+    ChatMessageRequest,
+    EvidenceCollection,
+    MultiPaperChatRequest,
+)
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import TypeAdapter
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -165,46 +169,6 @@ async def get_chat_capabilities() -> dict[str, object]:
         ],
         "default_reasoning_level": ReasoningLevel.STANDARD.value,
     }
-
-
-class MultiPaperChatRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    conversation_id: str
-    user_query: str = Field(min_length=1, max_length=20_000)
-    user_references: list[str] | None = Field(default=None, max_length=50)
-    reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
-    # @-mention scoping: when any of these are set, the chat's search space is
-    # hard-limited to the union of the mentioned papers, the papers in the
-    # mentioned projects, and the parent papers of the mentioned highlights.
-    mentioned_paper_ids: list[str] | None = Field(default=None, max_length=50)
-    mentioned_project_ids: list[str] | None = Field(default=None, max_length=20)
-    mentioned_highlight_ids: list[str] | None = Field(default=None, max_length=50)
-
-    @field_validator("conversation_id")
-    @classmethod
-    def validate_single_uuid(_cls, value: str) -> str:
-        uuid.UUID(value)
-        return value
-
-    @field_validator(
-        "mentioned_paper_ids",
-        "mentioned_project_ids",
-        "mentioned_highlight_ids",
-    )
-    @classmethod
-    def validate_uuid_list(_cls, value: list[str] | None) -> list[str] | None:
-        if value is not None:
-            for item in value:
-                uuid.UUID(item)
-        return value
-
-    @field_validator("user_references")
-    @classmethod
-    def validate_reference_lengths(_cls, value: list[str] | None) -> list[str] | None:
-        if value is not None and any(len(item) > 5_000 for item in value):
-            raise ValueError("Reference text exceeds maximum length")
-        return value
 
 
 def _resolve_mention_scope(
@@ -674,30 +638,6 @@ async def chat_message_multipaper(
     except Exception:
         logger.exception("Error processing multi-paper chat message")
         raise HTTPException(status_code=400, detail={"code": "chat_request_failed"})
-
-
-# Add this new model for the chat request
-class ChatMessageRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    conversation_id: str
-    user_query: str = Field(min_length=1, max_length=20_000)
-    user_references: list[str] | None = Field(default=None, max_length=50)
-    style: ResponseStyle | None = ResponseStyle.NORMAL
-    reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
-
-    @field_validator("conversation_id")
-    @classmethod
-    def validate_uuid(_cls, value: str) -> str:
-        uuid.UUID(value)
-        return value
-
-    @field_validator("user_references")
-    @classmethod
-    def validate_reference_lengths(_cls, value: list[str] | None) -> list[str] | None:
-        if value is not None and any(len(item) > 5_000 for item in value):
-            raise ValueError("Reference text exceeds maximum length")
-        return value
 
 
 @message_router.post("/chat/paper")

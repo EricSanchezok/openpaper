@@ -22,12 +22,11 @@ from app.schemas.jobs import (
     AudioOverviewWebhookData,
     DataTableTaskPayload,
     DataTableWebhookData,
+    JobClaimResponse,
     TokenUsageEventPayload,
 )
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-
-from .lifecycle import JobClaimResponse
 
 research_webhook_router = APIRouter()
 

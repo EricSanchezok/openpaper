@@ -6,15 +6,11 @@ import uuid
 
 from app.database.database import get_db
 from app.repositories.jobs import job_repository
+from app.schemas.jobs import JobClaimResponse
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 lifecycle_webhook_router = APIRouter()
-
-
-class JobClaimResponse(BaseModel):
-    claimed: bool
 
 
 @lifecycle_webhook_router.post(

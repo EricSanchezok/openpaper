@@ -9,6 +9,11 @@ if TYPE_CHECKING:
     from app.database.models import AuthUser
 
 
+class BlockUserRequest(BaseModel):
+    user_id: int
+    blocked: bool
+
+
 class CurrentUser(BaseModel):
     """Authenticated cloud-auth identity enriched with Scholens product state."""
 

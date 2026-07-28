@@ -55,3 +55,11 @@ def test_streaming_errors_never_expose_exception_text() -> None:
         r"""["']content["']\s*:\s*str\((?:e|exc|error|exception)\)"""
     )
     assert exposed_exception.search(source) is None
+
+
+def test_api_modules_do_not_define_request_or_response_models() -> None:
+    api_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "server" / "app" / "api").rglob("*.py")
+    )
+    assert re.search(r"^class\s+\w+\(BaseModel\)", api_source, re.MULTILINE) is None

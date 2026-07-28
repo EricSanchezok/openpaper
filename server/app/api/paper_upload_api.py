@@ -42,6 +42,7 @@ from app.helpers.parser import (
     validate_url_and_fetch_pdf,
 )
 from app.schemas.user import CurrentUser
+from app.schemas.uploads import UploadFromUrlRequest
 from app.services.document_submission import submit_reserved_document
 from app.services.upload_reservations import reserve_upload
 from dotenv import load_dotenv
@@ -54,7 +55,6 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, HttpUrl
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -63,12 +63,6 @@ logger = logging.getLogger(__name__)
 
 # Create API router with prefix
 paper_upload_router = APIRouter()
-
-
-class UploadFromUrlSchema(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    url: HttpUrl
 
 
 @paper_upload_router.get("/status/{job_id}")
@@ -127,7 +121,7 @@ async def get_upload_status(
 
 @paper_upload_router.post("/from-url/")
 async def upload_pdf_from_url(
-    request: UploadFromUrlSchema,
+    request: UploadFromUrlRequest,
     http_request: Request,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),

@@ -38,9 +38,12 @@ from app.repositories.jobs import EnqueueJob, job_repository
 from app.schemas.conversations import ConversationCreateRequest
 from app.schemas.documents import DocumentUpdate
 from app.schemas.jobs import (
+    JobCallbackIdentity,
+    JobClaimResponse,
     PdfParserUpgradeWebhookData,
     PDFProcessingResult,
     PdfProcessingWebhookData,
+    StorageDeleteCallback,
 )
 from app.schemas.user import CurrentUser
 from app.services.zotero.service import (
@@ -50,25 +53,16 @@ from app.services.zotero.service import (
 )
 from app.services.document_annotations import create_ai_highlights
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, TypeAdapter
+from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .lifecycle import JobClaimResponse
 from .research import settle_jobs_usage
 
 logger = logging.getLogger(__name__)
 
 document_webhook_router = APIRouter()
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
-
-
-class JobCallbackIdentity(BaseModel):
-    task_id: uuid.UUID
-
-
-class StorageDeleteCallback(JobCallbackIdentity):
-    deleted_count: int
 
 
 def _complete_pdf_job(

@@ -1,16 +1,78 @@
 import re
+import uuid
 from enum import Enum
 from typing import Any
 
+from app.database.models import ReasoningLevel
 from app.schemas.citation import CitationResult
 from app.schemas.responses import ToolCall, ToolCallResult
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ResponseStyle(str, Enum):
     NORMAL = "normal"
     CONCISE = "concise"
     DETAILED = "detailed"
+
+
+class MultiPaperChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: str
+    user_query: str = Field(min_length=1, max_length=20_000)
+    user_references: list[str] | None = Field(default=None, max_length=50)
+    reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
+    mentioned_paper_ids: list[str] | None = Field(default=None, max_length=50)
+    mentioned_project_ids: list[str] | None = Field(default=None, max_length=20)
+    mentioned_highlight_ids: list[str] | None = Field(default=None, max_length=50)
+
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_single_uuid(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+    @field_validator(
+        "mentioned_paper_ids",
+        "mentioned_project_ids",
+        "mentioned_highlight_ids",
+    )
+    @classmethod
+    def validate_uuid_list(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None:
+            for item in value:
+                uuid.UUID(item)
+        return value
+
+    @field_validator("user_references")
+    @classmethod
+    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(len(item) > 5_000 for item in value):
+            raise ValueError("Reference text exceeds maximum length")
+        return value
+
+
+class ChatMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: str
+    user_query: str = Field(min_length=1, max_length=20_000)
+    user_references: list[str] | None = Field(default=None, max_length=50)
+    style: ResponseStyle | None = ResponseStyle.NORMAL
+    reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
+
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_uuid(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+    @field_validator("user_references")
+    @classmethod
+    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(len(item) > 5_000 for item in value):
+            raise ValueError("Reference text exceeds maximum length")
+        return value
 
 
 class Evidence(BaseModel):
