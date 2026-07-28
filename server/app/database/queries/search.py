@@ -1,11 +1,20 @@
+"""Library search over canonical documents and visible research threads."""
+
 from datetime import datetime
 
-from app.database.models import Annotation, Document, Highlight, LibraryPaper
+from app.database.models import (
+    AnnotationComment,
+    Document,
+    HighlightThread,
+    LibraryPaper,
+    ResearchItem,
+    ResearchScopeType,
+)
 from app.helpers.s3 import s3_service
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy.orm import Session
 
 
 class HighlightResult(BaseModel):
@@ -53,6 +62,13 @@ class SearchResults(BaseModel):
     total_annotations: int
 
 
+def _visible_research(user_id: int) -> ColumnElement[bool]:
+    return or_(
+        ResearchItem.is_shared.is_(True),
+        ResearchItem.created_by_id == user_id,
+    )
+
+
 def search_knowledge_base(
     db: Session,
     user: CurrentUser,
@@ -61,64 +77,55 @@ def search_knowledge_base(
     offset: int = 0,
     papers_filter: list[str] | None = None,
 ) -> SearchResults:
-    """
-    Search across papers, annotations, and highlights in a user's knowledge base.
-    Returns a hierarchical view with matching content organized under paper metadata.
-
-    Args:
-        db: Database session
-        user: Current authenticated user
-        query: Search query string
-        limit: Maximum number of papers to return
-        offset: Number of papers to skip (for pagination)
-        papers_filter: Optional list of paper IDs to filter results
-
-    Returns:
-        SearchResults with hierarchical data structure
-    """
-
-    # Create case-insensitive search pattern
     search_pattern = f"%{query.lower()}%"
-
-    # Build the main query for papers that match the search criteria
-    # We'll search in paper title, abstract, raw_content, and related annotations/highlights
-    matching_highlight_papers = select(Highlight.paper_id).where(
-        Highlight.user_id == user.id,
-        func.lower(Highlight.raw_text).like(search_pattern),
+    matching_highlight_documents = (
+        select(ResearchItem.document_id)
+        .join(
+            HighlightThread,
+            HighlightThread.research_item_id == ResearchItem.id,
+        )
+        .where(
+            ResearchItem.scope_type == ResearchScopeType.DOCUMENT.value,
+            _visible_research(user.id),
+            func.lower(HighlightThread.quote_text).like(search_pattern),
+        )
     )
-    matching_annotation_papers = select(Annotation.paper_id).where(
-        Annotation.user_id == user.id,
-        func.lower(Annotation.content).like(search_pattern),
+    matching_comment_documents = (
+        select(ResearchItem.document_id)
+        .join(
+            AnnotationComment,
+            AnnotationComment.thread_id == ResearchItem.id,
+        )
+        .where(
+            ResearchItem.scope_type == ResearchScopeType.DOCUMENT.value,
+            _visible_research(user.id),
+            func.lower(AnnotationComment.content).like(search_pattern),
+        )
     )
     paper_statement = (
         select(Document)
         .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-        .where(LibraryPaper.user_id == user.id)
         .where(
+            LibraryPaper.user_id == user.id,
             or_(
                 func.lower(Document.title).like(search_pattern),
                 func.lower(Document.abstract).like(search_pattern),
                 func.lower(Document.raw_content).like(search_pattern),
-                # Include papers that have matching highlights
-                Document.id.in_(matching_highlight_papers),
-                # Include papers that have matching annotations
-                Document.id.in_(matching_annotation_papers),
-            )
+                Document.id.in_(matching_highlight_documents),
+                Document.id.in_(matching_comment_documents),
+            ),
         )
         .order_by(LibraryPaper.last_accessed_at.desc())
     )
     if papers_filter:
         paper_statement = paper_statement.where(Document.id.in_(papers_filter))
 
-    # Get total count for pagination
     total_papers = int(
         db.scalar(
             select(func.count()).select_from(paper_statement.order_by(None).subquery())
         )
         or 0
     )
-
-    # Apply pagination
     papers = list(db.scalars(paper_statement.offset(offset).limit(limit)).all())
     paper_ids = [paper.id for paper in papers]
     library_by_document = {
@@ -131,108 +138,113 @@ def search_knowledge_base(
         ).all()
     }
 
-    matching_highlights = (
-        list(
-            db.scalars(
-                select(Highlight)
-                .where(
-                    Highlight.paper_id.in_(paper_ids),
-                    Highlight.user_id == user.id,
-                    func.lower(Highlight.raw_text).like(search_pattern),
-                )
-                .order_by(Highlight.created_at.desc())
-            ).all()
-        )
-        if paper_ids
-        else []
-    )
-    matching_annotations = (
-        list(
-            db.scalars(
-                select(Annotation)
-                .options(joinedload(Annotation.highlight))
-                .where(
-                    Annotation.paper_id.in_(paper_ids),
-                    Annotation.user_id == user.id,
-                    func.lower(Annotation.content).like(search_pattern),
-                )
-                .order_by(Annotation.created_at.desc())
+    highlight_rows = (
+        db.execute(
+            select(ResearchItem, HighlightThread)
+            .join(
+                HighlightThread,
+                HighlightThread.research_item_id == ResearchItem.id,
             )
-            .unique()
-            .all()
-        )
+            .where(
+                ResearchItem.document_id.in_(paper_ids),
+                _visible_research(user.id),
+                func.lower(HighlightThread.quote_text).like(search_pattern),
+            )
+            .order_by(ResearchItem.created_at.desc())
+        ).all()
         if paper_ids
         else []
     )
-    highlights_by_paper: dict[object, list[Highlight]] = {}
-    for highlight in matching_highlights:
-        highlights_by_paper.setdefault(highlight.paper_id, []).append(highlight)
-    annotations_by_paper: dict[object, list[Annotation]] = {}
-    for annotation in matching_annotations:
-        annotations_by_paper.setdefault(annotation.paper_id, []).append(annotation)
+    comment_rows = (
+        db.execute(
+            select(ResearchItem, HighlightThread, AnnotationComment)
+            .join(
+                HighlightThread,
+                HighlightThread.research_item_id == ResearchItem.id,
+            )
+            .join(
+                AnnotationComment,
+                AnnotationComment.thread_id == ResearchItem.id,
+            )
+            .where(
+                ResearchItem.document_id.in_(paper_ids),
+                _visible_research(user.id),
+                func.lower(AnnotationComment.content).like(search_pattern),
+            )
+            .order_by(AnnotationComment.created_at.desc())
+        ).all()
+        if paper_ids
+        else []
+    )
 
-    # For each paper, get matching highlights and annotations
-    results = []
+    highlights_by_document: dict[
+        object, list[tuple[ResearchItem, HighlightThread]]
+    ] = {}
+    for item, thread in highlight_rows:
+        highlights_by_document.setdefault(item.document_id, []).append((item, thread))
+    comments_by_document: dict[
+        object,
+        list[tuple[ResearchItem, HighlightThread, AnnotationComment]],
+    ] = {}
+    for item, thread, comment in comment_rows:
+        comments_by_document.setdefault(item.document_id, []).append(
+            (item, thread, comment)
+        )
+
+    results: list[PaperResult] = []
     total_highlights = 0
     total_annotations = 0
-
     for paper in papers:
-        library_paper = library_by_document[paper.id]
-        paper_highlights = highlights_by_paper.get(paper.id, [])
-        paper_annotations = annotations_by_paper.get(paper.id, [])
-
-        # Convert to Pydantic models
         highlight_results = [
             HighlightResult(
-                id=str(h.id),
-                raw_text=h.raw_text,
-                start_offset=h.start_offset,
-                end_offset=h.end_offset,
-                page_number=h.page_number,
-                role=h.role,
-                created_at=h.created_at,
+                id=str(item.id),
+                raw_text=thread.quote_text,
+                start_offset=thread.start_offset,
+                end_offset=thread.end_offset,
+                page_number=thread.page_number,
+                role=thread.role,
+                created_at=item.created_at,
             )
-            for h in paper_highlights
+            for item, thread in highlights_by_document.get(paper.id, [])
         ]
-
         annotation_results = [
             AnnotationResult(
-                id=str(a.id),
-                content=a.content,
-                role=a.role,
-                created_at=a.created_at,
+                id=str(comment.id),
+                content=comment.content,
+                role=comment.role,
+                created_at=comment.created_at,
                 highlight=HighlightResult(
-                    id=str(a.highlight.id),
-                    raw_text=a.highlight.raw_text,
-                    start_offset=a.highlight.start_offset,
-                    end_offset=a.highlight.end_offset,
-                    page_number=a.highlight.page_number,
-                    role=a.highlight.role,
-                    created_at=a.highlight.created_at,
+                    id=str(item.id),
+                    raw_text=thread.quote_text,
+                    start_offset=thread.start_offset,
+                    end_offset=thread.end_offset,
+                    page_number=thread.page_number,
+                    role=thread.role,
+                    created_at=item.created_at,
                 ),
             )
-            for a in paper_annotations
+            for item, thread, comment in comments_by_document.get(paper.id, [])
         ]
-
-        paper_result = PaperResult(
-            id=str(paper.id),
-            title=paper.title,
-            authors=paper.authors,
-            abstract=paper.abstract,
-            status=library_paper.status,
-            publish_date=paper.publish_date,
-            created_at=paper.created_at,
-            last_accessed_at=library_paper.last_accessed_at,
-            highlights=highlight_results,
-            annotations=annotation_results,
-            preview_url=(
-                s3_service.generate_presigned_url(paper.preview_s3_key)
-                if paper.preview_s3_key
-                else None
-            ),
+        library_paper = library_by_document[paper.id]
+        results.append(
+            PaperResult(
+                id=str(paper.id),
+                title=paper.title,
+                authors=paper.authors,
+                abstract=paper.abstract,
+                status=library_paper.status,
+                publish_date=paper.publish_date,
+                created_at=paper.created_at,
+                last_accessed_at=library_paper.last_accessed_at,
+                highlights=highlight_results,
+                annotations=annotation_results,
+                preview_url=(
+                    s3_service.generate_presigned_url(paper.preview_s3_key)
+                    if paper.preview_s3_key
+                    else None
+                ),
+            )
         )
-
-        results.append(paper_result)
         total_highlights += len(highlight_results)
         total_annotations += len(annotation_results)
 

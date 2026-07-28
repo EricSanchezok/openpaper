@@ -1,12 +1,12 @@
 from app.database.admin_auth import build_admin_authentication_backend
 from app.database.database import engine
 from app.database.models import (
-    Annotation,
+    AnnotationComment,
     Conversation,
     DataTableExtractionJob,
     DataTableExtractionResult,
     DataTableRow,
-    Highlight,
+    HighlightThread,
     Message,
     Onboarding,
     Document,
@@ -127,14 +127,14 @@ class ProjectPaperAdmin(ModelView, model=ProjectPaper):
     column_searchable_list = [ProjectPaper.project_id, ProjectPaper.document_id]
 
 
-class HighlightAdmin(ModelView, model=Highlight):
+class HighlightAdmin(ModelView, model=HighlightThread):
     column_list = [
-        Highlight.id,
-        Highlight.user_id,
-        Highlight.paper_id,
-        Highlight.raw_text,
+        HighlightThread.research_item_id,
+        HighlightThread.quote_text,
+        HighlightThread.page_number,
+        HighlightThread.role,
     ]
-    column_searchable_list = [Highlight.raw_text]
+    column_searchable_list = [HighlightThread.quote_text]
 
 
 class PaperAdmin(ModelView, model=Document):
@@ -142,21 +142,23 @@ class PaperAdmin(ModelView, model=Document):
     column_searchable_list = [Document.title]
 
 
-class AnnotationAdmin(ModelView, model=Annotation):
+class AnnotationAdmin(ModelView, model=AnnotationComment):
     column_list = [
-        Annotation.id,
-        Annotation.user_id,
-        Annotation.paper_id,
-        Annotation.content,
+        AnnotationComment.id,
+        AnnotationComment.thread_id,
+        AnnotationComment.created_by_id,
+        AnnotationComment.content,
     ]
-    column_searchable_list = [Annotation.content]
+    column_searchable_list = [AnnotationComment.content]
 
 
 class ConversationAdmin(ModelView, model=Conversation):
     column_list = [
         Conversation.id,
         Conversation.user_id,
-        Conversation.conversable_id,
+        Conversation.scope_type,
+        Conversation.project_id,
+        Conversation.document_id,
         Conversation.title,
     ]
     column_searchable_list = [Conversation.title]

@@ -2,11 +2,9 @@ import logging
 import os
 
 import uvicorn
-from app.api.annotation_api import annotation_router
 from app.api.api import router
 from app.api.auth_api import auth_router
 from app.api.conversation_api import conversation_router
-from app.api.highlight_api import highlight_router
 from app.api.message_api import message_router
 from app.api.onboarding_api import onboarding_router
 from app.api.paper_api import paper_router
@@ -16,8 +14,11 @@ from app.api.paper_search_api import paper_search_router
 from app.api.paper_tag_api import paper_tag_router
 from app.api.paper_upload_api import paper_upload_router
 from app.api.project_audio_api import project_audio_router
-from app.api.research_api import research_router
-from app.api.projects.project_artifacts_api import project_artifacts_router
+from app.api.research_api import (
+    document_research_router,
+    project_research_router,
+    research_router,
+)
 from app.api.projects.project_papers_api import project_papers_router
 from app.api.projects.projects_api import projects_router
 from app.api.projects.projects_data_table_api import projects_data_table_router
@@ -87,8 +88,6 @@ app.include_router(auth_router, prefix="/api/auth")
 app.include_router(paper_router, prefix="/api/paper")
 app.include_router(conversation_router, prefix="/api/conversations")
 app.include_router(message_router, prefix="/api/message")
-app.include_router(highlight_router, prefix="/api/highlight")
-app.include_router(annotation_router, prefix="/api/annotation")
 app.include_router(projects_router, prefix="/api/projects")
 app.include_router(project_papers_router, prefix="/api/projects/papers")
 app.include_router(projects_invitation_router, prefix="/api")
@@ -99,8 +98,9 @@ app.include_router(paper_image_router, prefix="/api/paper/image")
 app.include_router(projects_data_table_router, prefix="/api/projects/tables")
 app.include_router(paper_upload_router, prefix="/api/paper/upload")
 app.include_router(project_audio_router, prefix="/api/projects/audio")
-app.include_router(project_artifacts_router, prefix="/api/projects/artifacts")
-app.include_router(research_router, prefix="/api/research")
+app.include_router(document_research_router, prefix="/api/documents")
+app.include_router(project_research_router, prefix="/api/projects")
+app.include_router(research_router, prefix="/api")
 app.include_router(paper_tag_router, prefix="/api/paper/tag")
 app.include_router(
     subscription_router, prefix="/api/subscription"

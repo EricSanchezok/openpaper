@@ -219,9 +219,11 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("title", sa.String(length=240), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column("conversable_id", sa.UUID(), nullable=True),
-        sa.Column("conversable_type", sa.String(), nullable=False),
+        sa.Column("scope_type", sa.String(length=16), nullable=False),
+        sa.Column("project_id", sa.UUID(), nullable=True),
+        sa.Column("document_id", sa.UUID(), nullable=True),
         sa.Column("scope_label_snapshot", sa.String(length=240), nullable=True),
+        sa.Column("context_deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("pinned_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
@@ -237,11 +239,31 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR (conversable_type = 'project' AND conversable_id IS NOT NULL) OR (conversable_type = 'everything' AND conversable_id IS NULL)",
-            name="check_conversable_consistency",
+            "(scope_type = 'global' AND project_id IS NULL AND document_id IS NULL AND context_deleted_at IS NULL) OR "
+            "(scope_type = 'project' AND document_id IS NULL AND "
+            "((project_id IS NOT NULL AND context_deleted_at IS NULL) OR "
+            "(project_id IS NULL AND context_deleted_at IS NOT NULL))) OR "
+            "(scope_type = 'paper' AND project_id IS NULL AND "
+            "((document_id IS NOT NULL AND context_deleted_at IS NULL) OR "
+            "(document_id IS NULL AND context_deleted_at IS NOT NULL)))",
+            name="ck_conversations_scope_consistency",
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_conversations_document_id"),
+        "conversations",
+        ["document_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_conversations_project_id"),
+        "conversations",
+        ["project_id"],
+        unique=False,
         schema="scholens",
     )
     op.create_index(
@@ -401,6 +423,16 @@ def upgrade() -> None:
         ["owner_id"],
         unique=False,
         schema="scholens",
+    )
+    op.create_foreign_key(
+        "fk_conversations_project_id_projects",
+        "conversations",
+        "projects",
+        ["project_id"],
+        ["id"],
+        source_schema="scholens",
+        referent_schema="scholens",
+        ondelete="SET NULL",
     )
     op.create_foreign_key(
         "fk_paper_upload_jobs_project_id_projects",
@@ -722,6 +754,16 @@ def upgrade() -> None:
         schema="scholens",
         postgresql_using="gin",
     )
+    op.create_foreign_key(
+        "fk_conversations_document_id_documents",
+        "conversations",
+        "documents",
+        ["document_id"],
+        ["id"],
+        source_schema="scholens",
+        referent_schema="scholens",
+        ondelete="SET NULL",
+    )
     op.create_table(
         "library_papers",
         sa.Column("id", sa.UUID(), nullable=False),
@@ -960,20 +1002,103 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "artifacts",
+        "research_items",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
-        sa.Column("kind", sa.String(), nullable=False),
-        sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("message_id", sa.UUID(), nullable=True),
-        sa.Column("scope_type", sa.String(), nullable=False),
-        sa.Column("scope_id", sa.UUID(), nullable=True),
+        sa.Column("kind", sa.String(length=32), nullable=False),
+        sa.Column("created_by_id", sa.BigInteger(), nullable=True),
+        sa.Column("scope_type", sa.String(length=16), nullable=False),
+        sa.Column("document_id", sa.UUID(), nullable=True),
+        sa.Column("project_id", sa.UUID(), nullable=True),
+        sa.Column("is_shared", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("source_message_id", sa.UUID(), nullable=True),
         sa.Column(
-            "is_shared",
-            sa.Boolean(),
-            server_default="false",
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
             nullable=False,
         ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "(scope_type = 'personal' AND document_id IS NULL AND project_id IS NULL) "
+            "OR (scope_type = 'document' AND document_id IS NOT NULL "
+            "AND project_id IS NULL) "
+            "OR (scope_type = 'project' AND project_id IS NOT NULL "
+            "AND document_id IS NULL)",
+            name="ck_research_items_scope_consistency",
+        ),
+        sa.CheckConstraint(
+            "scope_type != 'personal' OR NOT is_shared",
+            name="ck_research_items_personal_private",
+        ),
+        sa.CheckConstraint(
+            "kind != 'highlight_thread' OR scope_type = 'document'",
+            name="ck_research_items_highlight_document_scope",
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_id"], ["auth.users.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["document_id"], ["scholens.documents.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["source_message_id"], ["scholens.messages.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_research_items_document_visibility",
+        "research_items",
+        ["document_id", "is_shared", "created_at"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_research_items_project_visibility",
+        "research_items",
+        ["project_id", "is_shared", "created_at"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        "ix_research_items_creator_activity",
+        "research_items",
+        ["created_by_id", "created_at"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_table(
+        "highlight_threads",
+        sa.Column("research_item_id", sa.UUID(), nullable=False),
+        sa.Column("quote_text", sa.Text(), nullable=False),
+        sa.Column("page_number", sa.Integer(), nullable=True),
+        sa.Column("start_offset", sa.Integer(), nullable=True),
+        sa.Column("end_offset", sa.Integer(), nullable=True),
+        sa.Column("position", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("color", sa.String(length=32), server_default="blue", nullable=False),
+        sa.Column("role", sa.String(length=16), server_default="user", nullable=False),
+        sa.Column("zotero_annotation_key", sa.String(length=255), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["research_item_id"], ["scholens.research_items.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("research_item_id"),
+        schema="scholens",
+    )
+    op.create_table(
+        "annotation_comments",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("thread_id", sa.UUID(), nullable=False),
+        sa.Column("created_by_id", sa.BigInteger(), nullable=True),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("role", sa.String(length=16), server_default="user", nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -987,35 +1112,80 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["message_id"], ["scholens.messages.id"], ondelete="SET NULL"
+            ["thread_id"],
+            ["scholens.highlight_threads.research_item_id"],
+            ondelete="CASCADE",
         ),
-        sa.CheckConstraint(
-            "NOT is_shared OR scope_type = 'project'",
-            name="ck_artifacts_shared_project_scope",
+        sa.ForeignKeyConstraint(
+            ["created_by_id"], ["auth.users.id"], ondelete="SET NULL"
         ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         schema="scholens",
     )
     op.create_index(
-        "ix_artifacts_message_id",
-        "artifacts",
-        ["message_id"],
+        "ix_annotation_comments_thread",
+        "annotation_comments",
+        ["thread_id", "created_at"],
         unique=False,
         schema="scholens",
     )
-    op.create_index(
-        "ix_artifacts_scope",
-        "artifacts",
-        ["scope_type", "scope_id", "kind", "created_at"],
-        unique=False,
+    op.create_table(
+        "citation_outputs",
+        sa.Column("research_item_id", sa.UUID(), nullable=False),
+        sa.Column("snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["research_item_id"], ["scholens.research_items.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("research_item_id"),
         schema="scholens",
     )
-    op.create_index(
-        op.f("ix_scholens_artifacts_user_id"),
-        "artifacts",
-        ["user_id"],
-        unique=False,
+    op.create_table(
+        "research_audio_overviews",
+        sa.Column("research_item_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.String(length=240), nullable=True),
+        sa.Column("transcript", sa.Text(), nullable=False),
+        sa.Column(
+            "citations",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="[]",
+            nullable=False,
+        ),
+        sa.Column("s3_object_key", sa.String(length=1024), nullable=False),
+        sa.Column("voice_id", sa.String(length=160), nullable=False),
+        sa.Column("model_version", sa.String(length=160), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["research_item_id"], ["scholens.research_items.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("research_item_id"),
+        schema="scholens",
+    )
+    op.create_table(
+        "research_data_tables",
+        sa.Column("research_item_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.String(length=240), nullable=True),
+        sa.Column("columns", sa.ARRAY(sa.String()), nullable=False),
+        sa.Column(
+            "rows",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="[]",
+            nullable=False,
+        ),
+        sa.Column(
+            "citations",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="[]",
+            nullable=False,
+        ),
+        sa.Column(
+            "row_failures",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="[]",
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["research_item_id"], ["scholens.research_items.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("research_item_id"),
         schema="scholens",
     )
     op.create_table(
@@ -1043,82 +1213,6 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("job_id"),
-        schema="scholens",
-    )
-    op.create_table(
-        "highlights",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("paper_id", sa.UUID(), nullable=False),
-        sa.Column("raw_text", sa.Text(), nullable=False),
-        sa.Column("type", sa.String(), nullable=True),
-        sa.Column("start_offset", sa.Integer(), nullable=True),
-        sa.Column("end_offset", sa.Integer(), nullable=True),
-        sa.Column("page_number", sa.Integer(), nullable=True),
-        sa.Column("position", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("role", sa.String(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
-        sa.Column("color", sa.String(), nullable=True),
-        sa.Column("zotero_annotation_key", sa.String(), nullable=True),
-        sa.Column("project_id", sa.UUID(), nullable=True),
-        sa.Column(
-            "is_shared",
-            sa.Boolean(),
-            server_default="false",
-            nullable=False,
-        ),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
-        ),
-        sa.CheckConstraint(
-            "NOT is_shared OR project_id IS NOT NULL",
-            name="ck_highlights_shared_project",
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
-        sa.PrimaryKeyConstraint("id"),
-        schema="scholens",
-    )
-    op.create_index(
-        "uq_highlight_paper_zotero_annotation_key",
-        "highlights",
-        ["paper_id", "zotero_annotation_key", "user_id"],
-        unique=True,
-        schema="scholens",
-        postgresql_where=sa.text("zotero_annotation_key IS NOT NULL"),
-    )
-    op.create_index(
-        "ix_highlights_project_visibility",
-        "highlights",
-        ["project_id", "is_shared", "created_at"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_highlights_project_id"),
-        "highlights",
-        ["project_id"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_highlights_user_id"),
-        "highlights",
-        ["user_id"],
-        unique=False,
         schema="scholens",
     )
     op.create_table(
@@ -1314,37 +1408,6 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "annotations",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("highlight_id", sa.UUID(), nullable=False),
-        sa.Column("paper_id", sa.UUID(), nullable=False),
-        sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("role", sa.String(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["highlight_id"],
-            ["scholens.highlights.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="SET NULL"),
-        sa.PrimaryKeyConstraint("id"),
-        schema="scholens",
-    )
-    op.create_table(
         "data_table_rows",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("data_table_id", sa.UUID(), nullable=False),
@@ -1464,7 +1527,32 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("data_table_rows", schema="scholens")
-    op.drop_table("annotations", schema="scholens")
+    op.drop_index(
+        "ix_annotation_comments_thread",
+        table_name="annotation_comments",
+        schema="scholens",
+    )
+    op.drop_table("annotation_comments", schema="scholens")
+    op.drop_table("highlight_threads", schema="scholens")
+    op.drop_table("citation_outputs", schema="scholens")
+    op.drop_table("research_audio_overviews", schema="scholens")
+    op.drop_table("research_data_tables", schema="scholens")
+    op.drop_index(
+        "ix_research_items_creator_activity",
+        table_name="research_items",
+        schema="scholens",
+    )
+    op.drop_index(
+        "ix_research_items_project_visibility",
+        table_name="research_items",
+        schema="scholens",
+    )
+    op.drop_index(
+        "ix_research_items_document_visibility",
+        table_name="research_items",
+        schema="scholens",
+    )
+    op.drop_table("research_items", schema="scholens")
     op.drop_table("zotero_imported_items", schema="scholens")
     op.drop_index(
         op.f("ix_scholens_project_papers_project_id"),
@@ -1491,37 +1579,7 @@ def downgrade() -> None:
     )
     op.drop_table("paper_passages", schema="scholens")
     op.drop_table("paper_images", schema="scholens")
-    op.drop_index(
-        op.f("ix_scholens_highlights_user_id"),
-        table_name="highlights",
-        schema="scholens",
-    )
-    op.drop_index(
-        op.f("ix_scholens_highlights_project_id"),
-        table_name="highlights",
-        schema="scholens",
-    )
-    op.drop_index(
-        "ix_highlights_project_visibility",
-        table_name="highlights",
-        schema="scholens",
-    )
-    op.drop_index(
-        "uq_highlight_paper_zotero_annotation_key",
-        table_name="highlights",
-        schema="scholens",
-        postgresql_where=sa.text("zotero_annotation_key IS NOT NULL"),
-    )
-    op.drop_table("highlights", schema="scholens")
     op.drop_table("data_table_extraction_results", schema="scholens")
-    op.drop_index(
-        op.f("ix_scholens_artifacts_user_id"),
-        table_name="artifacts",
-        schema="scholens",
-    )
-    op.drop_index("ix_artifacts_scope", table_name="artifacts", schema="scholens")
-    op.drop_index("ix_artifacts_message_id", table_name="artifacts", schema="scholens")
-    op.drop_table("artifacts", schema="scholens")
     op.drop_index(
         "ix_project_invitations_token_hash",
         table_name="project_invitations",
@@ -1592,6 +1650,18 @@ def downgrade() -> None:
         table_name="documents",
         schema="scholens",
     )
+    op.drop_constraint(
+        "fk_conversations_document_id_documents",
+        "conversations",
+        schema="scholens",
+        type_="foreignkey",
+    )
+    op.drop_constraint(
+        "fk_conversations_project_id_projects",
+        "conversations",
+        schema="scholens",
+        type_="foreignkey",
+    )
     op.drop_table("documents", schema="scholens")
     op.drop_table("messages", schema="scholens")
     op.drop_table("data_table_extraction_jobs", schema="scholens")
@@ -1636,6 +1706,16 @@ def downgrade() -> None:
     )
     op.drop_index(
         "ix_conversations_user_archive_activity",
+        table_name="conversations",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_conversations_project_id"),
+        table_name="conversations",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_conversations_document_id"),
         table_name="conversations",
         schema="scholens",
     )

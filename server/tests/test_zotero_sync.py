@@ -65,12 +65,12 @@ class TestZoteroSyncItem(unittest.TestCase):
         self.client = MagicMock()
 
     @patch.object(zotero_import_module, "zotero_import_crud")
-    @patch.object(zotero_import_module, "highlight_crud")
+    @patch.object(zotero_import_module, "research_repository")
     @patch.object(zotero_import_module, "paper_crud")
     def test_sync_appends_new_annotation(
         self,
         mock_paper_crud: MagicMock,
-        mock_highlight_crud: MagicMock,
+        mock_research_repository: MagicMock,
         mock_import_crud: MagicMock,
     ) -> None:
         mock_paper_crud.get.return_value = self.paper
@@ -78,7 +78,7 @@ class TestZoteroSyncItem(unittest.TestCase):
             raw_content="hello world",
             page_offsets={1: (0, 11)},
         )
-        mock_highlight_crud.get_zotero_annotation_keys_for_paper.return_value = set()
+        mock_research_repository.get_zotero_annotation_keys.return_value = set()
         self.client.get_children.return_value = []
         self.client.get_annotations_for_attachment.return_value = [
             {
@@ -115,16 +115,16 @@ class TestZoteroSyncItem(unittest.TestCase):
         mock_import_crud.update_after_sync.assert_called_once()
 
     @patch.object(zotero_import_module, "zotero_import_crud")
-    @patch.object(zotero_import_module, "highlight_crud")
+    @patch.object(zotero_import_module, "research_repository")
     @patch.object(zotero_import_module, "paper_crud")
     def test_sync_is_idempotent(
         self,
         mock_paper_crud: MagicMock,
-        mock_highlight_crud: MagicMock,
+        mock_research_repository: MagicMock,
         mock_import_crud: MagicMock,
     ) -> None:
         mock_paper_crud.get.return_value = self.paper
-        mock_highlight_crud.get_zotero_annotation_keys_for_paper.return_value = {"ANN1"}
+        mock_research_repository.get_zotero_annotation_keys.return_value = {"ANN1"}
         self.client.get_children.return_value = []
         self.client.get_annotations_for_attachment.return_value = [
             {
@@ -147,13 +147,13 @@ class TestZoteroSyncItem(unittest.TestCase):
         mock_apply.assert_not_called()
         mock_import_crud.update_after_sync.assert_called_once()
 
-    @patch.object(zotero_import_module, "highlight_crud")
+    @patch.object(zotero_import_module, "research_repository")
     def test_backfill_sets_key_without_creating_highlight(
-        self, mock_highlight_crud: MagicMock
+        self, mock_research_repository: MagicMock
     ) -> None:
         db = MagicMock()
         candidate = MagicMock()
-        mock_highlight_crud.find_backfill_candidate.return_value = candidate
+        mock_research_repository.find_zotero_backfill_candidate.return_value = candidate
 
         applied = zotero_import_module._try_backfill_or_apply_annotation(
             db,
@@ -166,9 +166,9 @@ class TestZoteroSyncItem(unittest.TestCase):
         )
 
         self.assertTrue(applied)
-        mock_highlight_crud.set_zotero_annotation_key.assert_called_once_with(
+        mock_research_repository.set_zotero_annotation_key.assert_called_once_with(
             db,
-            highlight=candidate,
+            thread=candidate,
             zotero_annotation_key="ANN1",
         )
 

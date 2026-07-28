@@ -6,16 +6,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import TypedDict
 
-from app.database.crud.annotation_crud import AnnotationCreate, annotation_crud
 from app.database.crud.base_crud import CRUDBase
-from app.database.crud.highlight_crud import HighlightCreate, highlight_crud
 from app.database.crud.paper_image_crud import paper_image_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
     AuthUser,
     Document,
     DocumentProcessingStatus,
-    Highlight,
     JsonValue,
     LibraryPaper,
     PaperImage,
@@ -29,6 +26,7 @@ from app.database.models import (
 from app.helpers.paper_search import normalize_doi
 from app.helpers.parser import get_start_page_from_offset
 from app.llm.utils import find_offsets
+from app.repositories.research import HighlightThreadCreate, research_repository
 from app.policies.documents import (
     get_document_access,
     get_library_paper,
@@ -587,13 +585,10 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
         # Idempotency: a redelivered upload job (Celery acks_late) can invoke this
         # twice for the same paper. If AI highlights already exist, this has
         # already run — skip to avoid duplicating highlights and annotations.
-        existing_ai_highlight = db.scalars(
-            select(Highlight).where(
-                Highlight.paper_id == uuid.UUID(paper_id),
-                Highlight.role == RoleType.ASSISTANT,
-            )
-        ).first()
-        if existing_ai_highlight:
+        if research_repository.has_assistant_highlight(
+            db,
+            document_id=uuid.UUID(paper_id),
+        ):
             logger.info(
                 f"AI highlights already exist for paper {paper_id}, "
                 f"skipping AI annotation creation"
@@ -617,43 +612,28 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
                     raw_file.page_offsets, offsets[0]
                 )
 
-            new_ai_highlight_obj = HighlightCreate(
-                paper_id=uuid.UUID(paper_id),
-                raw_text=ai_highlight.text,
-                type=ai_highlight.type,
-                start_offset=offsets[0],
-                end_offset=offsets[1],
-                page_number=page_number,
-                role=RoleType.ASSISTANT,
+            item = research_repository.create_highlight_thread(
+                db,
+                document_id=uuid.UUID(paper_id),
+                user_id=current_user.id,
+                create=HighlightThreadCreate(
+                    quote_text=ai_highlight.text,
+                    start_offset=offsets[0],
+                    end_offset=offsets[1],
+                    page_number=page_number,
+                    position=None,
+                    color="blue",
+                    is_shared=True,
+                    role=RoleType.ASSISTANT.value,
+                ),
             )
-
-            n_ai_h = highlight_crud.create(
-                db, obj_in=new_ai_highlight_obj, user=current_user
-            )
-
-            if not n_ai_h:
-                logger.error(
-                    f"Failed to create AI highlights for {paper_id}",
-                    exc_info=True,
-                )
-                continue
-
-            n_annotation_obj = AnnotationCreate(
-                paper_id=uuid.UUID(paper_id),
-                highlight_id=n_ai_h.id,
-                role=RoleType.ASSISTANT,
+            research_repository.add_comment(
+                db,
+                thread_id=item.id,
+                user_id=current_user.id,
                 content=ai_highlight.annotation,
+                role=RoleType.ASSISTANT.value,
             )
-
-            n_ai_annotation = annotation_crud.create(
-                db, obj_in=n_annotation_obj, user=current_user
-            )
-
-            if not n_ai_annotation:
-                logger.error(
-                    f"Failed to create AI annotation for highlight {n_ai_h.id} in {paper_id}",
-                    exc_info=True,
-                )
 
     def get_summary_replace_image_placeholders(
         self, db: Session, *, paper_id: str, current_user: CurrentUser

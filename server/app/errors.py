@@ -14,14 +14,23 @@ logger = logging.getLogger(__name__)
 class ApiErrorResponse(BaseModel):
     code: str
     message: str
+    details: dict[str, object] | None = None
 
 
 class AppError(Exception):
-    def __init__(self, *, code: str, message: str, status_code: int) -> None:
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        status_code: int,
+        details: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(code)
         self.code = code
         self.message = message
         self.status_code = status_code
+        self.details = details
 
 
 def _http_error_payload(exc: HTTPException) -> ApiErrorResponse:
@@ -40,8 +49,15 @@ def _http_error_payload(exc: HTTPException) -> ApiErrorResponse:
 async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, AppError):
         raise TypeError("app_error_handler received an unexpected exception")
-    payload = ApiErrorResponse(code=exc.code, message=exc.message)
-    return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+    payload = ApiErrorResponse(
+        code=exc.code,
+        message=exc.message,
+        details=exc.details,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=payload.model_dump(exclude_none=True),
+    )
 
 
 async def http_error_handler(_request: Request, exc: Exception) -> JSONResponse:
@@ -50,7 +66,7 @@ async def http_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     payload = _http_error_payload(exc)
     return JSONResponse(
         status_code=exc.status_code,
-        content=payload.model_dump(),
+        content=payload.model_dump(exclude_none=True),
         headers=exc.headers,
     )
 
@@ -66,4 +82,7 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
         code="internal_error",
         message="An internal error occurred",
     )
-    return JSONResponse(status_code=500, content=payload.model_dump())
+    return JSONResponse(
+        status_code=500,
+        content=payload.model_dump(exclude_none=True),
+    )

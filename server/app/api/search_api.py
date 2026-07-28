@@ -3,7 +3,12 @@ import logging
 
 from app.auth.dependencies import get_required_user
 from app.database.database import get_db
-from app.database.models import Annotation, Highlight, LibraryPaper
+from app.database.models import (
+    AnnotationComment,
+    LibraryPaper,
+    ResearchItem,
+    ResearchItemKind,
+)
 from app.database.queries.search import search_knowledge_base
 from app.database.telemetry import track_event
 from app.schemas.user import CurrentUser
@@ -38,8 +43,8 @@ async def search_knowledge_base_endpoint(
     Returns a hierarchical view with matching content organized under paper metadata.
     The search looks through:
     - Document titles, abstracts, and raw content
-    - Highlight text
-    - Annotation content
+    - Highlight thread text
+    - Annotation comment content
 
     Results are organized by paper, with matching highlights and annotations
     sub-referenced under each paper's metadata.
@@ -114,16 +119,17 @@ async def get_search_stats(
         )
         total_highlights = int(
             db.scalar(
-                select(func.count(Highlight.id)).where(
-                    Highlight.user_id == current_user.id
+                select(func.count(ResearchItem.id)).where(
+                    ResearchItem.created_by_id == current_user.id,
+                    ResearchItem.kind == ResearchItemKind.HIGHLIGHT_THREAD.value,
                 )
             )
             or 0
         )
         total_annotations = int(
             db.scalar(
-                select(func.count(Annotation.id)).where(
-                    Annotation.user_id == current_user.id
+                select(func.count(AnnotationComment.id)).where(
+                    AnnotationComment.created_by_id == current_user.id
                 )
             )
             or 0

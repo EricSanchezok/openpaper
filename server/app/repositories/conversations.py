@@ -1,3 +1,5 @@
+"""Typed persistence for user-owned conversations."""
+
 from __future__ import annotations
 
 import base64
@@ -6,18 +8,11 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from app.database.models import (
-    ConversableType,
-    Conversation,
-    Document,
-    LibraryPaper,
-    Project,
-    ProjectCollaborator,
-    ProjectPaper,
-)
+from app.database.models import Conversation, ConversationScopeType
 from app.errors import AppError
-from app.policies.projects import get_project_access
+from app.policies.conversations import conversation_policy
 from app.policies.documents import get_document_access
+from app.policies.projects import get_project_access
 from app.schemas.conversations import (
     ConversationCapabilitiesResponse,
     ConversationCreateRequest,
@@ -74,198 +69,61 @@ def _decode_cursor(cursor: str) -> tuple[datetime | None, datetime, uuid.UUID]:
 
 class ConversationRepository:
     def require_owned(
-        self, db: Session, *, conversation_id: uuid.UUID, user_id: int
+        self,
+        db: Session,
+        *,
+        conversation_id: uuid.UUID,
+        user_id: int,
+        for_update: bool = False,
     ) -> Conversation:
-        conversation = db.scalar(
-            select(Conversation).where(
-                Conversation.id == conversation_id,
-                Conversation.user_id == user_id,
-            )
+        statement = select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
         )
+        if for_update:
+            statement = statement.with_for_update()
+        conversation = db.scalar(statement)
         if conversation is None:
             raise _not_found()
         return conversation
 
-    def _scope_label_and_access(
-        self, db: Session, *, conversation: Conversation
-    ) -> tuple[str | None, bool]:
-        if conversation.conversable_type == ConversableType.EVERYTHING:
-            return None, True
-        if conversation.conversable_type == ConversableType.PROJECT:
-            if conversation.conversable_id is None:
-                raise RuntimeError("Project conversation has no project id")
-            access = get_project_access(
-                db,
-                project_id=conversation.conversable_id,
-                user_id=conversation.user_id,
-            )
-            return (
-                access.project.title
-                if access is not None
-                else conversation.scope_label_snapshot,
-                access is not None,
-            )
-        if conversation.conversable_id is None:
-            raise RuntimeError("Paper conversation has no paper id")
-        document_access = get_document_access(
-            db,
-            document_id=conversation.conversable_id,
-            user_id=conversation.user_id,
-        )
-        return (
-            (
-                document_access.document.title
-                if document_access is not None
-                else conversation.scope_label_snapshot
-            ),
-            document_access is not None,
-        )
-
     def summarize(
-        self, db: Session, *, conversation: Conversation
+        self,
+        db: Session,
+        *,
+        conversation: Conversation,
     ) -> ConversationSummaryResponse:
-        scope_label, has_scope_access = self._scope_label_and_access(
-            db, conversation=conversation
+        access = conversation_policy.evaluate(db, conversation=conversation)
+        scope_type = ConversationScopeType(conversation.scope_type)
+        scope_id = (
+            conversation.project_id
+            if scope_type == ConversationScopeType.PROJECT
+            else conversation.document_id
+            if scope_type == ConversationScopeType.PAPER
+            else None
         )
-        is_project = conversation.conversable_type == ConversableType.PROJECT
-        is_paper = conversation.conversable_type == ConversableType.PAPER
         return ConversationSummaryResponse(
             id=conversation.id,
             title=conversation.title,
             updated_at=conversation.updated_at,
-            conversable_type=ConversableType(conversation.conversable_type),
-            conversable_id=conversation.conversable_id,
-            scope_label=scope_label,
-            scope_access="active" if has_scope_access else "lost",
+            scope_type=scope_type,
+            scope_id=scope_id,
+            scope_label=access.scope_label,
+            scope_access="active" if access.can_continue else "lost",
+            read_only=not access.can_continue,
+            read_only_reason=access.read_only_reason,
             pinned_at=conversation.pinned_at,
             archived_at=conversation.archived_at,
             capabilities=ConversationCapabilitiesResponse(
-                move=not is_paper and has_scope_access,
-                detach=is_project,
-                send=has_scope_access,
+                move=(
+                    scope_type != ConversationScopeType.PAPER and access.can_continue
+                ),
+                detach=(
+                    scope_type == ConversationScopeType.PROJECT and access.can_continue
+                ),
+                send=access.can_continue,
             ),
         )
-
-    def summarize_many(
-        self,
-        db: Session,
-        *,
-        conversations: list[Conversation],
-        user_id: int,
-    ) -> list[ConversationSummaryResponse]:
-        """Serialize a sidebar page without issuing one scope query per row."""
-        project_ids = {
-            conversation.conversable_id
-            for conversation in conversations
-            if conversation.conversable_type == ConversableType.PROJECT
-            and conversation.conversable_id is not None
-        }
-        paper_ids = {
-            conversation.conversable_id
-            for conversation in conversations
-            if conversation.conversable_type == ConversableType.PAPER
-            and conversation.conversable_id is not None
-        }
-
-        project_labels: dict[uuid.UUID, str] = {}
-        if project_ids:
-            project_rows = db.execute(
-                select(Project.id, Project.title)
-                .outerjoin(
-                    ProjectCollaborator,
-                    and_(
-                        ProjectCollaborator.project_id == Project.id,
-                        ProjectCollaborator.user_id == user_id,
-                    ),
-                )
-                .where(
-                    Project.id.in_(project_ids),
-                    or_(
-                        Project.owner_id == user_id,
-                        ProjectCollaborator.user_id == user_id,
-                    ),
-                )
-            ).all()
-            project_labels = {project_id: title for project_id, title in project_rows}
-
-        paper_labels: dict[uuid.UUID, str | None] = {}
-        if paper_ids:
-            library_document_ids = set(
-                db.scalars(
-                    select(LibraryPaper.document_id).where(
-                        LibraryPaper.user_id == user_id,
-                        LibraryPaper.document_id.in_(paper_ids),
-                    )
-                ).all()
-            )
-            project_document_ids = set(
-                db.scalars(
-                    select(ProjectPaper.document_id)
-                    .join(Project, Project.id == ProjectPaper.project_id)
-                    .outerjoin(
-                        ProjectCollaborator,
-                        and_(
-                            ProjectCollaborator.project_id == Project.id,
-                            ProjectCollaborator.user_id == user_id,
-                        ),
-                    )
-                    .where(
-                        ProjectPaper.document_id.in_(paper_ids),
-                        or_(
-                            Project.owner_id == user_id,
-                            ProjectCollaborator.user_id == user_id,
-                        ),
-                    )
-                ).all()
-            )
-            accessible_document_ids = library_document_ids | project_document_ids
-            paper_rows = db.execute(
-                select(Document.id, Document.title).where(
-                    Document.id.in_(accessible_document_ids)
-                )
-            ).all()
-            paper_labels = {paper_id: title for paper_id, title in paper_rows}
-
-        summaries: list[ConversationSummaryResponse] = []
-        for conversation in conversations:
-            scope_label: str | None = None
-            has_scope_access = True
-            if conversation.conversable_type == ConversableType.PROJECT:
-                assert conversation.conversable_id is not None
-                scope_label = project_labels.get(
-                    conversation.conversable_id,
-                    conversation.scope_label_snapshot,
-                )
-                has_scope_access = conversation.conversable_id in project_labels
-            elif conversation.conversable_type == ConversableType.PAPER:
-                assert conversation.conversable_id is not None
-                scope_label = paper_labels.get(
-                    conversation.conversable_id,
-                    conversation.scope_label_snapshot,
-                )
-                has_scope_access = conversation.conversable_id in paper_labels
-
-            is_project = conversation.conversable_type == ConversableType.PROJECT
-            is_paper = conversation.conversable_type == ConversableType.PAPER
-            summaries.append(
-                ConversationSummaryResponse(
-                    id=conversation.id,
-                    title=conversation.title,
-                    updated_at=conversation.updated_at,
-                    conversable_type=ConversableType(conversation.conversable_type),
-                    conversable_id=conversation.conversable_id,
-                    scope_label=scope_label,
-                    scope_access="active" if has_scope_access else "lost",
-                    pinned_at=conversation.pinned_at,
-                    archived_at=conversation.archived_at,
-                    capabilities=ConversationCapabilitiesResponse(
-                        move=not is_paper and has_scope_access,
-                        detach=is_project,
-                        send=has_scope_access,
-                    ),
-                )
-            )
-        return summaries
 
     def create(
         self,
@@ -274,11 +132,15 @@ class ConversationRepository:
         request: ConversationCreateRequest,
         user_id: int,
     ) -> Conversation:
+        project_id: uuid.UUID | None = None
+        document_id: uuid.UUID | None = None
         scope_label: str | None = None
-        if request.conversable_type == ConversableType.PROJECT:
-            assert request.conversable_id is not None
+        if request.scope_type == ConversationScopeType.PROJECT:
+            assert request.scope_id is not None
             access = get_project_access(
-                db, project_id=request.conversable_id, user_id=user_id
+                db,
+                project_id=request.scope_id,
+                user_id=user_id,
             )
             if access is None:
                 raise AppError(
@@ -286,12 +148,13 @@ class ConversationRepository:
                     message="Project not found",
                     status_code=404,
                 )
+            project_id = request.scope_id
             scope_label = access.project.title
-        elif request.conversable_type == ConversableType.PAPER:
-            assert request.conversable_id is not None
+        elif request.scope_type == ConversationScopeType.PAPER:
+            assert request.scope_id is not None
             document_access = get_document_access(
                 db,
-                document_id=request.conversable_id,
+                document_id=request.scope_id,
                 user_id=user_id,
             )
             if document_access is None:
@@ -300,13 +163,15 @@ class ConversationRepository:
                     message="Paper not found",
                     status_code=404,
                 )
+            document_id = request.scope_id
             scope_label = document_access.document.title
 
         conversation = Conversation(
-            title=request.title.strip(),
+            title=request.title,
             user_id=user_id,
-            conversable_type=request.conversable_type,
-            conversable_id=request.conversable_id,
+            scope_type=request.scope_type.value,
+            project_id=project_id,
+            document_id=document_id,
             scope_label_snapshot=scope_label,
         )
         db.add(conversation)
@@ -322,8 +187,6 @@ class ConversationRepository:
         archived: bool,
         limit: int,
         cursor: str | None,
-        conversable_type: ConversableType | None = None,
-        conversable_id: uuid.UUID | None = None,
     ) -> tuple[list[Conversation], str | None]:
         statement = select(Conversation).where(
             Conversation.user_id == user_id,
@@ -333,12 +196,6 @@ class ConversationRepository:
                 else Conversation.archived_at.is_(None)
             ),
         )
-        if conversable_type is not None:
-            statement = statement.where(
-                Conversation.conversable_type == conversable_type
-            )
-        if conversable_id is not None:
-            statement = statement.where(Conversation.conversable_id == conversable_id)
         if cursor:
             pinned_at, updated_at, conversation_id = _decode_cursor(cursor)
             if pinned_at is not None:
@@ -380,10 +237,9 @@ class ConversationRepository:
         )
         has_more = len(conversations) > limit
         conversations = conversations[:limit]
-        next_cursor = (
+        return conversations, (
             _encode_cursor(conversations[-1]) if has_more and conversations else None
         )
-        return conversations, next_cursor
 
     def update(
         self,
@@ -394,10 +250,13 @@ class ConversationRepository:
         request: ConversationUpdateRequest,
     ) -> Conversation:
         conversation = self.require_owned(
-            db, conversation_id=conversation_id, user_id=user_id
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            for_update=True,
         )
         if request.title is not None:
-            conversation.title = request.title.strip()
+            conversation.title = request.title
         if request.pinned is not None:
             conversation.pinned_at = (
                 datetime.now(timezone.utc) if request.pinned else None
@@ -421,18 +280,25 @@ class ConversationRepository:
         request: ConversationMoveRequest,
     ) -> Conversation:
         conversation = self.require_owned(
-            db, conversation_id=conversation_id, user_id=user_id
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            for_update=True,
         )
-        if conversation.conversable_type == ConversableType.PAPER:
+        conversation_policy.require_can_continue(db, conversation=conversation)
+        if conversation.scope_type == ConversationScopeType.PAPER.value:
             raise AppError(
                 code="paper_conversation_scope_fixed",
                 message="Paper conversations cannot change scope",
                 status_code=409,
             )
-        if request.conversable_type == "project":
-            assert request.conversable_id is not None
+
+        if request.scope_type == ConversationScopeType.PROJECT.value:
+            assert request.scope_id is not None
             access = get_project_access(
-                db, project_id=request.conversable_id, user_id=user_id
+                db,
+                project_id=request.scope_id,
+                user_id=user_id,
             )
             if access is None:
                 raise AppError(
@@ -440,20 +306,31 @@ class ConversationRepository:
                     message="Project not found",
                     status_code=404,
                 )
-            conversation.conversable_type = ConversableType.PROJECT
-            conversation.conversable_id = request.conversable_id
+            conversation.scope_type = ConversationScopeType.PROJECT.value
+            conversation.project_id = request.scope_id
+            conversation.document_id = None
             conversation.scope_label_snapshot = access.project.title
         else:
-            conversation.conversable_type = ConversableType.EVERYTHING
-            conversation.conversable_id = None
+            conversation.scope_type = ConversationScopeType.GLOBAL.value
+            conversation.project_id = None
+            conversation.document_id = None
             conversation.scope_label_snapshot = None
         db.commit()
         db.refresh(conversation)
         return conversation
 
-    def delete(self, db: Session, *, conversation_id: uuid.UUID, user_id: int) -> None:
+    def delete(
+        self,
+        db: Session,
+        *,
+        conversation_id: uuid.UUID,
+        user_id: int,
+    ) -> None:
         conversation = self.require_owned(
-            db, conversation_id=conversation_id, user_id=user_id
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            for_update=True,
         )
         db.delete(conversation)
         db.commit()

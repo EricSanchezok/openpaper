@@ -21,7 +21,7 @@ from sqlalchemy.sql import func
 from .base import Base
 
 if TYPE_CHECKING:
-    from .content import AudioOverview, AudioOverviewJob, Document
+    from .content import AudioOverview, AudioOverviewJob, Conversation, Document
     from .identity import AuthUser
 
 
@@ -55,6 +55,12 @@ class Project(Base):
     )
     invitations: Mapped[list["ProjectInvitation"]] = relationship(
         "ProjectInvitation", back_populates="project", cascade="all, delete-orphan"
+    )
+    conversations: Mapped[list["Conversation"]] = relationship(
+        "Conversation",
+        back_populates="project",
+        foreign_keys="Conversation.project_id",
+        passive_deletes=True,
     )
     audio_overviews: Mapped[list["AudioOverview"]] = relationship(
         "AudioOverview",

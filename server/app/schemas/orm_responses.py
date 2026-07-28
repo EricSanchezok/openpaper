@@ -8,12 +8,10 @@ from datetime import datetime
 from uuid import UUID
 
 from app.database.models import (
-    Annotation,
     AudioOverview,
     AudioOverviewJob,
     DataTableExtractionJob,
     DataTableExtractionResult,
-    Highlight,
     JsonValue,
     Message,
     Onboarding,
@@ -36,35 +34,6 @@ class ProjectResponse(OrmResponse):
     id: UUID
     title: str | None
     description: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class HighlightResponse(OrmResponse):
-    id: UUID
-    paper_id: UUID
-    raw_text: str
-    type: str | None
-    start_offset: int | None
-    end_offset: int | None
-    page_number: int | None
-    position: dict[str, JsonValue] | None
-    role: str
-    color: str | None
-    project_id: UUID | None
-    is_shared: bool
-    created_by: ResearchCreatorResponse | None = Field(validation_alias="user")
-    created_at: datetime
-    updated_at: datetime
-
-
-class AnnotationResponse(OrmResponse):
-    id: UUID
-    highlight_id: UUID
-    paper_id: UUID
-    content: str
-    role: str
-    created_by: ResearchCreatorResponse | None = Field(validation_alias="user")
     created_at: datetime
     updated_at: datetime
 
@@ -200,14 +169,6 @@ def serialize_project(project: Project) -> dict[str, JsonValue]:
     return ProjectResponse.model_validate(project).to_json()
 
 
-def serialize_highlight(highlight: Highlight) -> dict[str, JsonValue]:
-    return HighlightResponse.model_validate(highlight).to_json()
-
-
-def serialize_annotation(annotation: Annotation) -> dict[str, JsonValue]:
-    return AnnotationResponse.model_validate(annotation).to_json()
-
-
 def serialize_paper_image(image: PaperImage) -> dict[str, JsonValue]:
     return PaperImageResponse.model_validate(image).to_json()
 
@@ -228,7 +189,11 @@ def serialize_messages(messages: list[Message]) -> list[dict[str, JsonValue]]:
                 "role": message.role,
                 "content": message.content,
                 "references": message.references,
-                "artifacts": [artifact.payload for artifact in message.artifacts]
+                "artifacts": [
+                    item.citation.snapshot
+                    for item in message.research_items
+                    if item.citation is not None
+                ]
                 or None,
                 "trace": message.trace,
                 "scope": message.scope,

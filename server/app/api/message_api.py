@@ -5,18 +5,16 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.artifact_crud import artifact_crud
-from app.database.crud.highlight_crud import highlight_crud
 from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import paper_crud
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.models import (
-    ArtifactKind,
-    ConversableType,
+    ConversationScopeType,
     ReasoningLevel,
 )
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
@@ -29,7 +27,9 @@ from app.llm.multi_paper_operations import multi_paper_operations
 from app.llm.paper_operations import paper_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.policies.projects import get_project_access
+from app.policies.conversations import conversation_policy
 from app.repositories.conversations import conversation_repository
+from app.repositories.research import research_repository
 from app.schemas.message import EvidenceCollection, ResponseStyle
 from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
@@ -282,10 +282,18 @@ def _resolve_mention_scope(
     # rather than a bare paper id the model would have to cross-reference.
     highlights_by_paper: dict[str, HighlightGroup] = {}
     for highlight_id in request.mentioned_highlight_ids or []:
-        highlight = highlight_crud.get(db, id=highlight_id, user=current_user)
-        if not highlight:
+        try:
+            item = research_repository.get_highlight_thread_visible(
+                db,
+                thread_id=uuid.UUID(highlight_id),
+                user_id=current_user.id,
+            )
+        except AppError:
             continue
-        paper_id_str = str(highlight.paper_id)
+        highlight = item.highlight_thread
+        if highlight is None or item.document_id is None:
+            continue
+        paper_id_str = str(item.document_id)
         # The parent paper joins the search scope so it stays searchable.
         scoped.add(paper_id_str)
 
@@ -302,15 +310,15 @@ def _resolve_mention_scope(
 
         annotation_contents = [
             annotation.content
-            for annotation in highlight.annotations
+            for annotation in highlight.comments
             if annotation.content
         ]
 
         snapshot.append(
             {
                 "kind": "highlight",
-                "id": str(highlight.id),
-                "title": highlight.raw_text,
+                "id": str(item.id),
+                "title": highlight.quote_text,
                 "paper_id": paper_id_str,
                 "paper_title": group["paper_title"],
                 "annotations": annotation_contents,
@@ -319,7 +327,7 @@ def _resolve_mention_scope(
 
         group["highlights"].append(
             {
-                "highlighted_text": highlight.raw_text,
+                "highlighted_text": highlight.quote_text,
                 "page_number": highlight.page_number,
                 "annotations": annotation_contents,
             }
@@ -385,6 +393,10 @@ async def chat_message_multipaper(
                     conversation_id=uuid.UUID(request.conversation_id),
                     user_id=current_user.id,
                 )
+                conversation_policy.require_can_continue(
+                    db,
+                    conversation=conversation,
+                )
                 if request.project_id:
                     project_id = uuid.UUID(request.project_id)
                     project_access = get_project_access(
@@ -396,8 +408,8 @@ async def chat_message_multipaper(
                     if project_access is None:
                         raise ValueError("Project not found.")
                     if (
-                        conversation.conversable_type != ConversableType.PROJECT
-                        or conversation.conversable_id != project_id
+                        conversation.scope_type != ConversationScopeType.PROJECT.value
+                        or conversation.project_id != project_id
                     ):
                         raise HTTPException(
                             status_code=409,
@@ -407,14 +419,14 @@ async def chat_message_multipaper(
                 # Multi-paper conversation must either be of type EVERYTHING or PROJECT. If it is a PROJECT conversation, naturally we need a `project_id`.
 
                 if (
-                    conversation.conversable_type != ConversableType.EVERYTHING
+                    conversation.scope_type != ConversationScopeType.GLOBAL.value
                     and not request.project_id
                 ):
-                    raise ValueError("Conversation is not of type EVERYTHING.")
+                    raise ValueError("Conversation is not global.")
 
                 if (
                     request.project_id
-                    and conversation.conversable_type != ConversableType.PROJECT
+                    and conversation.scope_type != ConversationScopeType.PROJECT.value
                 ):
                     raise ValueError("Conversation is not of type PROJECT.")
 
@@ -571,15 +583,12 @@ async def chat_message_multipaper(
                 )
 
                 if assistant_message and artifacts_collected:
-                    artifact_crud.bulk_create_for_message(
+                    research_repository.create_citations_for_message(
                         db,
-                        message=assistant_message,
                         conversation=conversation,
-                        items=[
-                            (ArtifactKind.CITATION, payload)
-                            for payload in artifacts_collected
-                        ],
-                        user=current_user,
+                        message_id=assistant_message.id,
+                        user_id=current_user.id,
+                        snapshots=artifacts_collected,
                     )
 
                 # Rename the conversation based on the chat history
@@ -622,7 +631,7 @@ async def chat_message_multipaper(
                         "time_taken": (
                             datetime.now(timezone.utc) - start_time
                         ).total_seconds(),
-                        "type": conversation.conversable_type,
+                        "type": conversation.scope_type,
                         "project_id": request.project_id,
                         **mention_scope_props,
                     },
@@ -736,6 +745,23 @@ async def chat_message_stream(
                 reasoning_chunks: list[str] = []
                 start_time = datetime.now(timezone.utc)
                 evidence_container: EvidenceState = {"evidence": None}
+                conversation = conversation_repository.require_owned(
+                    db,
+                    conversation_id=uuid.UUID(request.conversation_id),
+                    user_id=current_user.id,
+                )
+                conversation_policy.require_can_continue(
+                    db,
+                    conversation=conversation,
+                )
+                if (
+                    conversation.scope_type != ConversationScopeType.PAPER.value
+                    or conversation.document_id != uuid.UUID(request.paper_id)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="conversation_scope_mismatch",
+                    )
 
                 chat_generator = paper_operations.chat_with_paper(
                     paper_id=request.paper_id,

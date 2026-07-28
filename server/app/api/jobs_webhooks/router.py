@@ -20,7 +20,7 @@ from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal, engine, get_db
 from app.database.models import (
-    ConversableType,
+    ConversationScopeType,
     Document,
     DocumentProcessingStatus,
     JobStatus,
@@ -501,8 +501,8 @@ async def handle_paper_processing_webhook(
             if metadata.summary and paper:
                 try:
                     conversation_data = ConversationCreateRequest(
-                        conversable_type=ConversableType.PAPER,
-                        conversable_id=uuid.UUID(str(paper.id)),
+                        scope_type=ConversationScopeType.PAPER,
+                        scope_id=uuid.UUID(str(paper.id)),
                     )
 
                     conversation = conversation_repository.create(

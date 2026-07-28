@@ -42,9 +42,9 @@ def test_project_deletion_preserves_private_chats_and_schedules_document_gc() ->
 
     assert plan.candidate_document_ids == (document.id,)
     assert set(plan.storage_keys) == {"audio/project.mp3"}
-    # One bulk UPDATE detaches private conversations; one DELETE removes
-    # Project-scoped artifacts.
-    assert db.execute.call_count == 2
+    # Private conversations survive and are marked read-only. Project-scoped
+    # research items are removed by their database cascade.
+    assert db.execute.call_count == 1
 
     schedule_gc = MagicMock()
     monkeypatch = pytest.MonkeyPatch()

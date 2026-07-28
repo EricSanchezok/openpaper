@@ -12,18 +12,16 @@ from .base import Base
 if TYPE_CHECKING:
     from .commerce import DataTableExtractionJob, Onboarding, Subscription
     from .content import (
-        Annotation,
-        Artifact,
         AudioOverview,
         AudioOverviewJob,
         Conversation,
-        Highlight,
         LibraryPaper,
         Document,
         PaperTag,
         PaperUploadJob,
     )
     from .projects import Project, ProjectCollaborator, ProjectInvitation
+    from .research import AnnotationComment, ResearchItem
     from .integrations import (
         ZoteroConnection,
         ZoteroImportedItem,
@@ -59,14 +57,15 @@ class AuthUser(Base):
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="user", cascade="all, delete-orphan"
     )
-    highlights: Mapped[list["Highlight"]] = relationship(
-        "Highlight", back_populates="user", passive_deletes=True
+    research_items: Mapped[list["ResearchItem"]] = relationship(
+        "ResearchItem",
+        back_populates="created_by",
+        passive_deletes=True,
     )
-    annotations: Mapped[list["Annotation"]] = relationship(
-        "Annotation", back_populates="user", passive_deletes=True
-    )
-    artifacts: Mapped[list["Artifact"]] = relationship(
-        "Artifact", back_populates="user", passive_deletes=True
+    annotation_comments: Mapped[list["AnnotationComment"]] = relationship(
+        "AnnotationComment",
+        back_populates="created_by",
+        passive_deletes=True,
     )
     audio_overviews: Mapped[list["AudioOverview"]] = relationship(
         "AudioOverview", back_populates="user", passive_deletes=True

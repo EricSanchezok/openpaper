@@ -55,8 +55,8 @@ def _project_counts(
     )
     num_conversations = db.scalar(
         select(func.count(Conversation.id)).where(
-            Conversation.conversable_type == "project",
-            Conversation.conversable_id == project_id,
+            Conversation.scope_type == "project",
+            Conversation.project_id == project_id,
             Conversation.user_id == current_user_id,
         )
     )

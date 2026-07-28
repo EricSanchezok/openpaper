@@ -9,7 +9,7 @@ from app.errors import AppError
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 
 class MessageBase(BaseModel):
@@ -112,6 +112,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         """
         messages = db.scalars(
             select(Message)
+            .options(selectinload(Message.research_items))
             .join(Conversation, Conversation.id == Message.conversation_id)
             .where(
                 Message.conversation_id == conversation_id,

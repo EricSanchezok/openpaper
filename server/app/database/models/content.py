@@ -27,6 +27,7 @@ from sqlalchemy.sql import func
 
 from .base import Base, JsonValue
 from .enums import (
+    ConversationScopeType,
     ConversableType,
     DocumentProcessingStatus,
     JobStatus,
@@ -36,6 +37,7 @@ from .enums import (
 if TYPE_CHECKING:
     from .identity import AuthUser
     from .projects import Project, ProjectPaper
+    from .research import ResearchItem
 
 
 class PaperUploadJob(Base):
@@ -237,10 +239,10 @@ class Message(Base):
     conversation: Mapped["Conversation"] = relationship(
         "Conversation", back_populates="messages"
     )
-    artifacts: Mapped[list["Artifact"]] = relationship(
-        "Artifact",
-        back_populates="message",
-        order_by="Artifact.created_at",
+    research_items: Mapped[list["ResearchItem"]] = relationship(
+        "ResearchItem",
+        back_populates="source_message",
+        order_by="ResearchItem.created_at",
         passive_deletes=True,
     )
 
@@ -260,14 +262,27 @@ class Conversation(Base):
         nullable=False,
     )
 
-    # Polymorphic Columns
-    conversable_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+    scope_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ConversationScopeType.PAPER,
     )
-    conversable_type: Mapped[str] = mapped_column(
-        String, nullable=False, default=ConversableType.PAPER
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     scope_label_snapshot: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    context_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     pinned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -275,14 +290,15 @@ class Conversation(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Specific relationship for papers
     paper: Mapped["Document | None"] = relationship(
         "Document",
-        primaryjoin=lambda: and_(
-            foreign(Conversation.conversable_id) == Document.id,
-            Conversation.conversable_type == ConversableType.PAPER.value,
-        ),
-        viewonly=True,
+        foreign_keys=[document_id],
+        back_populates="conversations",
+    )
+    project: Mapped["Project | None"] = relationship(
+        "Project",
+        foreign_keys=[project_id],
+        back_populates="conversations",
     )
 
     user: Mapped["AuthUser | None"] = relationship(
@@ -298,10 +314,15 @@ class Conversation(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR "
-            "(conversable_type = 'project' AND conversable_id IS NOT NULL) OR "
-            "(conversable_type = 'everything' AND conversable_id IS NULL)",
-            name="check_conversable_consistency",
+            "(scope_type = 'global' AND project_id IS NULL "
+            "AND document_id IS NULL AND context_deleted_at IS NULL) OR "
+            "(scope_type = 'project' AND document_id IS NULL AND "
+            "((project_id IS NOT NULL AND context_deleted_at IS NULL) OR "
+            "(project_id IS NULL AND context_deleted_at IS NOT NULL))) OR "
+            "(scope_type = 'paper' AND project_id IS NULL AND "
+            "((document_id IS NOT NULL AND context_deleted_at IS NULL) OR "
+            "(document_id IS NULL AND context_deleted_at IS NOT NULL)))",
+            name="ck_conversations_scope_consistency",
         ),
         Index(
             "ix_conversations_user_archive_activity",
@@ -313,73 +334,6 @@ class Conversation(Base):
             "ix_conversations_user_pinned",
             "user_id",
             "pinned_at",
-        ),
-    )
-
-
-class Artifact(Base):
-    """A first-party artifact (citation card today; charts/images later).
-
-    Scope mirrors `ConversableType` so the same primitive that targets a
-    conversation also targets an artifact's surfacing — a project panel filters
-    `scope_type='project' AND scope_id=<project_id>`, a paper view filters
-    `scope_type='paper' AND scope_id=<paper_id>`, and `everything` artifacts
-    leave `scope_id NULL`.
-    """
-
-    __tablename__ = "artifacts"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    kind: Mapped[str] = mapped_column(String, nullable=False)  # ArtifactKind value
-    payload: Mapped[dict[str, JsonValue]] = mapped_column(JSONB, nullable=False)
-
-    # Provenance: which assistant message produced this artifact.
-    message_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("messages.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    # Scope — denormalized from the originating conversation so panel queries
-    # are a single indexed lookup, no joins through messages → conversations.
-    scope_type: Mapped[str] = mapped_column(
-        String, nullable=False
-    )  # ConversableType value
-    scope_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    is_shared: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
-
-    message: Mapped["Message | None"] = relationship(
-        "Message", back_populates="artifacts"
-    )
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="artifacts"
-    )
-
-    __table_args__ = (
-        Index(
-            "ix_artifacts_scope",
-            "scope_type",
-            "scope_id",
-            "kind",
-            "created_at",
-        ),
-        Index("ix_artifacts_message_id", "message_id"),
-        CheckConstraint(
-            "NOT is_shared OR scope_type = 'project'",
-            name="ck_artifacts_shared_project_scope",
         ),
     )
 
@@ -519,11 +473,8 @@ class Document(Base):
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation",
         back_populates="paper",
-        cascade="all, delete-orphan",
-        primaryjoin=lambda: and_(
-            Document.id == foreign(Conversation.conversable_id),
-            Conversation.conversable_type == ConversableType.PAPER.value,
-        ),
+        foreign_keys="Conversation.document_id",
+        passive_deletes=True,
     )
     audio_overviews: Mapped[list["AudioOverview"]] = relationship(
         "AudioOverview",
@@ -684,121 +635,6 @@ class PaperImage(Base):
     )  # Placeholder ID for the image
 
     paper: Mapped["Document"] = relationship("Document", back_populates="paper_images")
-
-
-class Highlight(Base):
-    __tablename__ = "highlights"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
-    type: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # HighlightType enum value)
-
-    # Position (exact for user, hints for AI)
-    start_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    end_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    position: Mapped[dict[str, JsonValue] | None] = mapped_column(JSONB, nullable=True)
-
-    # Role
-    # This can be user for user-created highlights or assistant for AI-generated highlights
-    role: Mapped[str] = mapped_column(
-        String, nullable=False, default="user"
-    )  # 'user' or 'assistant'
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
-    is_shared: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
-    color: Mapped[str | None] = mapped_column(String, nullable=True, default="blue")
-    zotero_annotation_key: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    __table_args__ = (
-        Index(
-            "uq_highlight_paper_zotero_annotation_key",
-            "paper_id",
-            "zotero_annotation_key",
-            "user_id",
-            unique=True,
-            postgresql_where=(zotero_annotation_key.isnot(None)),
-        ),
-        Index(
-            "ix_highlights_project_visibility",
-            "project_id",
-            "is_shared",
-            "created_at",
-        ),
-        CheckConstraint(
-            "NOT is_shared OR project_id IS NOT NULL",
-            name="ck_highlights_shared_project",
-        ),
-    )
-
-    # Relationships
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="highlights"
-    )
-    annotations: Mapped[list["Annotation"]] = relationship(
-        "Annotation", back_populates="highlight", cascade="all, delete-orphan"
-    )
-
-
-class Annotation(Base):
-    __tablename__ = "annotations"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-
-    # The associated highlight
-    highlight_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("highlights.id"), nullable=False
-    )
-
-    # The associated paper
-    paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # Role tracking
-    role: Mapped[str] = mapped_column(
-        String, nullable=False, default="user"
-    )  # 'user' or 'assistant'
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    # Relationships
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="annotations"
-    )
-    highlight: Mapped["Highlight"] = relationship(
-        "Highlight", back_populates="annotations"
-    )
 
 
 class AudioOverviewJob(Base):

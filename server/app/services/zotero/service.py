@@ -9,8 +9,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
-from app.database.crud.annotation_crud import AnnotationCreate, annotation_crud
-from app.database.crud.highlight_crud import HighlightCreate, highlight_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_tag_crud import PaperTagCreate, paper_tag_crud
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
@@ -37,6 +35,7 @@ from app.services.resource_quotas import (
 )
 from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
+from app.repositories.research import HighlightThreadCreate, research_repository
 from app.schemas.user import CurrentUser
 from app.services.upload_reservations import reserve_upload
 from app.services.document_submission import submit_reserved_document
@@ -381,34 +380,30 @@ def _apply_single_zotero_annotation(
 
     position = _convert_zotero_position(ann_data)
 
-    highlight = highlight_crud.create(
+    item = research_repository.create_highlight_thread(
         db,
-        obj_in=HighlightCreate(
-            paper_id=paper_id,
-            raw_text=raw_text,
+        document_id=paper_id,
+        user_id=user.id,
+        create=HighlightThreadCreate(
+            quote_text=raw_text,
             start_offset=start_offset,
             end_offset=end_offset,
             page_number=page_number,
             position=position,
-            role=RoleType.USER,
             color=_map_zotero_color(ann_data.get("annotationColor")),
+            is_shared=True,
+            role=RoleType.USER.value,
             zotero_annotation_key=zotero_annotation_key,
         ),
-        user=user,
     )
-    if not highlight or not highlight.id:
-        return False
 
     if comment:
-        annotation_crud.create(
+        research_repository.add_comment(
             db,
-            obj_in=AnnotationCreate(
-                paper_id=paper_id,
-                highlight_id=UUID(str(highlight.id)),
-                content=comment,
-                role=RoleType.USER,
-            ),
-            user=user,
+            thread_id=item.id,
+            user_id=user.id,
+            content=comment,
+            role=RoleType.USER.value,
         )
     return True
 
@@ -443,16 +438,17 @@ def _try_backfill_or_apply_annotation(
         return False
 
     page_number = _page_from_annotation(ann_data)
-    candidate = highlight_crud.find_backfill_candidate(
+    candidate = research_repository.find_zotero_backfill_candidate(
         db,
-        paper_id=paper_id,
-        raw_text=raw_text,
+        document_id=paper_id,
+        user_id=user.id,
+        quote_text=raw_text,
         page_number=page_number,
     )
     if candidate:
-        highlight_crud.set_zotero_annotation_key(
+        research_repository.set_zotero_annotation_key(
             db,
-            highlight=candidate,
+            thread=candidate,
             zotero_annotation_key=zotero_annotation_key,
         )
         return True
@@ -1409,8 +1405,10 @@ def _sync_item(
 
     attachment_children = client.get_children(str(import_row.zotero_attachment_key))
     remote_annotations = client.get_annotations_for_attachment(attachment_children)
-    existing_keys = highlight_crud.get_zotero_annotation_keys_for_paper(
-        db, paper_id=UUID(str(paper_id))
+    existing_keys = research_repository.get_zotero_annotation_keys(
+        db,
+        document_id=UUID(str(paper_id)),
+        user_id=user.id,
     )
 
     missing_annotations = [

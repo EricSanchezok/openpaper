@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.api.conversation_api import get_conversation
+from app.api.conversation_api import get_conversation, get_conversation_messages
 from app.database.crud.message_crud import message_crud
 from app.database.models import Conversation, Message
 from app.errors import AppError
@@ -56,8 +56,8 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     paths = set(app.openapi()["paths"])
 
     assert "/api/conversations" in paths
-    assert "/api/conversations/{conversation_id}/move" in paths
-    assert "/api/conversations/{conversation_id}/detach" in paths
+    assert "/api/conversations/{conversation_id}/scope" in paths
+    assert "/api/conversations/{conversation_id}/messages" in paths
     assert not any(path.startswith("/api/conversation/") for path in paths)
     assert not any(path.startswith("/api/projects/conversations") for path in paths)
     assert not any("conversation/share" in path for path in paths)
@@ -65,7 +65,16 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     table = Conversation.__table__
     assert table.c.user_id.nullable is False
     assert table.c.title.nullable is False
-    assert {"pinned_at", "archived_at", "scope_label_snapshot"} <= set(table.c.keys())
+    assert {
+        "scope_type",
+        "project_id",
+        "document_id",
+        "context_deleted_at",
+        "pinned_at",
+        "archived_at",
+        "scope_label_snapshot",
+    } <= set(table.c.keys())
+    assert "conversable_id" not in table.c
     assert "user_id" not in Message.__table__.c
     assert any(
         constraint.name == "uq_messages_conversation_sequence"
@@ -79,7 +88,7 @@ def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
         id=uuid.uuid4(),
         title="Conversation",
         user_id=1,
-        conversable_type="everything",
+        scope_type="global",
     )
     original_updated_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     conversation.updated_at = original_updated_at
@@ -123,12 +132,12 @@ def test_message_creation_rejects_a_conversation_owned_by_someone_else() -> None
 
 def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:
     with pytest.raises(ValidationError):
-        ConversationCreateRequest.model_validate({"conversable_type": "project"})
+        ConversationCreateRequest.model_validate({"scope_type": "project"})
     with pytest.raises(ValidationError):
         ConversationCreateRequest.model_validate(
             {
-                "conversable_type": "everything",
-                "conversable_id": str(uuid.uuid4()),
+                "scope_type": "global",
+                "scope_id": str(uuid.uuid4()),
             }
         )
 
@@ -149,8 +158,6 @@ def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -
     with pytest.raises(AppError) as exc_info:
         get_conversation(
             conversation_id=uuid.uuid4(),
-            page=1,
-            page_size=10,
             db=MagicMock(spec=Session),
             current_user=_current_user(),
         )
@@ -167,7 +174,7 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
         id=conversation_id,
         title="Conversation",
         user_id=1,
-        conversable_type="everything",
+        scope_type="global",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -189,7 +196,7 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
                 ValueError("invalid message payload")
             ),
         )
-        get_conversation(
+        get_conversation_messages(
             conversation_id=conversation_id,
             page=1,
             page_size=10,

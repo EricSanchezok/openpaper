@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.database.models import (
+    Conversation,
+    ConversationScopeType,
     Document,
     LibraryPaper,
     PaperImage,
     ProjectPaper,
 )
 from app.helpers.s3 import s3_service
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 DOCUMENT_GC_GRACE_PERIOD = timedelta(hours=24)
@@ -107,6 +109,21 @@ def collect_document_if_due(
             document_id, deleted=False, cancelled=False, retry_required=True
         )
 
+    db.execute(
+        update(Conversation)
+        .where(
+            Conversation.scope_type == ConversationScopeType.PAPER.value,
+            Conversation.document_id == document_id,
+        )
+        .values(
+            scope_label_snapshot=func.coalesce(
+                Conversation.scope_label_snapshot,
+                document.title,
+                document.original_filename,
+            ),
+            context_deleted_at=current_time,
+        )
+    )
     db.delete(document)
     db.commit()
     return DocumentGcResult(

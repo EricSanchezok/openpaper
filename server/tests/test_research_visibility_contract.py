@@ -1,249 +1,170 @@
-"""Contracts for private conversations and selectively shared Project outputs."""
+"""Contracts for typed research outputs and creator-owned visibility."""
 
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import uuid
 
 import pytest
-from app.api.highlight_api import CreateHighlightRequest
-from app.database.crud.annotation_crud import annotation_crud
-from app.database.crud.artifact_crud import artifact_crud
-from app.database.crud.audio_overview_crud import audio_overview_crud
-from app.database.crud.highlight_crud import highlight_crud
-from app.database.crud.projects.project_data_table_crud import data_table_job_crud
 from app.database.models import (
-    Annotation,
-    Artifact,
-    AuthUser,
-    AudioOverview,
-    ConversableType,
-    DataTableExtractionJob,
-    Highlight,
-    JobStatus,
-    Project,
+    AnnotationComment,
+    HighlightThread,
+    ResearchAudioOverview,
+    ResearchDataTable,
+    ResearchItem,
+    ResearchItemKind,
+    ResearchScopeType,
 )
 from app.errors import AppError
 from app.main import app
-from app.policies.projects import ProjectAccess, ProjectPermissions
-from app.policies.research import (
-    can_manage_research_item,
-    can_view_research_item,
-    require_research_item_manager,
-)
-from app.schemas.user import CurrentUser
-from app.schemas.orm_responses import serialize_data_table_job
+from app.policies.research import research_item_policy
+from app.schemas.research import CreateHighlightThreadRequest, ResearchVisibilityRequest
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).parents[2]
 
 
-def _access(*, user_id: int, owner: bool) -> ProjectAccess:
-    project = Project(id=uuid.uuid4(), owner_id=1, title="Research project")
-    return ProjectAccess(
-        project=project,
-        user_id=user_id,
-        is_owner=owner,
-        collaborator=None,
-        permissions=ProjectPermissions.all() if owner else ProjectPermissions(),
+def _item(
+    *,
+    creator_id: int = 2,
+    shared: bool = True,
+    scope_type: ResearchScopeType = ResearchScopeType.PROJECT,
+) -> ResearchItem:
+    return ResearchItem(
+        id=uuid.uuid4(),
+        kind=ResearchItemKind.CITATION.value,
+        created_by_id=creator_id,
+        scope_type=scope_type.value,
+        project_id=uuid.uuid4() if scope_type == ResearchScopeType.PROJECT else None,
+        document_id=uuid.uuid4() if scope_type == ResearchScopeType.DOCUMENT else None,
+        is_shared=shared,
     )
 
 
-def test_project_outputs_share_one_visibility_contract() -> None:
-    project_scoped_models = (
-        Artifact,
-        AudioOverview,
-        DataTableExtractionJob,
-        Highlight,
-    )
-    for model in project_scoped_models:
-        assert "is_shared" in model.__table__.c
-        assert model.__table__.c.is_shared.nullable is False
-        assert model.__table__.c.user_id.nullable is True
+def test_research_items_use_one_metadata_contract_with_typed_payloads() -> None:
+    assert {
+        "kind",
+        "created_by_id",
+        "scope_type",
+        "document_id",
+        "project_id",
+        "is_shared",
+        "source_message_id",
+    }.issubset(ResearchItem.__table__.c.keys())
+    assert HighlightThread.__table__.c.research_item_id.primary_key
+    assert ResearchAudioOverview.__table__.c.research_item_id.primary_key
+    assert ResearchDataTable.__table__.c.research_item_id.primary_key
+    assert "is_shared" not in AnnotationComment.__table__.c
 
-    # Annotation visibility deliberately follows its parent Highlight so the
-    # two records can never contradict one another.
-    assert "is_shared" not in Annotation.__table__.c
 
+def test_creator_is_only_manager_and_owner_has_no_override() -> None:
+    db = MagicMock(spec=Session)
+    item = _item(creator_id=2, shared=True)
 
-def test_shared_items_are_visible_but_hidden_items_remain_creator_only() -> None:
-    creator = _access(user_id=2, owner=False)
-    collaborator = _access(user_id=3, owner=False)
-    owner = _access(user_id=1, owner=True)
+    with patch(
+        "app.policies.research.get_project_access",
+        return_value=object(),
+    ):
+        creator = research_item_policy.evaluate(db, item=item, user_id=2)
+        collaborator = research_item_policy.evaluate(db, item=item, user_id=3)
+        owner = research_item_policy.evaluate(db, item=item, user_id=1)
 
-    assert can_view_research_item(
-        access=collaborator,
-        created_by_id=creator.user_id,
-        is_shared=True,
-    )
-    assert not can_view_research_item(
-        access=collaborator,
-        created_by_id=creator.user_id,
-        is_shared=False,
-    )
-    assert can_view_research_item(
-        access=creator,
-        created_by_id=creator.user_id,
-        is_shared=False,
-    )
-    assert can_view_research_item(
-        access=owner,
-        created_by_id=creator.user_id,
-        is_shared=False,
-    )
-    assert can_manage_research_item(access=creator, created_by_id=creator.user_id)
-    assert can_manage_research_item(access=owner, created_by_id=creator.user_id)
-    assert not can_manage_research_item(
-        access=collaborator,
-        created_by_id=creator.user_id,
-    )
+    assert creator.can_view and creator.can_manage
+    assert collaborator.can_view and not collaborator.can_manage
+    assert owner.can_view and not owner.can_manage
 
-    with pytest.raises(AppError) as exc_info:
-        require_research_item_manager(
-            access=collaborator,
-            created_by_id=creator.user_id,
-        )
+    with (
+        patch(
+            "app.policies.research.get_project_access",
+            return_value=object(),
+        ),
+        pytest.raises(AppError) as exc_info,
+    ):
+        research_item_policy.require_creator_manager(db, item=item, user_id=1)
     assert exc_info.value.code == "research_item_permission_denied"
 
 
-def test_owner_lists_include_hidden_project_outputs() -> None:
-    owner = _access(user_id=1, owner=True)
-    user = CurrentUser(
-        id=1,
-        email="owner@example.com",
-        display_name="Owner",
-        status="active",
-        email_verified=True,
-    )
-    db = MagicMock(spec=Session)
-    db.scalars.return_value.all.return_value = []
-    db.scalars.return_value.unique.return_value.all.return_value = []
-
-    with patch(
-        "app.database.crud.artifact_crud.require_project_research_access",
-        return_value=owner,
-    ):
-        artifact_crud.list_for_project(
-            db,
-            project_id=owner.project.id,
-            user=user,
-        )
-    assert "artifacts.is_shared IS true" not in str(db.scalars.call_args.args[0])
-
-    with patch(
-        "app.database.crud.audio_overview_crud.get_project_access",
-        return_value=owner,
-    ):
-        audio_overview_crud.get_by_conversable_and_user(
-            db,
-            conversable_id=owner.project.id,
-            conversable_type=ConversableType.PROJECT,
-            current_user=user,
-        )
-    assert "audio_overviews.is_shared IS true" not in str(db.scalars.call_args.args[0])
-
-    with patch(
-        "app.database.crud.projects.project_data_table_crud.get_project_access",
-        return_value=owner,
-    ):
-        data_table_job_crud.get_by_project(
-            db,
-            project_id=owner.project.id,
-            user=user,
-        )
-    assert "data_table_extraction_jobs.is_shared IS true" not in str(
-        db.scalars.call_args.args[0]
-    )
-
-    with (
-        patch("app.database.crud.highlight_crud.require_document_access"),
-        patch(
-            "app.database.crud.highlight_crud.require_project_research_access",
-            return_value=owner,
-        ),
-    ):
-        highlight_crud.get_highlights_by_paper_id(
-            db,
-            paper_id=uuid.uuid4(),
-            project_id=owner.project.id,
-            user=user,
-        )
-    assert "highlights.is_shared IS true" not in str(db.scalars.call_args.args[0])
-
-
-def test_data_table_response_includes_visibility_and_creator_attribution() -> None:
-    now = datetime.now(timezone.utc)
-    creator = AuthUser(
-        id=2,
-        email="collaborator@example.com",
-        password_hash="not-used",
-        display_name="Research Collaborator",
-        status="active",
-    )
-    job = DataTableExtractionJob(
-        id=uuid.uuid4(),
-        user_id=creator.id,
-        project_id=uuid.uuid4(),
-        columns=["Outcome"],
-        task_id="task-1",
-        status=JobStatus.COMPLETED,
-        started_at=now,
-        completed_at=now,
-        error_message=None,
-        is_shared=True,
-        created_at=now,
-        updated_at=now,
-    )
-    job.user = creator
-
-    response = serialize_data_table_job(job)
-
-    assert response["is_shared"] is True
-    assert response["created_by"] == {
-        "id": creator.id,
-        "display_name": creator.display_name,
-    }
-
-
-def test_personal_highlights_cannot_claim_shared_visibility() -> None:
-    with pytest.raises(ValidationError):
-        CreateHighlightRequest.model_validate(
-            {
-                "paper_id": str(uuid.uuid4()),
-                "raw_text": "Evidence",
-                "shared": True,
-            }
-        )
-
-
-def test_research_visibility_api_is_uniform_and_project_artifacts_hide_chat_ids() -> (
+def test_hidden_items_are_creator_only_and_creator_history_survives_access_loss() -> (
     None
 ):
+    db = MagicMock(spec=Session)
+    item = _item(creator_id=2, shared=False)
+
+    with patch("app.policies.research.get_project_access", return_value=None):
+        creator = research_item_policy.evaluate(db, item=item, user_id=2)
+        collaborator = research_item_policy.evaluate(db, item=item, user_id=3)
+
+    assert creator.can_view
+    assert not creator.can_manage
+    assert not creator.has_scope_access
+    assert not collaborator.can_view
+
+
+def test_personal_research_is_always_private() -> None:
+    db = MagicMock(spec=Session)
+    item = _item(
+        creator_id=2,
+        shared=False,
+        scope_type=ResearchScopeType.PERSONAL,
+    )
+
+    creator = research_item_policy.evaluate(db, item=item, user_id=2)
+    stranger = research_item_policy.evaluate(db, item=item, user_id=3)
+
+    assert creator.can_view and creator.can_manage
+    assert not stranger.can_view and not stranger.can_manage
+
+
+def test_highlight_request_is_strict_and_shared_by_default() -> None:
+    request = CreateHighlightThreadRequest.model_validate({"quote_text": "Evidence"})
+    assert request.shared is True
+
+    with pytest.raises(ValidationError):
+        CreateHighlightThreadRequest.model_validate(
+            {"quote_text": "Evidence", "project_id": str(uuid.uuid4())}
+        )
+    with pytest.raises(ValidationError):
+        ResearchVisibilityRequest.model_validate(
+            {"shared": True, "creator_override": True}
+        )
+
+
+def test_research_api_exposes_only_the_new_typed_routes() -> None:
     paths = app.openapi()["paths"]
-    assert "/api/research/{kind}/{output_id}/visibility" in paths
+    expected = {
+        "/api/documents/{document_id}/research-items",
+        "/api/documents/{document_id}/highlight-threads",
+        "/api/highlight-threads/{thread_id}",
+        "/api/highlight-threads/{thread_id}/comments",
+        "/api/annotation-comments/{comment_id}",
+        "/api/projects/{project_id}/research-items",
+        "/api/research-items/{item_id}",
+    }
+    assert expected.issubset(paths)
+    assert not any("/api/highlight/" in path for path in paths)
+    assert not any("/api/annotation/" in path for path in paths)
+    assert not any("/api/projects/artifacts" in path for path in paths)
+    assert not any("/visibility" in path for path in paths)
 
-    project_artifact_schema = paths["/api/projects/artifacts/{project_id}"]["get"]
-    response_text = str(project_artifact_schema)
-    assert "conversation_id" not in response_text
-    assert "message_id" not in response_text
-    assert "ProjectArtifactListResponse" in response_text
+
+def test_public_paper_share_has_no_research_route() -> None:
+    paths = app.openapi()["paths"]
+    public_paths = [path for path in paths if "/public/" in path or "/share/" in path]
+    assert all("research" not in path for path in public_paths)
 
 
-def test_clean_baseline_contains_visibility_constraints() -> None:
+def test_clean_baseline_contains_typed_research_constraints() -> None:
     baseline = next((ROOT / "server" / "migrations" / "versions").glob("*.py"))
     source = baseline.read_text(encoding="utf-8")
-    for constraint in (
-        "ck_artifacts_shared_project_scope",
-        "ck_audio_overviews_shared_project",
-        "ck_data_table_jobs_shared_project",
-        "ck_highlights_shared_project",
+    for table_or_constraint in (
+        "research_items",
+        "highlight_threads",
+        "annotation_comments",
+        "citation_outputs",
+        "research_audio_overviews",
+        "research_data_tables",
+        "ck_research_items_scope_consistency",
+        "ck_research_items_personal_private",
     ):
-        assert constraint in source
-
-
-def test_public_paper_share_excludes_project_research_layer() -> None:
-    # Public shares expose canonical paper data only. Research has no public
-    # repository entry point, so an API handler cannot accidentally fetch it.
-    assert not hasattr(highlight_crud, "get_public_highlights_data_by_paper_id")
-    assert not hasattr(annotation_crud, "get_public_annotations_data_by_paper_id")
+        assert table_or_constraint in source
+    assert 'op.create_table("artifacts"' not in source

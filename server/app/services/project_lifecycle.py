@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.database.models import (
-    Artifact,
     AudioOverview,
     AudioOverviewJob,
     Conversation,
+    ConversationScopeType,
     ConversableType,
     DataTableExtractionJob,
     JobStatus,
@@ -20,7 +20,7 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.helpers.s3 import s3_service
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -85,32 +85,22 @@ def prepare_project_deletion(
         ).all()
     )
 
-    # Conversations are private user history, not Project-owned records. Keep
-    # them, preserve a label snapshot, and remove the now-invalid scope.
+    # Conversations are private user history, not Project-owned records. Mark
+    # the context as deleted before the Project FK becomes NULL on cascade.
     db.execute(
         update(Conversation)
         .where(
-            Conversation.conversable_type == ConversableType.PROJECT.value,
-            Conversation.conversable_id == project.id,
+            Conversation.scope_type == ConversationScopeType.PROJECT.value,
+            Conversation.project_id == project.id,
         )
         .values(
-            conversable_type=ConversableType.EVERYTHING.value,
-            conversable_id=None,
             scope_label_snapshot=func.coalesce(
                 Conversation.scope_label_snapshot,
                 project.title,
             ),
+            context_deleted_at=func.now(),
         )
     )
-    # Artifacts are Project research outputs, so they follow the Project
-    # lifecycle even though their polymorphic scope cannot carry a foreign key.
-    db.execute(
-        delete(Artifact).where(
-            Artifact.scope_type == ConversableType.PROJECT.value,
-            Artifact.scope_id == project.id,
-        )
-    )
-
     return ProjectDeletionPlan(
         candidate_document_ids=candidate_document_ids,
         storage_keys=tuple(sorted(storage_keys)),

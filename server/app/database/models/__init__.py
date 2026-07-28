@@ -2,13 +2,15 @@
 
 from .base import Base, JsonScalar, JsonValue
 from .enums import (
-    ArtifactKind,
     ConversableType,
+    ConversationScopeType,
     DocumentProcessingStatus,
     HighlightType,
     JobStatus,
     PaperStatus,
     ReasoningLevel,
+    ResearchItemKind,
+    ResearchScopeType,
     RoleType,
     SubscriptionPlan,
     SubscriptionStatus,
@@ -19,12 +21,9 @@ from .enums import (
 from .identity import AuthUser, UserProfile
 from .integrations import ZoteroConnection, ZoteroImportedItem, ZoteroOAuthPending
 from .content import (
-    Annotation,
-    Artifact,
     AudioOverview,
     AudioOverviewJob,
     Conversation,
-    Highlight,
     JobsWebhookNonce,
     LibraryPaper,
     LibraryPaperTag,
@@ -38,6 +37,14 @@ from .content import (
     TokenWeeklyUsage,
 )
 from .projects import Project, ProjectCollaborator, ProjectInvitation, ProjectPaper
+from .research import (
+    AnnotationComment,
+    CitationOutput,
+    HighlightThread,
+    ResearchAudioOverview,
+    ResearchDataTable,
+    ResearchItem,
+)
 from .commerce import (
     DataTableExtractionJob,
     DataTableExtractionResult,
@@ -48,20 +55,17 @@ from .commerce import (
 )
 
 __all__ = [
-    "Annotation",
-    "Artifact",
-    "ArtifactKind",
     "AudioOverview",
     "AudioOverviewJob",
     "AuthUser",
     "Base",
     "ConversableType",
+    "ConversationScopeType",
     "DocumentProcessingStatus",
     "Conversation",
     "DataTableExtractionJob",
     "DataTableExtractionResult",
     "DataTableRow",
-    "Highlight",
     "HighlightType",
     "JobStatus",
     "JobsWebhookNonce",
@@ -82,6 +86,14 @@ __all__ = [
     "ProjectInvitation",
     "ProjectPaper",
     "ReasoningLevel",
+    "ResearchAudioOverview",
+    "ResearchDataTable",
+    "ResearchItem",
+    "ResearchItemKind",
+    "ResearchScopeType",
+    "CitationOutput",
+    "HighlightThread",
+    "AnnotationComment",
     "RoleType",
     "Subscription",
     "SubscriptionPlan",

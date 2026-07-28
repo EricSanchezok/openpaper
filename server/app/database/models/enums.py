@@ -77,14 +77,23 @@ class ConversableType(str, Enum):
     )
 
 
-class ArtifactKind(str, Enum):
-    """First-party artifacts produced by chat (or other agentic flows).
+class ConversationScopeType(str, Enum):
+    GLOBAL = "global"
+    PROJECT = "project"
+    PAPER = "paper"
 
-    The DB stores the value as a plain string; this enum is the canonical set
-    used at write time and for CRUD typing.
-    """
 
+class ResearchItemKind(str, Enum):
+    HIGHLIGHT_THREAD = "highlight_thread"
     CITATION = "citation"
+    AUDIO_OVERVIEW = "audio_overview"
+    DATA_TABLE = "data_table"
+
+
+class ResearchScopeType(str, Enum):
+    PERSONAL = "personal"
+    DOCUMENT = "document"
+    PROJECT = "project"
 
 
 class HighlightType(str, Enum):

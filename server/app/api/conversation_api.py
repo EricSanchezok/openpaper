@@ -5,7 +5,7 @@ import uuid
 from app.auth.dependencies import get_required_user
 from app.database.crud.message_crud import message_crud
 from app.database.database import get_db
-from app.database.models import ConversableType
+from app.database.models import ConversationScopeType
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.llm.conversation_operations import conversation_operations
@@ -15,6 +15,7 @@ from app.schemas.conversations import (
     ConversationCreateRequest,
     ConversationDetailResponse,
     ConversationListResponse,
+    ConversationMessagesResponse,
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
@@ -32,38 +33,21 @@ def list_conversations(
     archived: bool = False,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
-    conversable_type: ConversableType | None = None,
-    conversable_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> ConversationListResponse:
-    if conversable_id is not None and conversable_type is None:
-        raise AppError(
-            code="conversation_scope_filter_invalid",
-            message="conversable_type is required with conversable_id",
-            status_code=422,
-        )
-    if conversable_type == ConversableType.EVERYTHING and conversable_id is not None:
-        raise AppError(
-            code="conversation_scope_filter_invalid",
-            message="Everything conversations do not have conversable_id",
-            status_code=422,
-        )
     conversations, next_cursor = conversation_repository.list(
         db,
         user_id=current_user.id,
         archived=archived,
         cursor=cursor,
         limit=limit,
-        conversable_type=conversable_type,
-        conversable_id=conversable_id,
     )
     return ConversationListResponse(
-        items=conversation_repository.summarize_many(
-            db,
-            conversations=conversations,
-            user_id=current_user.id,
-        ),
+        items=[
+            conversation_repository.summarize(db, conversation=conversation)
+            for conversation in conversations
+        ],
         next_cursor=next_cursor,
     )
 
@@ -81,14 +65,14 @@ def create_conversation(
     conversation = conversation_repository.create(
         db, request=request, user_id=current_user.id
     )
-    if request.conversable_type == ConversableType.PROJECT:
+    if request.scope_type == ConversationScopeType.PROJECT:
         track_event(
             "project_conversation_created",
             user_id=str(current_user.id),
             db=db,
         )
     summary = conversation_repository.summarize(db, conversation=conversation)
-    return ConversationDetailResponse(**summary.model_dump(), messages=[])
+    return ConversationDetailResponse(**summary.model_dump())
 
 
 @conversation_router.get(
@@ -96,13 +80,31 @@ def create_conversation(
 )
 def get_conversation(
     conversation_id: uuid.UUID,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> ConversationDetailResponse:
     conversation = conversation_repository.require_owned(
         db, conversation_id=conversation_id, user_id=current_user.id
+    )
+    summary = conversation_repository.summarize(db, conversation=conversation)
+    return ConversationDetailResponse(**summary.model_dump())
+
+
+@conversation_router.get(
+    "/{conversation_id}/messages",
+    response_model=ConversationMessagesResponse,
+)
+def get_conversation_messages(
+    conversation_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_required_user),
+) -> ConversationMessagesResponse:
+    conversation_repository.require_owned(
+        db,
+        conversation_id=conversation_id,
+        user_id=current_user.id,
     )
     messages = message_crud.get_conversation_messages(
         db,
@@ -111,10 +113,10 @@ def get_conversation(
         page=page,
         page_size=page_size,
     )
-    summary = conversation_repository.summarize(db, conversation=conversation)
-    return ConversationDetailResponse(
-        **summary.model_dump(),
-        messages=[dict(message) for message in serialize_messages(messages)],
+    return ConversationMessagesResponse(
+        items=[dict(message) for message in serialize_messages(messages)],
+        page=page,
+        page_size=page_size,
     )
 
 
@@ -136,8 +138,8 @@ def update_conversation(
     return conversation_repository.summarize(db, conversation=conversation)
 
 
-@conversation_router.post(
-    "/{conversation_id}/move", response_model=ConversationSummaryResponse
+@conversation_router.put(
+    "/{conversation_id}/scope", response_model=ConversationSummaryResponse
 )
 def move_conversation(
     conversation_id: uuid.UUID,
@@ -150,23 +152,6 @@ def move_conversation(
         conversation_id=conversation_id,
         user_id=current_user.id,
         request=request,
-    )
-    return conversation_repository.summarize(db, conversation=conversation)
-
-
-@conversation_router.post(
-    "/{conversation_id}/detach", response_model=ConversationSummaryResponse
-)
-def detach_conversation(
-    conversation_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> ConversationSummaryResponse:
-    conversation = conversation_repository.move(
-        db,
-        conversation_id=conversation_id,
-        user_id=current_user.id,
-        request=ConversationMoveRequest(conversable_type="everything"),
     )
     return conversation_repository.summarize(db, conversation=conversation)
 

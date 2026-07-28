@@ -1,59 +1,101 @@
-"""Authorization rules shared by heterogeneous research-output models."""
+"""Authorization policy for every research-item kind."""
 
 from __future__ import annotations
 
-import uuid
+from dataclasses import dataclass
 
+from app.database.models import ResearchItem, ResearchScopeType
 from app.errors import AppError
-from app.policies.projects import ProjectAccess, get_project_access
+from app.policies.documents import get_document_access
+from app.policies.projects import get_project_access
 from sqlalchemy.orm import Session
 
 
-def require_project_research_access(
-    db: Session,
-    *,
-    project_id: uuid.UUID,
-    user_id: int,
-) -> ProjectAccess:
-    access = get_project_access(db, project_id=project_id, user_id=user_id)
-    if access is None:
-        raise AppError(
-            code="project_not_found",
-            message="Project not found",
-            status_code=404,
+@dataclass(frozen=True, slots=True)
+class ResearchItemAccess:
+    can_view: bool
+    can_manage: bool
+    has_scope_access: bool
+
+
+class ResearchItemPolicy:
+    def evaluate(
+        self,
+        db: Session,
+        *,
+        item: ResearchItem,
+        user_id: int,
+    ) -> ResearchItemAccess:
+        is_creator = item.created_by_id == user_id
+        scope_type = ResearchScopeType(item.scope_type)
+
+        if scope_type == ResearchScopeType.PERSONAL:
+            return ResearchItemAccess(is_creator, is_creator, is_creator)
+
+        if scope_type == ResearchScopeType.DOCUMENT:
+            has_scope_access = (
+                item.document_id is not None
+                and get_document_access(
+                    db,
+                    document_id=item.document_id,
+                    user_id=user_id,
+                )
+                is not None
+            )
+        else:
+            has_scope_access = (
+                item.project_id is not None
+                and get_project_access(
+                    db,
+                    project_id=item.project_id,
+                    user_id=user_id,
+                )
+                is not None
+            )
+
+        return ResearchItemAccess(
+            can_view=is_creator or (item.is_shared and has_scope_access),
+            can_manage=is_creator and has_scope_access,
+            has_scope_access=has_scope_access,
         )
-    return access
+
+    def require_visible(
+        self,
+        db: Session,
+        *,
+        item: ResearchItem,
+        user_id: int,
+    ) -> ResearchItemAccess:
+        access = self.evaluate(db, item=item, user_id=user_id)
+        if not access.can_view:
+            raise AppError(
+                code="research_item_not_found",
+                message="Research item not found",
+                status_code=404,
+            )
+        return access
+
+    def require_creator_manager(
+        self,
+        db: Session,
+        *,
+        item: ResearchItem,
+        user_id: int,
+    ) -> ResearchItemAccess:
+        access = self.require_visible(db, item=item, user_id=user_id)
+        if item.created_by_id != user_id:
+            raise AppError(
+                code="research_item_permission_denied",
+                message="Only the creator can modify this research item",
+                status_code=403,
+            )
+        if not access.has_scope_access:
+            raise AppError(
+                code="research_item_scope_access_lost",
+                message="This research item is read-only until scope access is restored",
+                status_code=409,
+            )
+        return access
 
 
-def can_view_research_item(
-    *,
-    access: ProjectAccess,
-    created_by_id: int | None,
-    is_shared: bool,
-) -> bool:
-    return access.is_owner or is_shared or created_by_id == access.user_id
-
-
-def can_manage_research_item(
-    *,
-    access: ProjectAccess,
-    created_by_id: int | None,
-) -> bool:
-    """Creators manage their output; the Project owner can moderate it."""
-    return access.is_owner or created_by_id == access.user_id
-
-
-def require_research_item_manager(
-    *,
-    access: ProjectAccess,
-    created_by_id: int | None,
-) -> None:
-    if not can_manage_research_item(
-        access=access,
-        created_by_id=created_by_id,
-    ):
-        raise AppError(
-            code="research_item_permission_denied",
-            message="You do not have permission to modify this research item",
-            status_code=403,
-        )
+research_item_policy = ResearchItemPolicy()

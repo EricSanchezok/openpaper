@@ -4,25 +4,25 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.database.models import ConversableType
+from app.database.models import ConversationScopeType
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ConversationCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    conversable_type: ConversableType
-    conversable_id: UUID | None = None
+    scope_type: ConversationScopeType
+    scope_id: UUID | None = None
     title: str = Field(default="New conversation", min_length=1, max_length=240)
 
     @model_validator(mode="after")
     def validate_scope(self) -> ConversationCreateRequest:
-        needs_id = self.conversable_type in {
-            ConversableType.PAPER,
-            ConversableType.PROJECT,
+        needs_id = self.scope_type in {
+            ConversationScopeType.PAPER,
+            ConversationScopeType.PROJECT,
         }
-        if needs_id != (self.conversable_id is not None):
-            raise ValueError("conversable_id does not match conversable_type")
+        if needs_id != (self.scope_id is not None):
+            raise ValueError("scope_id does not match scope_type")
         return self
 
 
@@ -37,15 +37,15 @@ class ConversationUpdateRequest(BaseModel):
 class ConversationMoveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    conversable_type: Literal["everything", "project"]
-    conversable_id: UUID | None = None
+    scope_type: Literal["global", "project"]
+    scope_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_scope(self) -> ConversationMoveRequest:
-        if self.conversable_type == "project" and self.conversable_id is None:
-            raise ValueError("Project conversations require conversable_id")
-        if self.conversable_type == "everything" and self.conversable_id is not None:
-            raise ValueError("Everything conversations cannot have conversable_id")
+        if self.scope_type == "project" and self.scope_id is None:
+            raise ValueError("Project conversations require scope_id")
+        if self.scope_type == "global" and self.scope_id is not None:
+            raise ValueError("Global conversations cannot have scope_id")
         return self
 
 
@@ -64,10 +64,19 @@ class ConversationSummaryResponse(BaseModel):
     id: UUID
     title: str
     updated_at: datetime
-    conversable_type: ConversableType
-    conversable_id: UUID | None
+    scope_type: ConversationScopeType
+    scope_id: UUID | None
     scope_label: str | None
     scope_access: Literal["active", "lost"]
+    read_only: bool
+    read_only_reason: (
+        Literal[
+            "scope_access_lost",
+            "project_deleted",
+            "document_deleted",
+        ]
+        | None
+    )
     pinned_at: datetime | None
     archived_at: datetime | None
     capabilities: ConversationCapabilitiesResponse
@@ -79,7 +88,13 @@ class ConversationListResponse(BaseModel):
 
 
 class ConversationDetailResponse(ConversationSummaryResponse):
-    messages: list[dict[str, object]]
+    pass
+
+
+class ConversationMessagesResponse(BaseModel):
+    items: list[dict[str, object]]
+    page: int
+    page_size: int
 
 
 class ConversationAutoTitleResponse(BaseModel):
