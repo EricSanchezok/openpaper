@@ -11,6 +11,7 @@
     "prebuild": "node scripts/sync-pdf-worker.mjs && node scripts/generate-blog-metadata.mjs",
     "build": "next build",
     "start": "next start",
+    "start:standalone": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "go": "yarn install && yarn build && yarn start"

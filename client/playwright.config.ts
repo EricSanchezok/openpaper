@@ -21,7 +21,7 @@ export default defineConfig({
 		},
 	],
 	webServer: {
-		command: `NEXT_PUBLIC_API_URL=http://127.0.0.1:${port} yarn build && yarn start --hostname 127.0.0.1 --port ${port}`,
+		command: `NEXT_PUBLIC_API_URL=http://127.0.0.1:${port} npm run build && HOSTNAME=127.0.0.1 PORT=${port} npm run start:standalone`,
 		url: `http://127.0.0.1:${port}`,
 		reuseExistingServer: false,
 		timeout: 120_000,

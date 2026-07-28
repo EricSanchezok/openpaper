@@ -25,7 +25,7 @@ async function mockSharedPaper(page: Page) {
 			headers: { "access-control-allow-origin": "*" },
 		}),
 	);
-	await page.route(/\/api\/paper\/share\?id=e2e-paper$/, (route) =>
+	await page.route(/\/api\/public\/papers\/e2e-paper$/, (route) =>
 		route.fulfill({
 			headers: {
 				"access-control-allow-credentials": "true",
@@ -34,19 +34,31 @@ async function mockSharedPaper(page: Page) {
 				"access-control-allow-origin": "http://127.0.0.1:3100",
 			},
 			json: {
-				paper: {
+				document: {
 					id: "00000000-0000-0000-0000-000000000001",
+					original_filename: "synthetic.pdf",
+					mime_type: "application/pdf",
+					size_bytes: pdf.length,
 					title: "Synthetic Research Paper",
+					authors: ["Owner"],
+					abstract: "Synthetic abstract",
+					institutions: [],
+					keywords: [],
+					doi: null,
+					journal: null,
+					publisher: null,
+					publish_date: null,
 					summary: "A deterministic browser regression fixture.",
 					summary_citations: [],
-					file_url: "http://127.0.0.1:3100/synthetic.pdf",
-					status: "completed",
-					is_public: true,
-					share_id: "e2e-paper",
+					starter_questions: [],
+					processing_status: "completed",
+					parser_quality: "full",
+					parser_warning_code: null,
+					created_at: "2026-07-28T00:00:00Z",
+					updated_at: "2026-07-28T00:00:00Z",
 				},
-				highlights: [],
-				annotations: [],
-				owner: { id: 1, email: "owner@example.com", display_name: "Owner" },
+				file_url: "http://127.0.0.1:3100/synthetic.pdf",
+				owner: { id: 1, display_name: "Owner" },
 			},
 		}),
 	);
