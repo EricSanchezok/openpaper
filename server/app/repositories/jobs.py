@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from app.database.models import (
@@ -23,22 +23,26 @@ DEFAULT_JOB_LEASE = timedelta(hours=1)
 
 
 @dataclass(frozen=True, slots=True)
-class EnqueueJob:
+class CreateJob:
     operation: JobOperation
     requested_by_id: int | None
     idempotency_key: str
     payload: dict[str, JsonValue]
-    task_name: str
-    queue: str
-    task_kwargs: dict[str, JsonValue]
     job_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     document_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EnqueueJob(CreateJob):
+    task_name: str = ""
+    queue: str = ""
+    task_kwargs: dict[str, JsonValue] = field(default_factory=dict)
     available_at: datetime | None = None
 
 
 class JobRepository:
-    def enqueue(self, db: Session, *, request: EnqueueJob) -> DurableJob:
+    def create(self, db: Session, *, request: CreateJob) -> DurableJob:
         job_id = request.job_id or uuid.uuid4()
         inserted_id = db.scalar(
             insert(DurableJob)
@@ -68,16 +72,42 @@ class JobRepository:
         job = db.get(DurableJob, inserted_id)
         if job is None:
             raise RuntimeError("inserted_job_not_found")
+        return job
+
+    @staticmethod
+    def add_dispatch(
+        db: Session,
+        *,
+        job: DurableJob,
+        task_name: str,
+        queue: str,
+        kwargs: dict[str, JsonValue],
+        available_at: datetime | None = None,
+    ) -> JobDispatch:
+        dispatch = JobDispatch(
+            job_id=job.id,
+            task_name=task_name,
+            queue=queue,
+            kwargs=kwargs,
+            available_at=available_at or datetime.now(UTC),
+        )
         db.add(
-            JobDispatch(
-                job_id=job.id,
+            dispatch
+        )
+        db.flush()
+        return dispatch
+
+    def enqueue(self, db: Session, *, request: EnqueueJob) -> DurableJob:
+        job = self.create(db, request=request)
+        if job.dispatch is None:
+            self.add_dispatch(
+                db,
+                job=job,
                 task_name=request.task_name,
                 queue=request.queue,
                 kwargs=request.task_kwargs,
-                available_at=request.available_at or datetime.now(UTC),
+                available_at=request.available_at,
             )
-        )
-        db.flush()
         return job
 
     @staticmethod
@@ -161,6 +191,8 @@ class JobRepository:
             job.status = JobStatus.PENDING.value
             job.lease_expires_at = None
             job.progress_message = "Recovered after worker lease expired"
+            if job.dispatch is None:
+                raise RuntimeError("running_job_without_dispatch")
             job.dispatch.status = JobDispatchStatus.PENDING.value
             job.dispatch.available_at = now
             job.dispatch.published_at = None

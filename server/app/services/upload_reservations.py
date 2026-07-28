@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.database.crud.paper_crud import paper_crud
 from app.database.models import (
     Document,
+    DurableJob,
+    JobOperation,
     JobStatus,
     LibraryPaper,
-    PaperUploadJob,
+    UploadReservation,
     Project,
     ProjectPaper,
 )
@@ -28,6 +29,7 @@ from app.services.resource_quotas import (
 )
 from app.policies.projects import require_project_permission
 from app.schemas.user import CurrentUser
+from app.repositories.jobs import CreateJob, job_repository
 from app.services.upload_lifecycle import (
     delete_upload_storage,
     reap_stale_uploads,
@@ -41,11 +43,13 @@ ACTIVE_UPLOAD_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 def _active_account_reservations(db: Session, *, owner_id: int) -> tuple[int, int]:
     row = db.execute(
         select(
-            func.coalesce(func.sum(PaperUploadJob.reserved_reference_count), 0),
-            func.coalesce(func.sum(PaperUploadJob.reserved_size_kb), 0),
-        ).where(
-            PaperUploadJob.quota_owner_id == owner_id,
-            PaperUploadJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+            func.coalesce(func.sum(UploadReservation.reserved_reference_count), 0),
+            func.coalesce(func.sum(UploadReservation.reserved_size_kb), 0),
+        )
+        .join(DurableJob, DurableJob.id == UploadReservation.id)
+        .where(
+            UploadReservation.quota_owner_id == owner_id,
+            DurableJob.status.in_(ACTIVE_UPLOAD_STATUSES),
         )
     ).one()
     return int(row[0]), int(row[1])
@@ -59,11 +63,13 @@ def _unattached_project_reservations(
     return int(
         db.scalar(
             select(
-                func.coalesce(func.sum(PaperUploadJob.reserved_reference_count), 0)
-            ).where(
-                PaperUploadJob.project_id == project_id,
-                PaperUploadJob.status.in_(ACTIVE_UPLOAD_STATUSES),
-                PaperUploadJob.document_id.is_(None),
+                func.coalesce(func.sum(UploadReservation.reserved_reference_count), 0)
+            )
+            .join(DurableJob, DurableJob.id == UploadReservation.id)
+            .where(
+                DurableJob.project_id == project_id,
+                DurableJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+                DurableJob.document_id.is_(None),
             )
         )
         or 0
@@ -119,11 +125,13 @@ def reassign_project_quota_owner(
         int(value)
         for value in db.execute(
             select(
-                func.count(PaperUploadJob.id),
-                func.coalesce(func.sum(PaperUploadJob.reserved_size_kb), 0),
-            ).where(
-                PaperUploadJob.project_id == project.id,
-                PaperUploadJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+                func.count(UploadReservation.id),
+                func.coalesce(func.sum(UploadReservation.reserved_size_kb), 0),
+            )
+            .join(DurableJob, DurableJob.id == UploadReservation.id)
+            .where(
+                DurableJob.project_id == project.id,
+                DurableJob.status.in_(ACTIVE_UPLOAD_STATUSES),
             )
         ).one()
     )
@@ -175,10 +183,14 @@ def reassign_project_quota_owner(
         )
 
     db.execute(
-        update(PaperUploadJob)
+        update(UploadReservation)
         .where(
-            PaperUploadJob.project_id == project.id,
-            PaperUploadJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+            UploadReservation.id.in_(
+                select(DurableJob.id).where(
+                    DurableJob.project_id == project.id,
+                    DurableJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+                )
+            ),
         )
         .values(quota_owner_id=new_owner_id)
     )
@@ -192,7 +204,7 @@ def reserve_upload(
     input_size_bytes: int,
     original_filename: str | None,
     content_sha256: str,
-) -> PaperUploadJob:
+) -> UploadReservation:
     """Authorize once and persist the destination and quota owner before hand-off."""
     if input_size_bytes <= 0:
         raise AppError(
@@ -324,19 +336,33 @@ def reserve_upload(
                 status_code=403,
             )
 
-    job = PaperUploadJob(
-        user_id=requester.id,
+    job_id = uuid4()
+    durable_job = job_repository.create(
+        db,
+        request=CreateJob(
+            operation=JobOperation.PDF_PROCESS,
+            requested_by_id=requester.id,
+            project_id=project_id,
+            idempotency_key=f"pdf-reservation:{job_id}",
+            payload={
+                "content_sha256": content_sha256,
+                "original_filename": original_filename,
+                "input_size_bytes": input_size_bytes,
+            },
+            job_id=job_id,
+        ),
+    )
+    reservation = UploadReservation(
+        id=durable_job.id,
         quota_owner_id=owner_id,
-        project_id=project_id,
         reserved_size_kb=reserved_size_kb,
         reserved_reference_count=reserved_reference_count,
         content_sha256=content_sha256,
         original_filename=original_filename,
-        status=JobStatus.PENDING,
-        started_at=datetime.now(timezone.utc),
     )
-    db.add(job)
+    reservation.job = durable_job
+    db.add(reservation)
     db.commit()
-    db.refresh(job)
+    db.refresh(reservation)
     delete_upload_storage(plan=cleanup_plan)
-    return job
+    return reservation

@@ -98,7 +98,7 @@ def _patch_import_pipeline(fn):
             side_effect=lambda *_args, **_kwargs: SimpleNamespace(id=uuid4()),
         ),
         patch.object(zotero_import_module, "_apply_zotero_tags"),
-        patch.object(zotero_import_module, "paper_upload_job_crud"),
+        patch.object(zotero_import_module, "upload_reservation_repository"),
         patch.object(zotero_import_module, "paper_crud"),
         patch.object(zotero_import_module, "zotero_import_crud"),
         patch.object(zotero_import_module, "zotero_crud"),

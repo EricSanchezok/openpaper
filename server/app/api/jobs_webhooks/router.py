@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.sanitization import sanitize_for_postgres
-from app.database.crud.paper_upload_crud import paper_upload_job_crud
+from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -19,7 +19,6 @@ from app.database.models import (
     JobStatus,
     JobOperation,
     LibraryPaper,
-    PaperUploadJob,
     ProjectPaper,
     ResearchAudioOverview,
     ResearchDataTable,
@@ -60,7 +59,7 @@ from app.services.zotero.service import (
 )
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -418,7 +417,7 @@ def _finalize_zotero_import(
         user=job_user,
     )
 
-    paper_upload_job_crud.mark_as_completed(db=db, job_id=job_id, user=job_user)
+    upload_reservation_repository.mark_as_completed(db=db, job_id=job_id, user=job_user)
 
     if not paper:
         return None
@@ -479,8 +478,8 @@ def handle_failed_upload(
     # already built and committed the paper; deleting it here is what caused
     # the highlights_paper_id_fkey violations (highlight inserts racing a paper
     # delete). A completed job means the paper is good — leave it alone.
-    job = paper_upload_job_crud.get(db=db, id=job_id, user=job_user)
-    if job and job.status == JobStatus.COMPLETED:
+    job = upload_reservation_repository.get(db=db, id=job_id, user=job_user)
+    if job and job.job.status == JobStatus.COMPLETED:
         logger.warning(
             f"Ignoring failed-upload cleanup for already-completed job {job_id} "
             f"(reason: {reason}); refusing to delete a populated paper"
@@ -489,34 +488,39 @@ def handle_failed_upload(
 
     logger.error(f"PDF processing failed for job {job_id}: {reason}")
 
-    if job and job.document_id is not None:
+    if job and job.job.document_id is not None:
+        durable_job = job.job
+        document_id = durable_job.document_id
+        assert document_id is not None
         document = db.scalar(
-            select(Document).where(Document.id == job.document_id).with_for_update()
+            select(Document)
+            .where(Document.id == document_id)
+            .with_for_update()
         )
         if document is not None and document.processing_job_id == job.id:
             document.processing_status = DocumentProcessingStatus.FAILED.value
             document.parser_warning_code = "processing_failed"
         if job.reference_created:
-            if job.project_id is None:
+            if durable_job.project_id is None:
                 db.execute(
                     delete(LibraryPaper).where(
-                        LibraryPaper.user_id == job.user_id,
-                        LibraryPaper.document_id == job.document_id,
+                        LibraryPaper.user_id == durable_job.requested_by_id,
+                        LibraryPaper.document_id == document_id,
                     )
                 )
             else:
                 db.execute(
                     delete(ProjectPaper).where(
-                        ProjectPaper.project_id == job.project_id,
-                        ProjectPaper.document_id == job.document_id,
+                        ProjectPaper.project_id == durable_job.project_id,
+                        ProjectPaper.document_id == document_id,
                     )
                 )
             db.flush()
             from app.services.document_gc import schedule_document_gc
 
-            schedule_document_gc(db, document_id=job.document_id)
+            schedule_document_gc(db, document_id=document_id)
 
-    paper_upload_job_crud.mark_as_failed(db=db, job_id=job_id, user=job_user)
+    upload_reservation_repository.mark_as_failed(db=db, job_id=job_id, user=job_user)
     try:
         job_repository.fail(
             db,
@@ -714,7 +718,7 @@ async def handle_paper_processing_webhook(
     """Handle webhook from paper processing jobs service."""
 
     # Get the job from your database (without user filtering since this is a webhook)
-    job = paper_upload_job_crud.get_by(db=db, task_id=webhook_data.task_id, id=job_id)
+    job = upload_reservation_repository.get_by(db=db, task_id=webhook_data.task_id, id=job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -727,12 +731,12 @@ async def handle_paper_processing_webhook(
             status_code=409,
         )
 
-    if job.status == JobStatus.COMPLETED:
+    if durable_job.status == JobStatus.COMPLETED:
         logger.warning(f"Received webhook for already completed job {job_id}, ignoring")
         return {"status": "webhook ignored - job already completed"}
 
     # Get the user object from the relationship
-    user = job.user
+    user = durable_job.requested_by
     if not user:
         logger.error(f"No user found for job {job_id}")
         raise HTTPException(status_code=500, detail="User not found for job")
@@ -749,11 +753,11 @@ async def handle_paper_processing_webhook(
         is_active=user.status == "active",
     )
     _settle_jobs_usage(int(user.id), webhook_data.usage_events)
-    if job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+    if durable_job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
         logger.warning(
             "Ignoring late webhook for terminal job %s with status %s",
             job_id,
-            job.status,
+            durable_job.status,
         )
         await release_concurrency_by_id(
             user_id=int(user.id),
@@ -788,14 +792,14 @@ async def handle_paper_processing_webhook(
     try:
         # Re-check completion under the lock: another delivery may have finished
         # between our initial read and acquiring the lock.
-        db.refresh(job)
-        if job.status == JobStatus.COMPLETED:
+        db.refresh(durable_job)
+        if durable_job.status == JobStatus.COMPLETED:
             logger.warning(
                 f"Job {job_id} completed by a concurrent delivery, ignoring "
                 f"duplicate webhook"
             )
             return {"status": "webhook ignored - job already completed"}
-        if job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+        if durable_job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
             logger.warning(
                 "Job %s became terminal before webhook processing; ignoring",
                 job_id,
@@ -813,11 +817,14 @@ async def handle_paper_processing_webhook(
                 )
                 if finalized:
                     _complete_pdf_job(db, job_id=job.id, result=result)
-                    if result.parser_upgrade_pending and job.document_id is not None:
+                    if (
+                        result.parser_upgrade_pending
+                        and durable_job.document_id is not None
+                    ):
                         _enqueue_parser_upgrade(
                             db,
                             ingestion_job_id=job.id,
-                            document_id=job.document_id,
+                            document_id=durable_job.document_id,
                         )
                     db.commit()
                     track_event(
@@ -975,27 +982,13 @@ async def handle_paper_processing_webhook(
             )
 
             # Mark job as completed
-            paper_upload_job_crud.mark_as_completed(db=db, job_id=job_id, user=job_user)
+            upload_reservation_repository.mark_as_completed(db=db, job_id=job_id, user=job_user)
             _complete_pdf_job(
                 db,
                 job_id=uuid.UUID(job_id),
                 result=result,
             )
             if paper is not None:
-                db.execute(
-                    update(PaperUploadJob)
-                    .where(
-                        PaperUploadJob.document_id == paper.id,
-                        PaperUploadJob.status.in_(
-                            (JobStatus.PENDING.value, JobStatus.RUNNING.value)
-                        ),
-                    )
-                    .values(
-                        status=JobStatus.COMPLETED.value,
-                        completed_at=datetime.now(timezone.utc),
-                        error_code=None,
-                    )
-                )
                 db.commit()
                 if result.parser_upgrade_pending:
                     _enqueue_parser_upgrade(
@@ -1031,11 +1024,14 @@ async def handle_paper_processing_webhook(
                 )
                 if salvaged:
                     _complete_pdf_job(db, job_id=job.id, result=result)
-                    if result.parser_upgrade_pending and job.document_id is not None:
+                    if (
+                        result.parser_upgrade_pending
+                        and durable_job.document_id is not None
+                    ):
                         _enqueue_parser_upgrade(
                             db,
                             ingestion_job_id=job.id,
-                            document_id=job.document_id,
+                            document_id=durable_job.document_id,
                         )
                     db.commit()
                     return {
@@ -1063,7 +1059,7 @@ async def handle_paper_processing_webhook(
                 f"Failed to cleanup paper for job {job_id}: {str(cleanup_error)}"
             )
             # Still mark job as failed even if cleanup fails
-            paper_upload_job_crud.mark_as_failed(db=db, job_id=job_id, user=job_user)
+            upload_reservation_repository.mark_as_failed(db=db, job_id=job_id, user=job_user)
 
         raise HTTPException(status_code=500, detail="Error processing webhook")
     finally:

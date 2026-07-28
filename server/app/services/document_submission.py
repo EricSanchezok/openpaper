@@ -6,19 +6,16 @@ import asyncio
 import hashlib
 import logging
 import time
-from datetime import datetime, timezone
 
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.models import (
     DocumentProcessingStatus,
-    JobOperation,
-    JobStatus,
-    PaperUploadJob,
+    UploadReservation,
 )
 from app.database.telemetry import track_event
 from app.helpers.s3 import document_source_key, s3_service
 from app.repositories.documents import document_repository
-from app.repositories.jobs import EnqueueJob, job_repository
+from app.repositories.jobs import job_repository
 from app.schemas.user import CurrentUser
 from app.helpers.celery_config import get_webhook_base_url
 from sqlalchemy.orm import Session
@@ -29,7 +26,7 @@ logger = logging.getLogger(__name__)
 async def submit_reserved_document(
     *,
     pdf_bytes: bytes,
-    upload_job: PaperUploadJob,
+    upload_job: UploadReservation,
     db: Session,
     user: CurrentUser,
     skip_metadata_extraction: bool = False,
@@ -73,9 +70,9 @@ async def submit_reserved_document(
         processing_job_id=upload_job.id,
     )
     document = canonical.document
-    upload_job.document_id = document.id
-
-    if upload_job.project_id is None:
+    durable_job = upload_job.job
+    durable_job.document_id = document.id
+    if durable_job.project_id is None:
         reference = document_repository.attach_library(
             db,
             document_id=document.id,
@@ -88,7 +85,7 @@ async def submit_reserved_document(
             document=document,
             upload_job=upload_job,
             user=user,
-            project_id=upload_job.project_id,
+            project_id=durable_job.project_id,
             auto_commit=False,
         )
         del association
@@ -98,9 +95,11 @@ async def submit_reserved_document(
         not canonical.created
         and document.processing_status == DocumentProcessingStatus.COMPLETED.value
     ):
-        upload_job.status = JobStatus.COMPLETED.value
-        upload_job.completed_at = datetime.now(timezone.utc)
-        upload_job.task_id = None
+        job_repository.complete(
+            db,
+            job_id=durable_job.id,
+            result={"document_id": str(document.id), "reused": True},
+        )
         db.commit()
         return f"reused:{document.id}"
 
@@ -109,10 +108,17 @@ async def submit_reserved_document(
         and document.processing_status == DocumentProcessingStatus.PROCESSING.value
         and document.processing_job_id != upload_job.id
     ):
-        upload_job.status = JobStatus.RUNNING.value
-        upload_job.task_id = str(document.processing_job_id)
+        job_repository.complete(
+            db,
+            job_id=durable_job.id,
+            result={
+                "document_id": str(document.id),
+                "reused": True,
+                "processing_job_id": str(document.processing_job_id),
+            },
+        )
         db.commit()
-        return str(document.processing_job_id)
+        return f"reused:{document.id}"
 
     if (
         not canonical.created
@@ -123,39 +129,29 @@ async def submit_reserved_document(
             processing_job_id=upload_job.id,
         )
 
-    upload_job.status = JobStatus.RUNNING.value
-    upload_job.task_id = str(upload_job.id)
     document.processing_status = DocumentProcessingStatus.PROCESSING.value
     document.processing_job_id = upload_job.id
-    db.commit()
 
     base_url = get_webhook_base_url().rstrip("/")
-    job_repository.enqueue(
+    durable_job.document_id = document.id
+    durable_job.payload = {
+        **durable_job.payload,
+        "s3_object_key": document.s3_object_key,
+        "skip_metadata_extraction": skip_metadata_extraction,
+    }
+    job_repository.add_dispatch(
         db,
-        request=EnqueueJob(
-            operation=JobOperation.PDF_PROCESS,
-            requested_by_id=user.id,
-            project_id=upload_job.project_id,
-            document_id=document.id,
-            idempotency_key=f"pdf-ingest:{upload_job.id}",
-            payload={
-                "s3_object_key": document.s3_object_key,
-                "skip_metadata_extraction": skip_metadata_extraction,
-            },
-            task_name="upload_and_process_file",
-            queue="pdf_processing",
-            task_kwargs={
-                "s3_object_key": document.s3_object_key,
-                "webhook_url": (
-                    f"{base_url}/api/webhooks/paper-processing/{upload_job.id}"
-                ),
-                "claim_url": (
-                    f"{base_url}/api/webhooks/jobs/{upload_job.id}/claim"
-                ),
-                "skip_metadata_extraction": skip_metadata_extraction,
-            },
-            job_id=upload_job.id,
-        ),
+        job=durable_job,
+        task_name="upload_and_process_file",
+        queue="pdf_processing",
+        kwargs={
+            "s3_object_key": document.s3_object_key,
+            "webhook_url": (
+                f"{base_url}/api/webhooks/paper-processing/{upload_job.id}"
+            ),
+            "claim_url": f"{base_url}/api/webhooks/jobs/{upload_job.id}/claim",
+            "skip_metadata_extraction": skip_metadata_extraction,
+        },
     )
     db.commit()
     return str(upload_job.id)

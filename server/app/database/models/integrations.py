@@ -75,7 +75,7 @@ class ZoteroImportedItem(Base):
     )
     upload_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("paper_upload_jobs.id", ondelete="SET NULL"),
+        ForeignKey("upload_reservations.id", ondelete="SET NULL"),
         nullable=True,
     )
     status: Mapped[str] = mapped_column(

@@ -32,7 +32,7 @@ from .content import (
     PaperImage,
     PaperPassage,
     PaperTag,
-    PaperUploadJob,
+    UploadReservation,
     TokenUsageEvent,
     TokenWeeklyUsage,
 )
@@ -75,7 +75,7 @@ __all__ = [
     "PaperPassage",
     "PaperStatus",
     "PaperTag",
-    "PaperUploadJob",
+    "UploadReservation",
     "Project",
     "ProjectCollaborator",
     "ProjectInvitation",

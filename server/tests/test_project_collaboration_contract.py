@@ -10,10 +10,13 @@ from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.models import (
     Base,
     Document,
+    DurableJob,
+    JobOperation,
+    JobStatus,
     Project,
     ProjectCollaborator,
     ProjectPaper,
-    PaperUploadJob,
+    UploadReservation,
 )
 from app.errors import AppError
 from app.main import app
@@ -160,16 +163,25 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = MagicMock(spec=Session)
-    upload_job = PaperUploadJob(
-        id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=2,
+    job_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+    durable_job = DurableJob(
+        id=job_id,
+        operation=JobOperation.PDF_PROCESS.value,
+        requested_by_id=2,
+        project_id=project_id,
+        idempotency_key=f"pdf-reservation:{job_id}",
+        status=JobStatus.PENDING.value,
+        payload={},
+    )
+    upload_job = UploadReservation(
+        id=job_id,
         quota_owner_id=1,
         original_filename="a.pdf",
         reserved_reference_count=1,
         reserved_size_kb=100,
-        status="pending",
     )
+    upload_job.job = durable_job
     document = _document(uuid.uuid4(), size_kb=100, seed="a")
     db.scalar.return_value = None
     monkeypatch.setattr(
@@ -182,7 +194,7 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
             db,
             document=document,
             upload_job=upload_job,
-            project_id=upload_job.project_id,
+            project_id=project_id,
             user=CurrentUser(
                 id=2,
                 email="collaborator@example.com",

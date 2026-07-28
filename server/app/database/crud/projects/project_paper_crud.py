@@ -3,10 +3,11 @@ from datetime import datetime, timezone
 
 from app.database.models import (
     Document,
+    DurableJob,
     JobStatus,
     LibraryPaper,
     PaperStatus,
-    PaperUploadJob,
+    UploadReservation,
     Project,
     ProjectCollaborator,
     ProjectPaper,
@@ -112,7 +113,7 @@ class ProjectPaperCRUD:
         db: Session,
         *,
         document: Document,
-        upload_job: PaperUploadJob,
+        upload_job: UploadReservation,
         project_id: uuid.UUID,
         user: CurrentUser,
         auto_commit: bool = True,
@@ -125,11 +126,13 @@ class ProjectPaperCRUD:
             permission="manage_papers",
         )
         reservation = db.scalar(
-            select(PaperUploadJob.id).where(
-                PaperUploadJob.id == upload_job.id,
-                PaperUploadJob.project_id == project_id,
-                PaperUploadJob.user_id == user.id,
-                PaperUploadJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
+            select(UploadReservation.id)
+            .join(DurableJob, DurableJob.id == UploadReservation.id)
+            .where(
+                UploadReservation.id == upload_job.id,
+                DurableJob.project_id == project_id,
+                DurableJob.requested_by_id == user.id,
+                DurableJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
             )
         )
         if reservation is None:

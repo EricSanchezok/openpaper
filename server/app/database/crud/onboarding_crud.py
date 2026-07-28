@@ -1,6 +1,8 @@
-from app.database.crud.base_crud import CRUDBase
 from app.database.models import Onboarding
+from app.schemas.user import CurrentUser
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 
 class OnboardingBase(BaseModel):
@@ -22,11 +24,35 @@ class OnboardingUpdate(OnboardingBase):
     pass
 
 
-class OnboardingCrud(CRUDBase[Onboarding, OnboardingCreate, OnboardingUpdate]):
-    """CRUD operations specifically for Onboarding model"""
+class OnboardingCrud:
+    def get_by(self, db: Session, *, user: CurrentUser) -> Onboarding | None:
+        return db.scalar(select(Onboarding).where(Onboarding.user_id == user.id))
 
-    pass
+    def create(self, db: Session, *, obj_in: OnboardingCreate) -> Onboarding:
+        onboarding = Onboarding(**obj_in.model_dump())
+        db.add(onboarding)
+        db.commit()
+        db.refresh(onboarding)
+        return onboarding
+
+    def update(
+        self,
+        db: Session,
+        *,
+        db_obj: Onboarding,
+        obj_in: dict[str, object] | OnboardingUpdate,
+    ) -> Onboarding:
+        changes = (
+            obj_in
+            if isinstance(obj_in, dict)
+            else obj_in.model_dump(exclude_unset=True)
+        )
+        for field, value in changes.items():
+            setattr(db_obj, field, value)
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
 
 
 # Create a single instance to use throughout the application
-onboarding_crud = OnboardingCrud(Onboarding)
+onboarding_crud = OnboardingCrud()

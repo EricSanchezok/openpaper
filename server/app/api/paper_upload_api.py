@@ -5,11 +5,11 @@ This module handles PDF upload and processing by integrating with a separate
 PDF processing microservice. The architecture is:
 
 1. Client uploads PDF to this API
-2. API creates a PaperUploadJob record with status 'pending'
+2. API creates a UploadReservation record with status 'pending'
 3. API submits the PDF to the separate jobs service via Celery/HTTP
 4. Jobs service processes PDF (S3 upload, metadata extraction, preview generation)
 5. Jobs service sends results back via webhook
-6. Webhook handler updates PaperUploadJob status and creates Document record
+6. Webhook handler updates UploadReservation status and creates Document record
 
 The client can poll the job status using the same job_id throughout the process.
 """
@@ -25,9 +25,9 @@ from uuid import UUID
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.paper_crud import paper_crud
-from app.database.crud.paper_upload_crud import paper_upload_job_crud
+from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.database import get_db
-from app.database.models import DurableJob, JobStatus, PaperUploadJob
+from app.database.models import JobStatus, UploadReservation
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.ai_limits import (
@@ -80,7 +80,7 @@ async def get_upload_status(
     """
     Get the durable status of a paper ingestion from PostgreSQL.
     """
-    paper_upload_job = paper_upload_job_crud.get(db=db, id=job_id, user=current_user)
+    paper_upload_job = upload_reservation_repository.get(db=db, id=job_id, user=current_user)
 
     if not paper_upload_job:
         return JSONResponse(status_code=404, content={"message": "Job not found"})
@@ -89,26 +89,25 @@ async def get_upload_status(
         db=db, upload_job_id=str(paper_upload_job.id), user=current_user
     )
 
-    if paper_upload_job.status == JobStatus.COMPLETED:
+    durable_job = paper_upload_job.job
+    if durable_job.status == JobStatus.COMPLETED:
         # Verify the paper exists
         if not paper:
             return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    durable_job = db.get(DurableJob, paper_upload_job.id)
-
     # Build response with both job status and task status
     response_content = {
         "job_id": str(paper_upload_job.id),
-        "status": durable_job.status if durable_job else paper_upload_job.status,
-        "task_id": str(durable_job.id) if durable_job else paper_upload_job.task_id,
+        "status": durable_job.status,
+        "task_id": str(durable_job.id) if durable_job.dispatch is not None else None,
         "started_at": (
-            paper_upload_job.started_at.isoformat()
-            if paper_upload_job.started_at
+            durable_job.started_at.isoformat()
+            if durable_job.started_at
             else None
         ),
         "completed_at": (
-            paper_upload_job.completed_at.isoformat()
-            if paper_upload_job.completed_at
+            durable_job.completed_at.isoformat()
+            if durable_job.completed_at
             else None
         ),
         "has_file": bool(paper.s3_object_key) if paper else False,
@@ -118,13 +117,12 @@ async def get_upload_status(
         "parser_warning_code": paper.parser_warning_code if paper else None,
     }
 
-    if durable_job is not None:
-        response_content.update(
-            {
-                "progress_message": durable_job.progress_message,
-                "error_code": durable_job.error_code,
-            }
-        )
+    response_content.update(
+        {
+            "progress_message": durable_job.progress_message,
+            "error_code": durable_job.error_code,
+        }
+    )
 
     return JSONResponse(status_code=200, content=response_content)
 
@@ -174,7 +172,7 @@ async def upload_pdf_from_url(
             operation_id=str(paper_upload_job.id),
         )
     except AILimitExceeded as exc:
-        paper_upload_job_crud.mark_as_failed(
+        upload_reservation_repository.mark_as_failed(
             db=db,
             job_id=str(paper_upload_job.id),
             user=current_user,
@@ -277,7 +275,7 @@ async def upload_pdf(
             operation_id=str(paper_upload_job.id),
         )
     except AILimitExceeded as exc:
-        paper_upload_job_crud.mark_as_failed(
+        upload_reservation_repository.mark_as_failed(
             db=db,
             job_id=str(paper_upload_job.id),
             user=current_user,
@@ -303,19 +301,13 @@ async def upload_pdf(
 
 async def upload_raw_file_microservice(
     file_contents: bytes,
-    paper_upload_job: PaperUploadJob,
+    paper_upload_job: UploadReservation,
     current_user: CurrentUser,
     db: Session,
 ) -> str:
     """
     Helper function to upload a raw file using the microservice.
     """
-
-    paper_upload_job_crud.mark_as_running(
-        db=db,
-        job_id=str(paper_upload_job.id),
-        user=current_user,
-    )
 
     try:
         # Submit to microservice
@@ -349,7 +341,7 @@ async def upload_raw_file_microservice(
 
     except Exception as exc:
         logger.error("Error submitting file to microservice", exc_info=True)
-        paper_upload_job_crud.mark_as_failed(
+        upload_reservation_repository.mark_as_failed(
             db=db,
             job_id=str(paper_upload_job.id),
             user=current_user,

@@ -101,7 +101,7 @@ class DurableJob(Base):
     requested_by: Mapped["AuthUser | None"] = relationship("AuthUser")
     project: Mapped["Project | None"] = relationship("Project")
     document: Mapped["Document | None"] = relationship("Document")
-    dispatch: Mapped["JobDispatch"] = relationship(
+    dispatch: Mapped["JobDispatch | None"] = relationship(
         "JobDispatch",
         back_populates="job",
         uselist=False,

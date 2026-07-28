@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from app.database.crud.base_crud import CRUDBase
 from app.database.models import Subscription, SubscriptionPlan, SubscriptionStatus
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
@@ -36,7 +35,7 @@ class SubscriptionUpdate(BaseModel):
     cancel_at_period_end: bool | None = None
 
 
-class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUpdate]):
+class CRUDSubscription:
     """CRUD operations for subscription management"""
 
     def is_user_active(self, db: Session, user: CurrentUser) -> bool:
@@ -90,9 +89,10 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
 
         # Create new subscription
         create_data = SubscriptionCreate(user_id=user_id, **subscription_data)
-        created = self.create(db, obj_in=create_data)
-        if created is None:
-            raise RuntimeError("Failed to create subscription")
+        created = Subscription(**create_data.model_dump())
+        db.add(created)
+        db.commit()
+        db.refresh(created)
         return created
 
     def update_subscription_status(
@@ -134,4 +134,4 @@ class CRUDSubscription(CRUDBase[Subscription, SubscriptionCreate, SubscriptionUp
         return subscription
 
 
-subscription_crud = CRUDSubscription(Subscription)
+subscription_crud = CRUDSubscription()

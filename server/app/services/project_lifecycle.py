@@ -10,7 +10,6 @@ from app.database.models import (
     ConversationScopeType,
     DurableJob,
     JobStatus,
-    PaperUploadJob,
     Project,
     ProjectPaper,
     ResearchAudioOverview,
@@ -32,10 +31,6 @@ class ProjectDeletionPlan:
 
 def _active_project_job_count(db: Session, *, project_id: UUID) -> int:
     statements = (
-        select(PaperUploadJob.id).where(
-            PaperUploadJob.project_id == project_id,
-            PaperUploadJob.status.in_(ACTIVE_JOB_STATUSES),
-        ),
         select(DurableJob.id).where(
             DurableJob.project_id == project_id,
             DurableJob.status.in_(ACTIVE_JOB_STATUSES),

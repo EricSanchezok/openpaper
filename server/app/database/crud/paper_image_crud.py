@@ -1,7 +1,6 @@
 import logging
 import uuid
 
-from app.database.crud.base_crud import CRUDBase
 from app.database.models import PaperImage
 from app.policies.documents import get_document_access
 from app.schemas.user import CurrentUser
@@ -43,8 +42,55 @@ class PaperImageUpdate(BaseModel):
 
 
 # Document Image CRUD that inherits from the base CRUD
-class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
+class PaperImageCRUD:
     """CRUD operations specifically for PaperImage model"""
+
+    def create(
+        self,
+        db: Session,
+        *,
+        obj_in: PaperImageCreate,
+        user: CurrentUser,
+    ) -> PaperImage:
+        if (
+            get_document_access(
+                db,
+                document_id=obj_in.paper_id,
+                user_id=user.id,
+            )
+            is None
+        ):
+            raise ValueError("Paper is not accessible")
+        image = PaperImage(**obj_in.model_dump())
+        db.add(image)
+        db.commit()
+        db.refresh(image)
+        return image
+
+    def get(
+        self,
+        db: Session,
+        *,
+        id: object,
+        user: CurrentUser,
+    ) -> PaperImage | None:
+        try:
+            image_id = uuid.UUID(str(id))
+        except (TypeError, ValueError):
+            return None
+        image = db.get(PaperImage, image_id)
+        if image is None:
+            return None
+        if (
+            get_document_access(
+                db,
+                document_id=image.paper_id,
+                user_id=user.id,
+            )
+            is None
+        ):
+            return None
+        return image
 
     def create_with_paper_validation(
         self, db: Session, *, obj_in: PaperImageCreate, user: CurrentUser
@@ -140,4 +186,4 @@ class PaperImageCRUD(CRUDBase[PaperImage, PaperImageCreate, PaperImageUpdate]):
 
 
 # Create a single instance to use throughout the application
-paper_image_crud = PaperImageCRUD(PaperImage)
+paper_image_crud = PaperImageCRUD()

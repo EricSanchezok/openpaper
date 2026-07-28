@@ -1,6 +1,5 @@
 import uuid
 
-from app.database.crud.base_crud import CRUDBase
 from app.database.models import (
     Document,
     LibraryPaper,
@@ -28,7 +27,7 @@ class PaperTagUpdate(BaseModel):
     color: str | None = None
 
 
-class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
+class PaperTagCRUD:
     def create(
         self,
         db: Session,
@@ -59,6 +58,24 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
         return db.scalars(
             select(PaperTag).where(PaperTag.name == name, PaperTag.user_id == user.id)
         ).first()
+
+    def get_multi(
+        self,
+        db: Session,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        user: CurrentUser,
+    ) -> list[PaperTag]:
+        return list(
+            db.scalars(
+                select(PaperTag)
+                .where(PaperTag.user_id == user.id)
+                .order_by(PaperTag.name, PaperTag.id)
+                .offset(skip)
+                .limit(limit)
+            ).all()
+        )
 
     def get_or_create_by_name(
         self,
@@ -303,4 +320,4 @@ class PaperTagCRUD(CRUDBase[PaperTag, PaperTagCreate, PaperTagUpdate]):
             db.commit()
 
 
-paper_tag_crud = PaperTagCRUD(PaperTag)
+paper_tag_crud = PaperTagCRUD()

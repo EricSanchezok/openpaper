@@ -28,60 +28,39 @@ from .base import Base, JsonValue
 from .enums import (
     ConversationScopeType,
     DocumentProcessingStatus,
-    JobStatus,
     PaperStatus,
 )
 
 if TYPE_CHECKING:
     from .identity import AuthUser
+    from .jobs import DurableJob
     from .projects import Project, ProjectPaper
     from .research import ResearchItem
 
 
-class PaperUploadJob(Base):
-    __tablename__ = "paper_upload_jobs"
+class UploadReservation(Base):
+    __tablename__ = "upload_reservations"
     __table_args__ = (
         CheckConstraint(
             "reserved_size_kb >= 0",
-            name="ck_paper_upload_jobs_reserved_size_nonnegative",
+            name="ck_upload_reservations_reserved_size_nonnegative",
         ),
         CheckConstraint(
             "reserved_reference_count IN (0, 1)",
-            name="ck_paper_upload_jobs_reserved_reference_count",
+            name="ck_upload_reservations_reserved_reference_count",
         ),
-        Index(
-            "ix_paper_upload_jobs_quota_status",
-            "quota_owner_id",
-            "status",
-        ),
-        Index(
-            "ix_paper_upload_jobs_project_status",
-            "project_id",
-            "status",
-        ),
+        Index("ix_upload_reservations_quota_owner", "quota_owner_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        primary_key=True,
     )
     quota_owner_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("auth.users.id", ondelete="RESTRICT"),
         nullable=False,
-    )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    document_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
     )
     reserved_size_kb: Mapped[int] = mapped_column(
         Integer,
@@ -105,34 +84,13 @@ class PaperUploadJob(Base):
         server_default="false",
     )
     original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    status: Mapped[str] = mapped_column(
-        String, nullable=False, default=JobStatus.PENDING
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    task_id: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # For tracking task in Celery
-
-    user: Mapped["AuthUser"] = relationship(
-        "AuthUser",
-        foreign_keys=[user_id],
-        back_populates="paper_upload_jobs",
+    job: Mapped["DurableJob"] = relationship(
+        "DurableJob",
+        foreign_keys=[id],
     )
     quota_owner: Mapped["AuthUser"] = relationship(
         "AuthUser",
         foreign_keys=[quota_owner_id],
-    )
-    project: Mapped["Project | None"] = relationship("Project")
-    document: Mapped["Document | None"] = relationship(
-        "Document",
-        back_populates="upload_jobs",
-        foreign_keys=[document_id],
     )
 
 
@@ -481,12 +439,6 @@ class Document(Base):
     project_papers: Mapped[list["ProjectPaper"]] = relationship(
         "ProjectPaper", back_populates="document"
     )
-    upload_jobs: Mapped[list["PaperUploadJob"]] = relationship(
-        "PaperUploadJob",
-        back_populates="document",
-        foreign_keys="PaperUploadJob.document_id",
-    )
-
     creator: Mapped["AuthUser | None"] = relationship(
         "AuthUser", back_populates="created_documents"
     )

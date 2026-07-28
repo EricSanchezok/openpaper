@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from app.database.crud.base_crud import CRUDBase
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import Conversation, Message
 from app.errors import AppError
@@ -34,7 +33,7 @@ class MessageUpdate(BaseModel):
     scope: list[dict[str, Any]] | None = None
 
 
-class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
+class MessageCRUD:
     """CRUD operations specifically for Message model"""
 
     def create(
@@ -75,8 +74,7 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
         # Convert Pydantic model to dict and add sequence. Strip NUL (0x00)
         # characters that PostgreSQL cannot store — message content/references
         # are derived from extracted PDF text, which can contain them. This
-        # mirrors the sanitization base_crud applies; without it, a NUL byte
-        # fails the flush and poisons the shared session.
+        # NUL bytes from extracted PDF text cannot be stored by PostgreSQL.
         obj_in_data = sanitize_for_postgres(obj_in.model_dump(exclude_unset=True))
         db_obj = Message(**obj_in_data, sequence=next_sequence)
         conversation.updated_at = datetime.now(timezone.utc)
@@ -147,4 +145,4 @@ class MessageCRUD(CRUDBase[Message, MessageCreate, MessageUpdate]):
 
 
 # Create a single instance to use throughout the application
-message_crud = MessageCRUD(Message)
+message_crud = MessageCRUD()

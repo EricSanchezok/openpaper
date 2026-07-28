@@ -56,7 +56,6 @@ async def create_onboarding(
                 obj_in=OnboardingCreate(
                     user_id=current_user.id, **request.model_dump(exclude_unset=True)
                 ),
-                user=current_user,
             )
             db.commit()
 

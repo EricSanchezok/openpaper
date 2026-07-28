@@ -11,7 +11,7 @@ from uuid import UUID
 
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_tag_crud import PaperTagCreate, paper_tag_crud
-from app.database.crud.paper_upload_crud import paper_upload_job_crud
+from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal
@@ -972,7 +972,7 @@ async def _import_one_paper(
                     cleanup_err,
                 )
         if upload_job_id:
-            paper_upload_job_crud.mark_as_failed(db=db, job_id=upload_job_id, user=user)
+            upload_reservation_repository.mark_as_failed(db=db, job_id=upload_job_id, user=user)
         return {
             "status": "error",
             "zotero_item_key": item_key,

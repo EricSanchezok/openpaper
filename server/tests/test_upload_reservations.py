@@ -2,7 +2,14 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from app.database.models import Document, JobStatus, Project, SubscriptionPlan
+from app.database.models import (
+    Document,
+    DurableJob,
+    JobOperation,
+    JobStatus,
+    Project,
+    SubscriptionPlan,
+)
 from app.errors import AppError
 from app.services.upload_lifecycle import UploadCleanupPlan
 from app.services.upload_reservations import (
@@ -46,10 +53,24 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
     )
 
 
+def _durable_job(*, requester_id: int, project_id=None) -> DurableJob:
+    job_id = uuid4()
+    return DurableJob(
+        id=job_id,
+        operation=JobOperation.PDF_PROCESS.value,
+        requested_by_id=requester_id,
+        project_id=project_id,
+        idempotency_key=f"pdf-reservation:{job_id}",
+        status=JobStatus.PENDING.value,
+        payload={},
+    )
+
+
 def test_personal_upload_is_reserved_to_requester() -> None:
     db = MagicMock()
     db.scalar.return_value = None
     requester = MagicMock(id=17)
+    durable_job = _durable_job(requester_id=17)
     patches = _quota_patches()
 
     with (
@@ -62,6 +83,10 @@ def test_personal_upload_is_reserved_to_requester() -> None:
         patches[6],
         patches[7],
         patches[8] as storage_cleanup,
+        patch(
+            "app.services.upload_reservations.job_repository.create",
+            return_value=durable_job,
+        ),
     ):
         job = reserve_upload(
             db,
@@ -72,11 +97,11 @@ def test_personal_upload_is_reserved_to_requester() -> None:
             content_sha256="a" * 64,
         )
 
-    assert job.user_id == 17
+    assert job.job.requested_by_id == 17
     assert job.quota_owner_id == 17
-    assert job.project_id is None
+    assert job.job.project_id is None
     assert job.reserved_size_kb == 2
-    assert job.status == JobStatus.PENDING
+    assert job.job.status == JobStatus.PENDING.value
     quota_lock.assert_called_once_with(db, user_id=17)
     db.add.assert_called_once_with(job)
     db.commit.assert_called_once()
@@ -89,6 +114,7 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
     db = MagicMock()
     db.scalar.side_effect = [project, None, 3]
     requester = MagicMock(id=17)
+    durable_job = _durable_job(requester_id=17, project_id=project_id)
     patches = _quota_patches()
 
     with (
@@ -108,6 +134,10 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         patches[6],
         patches[7],
         patches[8],
+        patch(
+            "app.services.upload_reservations.job_repository.create",
+            return_value=durable_job,
+        ),
     ):
         job = reserve_upload(
             db,
@@ -125,9 +155,9 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         permission="manage_papers",
     )
     quota_lock.assert_called_once_with(db, user_id=91)
-    assert job.user_id == 17
+    assert job.job.requested_by_id == 17
     assert job.quota_owner_id == 91
-    assert job.project_id == project_id
+    assert job.job.project_id == project_id
 
 
 def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:

@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.paper_upload_crud import paper_upload_job_crud
+from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
@@ -182,7 +182,7 @@ async def get_project_pending_jobs(
     Lets the client rehydrate the upload tracker after a refresh, since the
     in-flight jobs are otherwise only held in browser state.
     """
-    jobs = paper_upload_job_crud.get_in_progress_jobs_for_project(
+    jobs = upload_reservation_repository.get_in_progress_jobs_for_project(
         db, project_id=project_id, user=current_user
     )
     return JSONResponse(
@@ -191,11 +191,11 @@ async def get_project_pending_jobs(
             "jobs": [
                 {
                     "job_id": str(job.id),
-                    "status": job.status,
+                    "status": job.job.status,
                     "paper_id": str(paper.id),
                     "title": paper.title,
                     "started_at": (
-                        job.started_at.isoformat() if job.started_at else None
+                        job.job.started_at.isoformat() if job.job.started_at else None
                     ),
                 }
                 for job, paper in jobs

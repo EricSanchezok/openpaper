@@ -16,7 +16,6 @@ if TYPE_CHECKING:
         LibraryPaper,
         Document,
         PaperTag,
-        PaperUploadJob,
     )
     from .projects import Project, ProjectCollaborator, ProjectInvitation
     from .research import AnnotationComment, ResearchItem
@@ -65,13 +64,6 @@ class AuthUser(Base):
         back_populates="created_by",
         passive_deletes=True,
     )
-    paper_upload_jobs: Mapped[list["PaperUploadJob"]] = relationship(
-        "PaperUploadJob",
-        foreign_keys="PaperUploadJob.user_id",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-
     # The associated subscription for the user.
     subscription: Mapped["Subscription | None"] = relationship(
         "Subscription",

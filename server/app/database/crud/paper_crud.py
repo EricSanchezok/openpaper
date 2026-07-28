@@ -6,19 +6,19 @@ import uuid
 from datetime import datetime, timezone
 from typing import TypedDict
 
-from app.database.crud.base_crud import CRUDBase
 from app.database.crud.paper_image_crud import paper_image_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
     AuthUser,
     Document,
     DocumentProcessingStatus,
+    DurableJob,
     JsonValue,
     LibraryPaper,
     PaperImage,
     PaperStatus,
     PaperTag,
-    PaperUploadJob,
+    UploadReservation,
     Project,
     ProjectPaper,
     RoleType,
@@ -101,7 +101,7 @@ class PaperDocumentMetadata(BaseModel):
 
 
 # Document CRUD that inherits from the base CRUD
-class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
+class PaperCRUD:
     """Persistence boundary for canonical documents and personal library entries."""
 
     def create(
@@ -481,10 +481,11 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
         """Get the document created by one of the user's upload jobs."""
         return db.scalar(
             select(Document)
-            .join(PaperUploadJob, PaperUploadJob.document_id == Document.id)
+            .join(DurableJob, DurableJob.document_id == Document.id)
+            .join(UploadReservation, UploadReservation.id == DurableJob.id)
             .where(
-                PaperUploadJob.id == upload_job_id,
-                PaperUploadJob.user_id == user.id,
+                UploadReservation.id == upload_job_id,
+                DurableJob.requested_by_id == user.id,
             )
         )
 
@@ -968,4 +969,4 @@ class PaperCRUD(CRUDBase["Document", PaperCreate, PaperUpdate]):
 
 
 # Create a single instance to use throughout the application
-paper_crud = PaperCRUD(Document)
+paper_crud = PaperCRUD()
