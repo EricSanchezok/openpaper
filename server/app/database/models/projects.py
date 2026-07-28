@@ -21,7 +21,8 @@ from sqlalchemy.sql import func
 from .base import Base
 
 if TYPE_CHECKING:
-    from .content import Conversation, Document
+    from .conversations import Conversation
+    from .documents import Document
     from .identity import AuthUser
 
 

@@ -63,7 +63,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
 
     const handleUnlink = async (projectId: string) => {
         try {
-            await fetchFromApi(`/api/projects/papers/${projectId}/${id}`, {
+            await fetchFromApi(`/api/projects/${projectId}/papers/${id}`, {
                 method: 'DELETE',
             });
             toast.success("Paper unlinked from project successfully!");
@@ -77,7 +77,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
     const handleAddPaperToProject = async (projectId: string) => {
         setAddingToProjectId(projectId);
         try {
-            await fetchFromApi(`/api/projects/papers/${projectId}`, {
+            await fetchFromApi(`/api/projects/${projectId}/papers`, {
                 method: 'POST',
                 body: JSON.stringify({ paper_ids: [id] })
             });
@@ -103,7 +103,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
             });
             toast.success("Project created successfully!");
 
-            await fetchFromApi(`/api/projects/papers/${project.id}`,
+            await fetchFromApi(`/api/projects/${project.id}/papers`,
                 {
                     method: 'POST',
                     body: JSON.stringify({ paper_ids: [id] })

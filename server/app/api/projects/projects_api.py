@@ -222,7 +222,7 @@ def delete_project(
 
 
 @projects_router.get(
-    "/{project_id}/collaborators",
+    "/{project_id}/members",
     response_model=list[ProjectCollaboratorResponse],
 )
 def get_project_collaborators(
@@ -269,7 +269,7 @@ def get_project_collaborators(
 
 
 @projects_router.patch(
-    "/{project_id}/collaborators/{user_id}",
+    "/{project_id}/members/{user_id}",
     response_model=ProjectCollaboratorResponse,
 )
 def update_project_collaborator(
@@ -301,7 +301,7 @@ def update_project_collaborator(
 
 
 @projects_router.delete(
-    "/{project_id}/collaborators/{user_id}",
+    "/{project_id}/members/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remove_project_collaborator(

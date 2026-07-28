@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -10,7 +10,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -25,17 +24,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .base import Base, JsonValue
-from .enums import (
-    ConversationScopeType,
-    DocumentProcessingStatus,
-    PaperStatus,
-)
+from .enums import DocumentProcessingStatus, PaperStatus
 
 if TYPE_CHECKING:
     from .identity import AuthUser
     from .jobs import DurableJob
-    from .projects import Project, ProjectPaper
-    from .research import ResearchItem
+    from .conversations import Conversation
+    from .projects import ProjectPaper
 
 
 class UploadReservation(Base):
@@ -91,206 +86,6 @@ class UploadReservation(Base):
     quota_owner: Mapped["AuthUser"] = relationship(
         "AuthUser",
         foreign_keys=[quota_owner_id],
-    )
-
-
-class TokenUsageEvent(Base):
-    """Immutable provider usage returned by one DeepSeek API call."""
-
-    __tablename__ = "token_usage_events"
-    __table_args__ = (
-        UniqueConstraint("idempotency_key", name="uq_token_usage_idempotency_key"),
-        Index("ix_token_usage_user_week", "user_id", "week_start"),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
-    )
-    week_start: Mapped[date] = mapped_column(Date, nullable=False)
-    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
-    operation_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    feature: Mapped[str] = mapped_column(String(64), nullable=False)
-    provider: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="deepseek"
-    )
-    model: Mapped[str] = mapped_column(String(128), nullable=False)
-    reasoning_level: Mapped[str] = mapped_column(String(16), nullable=False)
-    provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    prompt_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    completion_tokens: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, default=0
-    )
-    reasoning_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    cache_hit_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    cache_miss_tokens: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, default=0
-    )
-    total_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    status: Mapped[str] = mapped_column(String(24), nullable=False, default="settled")
-
-
-class TokenWeeklyUsage(Base):
-    """Fast current-week aggregate; the immutable event table is authoritative."""
-
-    __tablename__ = "token_weekly_usage"
-
-    user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    week_start: Mapped[date] = mapped_column(Date, primary_key=True)
-    used_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-
-
-class JobsWebhookNonce(Base):
-    """Consumed Jobs request nonce; the primary key prevents cross-instance replay."""
-
-    __tablename__ = "jobs_webhook_nonces"
-
-    nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
-
-
-class Message(Base):
-    __tablename__ = "messages"
-    __table_args__ = (
-        UniqueConstraint(
-            "conversation_id",
-            "sequence",
-            name="uq_messages_conversation_sequence",
-        ),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("conversations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    role: Mapped[str] = mapped_column(String, nullable=False)  # 'user' or 'assistant'
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # References from the paper. Key 'citations' maps to list of ResponseCitation dicts
-    references: Mapped[dict[str, JsonValue] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-
-    # Agent trajectory (tool calls / thinking / subagent steps) for this turn,
-    # so the user can inspect what the model did. See schemas for shape.
-    trace: Mapped[dict[str, JsonValue] | None] = mapped_column(JSONB, nullable=True)
-    # @-mention context the user attached to this (user) turn: a denormalized
-    # snapshot list of [{kind, id, title}] so it renders faithfully even if the
-    # mentioned paper/project is later renamed or deleted.
-    scope: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-    sequence: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # To maintain message order
-    conversation: Mapped["Conversation"] = relationship(
-        "Conversation", back_populates="messages"
-    )
-    research_items: Mapped[list["ResearchItem"]] = relationship(
-        "ResearchItem",
-        back_populates="source_message",
-        order_by="ResearchItem.created_at",
-        passive_deletes=True,
-    )
-
-
-class Conversation(Base):
-    __tablename__ = "conversations"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    title: Mapped[str] = mapped_column(
-        String(240), nullable=False, default="New conversation"
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    scope_type: Mapped[str] = mapped_column(
-        String(16),
-        nullable=False,
-        default=ConversationScopeType.PAPER,
-    )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    document_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    scope_label_snapshot: Mapped[str | None] = mapped_column(String(240), nullable=True)
-    context_deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    pinned_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    paper: Mapped["Document | None"] = relationship(
-        "Document",
-        foreign_keys=[document_id],
-        back_populates="conversations",
-    )
-    project: Mapped["Project | None"] = relationship(
-        "Project",
-        foreign_keys=[project_id],
-        back_populates="conversations",
-    )
-
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="conversations"
-    )
-
-    messages: Mapped[list["Message"]] = relationship(
-        "Message",
-        back_populates="conversation",
-        order_by=Message.sequence,
-        cascade="all, delete-orphan",
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "(scope_type = 'global' AND project_id IS NULL "
-            "AND document_id IS NULL AND context_deleted_at IS NULL) OR "
-            "(scope_type = 'project' AND document_id IS NULL AND "
-            "((project_id IS NOT NULL AND context_deleted_at IS NULL) OR "
-            "(project_id IS NULL AND context_deleted_at IS NOT NULL))) OR "
-            "(scope_type = 'paper' AND project_id IS NULL AND "
-            "((document_id IS NOT NULL AND context_deleted_at IS NULL) OR "
-            "(document_id IS NULL AND context_deleted_at IS NOT NULL)))",
-            name="ck_conversations_scope_consistency",
-        ),
-        Index(
-            "ix_conversations_user_archive_activity",
-            "user_id",
-            "archived_at",
-            "updated_at",
-        ),
-        Index(
-            "ix_conversations_user_pinned",
-            "user_id",
-            "pinned_at",
-        ),
     )
 
 

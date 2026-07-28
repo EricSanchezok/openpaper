@@ -26,7 +26,7 @@ from .base import Base, JsonValue
 from .enums import JobDispatchStatus, JobStatus
 
 if TYPE_CHECKING:
-    from .content import Document
+    from .documents import Document
     from .identity import AuthUser
     from .projects import Project
 
@@ -169,6 +169,14 @@ class JobDispatch(Base):
         "DurableJob",
         back_populates="dispatch",
     )
+
+
+class JobsWebhookNonce(Base):
+    """Consumed Jobs request nonce; the primary key prevents replay."""
+
+    __tablename__ = "jobs_webhook_nonces"
+
+    nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
 
 
 __all__ = ["DurableJob", "JobDispatch"]

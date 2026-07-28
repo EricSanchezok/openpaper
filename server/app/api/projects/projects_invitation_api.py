@@ -74,7 +74,7 @@ def get_user_invitations(
 
 
 @router.post(
-    "/project-invitations/token/{token}/accept",
+    "/project-invitations/{token}/accept",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def accept_invitation_token(
@@ -86,41 +86,6 @@ def accept_invitation_token(
         db,
         raw_token=token,
         user_id=current_user.id,
-        email=str(current_user.email),
-    )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post(
-    "/project-invitations/{invitation_id}/accept",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def accept_invitation_id(
-    invitation_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> Response:
-    project_repository.accept_invitation_id(
-        db,
-        invitation_id=invitation_id,
-        user_id=current_user.id,
-        email=str(current_user.email),
-    )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.delete(
-    "/project-invitations/{invitation_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def decline_invitation(
-    invitation_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> Response:
-    project_repository.decline_invitation(
-        db,
-        invitation_id=invitation_id,
         email=str(current_user.email),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -13,6 +13,8 @@ from app.database.models import (
     PaperStatus,
     ProjectPaper,
 )
+from app.errors import AppError
+from app.schemas.documents import LibraryPaperUpdateRequest
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -30,6 +32,85 @@ class ReferenceResult:
 
 
 class DocumentRepository:
+    def list_library(self, db: Session, *, user_id: int) -> list[LibraryPaper]:
+        return list(
+            db.scalars(
+                select(LibraryPaper)
+                .where(LibraryPaper.user_id == user_id)
+                .order_by(LibraryPaper.updated_at.desc(), LibraryPaper.id.desc())
+            ).all()
+        )
+
+    def require_library_paper(
+        self,
+        db: Session,
+        *,
+        library_paper_id: uuid.UUID,
+        user_id: int,
+        for_update: bool = False,
+    ) -> LibraryPaper:
+        statement = select(LibraryPaper).where(
+            LibraryPaper.id == library_paper_id,
+            LibraryPaper.user_id == user_id,
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        entry = db.scalar(statement)
+        if entry is None:
+            raise AppError(
+                code="library_paper_not_found",
+                message="Library paper not found",
+                status_code=404,
+            )
+        return entry
+
+    def update_library_paper(
+        self,
+        db: Session,
+        *,
+        library_paper_id: uuid.UUID,
+        user_id: int,
+        request: LibraryPaperUpdateRequest,
+    ) -> LibraryPaper:
+        entry = self.require_library_paper(
+            db,
+            library_paper_id=library_paper_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        if request.status is not None:
+            entry.status = request.status.value
+        if request.metadata_overrides is not None:
+            entry.metadata_overrides = request.metadata_overrides.model_dump(
+                mode="json",
+                exclude_none=True,
+            )
+        entry.last_accessed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(entry)
+        return entry
+
+    def delete_library_paper(
+        self,
+        db: Session,
+        *,
+        library_paper_id: uuid.UUID,
+        user_id: int,
+    ) -> None:
+        entry = self.require_library_paper(
+            db,
+            library_paper_id=library_paper_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        document_id = entry.document_id
+        db.delete(entry)
+        db.flush()
+        from app.services.document_gc import schedule_document_gc
+
+        schedule_document_gc(db, document_id=document_id)
+        db.commit()
+
     def get_by_sha256(
         self,
         db: Session,

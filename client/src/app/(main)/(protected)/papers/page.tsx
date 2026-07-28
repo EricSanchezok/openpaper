@@ -177,7 +177,7 @@ function PapersPageContent() {
             toast.success("Project created successfully!");
 
             if (paperIds.length > 0) {
-                await fetchFromApi(`/api/projects/papers/${project.id}`, {
+                await fetchFromApi(`/api/projects/${project.id}/papers`, {
                     method: 'POST',
                     body: JSON.stringify({ paper_ids: paperIds })
                 });

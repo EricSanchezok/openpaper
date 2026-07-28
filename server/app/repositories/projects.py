@@ -568,54 +568,6 @@ class ProjectRepository:
             email=email,
         )
 
-    def accept_invitation_id(
-        self,
-        db: Session,
-        *,
-        invitation_id: uuid.UUID,
-        user_id: int,
-        email: str,
-    ) -> ProjectCollaborator:
-        invitation = db.scalar(
-            select(ProjectInvitation)
-            .where(ProjectInvitation.id == invitation_id)
-            .with_for_update()
-        )
-        return self._accept_invitation(
-            db,
-            invitation=invitation,
-            user_id=user_id,
-            email=email,
-        )
-
-    def decline_invitation(
-        self,
-        db: Session,
-        *,
-        invitation_id: uuid.UUID,
-        email: str,
-    ) -> None:
-        now = datetime.now(timezone.utc)
-        invitation = db.scalar(
-            select(ProjectInvitation)
-            .where(
-                ProjectInvitation.id == invitation_id,
-                ProjectInvitation.email == _normalized_email(email),
-                ProjectInvitation.accepted_at.is_(None),
-                ProjectInvitation.revoked_at.is_(None),
-                ProjectInvitation.expires_at > now,
-            )
-            .with_for_update()
-        )
-        if invitation is None:
-            raise AppError(
-                code="project_invitation_not_found",
-                message="Project invitation not found",
-                status_code=404,
-            )
-        invitation.revoked_at = now
-        db.commit()
-
     def revoke_invitation(
         self,
         db: Session,

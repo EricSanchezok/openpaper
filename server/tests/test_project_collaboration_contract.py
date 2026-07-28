@@ -250,14 +250,25 @@ def test_transfer_validates_and_reassigns_owner_quota(
 def test_project_api_exposes_capabilities_and_invitation_lifecycle() -> None:
     paths = app.openapi()["paths"]
 
-    assert "/api/projects/{project_id}/collaborators" in paths
-    assert "/api/projects/{project_id}/members" not in paths
+    assert "/api/projects/{project_id}/members" in paths
+    assert "/api/projects/{project_id}/collaborators" not in paths
     assert "/api/projects/{project_id}/transfer" in paths
     assert "/api/projects/{project_id}/leave" in paths
-    assert "/api/project-invitations/{invitation_id}/accept" in paths
-    assert "/api/project-invitations/{invitation_id}" in paths
-    assert "/api/project-invitations/token/{token}/accept" in paths
+    assert "/api/projects/{project_id}/papers" in paths
+    assert "/api/projects/{project_id}/papers/{document_id}" in paths
+    assert "/api/project-invitations/{token}/accept" in paths
+    assert "/api/project-invitations/token/{token}/accept" not in paths
     assert not any("role" in path for path in paths if "project" in path)
+
+
+def test_document_and_library_api_expose_canonical_asset_boundaries() -> None:
+    paths = app.openapi()["paths"]
+
+    assert "/api/library/papers" in paths
+    assert "/api/library/papers/{library_paper_id}" in paths
+    assert "/api/documents/{document_id}" in paths
+    assert "/api/documents/{document_id}/file-url" in paths
+    assert "/api/documents/{document_id}/research-items" in paths
 
 
 def test_metadata_and_baseline_have_only_the_new_project_tables() -> None:

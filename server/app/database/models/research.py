@@ -24,7 +24,8 @@ from .base import Base, JsonValue
 from .enums import ResearchItemKind, ResearchScopeType
 
 if TYPE_CHECKING:
-    from .content import Document, Message
+    from .conversations import Message
+    from .documents import Document
     from .identity import AuthUser
     from .jobs import DurableJob
     from .projects import Project

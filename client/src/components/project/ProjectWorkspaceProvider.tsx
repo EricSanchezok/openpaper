@@ -215,7 +215,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
         let cancelled = false;
         (async () => {
             try {
-                const response = await fetchFromApi(`/api/projects/papers/${projectId}/pending-jobs`);
+                const response = await fetchFromApi(`/api/projects/${projectId}/papers/pending-jobs`);
                 if (cancelled || !response?.jobs?.length) return;
                 const restoredJobs: MinimalJob[] = response.jobs.map((job: { job_id: string; title: string | null }) => ({
                     jobId: job.job_id,

@@ -8,6 +8,7 @@ import uvicorn
 from app.api.api import router
 from app.api.auth_api import auth_router
 from app.api.conversation_api import conversation_router
+from app.api.documents import document_router, library_router
 from app.api.message_api import message_router
 from app.api.onboarding_api import onboarding_router
 from app.api.paper_api import paper_router
@@ -109,9 +110,11 @@ app.include_router(cloud_user_router, prefix="/api/user", tags=["user"])
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(paper_router, prefix="/api/paper")
 app.include_router(conversation_router, prefix="/api/conversations")
+app.include_router(library_router, prefix="/api/library")
+app.include_router(document_router, prefix="/api/documents")
 app.include_router(message_router, prefix="/api/message")
 app.include_router(projects_router, prefix="/api/projects")
-app.include_router(project_papers_router, prefix="/api/projects/papers")
+app.include_router(project_papers_router, prefix="/api/projects")
 app.include_router(projects_invitation_router, prefix="/api")
 app.include_router(paper_search_router, prefix="/api/search/global")
 app.include_router(search_router, prefix="/api/search/local")

@@ -11,8 +11,8 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .commerce import Onboarding, Subscription
-    from .content import (
-        Conversation,
+    from .conversations import Conversation
+    from .documents import (
         LibraryPaper,
         Document,
         PaperTag,

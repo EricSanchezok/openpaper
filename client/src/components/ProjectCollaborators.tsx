@@ -83,7 +83,7 @@ export function ProjectCollaborators({
     const load = useCallback(async () => {
         try {
             const loadedCollaborators = await fetchFromApi(
-                `/api/projects/${project.id}/collaborators`,
+                `/api/projects/${project.id}/members`,
             ) as Collaborator[];
             setCollaborators(loadedCollaborators);
             setHasCollaborators?.(loadedCollaborators.length > 1);
@@ -116,7 +116,7 @@ export function ProjectCollaborators({
         };
         try {
             const updated = await fetchFromApi(
-                `/api/projects/${project.id}/collaborators/${member.user_id}`,
+                `/api/projects/${project.id}/members/${member.user_id}`,
                 {
                     method: "PATCH",
                     body: JSON.stringify(permissions),
@@ -140,7 +140,7 @@ export function ProjectCollaborators({
     const removeMember = async (member: Collaborator) => {
         try {
             await fetchFromApi(
-                `/api/projects/${project.id}/collaborators/${member.user_id}`,
+                `/api/projects/${project.id}/members/${member.user_id}`,
                 { method: "DELETE" },
             );
             setCollaborators((current) =>

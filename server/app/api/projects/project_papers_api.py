@@ -24,7 +24,7 @@ class CollectPaperFromProjectRequest(BaseModel):
     paper_id: UUID
 
 
-@project_papers_router.post("/collect")
+@project_papers_router.post("/papers/collect")
 async def collect_paper_from_project(
     request: CollectPaperFromProjectRequest,
     db: Session = Depends(get_db),
@@ -77,7 +77,7 @@ class AddPaperToProjectRequest(BaseModel):
         return self
 
 
-@project_papers_router.post("/{project_id}")
+@project_papers_router.post("/{project_id}/papers")
 async def add_paper_to_project(
     project_id: UUID,
     request: AddPaperToProjectRequest,
@@ -110,7 +110,7 @@ async def add_paper_to_project(
     )
 
 
-@project_papers_router.get("/{project_id}")
+@project_papers_router.get("/{project_id}/papers")
 async def get_project_papers(
     project_id: UUID,
     load_urls: bool = False,
@@ -170,7 +170,7 @@ async def get_project_papers(
     )
 
 
-@project_papers_router.get("/{project_id}/pending-jobs")
+@project_papers_router.get("/{project_id}/papers/pending-jobs")
 async def get_project_pending_jobs(
     project_id: UUID,
     db: Session = Depends(get_db),
@@ -204,7 +204,7 @@ async def get_project_pending_jobs(
     )
 
 
-@project_papers_router.get("/{project_id}/{paper_id}/file-url")
+@project_papers_router.get("/{project_id}/papers/{paper_id}/file-url")
 async def get_project_paper_file_url(
     project_id: UUID,
     paper_id: UUID,
@@ -237,7 +237,7 @@ async def get_project_paper_file_url(
     return JSONResponse(status_code=200, content={"file_url": file_url})
 
 
-@project_papers_router.get("/from/{paper_id}")
+@project_papers_router.get("/papers/from/{paper_id}")
 async def get_projects_from_paper_id(
     paper_id: UUID,
     db: Session = Depends(get_db),
@@ -253,7 +253,7 @@ async def get_projects_from_paper_id(
     )
 
 
-@project_papers_router.delete("/{project_id}/{document_id}")
+@project_papers_router.delete("/{project_id}/papers/{document_id}")
 async def remove_paper_from_project(
     project_id: UUID,
     document_id: UUID,

@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import UUID
+
+from app.database.models import DocumentProcessingStatus, PaperStatus
+from app.database.models.base import JsonValue
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class DocumentMetadataOverrides(BaseModel):
+    """The only canonical metadata fields a Library owner may override."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str | None = Field(default=None, min_length=1, max_length=1_000)
+    authors: list[str] | None = Field(default=None, max_length=100)
+    abstract: str | None = Field(default=None, max_length=100_000)
+    institutions: list[str] | None = Field(default=None, max_length=100)
+    doi: str | None = Field(default=None, max_length=500)
+    journal: str | None = Field(default=None, max_length=1_000)
+    publisher: str | None = Field(default=None, max_length=1_000)
+    publish_date: datetime | None = None
+
+    @field_validator("authors", "institutions")
+    @classmethod
+    def validate_list_values(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        normalized = [value.strip() for value in values]
+        if any(not value or len(value) > 500 for value in normalized):
+            raise ValueError("metadata list values must be between 1 and 500 characters")
+        return normalized
+
+
+class LibraryPaperUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: PaperStatus | None = None
+    metadata_overrides: DocumentMetadataOverrides | None = None
+
+
+class DocumentResponse(BaseModel):
+    id: UUID
+    original_filename: str
+    mime_type: str
+    size_bytes: int
+    title: str | None
+    authors: list[str] | None
+    abstract: str | None
+    institutions: list[str] | None
+    keywords: list[str] | None
+    doi: str | None
+    journal: str | None
+    publisher: str | None
+    publish_date: datetime | None
+    summary: str | None
+    summary_citations: list[dict[str, JsonValue]] | None
+    starter_questions: list[str] | None
+    processing_status: DocumentProcessingStatus
+    parser_quality: str | None
+    parser_warning_code: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LibraryPaperResponse(BaseModel):
+    id: UUID
+    user_id: int
+    status: PaperStatus
+    last_accessed_at: datetime
+    metadata_overrides: DocumentMetadataOverrides
+    is_public: bool
+    document: DocumentResponse
+    created_at: datetime
+    updated_at: datetime
+
+
+class LibraryPaperListResponse(BaseModel):
+    items: list[LibraryPaperResponse]
+
+
+class DocumentFileUrlResponse(BaseModel):
+    file_url: str
+    expires_in_seconds: int

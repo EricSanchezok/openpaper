@@ -140,7 +140,7 @@ export async function getProjectPaperFileUrl(
     paperId: string,
 ): Promise<string | null> {
     const response = await fetchFromApi(
-        `/api/projects/papers/${projectId}/${paperId}/file-url`,
+        `/api/projects/${projectId}/papers/${paperId}/file-url`,
     );
     return response?.file_url ?? null;
 }

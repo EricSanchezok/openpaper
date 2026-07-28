@@ -122,7 +122,7 @@ export function useProjectPapers(
         setError(null);
         try {
             const query = loadUrls ? "?load_urls=true" : "";
-            const response = await fetchFromApi(`/api/projects/papers/${projectId}${query}`);
+            const response = await fetchFromApi(`/api/projects/${projectId}/papers${query}`);
             setPapers(response.papers || []);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch papers for project ${projectId}`));
