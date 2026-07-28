@@ -28,6 +28,7 @@ def test_presigned_url_keeps_the_provider_signed_host(monkeypatch) -> None:
         "generate_presigned_url",
         generate_presigned_url,
     )
+    monkeypatch.setattr(s3_service, "bucket_name", "bucket")
 
     assert s3_service.generate_presigned_url("uploads/paper.pdf", 120) == expected
 

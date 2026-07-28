@@ -12,6 +12,7 @@ from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import get_db
 from app.database.models import SubscriptionStatus
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -59,9 +60,11 @@ def create_checkout_session(
                 logger.info(
                     f"Canceled incomplete subscription {subscription.stripe_subscription_id} for user {current_user.id}"
                 )
-            except Exception as e:
+            except stripe.StripeError:
                 logger.warning(
-                    f"Failed to cancel incomplete subscription {subscription.stripe_subscription_id}: {e}"
+                    "Failed to cancel incomplete subscription %s",
+                    subscription.stripe_subscription_id,
+                    exc_info=True,
                 )
 
         # Create a Stripe Checkout session
@@ -117,11 +120,13 @@ def create_checkout_session(
 
         return {"client_secret": session.client_secret}
 
-    except HTTPException:
-        raise
-    except Exception:
+    except stripe.StripeError as exc:
         logger.error("Error creating checkout session", exc_info=True)
-        raise HTTPException(status_code=500, detail="internal_error")
+        raise AppError(
+            code="stripe_checkout_failed",
+            message="The checkout session could not be created",
+            status_code=502,
+        ) from exc
 
 
 @router.get("/session-status")
@@ -178,14 +183,15 @@ async def session_status(
                     logger.error(
                         f"Invalid user ID in session client_reference_id: {client_reference_id}"
                     )
-                except Exception as be:
-                    logger.error(f"Error checking backend subscription status: {be}")
-
         return {
             "status": session.status,
             "customer_email": customer_email,
             "backend_subscription_found": backend_subscription_found,
             "backend_subscription_status": backend_subscription_status,
         }
-    except Exception:
-        raise HTTPException(status_code=500, detail="internal_error")
+    except stripe.StripeError as exc:
+        raise AppError(
+            code="stripe_session_unavailable",
+            message="The checkout session could not be retrieved",
+            status_code=502,
+        ) from exc

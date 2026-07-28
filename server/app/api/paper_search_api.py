@@ -1,38 +1,36 @@
-import logging
-
 from app.auth.dependencies import get_required_user
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import AILimitExceeded, enforce_rate_limit
 from app.helpers.paper_search import (
     OpenAlexFilter,
+    OpenAlexCitationGraph,
+    OpenAlexResponse,
     construct_citation_graph,
     get_doi,
     get_work_by_doi,
     search_open_alex,
 )
 from app.repositories.documents import document_repository
+from app.errors import AppError
 from app.schemas.documents import DocumentUpdate
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-from starlette.responses import Response as ApiResponse
-
-logger = logging.getLogger(__name__)
 
 # API routes for effectively searching and retrieving papers from external sources
 
 paper_search_router = APIRouter()
 
 
-@paper_search_router.post("/match")
+@paper_search_router.post("/match", response_model=OpenAlexCitationGraph)
 async def get_paper_graph(
     request: Request,
     doi: str | None = None,
     paper_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> OpenAlexCitationGraph:
     """
     Get the citation graph for a paper.
 
@@ -45,82 +43,85 @@ async def get_paper_graph(
             ip_address=request.client.host if request.client else "unknown",
             feature="external_search",
         )
-        if not doi and not paper_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Either doi or paper_id must be provided",
-            )
-
-        paper = None
-        if paper_id:
-            paper = document_repository.find_accessible(
-                db, document_id=paper_id, user=current_user
-            )
-            if not paper:
-                raise HTTPException(status_code=404, detail="Paper not found")
-            # Use paper's DOI if no DOI provided, or try to look it up
-            if not doi:
-                if paper.doi:
-                    doi = str(paper.doi)
-                else:
-                    # Try to find DOI using paper title
-                    doi = get_doi(str(paper.title))
-                    if not doi:
-                        raise HTTPException(
-                            status_code=400,
-                            detail="Paper does not have a DOI and could not find one. Please provide a DOI.",
-                        )
-
-        if not doi:
-            raise HTTPException(
-                status_code=400,
-                detail="DOI could not be determined for the paper",
-            )
-
-        # Look up OpenAlex work from DOI
-        work = get_work_by_doi(doi)
-        if not work:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Could not find paper with DOI: {doi}",
-            )
-
-        # Update the paper's DOI if we have a paper and DOI was provided directly
-        if paper and doi and paper.doi != doi:
-            document_repository.update_canonical(
-                db,
-                document=paper,
-                update=DocumentUpdate(doi=doi),
-            )
-
-        graph = construct_citation_graph(work.id)
-        track_event(
-            "citation_graph_view",
-            user_id=str(current_user.id),
-            properties={
-                "cited_by_count": graph.cited_by.meta.get("count", 0),
-                "cites_count": graph.cites.meta.get("count", 0),
-            },
-            db=db,
-        )
-        return Response(content=graph.model_dump_json(), media_type="application/json")
     except AILimitExceeded as exc:
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving paper graph: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="internal_error")
+        raise AppError(
+            code=exc.code,
+            message="External search rate limit exceeded",
+            status_code=429,
+        ) from None
+    if not doi and not paper_id:
+        raise AppError(
+            code="citation_graph_source_required",
+            message="Either doi or paper_id must be provided",
+            status_code=400,
+        )
+
+    paper = None
+    if paper_id:
+        paper = document_repository.find_accessible(
+            db, document_id=paper_id, user=current_user
+        )
+        if not paper:
+            raise AppError(
+                code="paper_not_found",
+                message="Paper not found",
+                status_code=404,
+            )
+        if not doi:
+            if paper.doi:
+                doi = str(paper.doi)
+            else:
+                doi = get_doi(str(paper.title))
+                if not doi:
+                    raise AppError(
+                        code="paper_doi_unavailable",
+                        message="A DOI could not be determined for this paper",
+                        status_code=400,
+                    )
+
+    if not doi:
+        raise AppError(
+            code="paper_doi_unavailable",
+            message="A DOI could not be determined for this paper",
+            status_code=400,
+        )
+
+    work = get_work_by_doi(doi)
+    if not work:
+        raise AppError(
+            code="openalex_paper_not_found",
+            message="OpenAlex could not find a paper for this DOI",
+            status_code=404,
+        )
+
+    if paper and paper.doi != doi:
+        document_repository.update_canonical(
+            db,
+            document=paper,
+            update=DocumentUpdate(doi=doi),
+        )
+
+    graph = construct_citation_graph(work.id)
+    track_event(
+        "citation_graph_view",
+        user_id=str(current_user.id),
+        properties={
+            "cited_by_count": graph.cited_by.meta.get("count", 0),
+            "cites_count": graph.cites.meta.get("count", 0),
+        },
+        db=db,
+    )
+    return graph
 
 
-@paper_search_router.get("/author")
+@paper_search_router.get("/author", response_model=OpenAlexResponse)
 async def get_author_works(
     request: Request,
     author_id: str,
     page: int = 1,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> ApiResponse:
+) -> OpenAlexResponse:
     """
     Get works by a specific author from OpenAlex.
 
@@ -134,23 +135,22 @@ async def get_author_works(
             ip_address=request.client.host if request.client else "unknown",
             feature="external_search",
         )
-        author_filter = OpenAlexFilter(authors=[author_id])
-        results = search_open_alex(search_term=None, filter=author_filter, page=page)
-        track_event(
-            "author_works_view",
-            user_id=str(current_user.id),
-            properties={
-                "page": page,
-                "results_count": len(results.results),
-                "total_count": results.meta.get("count", 0),
-            },
-            db=db,
-        )
-        return Response(
-            content=results.model_dump_json(), media_type="application/json"
-        )
     except AILimitExceeded as exc:
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
-    except Exception as e:
-        logger.error(f"Error retrieving author works: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="internal_error")
+        raise AppError(
+            code=exc.code,
+            message="External search rate limit exceeded",
+            status_code=429,
+        ) from None
+    author_filter = OpenAlexFilter(authors=[author_id])
+    results = search_open_alex(search_term=None, filter=author_filter, page=page)
+    track_event(
+        "author_works_view",
+        user_id=str(current_user.id),
+        properties={
+            "page": page,
+            "results_count": len(results.results),
+            "total_count": results.meta.get("count", 0),
+        },
+        db=db,
+    )
+    return results

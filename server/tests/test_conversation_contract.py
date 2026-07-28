@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app.api.conversation_api import get_conversation, get_conversation_messages
+from app.api.message_api import chat_message_multipaper
 from app.database.crud.message_crud import message_crud
 from app.database.models import Conversation, Message
 from app.errors import AppError
@@ -14,11 +15,13 @@ from app.schemas.conversations import (
     ConversationMoveRequest,
     ConversationUpdateRequest,
 )
+from app.schemas.message import MultiPaperChatRequest
 from app.database.crud.message_crud import MessageCreate
 from app.schemas.orm_responses import serialize_messages
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
+from starlette.requests import Request
 
 
 def _current_user() -> CurrentUser:
@@ -201,6 +204,66 @@ def test_archiving_a_conversation_also_unpins_it() -> None:
     assert updated.archived_at is not None
     assert updated.pinned_at is None
     db.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        title="Paper",
+        user_id=1,
+        scope_type="paper",
+        document_id=uuid.uuid4(),
+    )
+    monkeypatch.setattr(
+        "app.api.message_api.has_token_credits",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        conversation_repository,
+        "require_owned",
+        lambda *_args, **_kwargs: conversation,
+    )
+    monkeypatch.setattr(
+        "app.api.message_api.conversation_policy.require_can_continue",
+        lambda *_args, **_kwargs: None,
+    )
+    enforce_rate_limit = MagicMock()
+    acquire_concurrency = MagicMock()
+    monkeypatch.setattr(
+        "app.api.message_api.enforce_rate_limit",
+        enforce_rate_limit,
+    )
+    monkeypatch.setattr(
+        "app.api.message_api.acquire_concurrency",
+        acquire_concurrency,
+    )
+    http_request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/message/chat/everything",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+        }
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        await chat_message_multipaper(
+            request=MultiPaperChatRequest(
+                conversation_id=str(conversation.id),
+                user_query="Question",
+            ),
+            http_request=http_request,
+            db=MagicMock(spec=Session),
+            current_user=_current_user(),
+        )
+
+    assert exc_info.value.code == "conversation_scope_mismatch"
+    enforce_rate_limit.assert_not_called()
+    acquire_concurrency.assert_not_called()
 
 
 def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:
