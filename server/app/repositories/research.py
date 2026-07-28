@@ -25,6 +25,7 @@ from app.schemas.research import (
     AnnotationCommentResponse,
     AudioOverviewContent,
     CitationContent,
+    CitationSnapshot,
     DataTableContent,
     HighlightThreadContent,
     ResearchCreatorResponse,
@@ -35,7 +36,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-_JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, JsonValue])
+_CITATION_SNAPSHOTS = TypeAdapter(list[CitationSnapshot])
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,7 +227,7 @@ class ResearchRepository:
         db: Session,
         *,
         user_id: int,
-        snapshot: dict[str, JsonValue],
+        snapshot: CitationSnapshot,
         source_message_id: uuid.UUID,
         scope_type: ResearchScopeType,
         scope_id: uuid.UUID | None,
@@ -242,7 +243,7 @@ class ResearchRepository:
             is_shared=scope_type != ResearchScopeType.PERSONAL,
             source_message_id=source_message_id,
         )
-        item.citation = CitationOutput(snapshot=snapshot)
+        item.citation = CitationOutput(snapshot=snapshot.model_dump(mode="json"))
         db.add(item)
         return item
 
@@ -265,16 +266,17 @@ class ResearchRepository:
         else:
             research_scope = ResearchScopeType.DOCUMENT
             scope_id = conversation.document_id
+        validated_snapshots = _CITATION_SNAPSHOTS.validate_python(snapshots)
         items = [
             self.create_citation(
                 db,
                 user_id=user_id,
-                snapshot=_JSON_OBJECT_ADAPTER.validate_python(snapshot),
+                snapshot=snapshot,
                 source_message_id=message_id,
                 scope_type=research_scope,
                 scope_id=scope_id,
             )
-            for snapshot in snapshots
+            for snapshot in validated_snapshots
         ]
         db.commit()
         return items
@@ -636,17 +638,21 @@ class ResearchRepository:
                 ],
             )
         elif item.citation is not None:
-            citation = CitationContent(snapshot=item.citation.snapshot)
+            citation = CitationContent(
+                snapshot=CitationSnapshot.model_validate(item.citation.snapshot)
+            )
         elif item.audio_overview is not None:
-            audio = AudioOverviewContent(
-                title=item.audio_overview.title,
-                transcript=item.audio_overview.transcript,
-                citations=item.audio_overview.citations,
-                audio_url=s3_service.generate_presigned_url(
-                    item.audio_overview.s3_object_key
-                ),
-                voice_id=item.audio_overview.voice_id,
-                model_version=item.audio_overview.model_version,
+            audio = AudioOverviewContent.model_validate(
+                {
+                    "title": item.audio_overview.title,
+                    "transcript": item.audio_overview.transcript,
+                    "citations": item.audio_overview.citations,
+                    "audio_url": s3_service.generate_presigned_url(
+                        item.audio_overview.s3_object_key
+                    ),
+                    "voice_id": item.audio_overview.voice_id,
+                    "model_version": item.audio_overview.model_version,
+                }
             )
         elif item.data_table is not None:
             data_table = DataTableContent(

@@ -6,6 +6,8 @@ from uuid import UUID
 
 from app.database.models import ResearchItemKind, ResearchScopeType
 from app.database.models.base import JsonValue
+from app.schemas.citation import CitationData, CitationMethod
+from app.schemas.responses import ResponseCitation
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -37,14 +39,29 @@ class HighlightThreadContent(BaseModel):
     comments: list[AnnotationCommentResponse]
 
 
+class CitationSnapshot(BaseModel):
+    """Immutable, validated citation card emitted by the evidence pipeline."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["citation"]
+    paper_id: str = Field(min_length=1, max_length=100)
+    preferred_style: str = Field(min_length=1, max_length=100)
+    style_display: str = Field(min_length=1, max_length=200)
+    data: CitationData
+    method: CitationMethod
+    missing_fields: list[str] = Field(default_factory=list, max_length=100)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 class CitationContent(BaseModel):
-    snapshot: dict[str, JsonValue]
+    snapshot: CitationSnapshot
 
 
 class AudioOverviewContent(BaseModel):
     title: str | None
     transcript: str
-    citations: list[dict[str, JsonValue]]
+    citations: list[ResponseCitation]
     audio_url: str
     voice_id: str
     model_version: str

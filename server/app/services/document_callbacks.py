@@ -57,7 +57,7 @@ from app.services.callback_boundaries import (
     optional_savepoint,
     pdf_ingestion_callback,
 )
-from fastapi import HTTPException, Request
+from fastapi import Request
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -480,7 +480,11 @@ async def handle_paper_processing_webhook(
         db=db, task_id=webhook_data.task_id, id=job_id
     )
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise AppError(
+            code="job_not_found",
+            message="Job not found",
+            status_code=404,
+        )
 
     job_id = str(job.id)
     durable_job = job_repository.require(db, job_id=job.id)
@@ -499,7 +503,11 @@ async def handle_paper_processing_webhook(
     user = durable_job.requested_by
     if not user:
         logger.error(f"No user found for job {job_id}")
-        raise HTTPException(status_code=500, detail="User not found for job")
+        raise AppError(
+            code="job_requester_missing",
+            message="The job requester is unavailable",
+            status_code=409,
+        )
 
     job_user: CurrentUser = CurrentUser(
         id=user.id,
@@ -655,7 +663,11 @@ async def handle_paper_processing_webhook(
 
             # Create paper record
             if existing_paper is None:
-                raise HTTPException(status_code=404, detail="paper_not_found")
+                raise AppError(
+                    code="paper_not_found",
+                    message="Paper not found",
+                    status_code=404,
+                )
             paper = document_repository.update_canonical(
                 db,
                 update=DocumentUpdate(
@@ -847,12 +859,24 @@ def handle_paper_parser_upgrade_webhook(
         )
     checkpoint_job_id = str(job.payload.get("checkpoint_job_id", ""))
     if webhook_data.result.job_id != checkpoint_job_id:
-        raise HTTPException(status_code=422, detail="parser_upgrade_job_mismatch")
+        raise AppError(
+            code="parser_upgrade_job_mismatch",
+            message="Parser upgrade checkpoint does not match",
+            status_code=422,
+        )
     if webhook_data.task_id != str(job_id):
-        raise HTTPException(status_code=422, detail="parser_upgrade_task_mismatch")
+        raise AppError(
+            code="parser_upgrade_task_mismatch",
+            message="Parser upgrade task does not match",
+            status_code=422,
+        )
     document_id = job.document_id
     if document_id is None:
-        raise HTTPException(status_code=409, detail="parser_upgrade_document_missing")
+        raise AppError(
+            code="parser_upgrade_document_missing",
+            message="Parser upgrade document is unavailable",
+            status_code=409,
+        )
 
     upgrade_lock = AdvisoryLock(
         engine,
@@ -860,7 +884,11 @@ def handle_paper_parser_upgrade_webhook(
         key=str(document_id),
     )
     if not upgrade_lock.acquire():
-        raise HTTPException(status_code=409, detail="paper_update_in_progress")
+        raise AppError(
+            code="paper_update_in_progress",
+            message="Another parser update is already in progress",
+            status_code=409,
+        )
 
     with callback_transaction(
         db,
@@ -870,7 +898,11 @@ def handle_paper_parser_upgrade_webhook(
     ):
         paper = db.get(Document, document_id)
         if paper is None:
-            raise HTTPException(status_code=404, detail="paper_not_found")
+            raise AppError(
+                code="paper_not_found",
+                message="Paper not found",
+                status_code=404,
+            )
         if paper.parser_quality == "full":
             job_repository.complete(
                 db,
@@ -883,7 +915,11 @@ def handle_paper_parser_upgrade_webhook(
                 "paper_id": str(paper.id),
             }
         if paper.parser_quality != "text_only":
-            raise HTTPException(status_code=409, detail="paper_not_text_only")
+            raise AppError(
+                code="paper_not_text_only",
+                message="Only text-only papers can be upgraded",
+                status_code=409,
+            )
 
         result = webhook_data.result
         paper.raw_content = str(sanitize_for_postgres(result.raw_content))

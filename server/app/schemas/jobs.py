@@ -7,6 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.database.models.base import JsonValue
+from app.schemas.responses import ResponseCitation
 from app.schemas.responses import PaperMetadataExtraction
 from app.schemas.responses import DataTableRow
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -186,7 +187,7 @@ class AudioOverviewResultPayload(BaseModel):
     research_item_id: UUID
     title: str
     transcript: str = Field(min_length=1)
-    citations: list[dict[str, object]]
+    citations: list[ResponseCitation]
     s3_object_key: str = Field(min_length=1, max_length=1024)
     voice_id: str = Field(min_length=1, max_length=160)
     model_version: str = Field(min_length=1, max_length=160)

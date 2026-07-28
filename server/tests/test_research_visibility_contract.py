@@ -21,7 +21,11 @@ from app.api.projects.responses import _project_counts
 from app.policies.research import research_item_policy
 from app.policies.research import research_item_visible_to
 from app.repositories.research import research_repository
-from app.schemas.research import CreateHighlightThreadRequest, ResearchVisibilityRequest
+from app.schemas.research import (
+    CitationSnapshot,
+    CreateHighlightThreadRequest,
+    ResearchVisibilityRequest,
+)
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects import postgresql
@@ -198,6 +202,34 @@ def test_highlight_request_is_strict_and_shared_by_default() -> None:
     with pytest.raises(ValidationError):
         ResearchVisibilityRequest.model_validate(
             {"shared": True, "creator_override": True}
+        )
+
+
+def test_citation_snapshot_is_strictly_validated_before_persistence() -> None:
+    snapshot = CitationSnapshot.model_validate(
+        {
+            "kind": "citation",
+            "paper_id": str(uuid.uuid4()),
+            "preferred_style": "APA",
+            "style_display": "APA 7th Edition",
+            "data": {
+                "paper_id": str(uuid.uuid4()),
+                "title": "Typed citation",
+                "authors": ["Researcher"],
+            },
+            "method": "deterministic",
+            "missing_fields": [],
+            "confidence": 0.95,
+        }
+    )
+    assert snapshot.kind == "citation"
+
+    with pytest.raises(ValidationError):
+        CitationSnapshot.model_validate(
+            {
+                **snapshot.model_dump(mode="json"),
+                "private_trace": {"query": "must not persist"},
+            }
         )
 
 

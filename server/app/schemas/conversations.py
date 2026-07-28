@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.database.models import ConversationScopeType, JsonValue, Message
+from app.schemas.research import CitationSnapshot
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -96,7 +97,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     references: dict[str, JsonValue] | None
-    artifacts: list[dict[str, JsonValue]] | None
+    artifacts: list[CitationSnapshot] | None
     trace: dict[str, JsonValue] | None
     scope: list[dict[str, JsonValue]] | None
     sequence: int
