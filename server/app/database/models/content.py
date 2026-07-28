@@ -26,7 +26,12 @@ from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .base import Base, JsonValue
-from .enums import ConversableType, JobStatus, PaperStatus
+from .enums import (
+    ConversableType,
+    DocumentProcessingStatus,
+    JobStatus,
+    PaperStatus,
+)
 
 if TYPE_CHECKING:
     from .identity import AuthUser
@@ -39,6 +44,10 @@ class PaperUploadJob(Base):
         CheckConstraint(
             "reserved_size_kb >= 0",
             name="ck_paper_upload_jobs_reserved_size_nonnegative",
+        ),
+        CheckConstraint(
+            "reserved_reference_count IN (0, 1)",
+            name="ck_paper_upload_jobs_reserved_reference_count",
         ),
         Index(
             "ix_paper_upload_jobs_quota_status",
@@ -68,11 +77,32 @@ class PaperUploadJob(Base):
         ForeignKey("projects.id", ondelete="SET NULL"),
         nullable=True,
     )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     reserved_size_kb: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
         server_default="0",
+    )
+    reserved_reference_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
+    content_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    reference_created: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
     )
     original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -99,6 +129,11 @@ class PaperUploadJob(Base):
         foreign_keys=[quota_owner_id],
     )
     project: Mapped["Project | None"] = relationship("Project")
+    document: Mapped["Document | None"] = relationship(
+        "Document",
+        back_populates="upload_jobs",
+        foreign_keys=[document_id],
+    )
 
 
 class TokenUsageEvent(Base):
@@ -392,6 +427,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     __table_args__ = (
+        UniqueConstraint("sha256", name="uq_documents_sha256"),
         Index("ix_documents_ts_vector", "ts_vector", postgresql_using="gin"),
         CheckConstraint(
             "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
@@ -401,14 +437,23 @@ class Document(Base):
             "parser_quality IS NULL OR parser_quality IN ('full', 'text_only')",
             name="ck_documents_parser_quality",
         ),
+        CheckConstraint(
+            "processing_status IN ('pending', 'processing', 'completed', 'failed')",
+            name="ck_documents_processing_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    file_url: Mapped[str] = mapped_column(String, nullable=False)
-    preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    s3_object_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime_type: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="application/pdf"
+    )
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    s3_object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    preview_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     authors: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -429,6 +474,18 @@ class Document(Base):
     parser_quality: Mapped[str | None] = mapped_column(String, nullable=True)
     parser_version: Mapped[str | None] = mapped_column(String, nullable=True)
     parser_warning_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    processing_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=DocumentProcessingStatus.PENDING,
+        server_default=DocumentProcessingStatus.PENDING.value,
+    )
+    processing_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    gc_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     ts_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     page_offset_map: Mapped[dict[int, list[int]] | None] = mapped_column(
         JSONB, nullable=True
@@ -439,18 +496,6 @@ class Document(Base):
         nullable=True,
         index=True,
     )
-    upload_job_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("paper_upload_jobs.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    # Cached presigned URL fields
-    cached_presigned_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    presigned_url_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
     # Additional metadata
     doi: Mapped[str | None] = mapped_column(
         String, nullable=True
@@ -465,10 +510,6 @@ class Document(Base):
     field_provenance: Mapped[dict[str, JsonValue] | None] = mapped_column(
         JSONB, nullable=True
     )
-
-    size_in_kb: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )  # Size of the paper file in KB
 
     library_entries: Mapped[list["LibraryPaper"]] = relationship(
         "LibraryPaper",
@@ -510,6 +551,11 @@ class Document(Base):
 
     project_papers: Mapped[list["ProjectPaper"]] = relationship(
         "ProjectPaper", back_populates="document"
+    )
+    upload_jobs: Mapped[list["PaperUploadJob"]] = relationship(
+        "PaperUploadJob",
+        back_populates="document",
+        foreign_keys="PaperUploadJob.document_id",
     )
 
     creator: Mapped["AuthUser | None"] = relationship(
@@ -557,8 +603,11 @@ class LibraryPaper(Base):
     is_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    share_id: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
+    share_token_hash: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True, index=True
+    )
+    metadata_overrides: Mapped[dict[str, JsonValue]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
 
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="library_papers")
@@ -607,7 +656,6 @@ class PaperImage(Base):
         nullable=False,
     )
     s3_object_key: Mapped[str] = mapped_column(String, nullable=False)
-    image_url: Mapped[str] = mapped_column(String, nullable=False)
     format: Mapped[str] = mapped_column(String, nullable=False)  # e.g., 'png', 'jpg'
 
     size_bytes: Mapped[int] = mapped_column(

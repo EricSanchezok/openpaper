@@ -15,7 +15,6 @@ from app.database.crud.projects.project_data_table_crud import (
     data_table_result_crud,
     data_table_row_crud,
 )
-from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -23,7 +22,11 @@ from app.database.database import SessionLocal, engine, get_db
 from app.database.models import (
     ConversableType,
     Document,
+    DocumentProcessingStatus,
     JobStatus,
+    LibraryPaper,
+    PaperUploadJob,
+    ProjectPaper,
     ZoteroImportStatus,
 )
 from app.database.telemetry import track_event
@@ -32,7 +35,6 @@ from app.helpers.email import send_data_table_complete_email
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.jobs_webhooks import verify_jobs_webhook
 from app.helpers.ai_limits import release_concurrency_by_id
-from app.helpers.s3 import s3_service
 from app.services.resource_quotas import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
 from app.repositories.conversations import conversation_repository
@@ -54,7 +56,7 @@ from app.services.zotero.service import (
 )
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -113,17 +115,10 @@ def _finalize_zotero_import(
         # No Zotero metadata was applied; cannot finalize.
         return None
 
-    size_in_kb = (
-        s3_service.get_file_size_in_kb(result.s3_object_key)
-        if result.s3_object_key
-        else None
-    )
-
     paper = paper_crud.update(
         db=db,
         obj_in=PaperUpdate(
-            upload_job_id=job_id,
-            preview_url=result.preview_url,
+            preview_s3_key=result.preview_s3_key,
             raw_content=result.raw_content,
             parser_markdown_s3_key=result.parser_markdown_s3_key,
             parser_archive_s3_key=result.parser_archive_s3_key,
@@ -132,7 +127,7 @@ def _finalize_zotero_import(
             parser_version=result.parser_version,
             parser_warning_code=result.parser_warning_code,
             page_offset_map=result.page_offset_map,
-            size_in_kb=size_in_kb,
+            processing_status=DocumentProcessingStatus.COMPLETED.value,
         ),
         db_obj=existing_paper,
         user=job_user,
@@ -209,28 +204,32 @@ def handle_failed_upload(
 
     logger.error(f"PDF processing failed for job {job_id}: {reason}")
 
-    # Clean up the paper record that was created during upload
-    existing_paper = paper_crud.get_by_upload_job_id(
-        db=db, upload_job_id=job_id, user=job_user
-    )
-    if existing_paper:
-        # First remove any ProjectPaper associations (RESTRICT constraint)
-        projects = project_paper_crud.get_projects_by_paper_id(
-            db=db, paper_id=uuid.UUID(str(existing_paper.id)), user=job_user
+    if job and job.document_id is not None:
+        document = db.scalar(
+            select(Document).where(Document.id == job.document_id).with_for_update()
         )
-        for project in projects:
-            project_paper_crud.remove_by_paper_and_project(
-                db=db,
-                paper_id=uuid.UUID(str(existing_paper.id)),
-                project_id=uuid.UUID(str(project.id)),
-                user=job_user,
-            )
-            logger.info(
-                f"Removed ProjectPaper association for paper {existing_paper.id} and project {project.id}"
-            )
+        if document is not None and document.processing_job_id == job.id:
+            document.processing_status = DocumentProcessingStatus.FAILED.value
+            document.parser_warning_code = "processing_failed"
+        if job.reference_created:
+            if job.project_id is None:
+                db.execute(
+                    delete(LibraryPaper).where(
+                        LibraryPaper.user_id == job.user_id,
+                        LibraryPaper.document_id == job.document_id,
+                    )
+                )
+            else:
+                db.execute(
+                    delete(ProjectPaper).where(
+                        ProjectPaper.project_id == job.project_id,
+                        ProjectPaper.document_id == job.document_id,
+                    )
+                )
+            db.flush()
+            from app.services.document_gc import schedule_document_gc
 
-        logger.info(f"Removing failed paper {existing_paper.id} for job {job_id}")
-        paper_crud.remove(db=db, id=str(existing_paper.id), user=job_user)
+            schedule_document_gc(db, document_id=job.document_id)
 
     paper_upload_job_crud.mark_as_failed(db=db, job_id=job_id, user=job_user)
 
@@ -431,15 +430,6 @@ async def handle_paper_processing_webhook(
 
             # Processing was successful
             metadata = result.metadata
-            file_url = result.file_url
-            preview_url = result.preview_url
-
-            if not file_url:
-                logger.error(f"No file_url in webhook result for job {job_id}")
-                handle_failed_upload(
-                    db=db, job_id=job_id, job_user=job_user, reason="Missing file_url"
-                )
-                return {"status": "webhook processed - failed due to missing file_url"}
 
             if not metadata or not metadata.title:
                 logger.error(f"No metadata in webhook result for job {job_id}")
@@ -460,12 +450,6 @@ async def handle_paper_processing_webhook(
                     "status": "webhook processed - failed due to missing raw_content"
                 }
 
-            size_in_kb = (
-                s3_service.get_file_size_in_kb(result.s3_object_key)
-                if result.s3_object_key
-                else None
-            )
-
             publish_date = metadata.publish_date if metadata.publish_date else None
 
             existing_paper = paper_crud.get_by_upload_job_id(
@@ -478,8 +462,7 @@ async def handle_paper_processing_webhook(
             paper = paper_crud.update(
                 db=db,
                 obj_in=PaperUpdate(
-                    upload_job_id=job_id,
-                    preview_url=preview_url,
+                    preview_s3_key=result.preview_s3_key,
                     title=metadata.title,
                     authors=metadata.authors,
                     abstract=metadata.abstract,
@@ -496,7 +479,7 @@ async def handle_paper_processing_webhook(
                     parser_version=result.parser_version,
                     parser_warning_code=result.parser_warning_code,
                     page_offset_map=result.page_offset_map,
-                    size_in_kb=size_in_kb,
+                    processing_status=DocumentProcessingStatus.COMPLETED.value,
                 ),
                 db_obj=existing_paper,
                 user=job_user,
@@ -583,6 +566,22 @@ async def handle_paper_processing_webhook(
 
             # Mark job as completed
             paper_upload_job_crud.mark_as_completed(db=db, job_id=job_id, user=job_user)
+            if paper is not None:
+                db.execute(
+                    update(PaperUploadJob)
+                    .where(
+                        PaperUploadJob.document_id == paper.id,
+                        PaperUploadJob.status.in_(
+                            (JobStatus.PENDING.value, JobStatus.RUNNING.value)
+                        ),
+                    )
+                    .values(
+                        status=JobStatus.COMPLETED.value,
+                        completed_at=datetime.now(timezone.utc),
+                        error_code=None,
+                    )
+                )
+                db.commit()
 
             if paper:
                 background_tasks.add_task(
@@ -679,7 +678,7 @@ def handle_paper_parser_upgrade_webhook(
         raise HTTPException(status_code=409, detail="paper_update_in_progress")
 
     try:
-        paper = db.scalar(select(Document).where(Document.upload_job_id == job_uuid))
+        paper = db.get(Document, job.document_id) if job.document_id else None
         if paper is None:
             raise HTTPException(status_code=404, detail="paper_not_found")
         if paper.parser_quality == "full":

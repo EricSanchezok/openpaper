@@ -225,9 +225,7 @@ class PDFProcessingResult(BaseModel):
     page_offset_map: dict[int, list[int]] | None = None
     metadata: PaperMetadataExtraction | None = None
     s3_object_key: str | None = None
-    file_url: str | None = None
-    preview_url: str | None = None
-    preview_object_key: str | None = None
+    preview_s3_key: str | None = None
     parser_markdown_s3_key: str | None = None
     parser_archive_s3_key: str | None = None
     parser_backend: Literal["mineru", "pymupdf"] | None = None

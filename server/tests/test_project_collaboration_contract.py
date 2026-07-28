@@ -13,6 +13,7 @@ from app.database.models import (
     Project,
     ProjectCollaborator,
     ProjectPaper,
+    PaperUploadJob,
 )
 from app.errors import AppError
 from app.main import app
@@ -24,6 +25,18 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).parents[2]
+
+
+def _document(document_id: uuid.UUID, *, size_kb: int, seed: str) -> Document:
+    digest = seed * 64
+    return Document(
+        id=document_id,
+        sha256=digest,
+        original_filename=f"{seed}.pdf",
+        mime_type="application/pdf",
+        size_bytes=size_kb * 1024,
+        s3_object_key=f"documents/{digest}/source.pdf",
+    )
 
 
 def test_project_permission_sets_only_contain_their_own_powers() -> None:
@@ -64,8 +77,8 @@ def test_project_papers_are_attached_in_one_transaction(
     db = MagicMock(spec=Session)
     project = Project(id=uuid.uuid4(), owner_id=1, title="Project")
     documents = [
-        Document(id=uuid.uuid4(), file_url="s3://bucket/a.pdf", size_in_kb=100),
-        Document(id=uuid.uuid4(), file_url="s3://bucket/b.pdf", size_in_kb=200),
+        _document(uuid.uuid4(), size_kb=100, seed="a"),
+        _document(uuid.uuid4(), size_kb=200, seed="b"),
     ]
     empty_result = MagicMock()
     empty_result.all.return_value = []
@@ -115,7 +128,7 @@ def test_project_paper_batch_rejects_partial_library_matches(
     empty_result.all.return_value = []
     partial_result = MagicMock()
     partial_result.all.return_value = [
-        Document(id=requested_ids[0], file_url="s3://bucket/a.pdf", size_in_kb=100)
+        _document(requested_ids[0], size_kb=100, seed="a")
     ]
     db.scalar.return_value = project
     db.scalars.side_effect = [empty_result, partial_result]
@@ -147,11 +160,17 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = MagicMock(spec=Session)
-    document = Document(
+    upload_job = PaperUploadJob(
         id=uuid.uuid4(),
-        file_url="s3://bucket/a.pdf",
-        upload_job_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=2,
+        quota_owner_id=1,
+        original_filename="a.pdf",
+        reserved_reference_count=1,
+        reserved_size_kb=100,
+        status="pending",
     )
+    document = _document(uuid.uuid4(), size_kb=100, seed="a")
     db.scalar.return_value = None
     monkeypatch.setattr(
         "app.database.crud.projects.project_paper_crud.require_project_permission",
@@ -162,7 +181,8 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
         project_paper_crud.attach_reserved_upload(
             db,
             document=document,
-            project_id=uuid.uuid4(),
+            upload_job=upload_job,
+            project_id=upload_job.project_id,
             user=CurrentUser(
                 id=2,
                 email="collaborator@example.com",

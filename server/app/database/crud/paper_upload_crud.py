@@ -154,7 +154,7 @@ class PaperUploadJobCRUD(
         now = datetime.now(timezone.utc)
         statement = (
             select(PaperUploadJob, Document)
-            .join(Document, Document.upload_job_id == PaperUploadJob.id)
+            .join(Document, Document.id == PaperUploadJob.document_id)
             .join(
                 LibraryPaper,
                 LibraryPaper.document_id == Document.id,
@@ -178,7 +178,7 @@ class PaperUploadJobCRUD(
 
         The Document and its ProjectPaper association are created at upload
         start by ``services.document_submission``, so the job is reachable via
-        ProjectPaper -> Document.upload_job_id -> PaperUploadJob. Returns jobs
+        PaperUploadJob.document_id points at the canonical Document. Returns jobs
         that have not yet completed so the client can rehydrate the upload
         tracker after a page refresh.
         """
@@ -190,7 +190,7 @@ class PaperUploadJobCRUD(
 
         statement = (
             select(PaperUploadJob, Document)
-            .join(Document, Document.upload_job_id == PaperUploadJob.id)
+            .join(Document, Document.id == PaperUploadJob.document_id)
             .join(ProjectPaper, ProjectPaper.document_id == Document.id)
             .where(
                 ProjectPaper.project_id == project_id,

@@ -12,6 +12,7 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.errors import AppError
+from app.repositories.documents import document_repository
 from app.services.resource_quotas import (
     require_library_document_capacity,
     require_project_document_capacity,
@@ -111,10 +112,11 @@ class ProjectPaperCRUD:
         db: Session,
         *,
         document: Document,
+        upload_job: PaperUploadJob,
         project_id: uuid.UUID,
         user: CurrentUser,
         auto_commit: bool = True,
-    ) -> ProjectPaper:
+    ) -> tuple[ProjectPaper, bool]:
         """Attach a fresh upload covered by its durable Project reservation."""
         access = require_project_permission(
             db,
@@ -122,15 +124,9 @@ class ProjectPaperCRUD:
             user_id=user.id,
             permission="manage_papers",
         )
-        if document.upload_job_id is None:
-            raise AppError(
-                code="upload_reservation_missing",
-                message="Project uploads require a durable reservation",
-                status_code=409,
-            )
         reservation = db.scalar(
             select(PaperUploadJob.id).where(
-                PaperUploadJob.id == document.upload_job_id,
+                PaperUploadJob.id == upload_job.id,
                 PaperUploadJob.project_id == project_id,
                 PaperUploadJob.user_id == user.id,
                 PaperUploadJob.status.in_((JobStatus.PENDING, JobStatus.RUNNING)),
@@ -142,27 +138,26 @@ class ProjectPaperCRUD:
                 message="The Project upload reservation is no longer valid",
                 status_code=409,
             )
-        existing = db.scalar(
-            select(ProjectPaper).where(
-                ProjectPaper.project_id == project_id,
-                ProjectPaper.document_id == document.id,
-            )
-        )
-        if existing is not None:
-            return existing
-        association = ProjectPaper(
+        reference = document_repository.attach_project(
+            db,
             project_id=project_id,
             document_id=document.id,
             added_by_id=user.id,
         )
-        db.add(association)
         access.project.updated_at = datetime.now(timezone.utc)
         if auto_commit:
             db.commit()
         else:
             db.flush()
-        db.refresh(association)
-        return association
+        association = db.scalar(
+            select(ProjectPaper).where(
+                ProjectPaper.project_id == project_id,
+                ProjectPaper.document_id == document.id,
+            )
+        )
+        if association is None:
+            raise RuntimeError("project_document_attachment_missing")
+        return association, reference.created
 
     def get_paper_by_project(
         self,
@@ -229,11 +224,9 @@ class ProjectPaperCRUD:
                     Document.doi,
                     Document.publish_date,
                     Document.created_at,
-                    # Needed by s3_service.get_cached_presigned_urls_bulk
                     Document.s3_object_key,
-                    Document.cached_presigned_url,
-                    Document.presigned_url_expires_at,
-                    Document.size_in_kb,
+                    Document.preview_s3_key,
+                    Document.size_bytes,
                 )
             )
         ).all()
@@ -320,6 +313,10 @@ class ProjectPaperCRUD:
             )
 
         db.delete(project_paper)
+        db.flush()
+        from app.services.document_gc import schedule_document_gc
+
+        schedule_document_gc(db, document_id=paper_id)
         db.commit()
         return project_paper
 

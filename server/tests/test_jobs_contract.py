@@ -97,9 +97,14 @@ def test_pdf_result_fields_match_jobs_producer_contract() -> None:
 
 
 def test_client_paper_contract_hides_parser_provider_details() -> None:
+    digest = "a" * 64
     paper = Document(
         id=uuid4(),
-        file_url="https://example.invalid/paper.pdf",
+        sha256=digest,
+        original_filename="paper.pdf",
+        mime_type="application/pdf",
+        size_bytes=1024,
+        s3_object_key=f"documents/{digest}/source.pdf",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         parser_backend="mineru",
@@ -147,9 +152,15 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     job_id = uuid4()
+    digest = "b" * 64
     paper = Document(
         id=uuid4(),
-        upload_job_id=job_id,
+        sha256=digest,
+        original_filename="paper.pdf",
+        mime_type="application/pdf",
+        size_bytes=1024,
+        s3_object_key=f"documents/{digest}/source.pdf",
+        processing_job_id=job_id,
         raw_content="text-only content",
         parser_quality="text_only",
         parser_backend="pymupdf",
@@ -157,12 +168,17 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
         parser_warning_code="text_only_fallback",
     )
     db = MagicMock(spec=Session)
-    db.scalar.return_value = paper
+    db.get.return_value = paper
     index_passages = MagicMock()
     release_lock = MagicMock()
     monkeypatch.setattr(
         "app.api.jobs_webhooks.router.paper_upload_job_crud.get_by",
-        MagicMock(return_value=SimpleNamespace(status=JobStatus.COMPLETED)),
+        MagicMock(
+            return_value=SimpleNamespace(
+                status=JobStatus.COMPLETED,
+                document_id=paper.id,
+            )
+        ),
     )
     monkeypatch.setattr(
         "app.api.jobs_webhooks.router.AdvisoryLock.acquire",

@@ -1,22 +1,19 @@
 """Zotero import and synchronization orchestration."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
 from datetime import datetime, timezone
-from io import BytesIO
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
 from app.database.crud.annotation_crud import AnnotationCreate, annotation_crud
 from app.database.crud.highlight_crud import HighlightCreate, highlight_crud
-from app.database.crud.paper_crud import PaperCreate, PaperUpdate, paper_crud
+from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_tag_crud import PaperTagCreate, paper_tag_crud
-from app.database.crud.paper_upload_crud import (
-    PaperUploadJobUpdate,
-    paper_upload_job_crud,
-)
+from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal
@@ -33,7 +30,6 @@ from app.helpers.parser import (
     validate_pdf_content,
     validate_url_and_fetch_pdf,
 )
-from app.integrations.jobs_client import jobs_client
 from app.helpers.s3 import s3_service
 from app.services.resource_quotas import (
     can_user_upload_paper,
@@ -43,6 +39,7 @@ from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
 from app.schemas.user import CurrentUser
 from app.services.upload_reservations import reserve_upload
+from app.services.document_submission import submit_reserved_document
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -886,33 +883,25 @@ async def _import_one_paper(
             project_id=None,
             input_size_bytes=len(pdf_bytes),
             original_filename=safe_filename,
+            content_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
         )
         upload_job_id = str(paper_upload_job.id)
-
-        # Upload the PDF to S3. Preview, raw text, and page offsets are produced
-        # asynchronously by the jobs worker (with LLM metadata extraction
-        # skipped), so we no longer extract them server-side here.
-        s3_object_key, file_url = await asyncio.to_thread(
-            _upload_pdf_to_s3, pdf_bytes, safe_filename
+        task_id = await submit_reserved_document(
+            pdf_bytes=pdf_bytes,
+            upload_job=paper_upload_job,
+            db=db,
+            user=user,
+            skip_metadata_extraction=True,
         )
 
-        # Create the paper up front with Zotero's authoritative metadata. The
-        # async paper-processing webhook has no Zotero context, so once the
-        # worker completes it only fills in the deterministic outputs
-        # (preview_url, raw_content, page offsets).
         data = item.get("data", {})
-        paper = paper_crud.create(
+        paper = paper_crud.get_by_upload_job_id(
             db=db,
-            obj_in=PaperCreate(
-                file_url=file_url,
-                s3_object_key=s3_object_key,
-                upload_job_id=upload_job_id,
-                size_in_kb=len(pdf_bytes) // 1024,
-            ),
+            upload_job_id=upload_job_id,
             user=user,
         )
-        if not paper or not paper.id:
-            raise Exception("Failed to create paper record after S3 upload")
+        if paper is None:
+            raise RuntimeError("zotero_canonical_document_missing")
 
         paper_id = UUID(str(paper.id))
         created_paper_id = str(paper.id)
@@ -944,26 +933,13 @@ async def _import_one_paper(
                 annotations_payload=annotation_payload,
             )
 
-        # Hand off to the jobs worker for preview + text extraction (no LLM).
-        paper_upload_job_crud.mark_as_running(db=db, job_id=upload_job_id, user=user)
-        paper_upload_job_crud.update(
-            db=db,
-            db_obj=paper_upload_job,
-            obj_in=PaperUploadJobUpdate(task_id=upload_job_id),
-            user=user,
-        )
-        task_id = await asyncio.to_thread(
-            jobs_client.submit_pdf_processing_job,
-            s3_object_key,
-            upload_job_id,
-            True,  # skip_metadata_extraction
-        )
-        paper_upload_job_crud.update(
-            db=db,
-            db_obj=paper_upload_job,
-            obj_in=PaperUploadJobUpdate(task_id=task_id),
-            user=user,
-        )
+        if task_id.startswith("reused:"):
+            apply_zotero_annotations(
+                db=db,
+                upload_job_id=upload_job_id,
+                paper_id=str(paper.id),
+                user=user,
+            )
 
         return {
             "status": "processing",
@@ -1008,17 +984,6 @@ async def _import_one_paper(
         }
     finally:
         db.close()
-
-
-def _upload_pdf_to_s3(pdf_bytes: bytes, safe_filename: str) -> tuple[str, str]:
-    """Run async S3 upload from a worker thread (boto3 blocks the event loop)."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(
-            s3_service.upload_file(BytesIO(pdf_bytes), safe_filename)
-        )
-    finally:
-        loop.close()
 
 
 def list_library(

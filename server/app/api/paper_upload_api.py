@@ -18,6 +18,7 @@ from starlette.responses import Response as ApiResponse
 from starlette.concurrency import run_in_threadpool
 
 import logging
+import hashlib
 from pathlib import PurePosixPath
 from urllib.parse import unquote, urlparse
 from uuid import UUID
@@ -138,7 +139,7 @@ async def get_upload_status(
             if paper_upload_job.completed_at
             else None
         ),
-        "has_file_url": bool(paper.file_url) if paper else False,
+        "has_file": bool(paper.s3_object_key) if paper else False,
         "has_metadata": bool(paper.abstract) if paper else False,
         "paper_id": str(paper.id) if paper else None,
         "parser_quality": paper.parser_quality if paper else None,
@@ -194,6 +195,7 @@ async def upload_pdf_from_url(
         project_id=project_id,
         input_size_bytes=len(pdf_bytes),
         original_filename=filename,
+        content_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
     )
     try:
         await acquire_concurrency(
@@ -296,6 +298,7 @@ async def upload_pdf(
         project_id=project_id,
         input_size_bytes=len(file_contents),
         original_filename=str(filename) if filename else None,
+        content_sha256=hashlib.sha256(file_contents).hexdigest(),
     )
     try:
         await acquire_concurrency(
@@ -352,6 +355,16 @@ async def upload_raw_file_microservice(
             db=db,
             user=current_user,
         )
+        # A content-addressed duplicate may complete immediately or attach to an
+        # already-running canonical parse. This request did not create a worker
+        # operation, so its concurrency lease must not wait for another job's
+        # callback.
+        if task_id.startswith("reused:") or task_id != str(paper_upload_job.id):
+            await release_concurrency_by_id(
+                user_id=int(current_user.id),
+                category="background",
+                operation_id=str(paper_upload_job.id),
+            )
 
         # Track paper upload event
         track_event(

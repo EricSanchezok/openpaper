@@ -51,6 +51,13 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class DocumentProcessingStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class RoleType(str, Enum):
     USER = "user"
     ASSISTANT = "assistant"

@@ -62,7 +62,7 @@ def _render_preview(document: pymupdf.Document) -> bytes | None:
                 Image.Resampling.LANCZOS,
             )
         output = BytesIO()
-        image.save(output, format="PNG", optimize=True)
+        image.save(output, format="WEBP", quality=82, method=6)
         return output.getvalue()
     except Exception:
         logger.warning("PDF preview rendering failed", exc_info=True)

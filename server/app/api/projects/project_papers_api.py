@@ -137,11 +137,10 @@ async def get_project_papers(
         )
     )
 
-    file_urls: dict[str, str | None] = {}
+    file_urls: dict[str, str] = {}
     if load_urls:
-        file_urls = s3_service.get_cached_presigned_urls_bulk(
-            db=db,
-            papers=papers,
+        file_urls = s3_service.generate_presigned_urls(
+            {str(paper.id): paper.s3_object_key for paper in papers}
         )
 
     return JSONResponse(
@@ -233,18 +232,7 @@ async def get_project_paper_file_url(
             status_code=404,
         )
 
-    file_url = s3_service.get_cached_presigned_url(
-        db,
-        paper_id=str(paper.id),
-        object_key=str(paper.s3_object_key),
-        current_user=current_user,
-    )
-    if not file_url:
-        raise AppError(
-            code="document_file_not_found",
-            message="Document file not found",
-            status_code=404,
-        )
+    file_url = s3_service.generate_presigned_url(paper.s3_object_key)
 
     return JSONResponse(status_code=200, content={"file_url": file_url})
 

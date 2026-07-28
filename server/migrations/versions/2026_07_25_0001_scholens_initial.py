@@ -314,10 +314,24 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("quota_owner_id", sa.BigInteger(), nullable=False),
         sa.Column("project_id", sa.UUID(), nullable=True),
+        sa.Column("document_id", sa.UUID(), nullable=True),
         sa.Column(
             "reserved_size_kb",
             sa.Integer(),
             server_default="0",
+            nullable=False,
+        ),
+        sa.Column(
+            "reserved_reference_count",
+            sa.Integer(),
+            server_default="1",
+            nullable=False,
+        ),
+        sa.Column("content_sha256", sa.String(length=64), nullable=True),
+        sa.Column(
+            "reference_created",
+            sa.Boolean(),
+            server_default=sa.text("false"),
             nullable=False,
         ),
         sa.Column("original_filename", sa.String(length=512), nullable=True),
@@ -337,6 +351,10 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
             nullable=False,
+        ),
+        sa.CheckConstraint(
+            "reserved_reference_count IN (0, 1)",
+            name="ck_paper_upload_jobs_reserved_reference_count",
         ),
         sa.CheckConstraint(
             "reserved_size_kb >= 0",
@@ -600,9 +618,17 @@ def upgrade() -> None:
     op.create_table(
         "documents",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("file_url", sa.String(), nullable=False),
-        sa.Column("preview_url", sa.String(), nullable=True),
-        sa.Column("s3_object_key", sa.String(), nullable=True),
+        sa.Column("sha256", sa.String(length=64), nullable=False),
+        sa.Column("original_filename", sa.String(length=512), nullable=False),
+        sa.Column(
+            "mime_type",
+            sa.String(length=128),
+            server_default="application/pdf",
+            nullable=False,
+        ),
+        sa.Column("size_bytes", sa.BigInteger(), nullable=False),
+        sa.Column("s3_object_key", sa.String(length=1024), nullable=False),
+        sa.Column("preview_s3_key", sa.String(length=1024), nullable=True),
         sa.Column("authors", sa.ARRAY(sa.String()), nullable=True),
         sa.Column("title", sa.Text(), nullable=True),
         sa.Column("abstract", sa.Text(), nullable=True),
@@ -621,16 +647,19 @@ def upgrade() -> None:
         sa.Column("parser_quality", sa.String(), nullable=True),
         sa.Column("parser_version", sa.String(), nullable=True),
         sa.Column("parser_warning_code", sa.String(), nullable=True),
+        sa.Column(
+            "processing_status",
+            sa.String(length=16),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("processing_job_id", sa.UUID(), nullable=True),
+        sa.Column("gc_after", sa.DateTime(timezone=True), nullable=True),
         sa.Column("ts_vector", postgresql.TSVECTOR(), nullable=True),
         sa.Column(
             "page_offset_map", postgresql.JSONB(astext_type=sa.Text()), nullable=True
         ),
         sa.Column("created_by_id", sa.BigInteger(), nullable=True),
-        sa.Column("upload_job_id", sa.UUID(), nullable=True),
-        sa.Column("cached_presigned_url", sa.String(), nullable=True),
-        sa.Column(
-            "presigned_url_expires_at", sa.DateTime(timezone=True), nullable=True
-        ),
         sa.Column("doi", sa.String(), nullable=True),
         sa.Column("journal", sa.String(), nullable=True),
         sa.Column("publisher", sa.String(), nullable=True),
@@ -638,7 +667,6 @@ def upgrade() -> None:
         sa.Column(
             "field_provenance", postgresql.JSONB(astext_type=sa.Text()), nullable=True
         ),
-        sa.Column("size_in_kb", sa.Integer(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -652,6 +680,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
+            "processing_status IN ('pending', 'processing', 'completed', 'failed')",
+            name="ck_documents_processing_status",
+        ),
+        sa.CheckConstraint(
             "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
             name="ck_documents_parser_backend",
         ),
@@ -660,14 +692,19 @@ def upgrade() -> None:
             name="ck_documents_parser_quality",
         ),
         sa.ForeignKeyConstraint(
-            ["upload_job_id"], ["scholens.paper_upload_jobs.id"], ondelete="SET NULL"
-        ),
-        sa.ForeignKeyConstraint(
             ["created_by_id"],
             ["auth.users.id"],
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("sha256", name="uq_documents_sha256"),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_documents_gc_after"),
+        "documents",
+        ["gc_after"],
+        unique=False,
         schema="scholens",
     )
     op.create_index(
@@ -708,7 +745,13 @@ def upgrade() -> None:
             server_default=sa.text("false"),
             nullable=False,
         ),
-        sa.Column("share_id", sa.String(), nullable=True),
+        sa.Column("share_token_hash", sa.String(length=64), nullable=True),
+        sa.Column(
+            "metadata_overrides",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="{}",
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -747,10 +790,34 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_index(
-        op.f("ix_scholens_library_papers_share_id"),
+        op.f("ix_scholens_library_papers_share_token_hash"),
         "library_papers",
-        ["share_id"],
+        ["share_token_hash"],
         unique=True,
+        schema="scholens",
+    )
+    op.create_foreign_key(
+        "fk_paper_upload_jobs_document_id_documents",
+        "paper_upload_jobs",
+        "documents",
+        ["document_id"],
+        ["id"],
+        source_schema="scholens",
+        referent_schema="scholens",
+        ondelete="SET NULL",
+    )
+    op.create_index(
+        op.f("ix_scholens_paper_upload_jobs_document_id"),
+        "paper_upload_jobs",
+        ["document_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_paper_upload_jobs_content_sha256"),
+        "paper_upload_jobs",
+        ["content_sha256"],
+        unique=False,
         schema="scholens",
     )
     op.create_index(
@@ -1059,7 +1126,6 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("paper_id", sa.UUID(), nullable=False),
         sa.Column("s3_object_key", sa.String(), nullable=False),
-        sa.Column("image_url", sa.String(), nullable=False),
         sa.Column("format", sa.String(), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=False),
         sa.Column("width", sa.Integer(), nullable=False),
@@ -1490,7 +1556,7 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_index(
-        op.f("ix_scholens_library_papers_share_id"),
+        op.f("ix_scholens_library_papers_share_token_hash"),
         table_name="library_papers",
         schema="scholens",
     )
@@ -1500,6 +1566,27 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("library_papers", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_paper_upload_jobs_content_sha256"),
+        table_name="paper_upload_jobs",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_paper_upload_jobs_document_id"),
+        table_name="paper_upload_jobs",
+        schema="scholens",
+    )
+    op.drop_constraint(
+        "fk_paper_upload_jobs_document_id_documents",
+        "paper_upload_jobs",
+        schema="scholens",
+        type_="foreignkey",
+    )
+    op.drop_index(
+        op.f("ix_scholens_documents_gc_after"),
+        table_name="documents",
+        schema="scholens",
+    )
     op.drop_index(
         op.f("ix_scholens_documents_created_by_id"),
         table_name="documents",

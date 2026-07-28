@@ -1,0 +1,134 @@
+"""Delayed, reference-safe cleanup for canonical documents."""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+from app.database.models import (
+    Document,
+    LibraryPaper,
+    PaperImage,
+    ProjectPaper,
+)
+from app.helpers.s3 import s3_service
+from sqlalchemy import exists, or_, select
+from sqlalchemy.orm import Session
+
+DOCUMENT_GC_GRACE_PERIOD = timedelta(hours=24)
+
+
+def _has_references(db: Session, *, document_id: uuid.UUID) -> bool:
+    return bool(
+        db.scalar(
+            select(
+                or_(
+                    exists(
+                        select(LibraryPaper.id).where(
+                            LibraryPaper.document_id == document_id
+                        )
+                    ),
+                    exists(
+                        select(ProjectPaper.id).where(
+                            ProjectPaper.document_id == document_id
+                        )
+                    ),
+                )
+            )
+        )
+    )
+
+
+def schedule_document_gc(
+    db: Session,
+    *,
+    document_id: uuid.UUID,
+    now: datetime | None = None,
+) -> bool:
+    document = db.scalar(
+        select(Document).where(Document.id == document_id).with_for_update()
+    )
+    if document is None:
+        return False
+    if _has_references(db, document_id=document_id):
+        document.gc_after = None
+        return False
+    document.gc_after = (now or datetime.now(timezone.utc)) + DOCUMENT_GC_GRACE_PERIOD
+    return True
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentGcResult:
+    document_id: uuid.UUID
+    deleted: bool
+    cancelled: bool
+    retry_required: bool
+
+
+def collect_document_if_due(
+    db: Session,
+    *,
+    document_id: uuid.UUID,
+    now: datetime | None = None,
+) -> DocumentGcResult:
+    current_time = now or datetime.now(timezone.utc)
+    document = db.scalar(
+        select(Document).where(Document.id == document_id).with_for_update()
+    )
+    if document is None:
+        return DocumentGcResult(
+            document_id, deleted=True, cancelled=False, retry_required=False
+        )
+    if _has_references(db, document_id=document_id):
+        document.gc_after = None
+        db.commit()
+        return DocumentGcResult(
+            document_id, deleted=False, cancelled=True, retry_required=False
+        )
+    if document.gc_after is None or document.gc_after > current_time:
+        return DocumentGcResult(
+            document_id, deleted=False, cancelled=False, retry_required=False
+        )
+
+    object_keys = {
+        document.s3_object_key,
+        document.preview_s3_key,
+        document.parser_markdown_s3_key,
+        document.parser_archive_s3_key,
+        *db.scalars(
+            select(PaperImage.s3_object_key).where(PaperImage.paper_id == document_id)
+        ).all(),
+    }
+    failed = s3_service.delete_files(key for key in object_keys if key)
+    if failed:
+        db.rollback()
+        return DocumentGcResult(
+            document_id, deleted=False, cancelled=False, retry_required=True
+        )
+
+    db.delete(document)
+    db.commit()
+    return DocumentGcResult(
+        document_id, deleted=True, cancelled=False, retry_required=False
+    )
+
+
+def list_due_document_ids(
+    db: Session,
+    *,
+    now: datetime | None = None,
+    limit: int = 100,
+) -> list[uuid.UUID]:
+    current_time = now or datetime.now(timezone.utc)
+    return list(
+        db.scalars(
+            select(Document.id)
+            .where(
+                Document.gc_after.isnot(None),
+                Document.gc_after <= current_time,
+            )
+            .order_by(Document.gc_after.asc())
+            .limit(limit)
+        ).all()
+    )

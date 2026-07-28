@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from app.database.models import Annotation, Document, Highlight, LibraryPaper
+from app.helpers.s3 import s3_service
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, or_, select
@@ -224,7 +225,11 @@ def search_knowledge_base(
             last_accessed_at=library_paper.last_accessed_at,
             highlights=highlight_results,
             annotations=annotation_results,
-            preview_url=paper.preview_url,
+            preview_url=(
+                s3_service.generate_presigned_url(paper.preview_s3_key)
+                if paper.preview_s3_key
+                else None
+            ),
         )
 
         results.append(paper_result)

@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 class PaperImageBase(BaseModel):
     paper_id: uuid.UUID
     s3_object_key: str
-    image_url: str
     format: str
     size_bytes: int
     width: int
@@ -33,7 +32,6 @@ class PaperImageCreate(PaperImageBase):
 
 class PaperImageUpdate(BaseModel):
     s3_object_key: str | None = None
-    image_url: str | None = None
     format: str | None = None
     size_bytes: int | None = None
     width: int | None = None

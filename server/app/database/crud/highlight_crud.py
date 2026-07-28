@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Document, Highlight, LibraryPaper
+from app.database.models import Highlight
 from app.policies.documents import require_document_access
 from app.policies.research import (
     can_view_research_item,
@@ -194,26 +194,6 @@ class HighlightCrud(CRUDBase[Highlight, HighlightCreate, HighlightUpdate]):
         db.commit()
         db.refresh(highlight)
         return highlight
-
-    def get_public_highlights_data_by_paper_id(
-        self, db: Session, *, share_id: str
-    ) -> list[Highlight]:
-        """Get public highlights associated with document"""
-        return list(
-            db.scalars(
-                select(Highlight)
-                .options(joinedload(Highlight.user))
-                .join(Document, Highlight.paper_id == Document.id)
-                .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-                .where(
-                    LibraryPaper.share_id == share_id,
-                    LibraryPaper.is_public.is_(True),
-                    Highlight.user_id == LibraryPaper.user_id,
-                    Highlight.project_id.is_(None),
-                )
-                .order_by(Highlight.created_at)
-            ).all()
-        )
 
 
 # Create a single instance to use throughout the application

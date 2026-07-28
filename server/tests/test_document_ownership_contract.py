@@ -39,7 +39,12 @@ def test_project_upload_can_create_a_document_without_personal_library_entry() -
 
     document = paper_crud.create(
         db,
-        obj_in=PaperCreate(file_url="s3://bucket/document.pdf"),
+        obj_in=PaperCreate(
+            sha256="a" * 64,
+            original_filename="document.pdf",
+            size_bytes=1024,
+            s3_object_key=f"documents/{'a' * 64}/source.pdf",
+        ),
         user=_user(),
         add_to_library=False,
         auto_commit=False,
@@ -56,7 +61,12 @@ def test_personal_upload_creates_exactly_one_library_entry() -> None:
 
     document = paper_crud.create(
         db,
-        obj_in=PaperCreate(file_url="s3://bucket/document.pdf"),
+        obj_in=PaperCreate(
+            sha256="a" * 64,
+            original_filename="document.pdf",
+            size_bytes=1024,
+            s3_object_key=f"documents/{'a' * 64}/source.pdf",
+        ),
         user=_user(),
         auto_commit=False,
     )

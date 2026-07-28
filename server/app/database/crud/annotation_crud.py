@@ -2,7 +2,7 @@ from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.crud.highlight_crud import highlight_crud
-from app.database.models import Annotation, Document, Highlight, LibraryPaper
+from app.database.models import Annotation, Highlight
 from app.policies.research import (
     require_project_research_access,
     require_research_item_manager,
@@ -98,31 +98,6 @@ class AnnotationCrud(CRUDBase[Annotation, AnnotationCreate, AnnotationUpdate]):
             created_by_id=annotation.user_id,
         )
         return annotation
-
-    def get_public_annotations_data_by_paper_id(
-        self,
-        db: Session,
-        *,
-        share_id: UUID,
-    ) -> list[Annotation]:
-        """Get public annotations associated with document"""
-
-        return list(
-            db.scalars(
-                select(Annotation)
-                .options(joinedload(Annotation.user))
-                .join(Document, Annotation.paper_id == Document.id)
-                .join(LibraryPaper, LibraryPaper.document_id == Document.id)
-                .join(Highlight, Annotation.highlight_id == Highlight.id)
-                .where(
-                    LibraryPaper.share_id == str(share_id),
-                    LibraryPaper.is_public.is_(True),
-                    Annotation.user_id == LibraryPaper.user_id,
-                    Highlight.project_id.is_(None),
-                )
-                .order_by(Annotation.created_at)
-            ).all()
-        )
 
 
 # Create a single instance to use throughout the application

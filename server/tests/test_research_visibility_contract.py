@@ -243,20 +243,7 @@ def test_clean_baseline_contains_visibility_constraints() -> None:
 
 
 def test_public_paper_share_excludes_project_research_layer() -> None:
-    db = MagicMock(spec=Session)
-    db.scalars.return_value.all.return_value = []
-
-    highlight_crud.get_public_highlights_data_by_paper_id(
-        db,
-        share_id=str(uuid.uuid4()),
-    )
-    highlight_statement = str(db.scalars.call_args.args[0])
-    assert "highlights.project_id IS NULL" in highlight_statement
-
-    annotation_crud.get_public_annotations_data_by_paper_id(
-        db,
-        share_id=uuid.uuid4(),
-    )
-    annotation_statement = str(db.scalars.call_args.args[0])
-    assert "JOIN scholens.highlights" in annotation_statement
-    assert "highlights.project_id IS NULL" in annotation_statement
+    # Public shares expose canonical paper data only. Research has no public
+    # repository entry point, so an API handler cannot accidentally fetch it.
+    assert not hasattr(highlight_crud, "get_public_highlights_data_by_paper_id")
+    assert not hasattr(annotation_crud, "get_public_annotations_data_by_paper_id")

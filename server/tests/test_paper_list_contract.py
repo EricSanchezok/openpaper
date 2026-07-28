@@ -66,8 +66,8 @@ def test_relevant_papers_returns_a_presigned_preview(monkeypatch) -> None:
         authors=["Author"],
         institutions=None,
         status="reading",
-        preview_url="https://bucket.example.invalid/uploads/preview.png",
-        size_in_kb=10,
+        preview_s3_key="documents/a/preview.webp",
+        size_bytes=10 * 1024,
     )
     monkeypatch.setattr(
         paper_crud,
@@ -81,7 +81,7 @@ def test_relevant_papers_returns_a_presigned_preview(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         s3_service,
-        "generate_presigned_url_from_storage_url",
+        "generate_presigned_url",
         lambda *_args, **_kwargs: "https://signed.example.invalid/preview",
     )
 

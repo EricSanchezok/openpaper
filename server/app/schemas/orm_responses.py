@@ -72,7 +72,7 @@ class AnnotationResponse(OrmResponse):
 class PaperImageResponse(OrmResponse):
     id: UUID
     paper_id: UUID
-    image_url: str
+    s3_object_key: str
     format: str
     size_bytes: int
     width: int
@@ -101,8 +101,10 @@ class OnboardingResponse(OrmResponse):
 
 class PaperResponse(OrmResponse):
     id: UUID
-    file_url: str
-    preview_url: str | None
+    sha256: str
+    original_filename: str
+    mime_type: str
+    size_bytes: int
     authors: list[str] | None
     title: str | None
     abstract: str | None
@@ -115,11 +117,9 @@ class PaperResponse(OrmResponse):
     parser_quality: str | None
     parser_warning_code: str | None
     page_offset_map: dict[int, list[int]] | None
-    upload_job_id: UUID | None
     doi: str | None
     journal: str | None
     publisher: str | None
-    size_in_kb: int | None
     created_at: datetime
     updated_at: datetime
 

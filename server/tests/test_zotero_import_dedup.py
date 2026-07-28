@@ -79,30 +79,23 @@ class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
 
 
 # Shared decorator stack for tests that exercise the full _import_one_paper
-# hand-off to the jobs service. import_batch now resolves the requested item
-# keys via _discover_candidates_by_keys, uploads each PDF, creates the paper with
-# Zotero metadata, and submits a lightweight (LLM-skipped) job to the worker — so
-# the deterministic preview/text extraction lives in the jobs service, not here.
+# hand-off to the durable document-submission service. import_batch resolves the
+# requested item keys, reserves a logical Library reference, and submits the
+# canonical SHA-addressed Document for processing when it is not already ready.
 def _patch_import_pipeline(fn):
     # Applied innermost-first, so decorators[0] binds to the first method param.
     # Order here mirrors the test method signatures below.
     decorators = [
         patch.object(
-            zotero_import_module.jobs_client,
-            "submit_pdf_processing_job",
+            zotero_import_module,
+            "submit_reserved_document",
+            new_callable=AsyncMock,
             return_value="task-123",
         ),
         patch.object(
             zotero_import_module,
             "reserve_upload",
-            new=MagicMock(
-                side_effect=lambda *_args, **_kwargs: SimpleNamespace(id=uuid4())
-            ),
-        ),
-        patch.object(
-            zotero_import_module,
-            "_upload_pdf_to_s3",
-            return_value=("key", "https://example.com/file.pdf"),
+            side_effect=lambda *_args, **_kwargs: SimpleNamespace(id=uuid4()),
         ),
         patch.object(zotero_import_module, "_apply_zotero_tags"),
         patch.object(zotero_import_module, "paper_upload_job_crud"),
@@ -161,12 +154,8 @@ class _ImportPipelineHelpers:
 
         paper = MagicMock()
         paper.id = uuid4()
-        mock_paper_crud.create.return_value = paper
+        mock_paper_crud.get_by_upload_job_id.return_value = paper
         mock_paper_crud.get.return_value = paper
-
-        upload_job = MagicMock()
-        upload_job.id = uuid4()
-        mock_upload_job_crud.create.return_value = upload_job
 
         client = MagicMock()
         mock_client_cls.return_value = client
@@ -233,7 +222,7 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
     async def test_second_duplicate_doi_in_batch_links_to_first_paper(
         self,
         mock_submit_job: MagicMock,
-        mock_upload_pdf: MagicMock,
+        mock_reserve_upload: MagicMock,
         mock_tags: MagicMock,
         mock_upload_job_crud: MagicMock,
         mock_paper_crud: MagicMock,
@@ -270,7 +259,7 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
     async def test_item_without_doi_still_imports(
         self,
         mock_submit_job: MagicMock,
-        mock_upload_pdf: MagicMock,
+        mock_reserve_upload: MagicMock,
         mock_tags: MagicMock,
         mock_upload_job_crud: MagicMock,
         mock_paper_crud: MagicMock,

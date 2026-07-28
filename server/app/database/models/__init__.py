@@ -4,6 +4,7 @@ from .base import Base, JsonScalar, JsonValue
 from .enums import (
     ArtifactKind,
     ConversableType,
+    DocumentProcessingStatus,
     HighlightType,
     JobStatus,
     PaperStatus,
@@ -55,6 +56,7 @@ __all__ = [
     "AuthUser",
     "Base",
     "ConversableType",
+    "DocumentProcessingStatus",
     "Conversation",
     "DataTableExtractionJob",
     "DataTableExtractionResult",

@@ -23,7 +23,7 @@ from app.policies.projects import (
 )
 from app.schemas.projects import ProjectPermissionSet
 from app.services.project_lifecycle import (
-    delete_orphan_documents,
+    schedule_orphan_documents,
     delete_project_storage,
     prepare_project_deletion,
 )
@@ -168,7 +168,7 @@ class ProjectRepository:
         plan = prepare_project_deletion(db, project=project)
         db.delete(project)
         db.flush()
-        delete_orphan_documents(db, plan=plan)
+        schedule_orphan_documents(db, plan=plan)
         db.commit()
         delete_project_storage(plan=plan)
 

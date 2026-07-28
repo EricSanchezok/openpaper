@@ -102,21 +102,11 @@ def _require_incremental_account_capacity(
     *,
     owner_id: int,
     documents: list[Document],
+    project_owner: bool = False,
 ) -> None:
-    """Validate only documents that are newly billable to an account."""
+    """Validate the logical references that will be newly billed."""
     if not documents:
         return
-
-    unknown_size = next(
-        (document for document in documents if document.size_in_kb is None),
-        None,
-    )
-    if unknown_size is not None:
-        raise AppError(
-            code="document_not_ready",
-            message="A document is still being processed",
-            status_code=409,
-        )
 
     owner = get_quota_user(db, user_id=owner_id)
     plan = get_user_subscription_plan(db, owner)
@@ -124,22 +114,24 @@ def _require_incremental_account_capacity(
     current_count = paper_crud.get_total_paper_count(db=db, user=owner)
     if current_count + len(documents) > limits[PAPER_UPLOAD_KEY]:
         raise AppError(
-            code="paper_quota_exceeded",
+            code=(
+                "project_owner_quota_exceeded"
+                if project_owner
+                else "paper_quota_exceeded"
+            ),
             message="The account's paper limit would be exceeded",
             status_code=403,
         )
 
-    if paper_crud.has_unknown_billed_document_size(db, user_id=owner_id):
-        raise AppError(
-            code="storage_usage_unavailable",
-            message="Storage usage is still being reconciled",
-            status_code=409,
-        )
     current_size = paper_crud.get_size_of_knowledge_base(db, user=owner)
-    added_size = sum(document.size_in_kb or 0 for document in documents)
+    added_size = sum((document.size_bytes + 1023) // 1024 for document in documents)
     if current_size + added_size > limits[KB_SIZE_KEY]:
         raise AppError(
-            code="storage_quota_exceeded",
+            code=(
+                "project_owner_quota_exceeded"
+                if project_owner
+                else "storage_quota_exceeded"
+            ),
             message="The account's storage limit would be exceeded",
             status_code=403,
         )
@@ -175,18 +167,11 @@ def require_project_document_capacity(
             status_code=403,
         )
 
-    newly_billed = list(
-        db.scalars(
-            select(Document).where(
-                Document.id.in_([document.id for document in documents]),
-                ~paper_crud.is_billed_to(owner_id),
-            )
-        ).all()
-    )
     _require_incremental_account_capacity(
         db,
         owner_id=owner_id,
-        documents=newly_billed,
+        documents=documents,
+        project_owner=True,
     )
 
 
@@ -198,16 +183,10 @@ def require_library_document_capacity(
 ) -> None:
     """Validate the incremental cost of collecting one shared document."""
     lock_account_resource_quota(db, user_id=user.id)
-    already_billed = db.scalar(
-        select(Document.id).where(
-            Document.id == document.id,
-            paper_crud.is_billed_to(user.id),
-        )
-    )
     _require_incremental_account_capacity(
         db,
         owner_id=user.id,
-        documents=[] if already_billed is not None else [document],
+        documents=[document],
     )
 
 

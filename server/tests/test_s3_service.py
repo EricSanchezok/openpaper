@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from app.helpers.s3 import s3_service
+from app.helpers.s3 import (
+    document_archive_key,
+    document_markdown_key,
+    document_preview_key,
+    document_source_key,
+    s3_service,
+)
 
 
 def test_s3_client_uses_sigv4_virtual_hosted_urls() -> None:
@@ -26,33 +32,9 @@ def test_presigned_url_keeps_the_provider_signed_host(monkeypatch) -> None:
     assert s3_service.generate_presigned_url("uploads/paper.pdf", 120) == expected
 
 
-def test_presigned_url_can_be_generated_from_stored_object_url(monkeypatch) -> None:
-    generated: list[tuple[str, int]] = []
-
-    def generate_presigned_url(object_key: str, expiration: int) -> str:
-        generated.append((object_key, expiration))
-        return "https://signed.example.invalid/preview"
-
-    monkeypatch.setattr(s3_service, "generate_presigned_url", generate_presigned_url)
-
-    result = s3_service.generate_presigned_url_from_storage_url(
-        "https://bucket.s3.example.invalid/uploads/paper%20preview.png",
-        expiration=600,
-    )
-
-    assert result == "https://signed.example.invalid/preview"
-    assert generated == [("uploads/paper preview.png", 600)]
-
-
-def test_invalid_stored_object_url_is_not_signed(monkeypatch) -> None:
-    def generate_presigned_url(*_args, **_kwargs) -> str:
-        raise AssertionError("invalid URLs must not be signed")
-
-    monkeypatch.setattr(s3_service, "generate_presigned_url", generate_presigned_url)
-
-    assert (
-        s3_service.generate_presigned_url_from_storage_url(
-            "http://bucket.example.invalid/uploads/preview.png"
-        )
-        is None
-    )
+def test_document_keys_are_content_addressed() -> None:
+    digest = "a" * 64
+    assert document_source_key(digest) == f"documents/{digest}/source.pdf"
+    assert document_preview_key(digest) == f"documents/{digest}/preview.webp"
+    assert document_markdown_key(digest) == f"documents/{digest}/canonical.md"
+    assert document_archive_key(digest) == f"documents/{digest}/mineru-result.zip"

@@ -8,12 +8,13 @@ import re
 import socket
 import tempfile
 import time
+import uuid
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 
-from app.helpers.s3 import s3_service
+from app.helpers.s3 import research_audio_key, s3_service
 
 
 def clean_markdown_for_speech(text: str) -> str:
@@ -178,17 +179,19 @@ class MossSpeaker:
             raise ValueError("MOSS returned empty audio")
         suffix, content_type = detect_audio_format(audio_bytes)
 
-        safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title or "audio")[:120]
+        del title
         temp_path: str | None = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as output:
                 output.write(audio_bytes)
                 temp_path = output.name
-            return s3_service.upload_any_file(
+            object_key = research_audio_key(str(uuid.uuid4()), suffix)
+            s3_service.upload_path(
                 file_path=temp_path,
-                original_filename=f"{safe_title}{suffix}",
+                object_key=object_key,
                 content_type=content_type,
             )
+            return object_key, s3_service.generate_presigned_url(object_key)
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)

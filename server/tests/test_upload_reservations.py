@@ -48,6 +48,7 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
 
 def test_personal_upload_is_reserved_to_requester() -> None:
     db = MagicMock()
+    db.scalar.return_value = None
     requester = MagicMock(id=17)
     patches = _quota_patches()
 
@@ -68,6 +69,7 @@ def test_personal_upload_is_reserved_to_requester() -> None:
             project_id=None,
             input_size_bytes=1_025,
             original_filename="paper.pdf",
+            content_sha256="a" * 64,
         )
 
     assert job.user_id == 17
@@ -85,7 +87,7 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
     project_id = uuid4()
     project = Project(id=project_id, title="Shared corpus", owner_id=91)
     db = MagicMock()
-    db.scalar.side_effect = [project, 3]
+    db.scalar.side_effect = [project, None, 3]
     requester = MagicMock(id=17)
     patches = _quota_patches()
 
@@ -113,6 +115,7 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
             project_id=project_id,
             input_size_bytes=4_096,
             original_filename="shared.pdf",
+            content_sha256="b" * 64,
         )
 
     permission.assert_called_once_with(
@@ -129,6 +132,7 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
 
 def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:
     db = MagicMock()
+    db.scalar.return_value = None
     requester = MagicMock(id=17)
     patches = _quota_patches(active_count=10)
 
@@ -150,6 +154,7 @@ def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:
             project_id=None,
             input_size_bytes=1_024,
             original_filename="paper.pdf",
+            content_sha256="c" * 64,
         )
 
     assert error.value.code == "paper_quota_exceeded"
@@ -167,6 +172,7 @@ def test_empty_upload_is_rejected_before_any_reservation() -> None:
             project_id=None,
             input_size_bytes=0,
             original_filename="empty.pdf",
+            content_sha256="d" * 64,
         )
 
     assert error.value.code == "empty_upload"
@@ -176,10 +182,14 @@ def test_empty_upload_is_rejected_before_any_reservation() -> None:
 
 def test_project_transfer_accounts_for_documents_and_active_reservations() -> None:
     project = Project(id=uuid4(), title="Shared corpus", owner_id=10)
+    digest = "e" * 64
     incremental = Document(
         id=uuid4(),
-        file_url="s3://bucket/completed.pdf",
-        size_in_kb=100,
+        sha256=digest,
+        original_filename="completed.pdf",
+        mime_type="application/pdf",
+        size_bytes=100 * 1024,
+        s3_object_key=f"documents/{digest}/source.pdf",
     )
     db = MagicMock()
     db.scalar.side_effect = [1, 4]

@@ -8,13 +8,12 @@ from datetime import datetime, timedelta, timezone
 
 from app.database.models import (
     Document,
+    DocumentProcessingStatus,
     JobStatus,
     LibraryPaper,
-    PaperImage,
     PaperUploadJob,
     ProjectPaper,
 )
-from app.helpers.s3 import s3_service
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -71,44 +70,32 @@ def reap_stale_uploads(
     if not jobs:
         return UploadCleanupPlan()
 
-    job_ids = [job.id for job in jobs]
-    documents = list(
-        db.scalars(
-            select(Document)
-            .where(Document.upload_job_id.in_(job_ids))
-            .with_for_update()
-        ).all()
-    )
-    document_ids = [document.id for document in documents]
-    storage_keys = {
-        key
-        for document in documents
-        for key in (
-            document.s3_object_key,
-            document.parser_markdown_s3_key,
-            document.parser_archive_s3_key,
-        )
-        if key
-    }
-    if document_ids:
-        storage_keys.update(
-            db.scalars(
-                select(PaperImage.s3_object_key).where(
-                    PaperImage.paper_id.in_(document_ids)
-                )
-            ).all()
-        )
-        db.execute(
-            delete(LibraryPaper).where(LibraryPaper.document_id.in_(document_ids))
-        )
-        db.execute(
-            delete(ProjectPaper).where(ProjectPaper.document_id.in_(document_ids))
-        )
-        db.flush()
-        for document in documents:
-            db.delete(document)
-
     for job in jobs:
+        if job.document_id is not None and job.reference_created:
+            if job.project_id is None:
+                db.execute(
+                    delete(LibraryPaper).where(
+                        LibraryPaper.document_id == job.document_id,
+                        LibraryPaper.user_id == job.user_id,
+                    )
+                )
+            else:
+                db.execute(
+                    delete(ProjectPaper).where(
+                        ProjectPaper.document_id == job.document_id,
+                        ProjectPaper.project_id == job.project_id,
+                    )
+                )
+            db.flush()
+            from app.services.document_gc import schedule_document_gc
+
+            schedule_document_gc(db, document_id=job.document_id)
+        if job.document_id is not None:
+            document = db.scalar(
+                select(Document).where(Document.id == job.document_id).with_for_update()
+            )
+            if document is not None and document.processing_job_id == job.id:
+                document.processing_status = DocumentProcessingStatus.FAILED.value
         job.status = JobStatus.FAILED
         job.completed_at = current_time
         job.error_code = (
@@ -117,21 +104,9 @@ def reap_stale_uploads(
             else "upload_processing_timeout"
         )
 
-    return UploadCleanupPlan(storage_keys=tuple(sorted(storage_keys)))
+    return UploadCleanupPlan()
 
 
 def delete_upload_storage(*, plan: UploadCleanupPlan) -> None:
-    """Best-effort object deletion after the caller commits the timeout cleanup."""
-    failures = 0
-    for key in plan.storage_keys:
-        try:
-            if not s3_service.delete_file(object_key=key):
-                failures += 1
-        except Exception:
-            failures += 1
-            logger.exception("Failed to delete timed-out upload object %s", key)
-    if failures:
-        logger.error(
-            "Timed-out upload cleanup left %d S3 objects for lifecycle cleanup",
-            failures,
-        )
+    """Canonical object cleanup is owned exclusively by delayed Document GC."""
+    del plan

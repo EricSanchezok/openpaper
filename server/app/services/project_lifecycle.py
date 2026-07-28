@@ -13,17 +13,14 @@ from app.database.models import (
     Conversation,
     ConversableType,
     DataTableExtractionJob,
-    Document,
     JobStatus,
-    LibraryPaper,
-    PaperImage,
     PaperUploadJob,
     Project,
     ProjectPaper,
 )
 from app.errors import AppError
 from app.helpers.s3 import s3_service
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -33,7 +30,7 @@ ACTIVE_JOB_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
 @dataclass(frozen=True, slots=True)
 class ProjectDeletionPlan:
-    orphan_documents: tuple[Document, ...]
+    candidate_document_ids: tuple[UUID, ...]
     storage_keys: tuple[str, ...]
 
 
@@ -71,47 +68,14 @@ def prepare_project_deletion(
             status_code=409,
         )
 
-    orphan_documents = tuple(
+    candidate_document_ids = tuple(
         db.scalars(
-            select(Document)
-            .join(ProjectPaper, ProjectPaper.document_id == Document.id)
-            .where(
-                ProjectPaper.project_id == project.id,
-                ~exists(
-                    select(LibraryPaper.id).where(
-                        LibraryPaper.document_id == Document.id
-                    )
-                ),
-                ~exists(
-                    select(ProjectPaper.id).where(
-                        ProjectPaper.document_id == Document.id,
-                        ProjectPaper.project_id != project.id,
-                    )
-                ),
+            select(ProjectPaper.document_id).where(
+                ProjectPaper.project_id == project.id
             )
-            .with_for_update()
         ).all()
     )
-
-    storage_keys = {
-        key
-        for document in orphan_documents
-        for key in (
-            document.s3_object_key,
-            document.parser_markdown_s3_key,
-            document.parser_archive_s3_key,
-        )
-        if key
-    }
-    orphan_ids = [document.id for document in orphan_documents]
-    if orphan_ids:
-        storage_keys.update(
-            db.scalars(
-                select(PaperImage.s3_object_key).where(
-                    PaperImage.paper_id.in_(orphan_ids)
-                )
-            ).all()
-        )
+    storage_keys: set[str] = set()
     storage_keys.update(
         db.scalars(
             select(AudioOverview.s3_object_key).where(
@@ -148,19 +112,21 @@ def prepare_project_deletion(
     )
 
     return ProjectDeletionPlan(
-        orphan_documents=orphan_documents,
+        candidate_document_ids=candidate_document_ids,
         storage_keys=tuple(sorted(storage_keys)),
     )
 
 
-def delete_orphan_documents(
+def schedule_orphan_documents(
     db: Session,
     *,
     plan: ProjectDeletionPlan,
 ) -> None:
-    """Delete canonical rows after the Project references have been flushed."""
-    for document in plan.orphan_documents:
-        db.delete(document)
+    """Schedule canonical cleanup after ProjectPaper cascades have been flushed."""
+    from app.services.document_gc import schedule_document_gc
+
+    for document_id in plan.candidate_document_ids:
+        schedule_document_gc(db, document_id=document_id)
 
 
 def delete_project_storage(*, plan: ProjectDeletionPlan) -> None:

@@ -1,10 +1,8 @@
 from starlette.responses import Response as ApiResponse
+import hashlib
 import logging
-import uuid
 
 from app.auth.dependencies import get_current_user, get_required_user
-from app.database.crud.annotation_crud import annotation_crud
-from app.database.crud.highlight_crud import highlight_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
 from app.database.database import get_db
@@ -21,8 +19,6 @@ from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.s3 import s3_service
 from app.services.resource_quotas import can_user_upload_paper
 from app.schemas.orm_responses import (
-    serialize_annotation,
-    serialize_highlight,
     serialize_paper,
 )
 from app.schemas.responses import ResponseCitation
@@ -75,7 +71,7 @@ def _serialize_paper_for_client(
         else None
     )
     data["is_public"] = library_paper.is_public if library_paper else False
-    data["share_id"] = library_paper.share_id if library_paper else None
+    data["share_id"] = None
     data["tags"] = [
         {"id": str(tag.id), "name": tag.name, "color": tag.color} for tag in tags or []
     ]
@@ -84,7 +80,9 @@ def _serialize_paper_for_client(
 
 
 def _presigned_preview_url(paper: Document) -> str | None:
-    return s3_service.generate_presigned_url_from_storage_url(paper.preview_url)
+    if not paper.preview_s3_key:
+        return None
+    return s3_service.generate_presigned_url(paper.preview_s3_key)
 
 
 @paper_router.get("/all")
@@ -111,12 +109,10 @@ async def get_paper_ids(
         user=current_user,
     )
 
-    # Bulk retrieve presigned URLs for all papers (optimized with parallelization)
-    file_urls = {}
+    file_urls: dict[str, str] = {}
     if detailed:
-        file_urls = s3_service.get_cached_presigned_urls_bulk(
-            db=db,
-            papers=papers,
+        file_urls = s3_service.generate_presigned_urls(
+            {str(paper.id): paper.s3_object_key for paper in papers}
         )
 
     data = [
@@ -129,7 +125,7 @@ async def get_paper_ids(
             "institutions": paper.institutions,
             "status": library_by_document[paper.id].status,
             "preview_url": _presigned_preview_url(paper),
-            "size_in_kb": paper.size_in_kb,
+            "size_in_kb": (paper.size_bytes + 1023) // 1024,
             "parser_quality": paper.parser_quality,
             "parser_warning_code": paper.parser_warning_code,
             "publish_date": (str(paper.publish_date) if paper.publish_date else None),
@@ -174,7 +170,7 @@ async def get_active_paper_ids(
             "institutions": paper.institutions,
             "status": library_by_document[paper.id].status,
             "preview_url": _presigned_preview_url(paper),
-            "size_in_kb": paper.size_in_kb,
+            "size_in_kb": (paper.size_bytes + 1023) // 1024,
             "parser_quality": paper.parser_quality,
             "parser_warning_code": paper.parser_warning_code,
             "publish_date": (str(paper.publish_date) if paper.publish_date else None),
@@ -246,14 +242,7 @@ async def get_paper_file_url(
     if not paper:
         return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    file_url = s3_service.get_cached_presigned_url(
-        db,
-        paper_id=str(paper.id),
-        object_key=str(paper.s3_object_key),
-        current_user=current_user,
-    )
-    if not file_url:
-        return JSONResponse(status_code=404, content={"message": "File not found"})
+    file_url = s3_service.generate_presigned_url(paper.s3_object_key)
 
     return JSONResponse(status_code=200, content={"file_url": file_url})
 
@@ -387,7 +376,7 @@ async def get_relevant_papers(
                     "institutions": paper.institutions,
                     "status": library_by_document[paper.id].status,
                     "preview_url": _presigned_preview_url(paper),
-                    "size_in_kb": paper.size_in_kb,
+                    "size_in_kb": (paper.size_bytes + 1023) // 1024,
                 }
                 for paper in papers
             ]
@@ -411,14 +400,7 @@ async def get_pdf(
     if not paper:
         return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    signed_url = s3_service.get_cached_presigned_url(
-        db,
-        paper_id=str(paper.id),
-        object_key=str(paper.s3_object_key),
-        current_user=current_user,
-    )
-    if not signed_url:
-        return JSONResponse(status_code=404, content={"message": "File not found"})
+    signed_url = s3_service.generate_presigned_url(paper.s3_object_key)
 
     paper = hydrate_paper_metadata(db=db, paper=paper, user=current_user)
 
@@ -481,7 +463,10 @@ async def share_pdf(
     if not paper:
         return JSONResponse(status_code=404, content={"message": "Paper not found"})
 
-    paper_crud.make_public(db, paper_id=id, user=current_user)
+    shared = paper_crud.make_public(db, paper_id=id, user=current_user)
+    if shared is None:
+        return JSONResponse(status_code=404, content={"message": "Paper not found"})
+    _, share_token = shared
     library_paper = paper_crud.get_library_paper(
         db,
         document_id=paper.id,
@@ -497,7 +482,7 @@ async def share_pdf(
         "paper_share",
         properties={
             "paper_id": str(paper.id),
-            "share_id": library_paper.share_id,
+            "share_id": share_token,
         },
         user_id=str(current_user.id),
         db=db,
@@ -508,7 +493,7 @@ async def share_pdf(
         status_code=200,
         content={
             "message": "Document shared successfully",
-            "share_id": library_paper.share_id,
+            "share_id": share_token,
             "is_public": library_paper.is_public,
         },
     )
@@ -546,7 +531,7 @@ async def unshare_pdf(
         "paper_unshare",
         properties={
             "paper_id": str(paper.id),
-            "share_id": library_paper.share_id,
+            "share_id": None,
         },
         user_id=str(current_user.id),
         db=db,
@@ -557,7 +542,7 @@ async def unshare_pdf(
         status_code=200,
         content={
             "message": "Document unshared successfully",
-            "share_id": library_paper.share_id,
+            "share_id": None,
             "is_public": library_paper.is_public,
         },
     )
@@ -587,20 +572,7 @@ async def get_shared_pdf(
         library_paper=public_entry,
     )
 
-    signed_url = s3_service.get_public_presigned_url(
-        db,
-        paper_id=str(paper.id),
-        object_key=str(paper.s3_object_key),
-        share_id=id,
-    )
-    if not signed_url:
-        return JSONResponse(status_code=404, content={"message": "File not found"})
-
-    annotations = annotation_crud.get_public_annotations_data_by_paper_id(
-        db, share_id=uuid.UUID(id)
-    )
-
-    highlights = highlight_crud.get_public_highlights_data_by_paper_id(db, share_id=id)
+    signed_url = s3_service.generate_presigned_url(paper.s3_object_key)
 
     paper_data["file_url"] = signed_url
     paper_data["summary_citations"] = [
@@ -613,12 +585,6 @@ async def get_shared_pdf(
         )
     )
     response["paper"] = paper_data
-    response["highlights"] = [
-        serialize_highlight(highlight) for highlight in highlights
-    ]
-    response["annotations"] = [
-        serialize_annotation(annotation) for annotation in annotations
-    ]
     owner = db.get(AuthUser, public_entry.user_id)
     if owner is None:
         return JSONResponse(
@@ -633,7 +599,7 @@ async def get_shared_pdf(
         "paper_shared_view",
         properties={
             "paper_id": str(paper.id),
-            "share_id": public_entry.share_id,
+            "share_id": hashlib.sha256(id.encode()).hexdigest()[:12],
         },
         user_id=str(current_user.id) if current_user else None,
         db=db,

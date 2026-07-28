@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
+import re
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -32,25 +32,22 @@ logger = logging.getLogger(__name__)
 
 async def _upload_preview(
     analysis: LocalPDFAnalysis | BaseException,
-    job_id: str,
-) -> tuple[str | None, str | None]:
+    document_sha256: str,
+) -> str | None:
     if isinstance(analysis, BaseException) or analysis.preview_bytes is None:
-        return None, None
+        return None
     try:
-        object_key = _parser_artifact_key(job_id, "preview.png")
+        object_key = _document_artifact_key(document_sha256, "preview.webp")
         await asyncio.to_thread(
             s3_service.upload_bytes_to_key,
             analysis.preview_bytes,
             object_key,
-            "image/png",
+            "image/webp",
         )
-        return (
-            object_key,
-            f"https://{s3_service.cloudflare_bucket_name}/{object_key}",
-        )
+        return object_key
     except Exception:
-        logger.warning("Preview upload failed for %s", job_id, exc_info=True)
-        return None, None
+        logger.warning("Preview upload failed for %s", document_sha256, exc_info=True)
+        return None
 
 
 def _select_document(
@@ -81,23 +78,32 @@ def _select_document(
     return build_text_fallback(local_result)
 
 
-def _parser_artifact_key(job_id: str, filename: str) -> str:
-    upload_dir = os.getenv("UPLOAD_DIR", "uploads").strip("/")
-    return f"{upload_dir}/pdf-parses/{job_id}/{filename}"
+def _document_sha256_from_source_key(s3_object_key: str) -> str:
+    match = re.fullmatch(r"documents/([0-9a-f]{64})/source\.pdf", s3_object_key)
+    if match is None:
+        raise ParserSecurityError(
+            "Canonical source key is invalid",
+            phase="source",
+        )
+    return match.group(1)
+
+
+def _document_artifact_key(document_sha256: str, filename: str) -> str:
+    return f"documents/{document_sha256}/{filename}"
 
 
 async def _upload_full_parser_artifacts(
     document: ParsedDocument,
     *,
-    job_id: str,
+    document_sha256: str,
 ) -> tuple[str, str]:
     if document.archive_bytes is None:
         raise ParserContentError(
             "MinerU full parse has no audit archive",
             phase="archive",
         )
-    markdown_key = _parser_artifact_key(job_id, "full.md")
-    archive_key = _parser_artifact_key(job_id, "mineru.zip")
+    markdown_key = _document_artifact_key(document_sha256, "canonical.md")
+    archive_key = _document_artifact_key(document_sha256, "mineru-result.zip")
     await asyncio.gather(
         asyncio.to_thread(
             s3_service.upload_bytes_to_key,
@@ -126,6 +132,7 @@ async def process_pdf_file(
     start_time = datetime.now(timezone.utc)
     mineru_client: MinerUClient | None = None
     config = MinerUConfig.from_env()
+    document_sha256 = _document_sha256_from_source_key(s3_object_key)
 
     try:
         local_task = asyncio.create_task(asyncio.to_thread(analyze_pdf, pdf_bytes))
@@ -134,6 +141,7 @@ async def process_pdf_file(
         if config is not None:
             status_callback("Parsing PDF with MinerU")
             mineru_client = MinerUClient(config)
+            await mineru_client.state_store.save_source_key(job_id, s3_object_key)
             mineru_task = asyncio.create_task(
                 mineru_client.parse_url(source_url, data_id=job_id)
             )
@@ -172,19 +180,19 @@ async def process_pdf_file(
                 await mineru_client.state_store.get_task_id(job_id) is not None
             )
 
-        preview_object_key, preview_url = await _upload_preview(
+        preview_object_key = await _upload_preview(
             parsed_local,
-            job_id,
+            document_sha256,
         )
 
         archive_key: str | None = None
         if document.archive_bytes is not None:
             markdown_key, archive_key = await _upload_full_parser_artifacts(
                 document,
-                job_id=job_id,
+                document_sha256=document_sha256,
             )
         else:
-            markdown_key = _parser_artifact_key(job_id, "full.md")
+            markdown_key = _document_artifact_key(document_sha256, "canonical.md")
             await asyncio.to_thread(
                 s3_service.upload_bytes_to_key,
                 document.markdown.encode("utf-8"),
@@ -206,9 +214,7 @@ async def process_pdf_file(
             success=True,
             metadata=metadata,
             s3_object_key=s3_object_key,
-            file_url=f"https://{s3_service.cloudflare_bucket_name}/{s3_object_key}",
-            preview_url=preview_url,
-            preview_object_key=preview_object_key,
+            preview_s3_key=preview_object_key,
             parser_markdown_s3_key=markdown_key,
             parser_archive_s3_key=archive_key,
             parser_backend=document.backend.value,
@@ -245,9 +251,16 @@ async def upgrade_pdf_from_checkpoint(job_id: str) -> PDFParserUpgradeResult:
     client = MinerUClient(config)
     try:
         document = await client.parse_existing(data_id=job_id)
+        source_s3_key = await client.state_store.get_source_key(job_id)
+        if source_s3_key is None:
+            raise ParserContentError(
+                "Parser checkpoint has no canonical source key",
+                phase="checkpoint",
+            )
+        document_sha256 = _document_sha256_from_source_key(source_s3_key)
         markdown_key, archive_key = await _upload_full_parser_artifacts(
             document,
-            job_id=job_id,
+            document_sha256=document_sha256,
         )
         return PDFParserUpgradeResult(
             job_id=job_id,

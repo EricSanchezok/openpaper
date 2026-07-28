@@ -137,7 +137,7 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
         process_pdf_file(
             pdf_bytes,
             "https://source.example/paper.pdf",
-            "uploads/original.pdf",
+            f"documents/{'a' * 64}/source.pdf",
             "job-1",
             status_callback=lambda _status: None,
         )
@@ -149,7 +149,7 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
     assert result.metadata is not None
     assert result.metadata.title == "Fallback paper"
     assert result.parser_archive_s3_key is None
-    assert "uploads/pdf-parses/job-1/full.md" in uploaded_names
+    assert f"documents/{'a' * 64}/canonical.md" in uploaded_names
 
 
 def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
@@ -174,6 +174,9 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
 
         async def get_task_id(self, _job_id: str) -> str | None:
             return "running-mineru-task"
+
+        async def save_source_key(self, _job_id: str, _source_key: str) -> None:
+            return None
 
         async def clear(self, _job_id: str) -> None:
             self.cleared = True
@@ -226,7 +229,7 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
         process_pdf_file(
             pdf_bytes,
             "https://source.example/paper.pdf",
-            "uploads/original.pdf",
+            f"documents/{'b' * 64}/source.pdf",
             "job-1",
             status_callback=lambda _status: None,
         )
@@ -254,7 +257,10 @@ def test_upgrade_resumes_checkpoint_and_uses_idempotent_artifact_keys(
 
     class UpgradeMinerUClient:
         def __init__(self, _config: MinerUConfig) -> None:
-            pass
+            self.state_store = self
+
+        async def get_source_key(self, _job_id: str) -> str | None:
+            return f"documents/{'c' * 64}/source.pdf"
 
         async def parse_existing(self, *, data_id: str) -> ParsedDocument:
             assert data_id == "job-1"
@@ -282,9 +288,12 @@ def test_upgrade_resumes_checkpoint_and_uses_idempotent_artifact_keys(
 
     assert result.parser_quality == "full"
     assert result.parser_warning_code is None
-    assert result.parser_markdown_s3_key == "uploads/pdf-parses/job-1/full.md"
-    assert result.parser_archive_s3_key == "uploads/pdf-parses/job-1/mineru.zip"
+    assert result.parser_markdown_s3_key == f"documents/{'c' * 64}/canonical.md"
+    assert result.parser_archive_s3_key == (f"documents/{'c' * 64}/mineru-result.zip")
     assert sorted(uploaded) == [
-        ("uploads/pdf-parses/job-1/full.md", "text/markdown; charset=utf-8"),
-        ("uploads/pdf-parses/job-1/mineru.zip", "application/zip"),
+        (
+            f"documents/{'c' * 64}/canonical.md",
+            "text/markdown; charset=utf-8",
+        ),
+        (f"documents/{'c' * 64}/mineru-result.zip", "application/zip"),
     ]

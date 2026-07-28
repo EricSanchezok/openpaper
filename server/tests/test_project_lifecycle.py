@@ -6,9 +6,9 @@ from app.database.models import Document, Project
 from app.errors import AppError
 from app.services.project_lifecycle import (
     ProjectDeletionPlan,
-    delete_orphan_documents,
     delete_project_storage,
     prepare_project_deletion,
+    schedule_orphan_documents,
 )
 from sqlalchemy.orm import Session
 
@@ -19,41 +19,44 @@ def _scalars_result(values: list[object]) -> MagicMock:
     return result
 
 
-def test_project_deletion_detaches_private_chats_and_collects_owned_storage() -> None:
+def test_project_deletion_preserves_private_chats_and_schedules_document_gc() -> None:
     project = Project(id=uuid4(), owner_id=1, title="Shared corpus")
     document = Document(
         id=uuid4(),
-        file_url="s3://bucket/paper.pdf",
-        s3_object_key="papers/paper.pdf",
-        parser_markdown_s3_key="parses/paper.md",
-        parser_archive_s3_key="parses/paper.zip",
+        sha256="a" * 64,
+        original_filename="paper.pdf",
+        mime_type="application/pdf",
+        size_bytes=1024,
+        s3_object_key=f"documents/{'a' * 64}/source.pdf",
     )
     db = MagicMock(spec=Session)
     db.scalars.side_effect = [
         _scalars_result([]),
         _scalars_result([]),
         _scalars_result([]),
-        _scalars_result([document]),
-        _scalars_result(["images/page-1.png"]),
+        _scalars_result([document.id]),
         _scalars_result(["audio/project.mp3"]),
     ]
 
     plan = prepare_project_deletion(db, project=project)
 
-    assert plan.orphan_documents == (document,)
-    assert set(plan.storage_keys) == {
-        "papers/paper.pdf",
-        "parses/paper.md",
-        "parses/paper.zip",
-        "images/page-1.png",
-        "audio/project.mp3",
-    }
+    assert plan.candidate_document_ids == (document.id,)
+    assert set(plan.storage_keys) == {"audio/project.mp3"}
     # One bulk UPDATE detaches private conversations; one DELETE removes
     # Project-scoped artifacts.
     assert db.execute.call_count == 2
 
-    delete_orphan_documents(db, plan=plan)
-    db.delete.assert_called_once_with(document)
+    schedule_gc = MagicMock()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "app.services.document_gc.schedule_document_gc",
+        schedule_gc,
+    )
+    try:
+        schedule_orphan_documents(db, plan=plan)
+    finally:
+        monkeypatch.undo()
+    schedule_gc.assert_called_once_with(db, document_id=document.id)
 
 
 def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
@@ -84,7 +87,7 @@ def test_storage_cleanup_is_best_effort_after_database_commit(
         delete_file,
     )
     plan = ProjectDeletionPlan(
-        orphan_documents=(),
+        candidate_document_ids=(),
         storage_keys=("first", "second"),
     )
 
