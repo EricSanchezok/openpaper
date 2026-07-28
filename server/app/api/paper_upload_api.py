@@ -80,7 +80,9 @@ async def get_upload_status(
     """
     Get the durable status of a paper ingestion from PostgreSQL.
     """
-    paper_upload_job = upload_reservation_repository.get(db=db, id=job_id, user=current_user)
+    paper_upload_job = upload_reservation_repository.get(
+        db=db, id=job_id, user=current_user
+    )
 
     if not paper_upload_job:
         return JSONResponse(status_code=404, content={"message": "Job not found"})
@@ -101,14 +103,10 @@ async def get_upload_status(
         "status": durable_job.status,
         "task_id": str(durable_job.id) if durable_job.dispatch is not None else None,
         "started_at": (
-            durable_job.started_at.isoformat()
-            if durable_job.started_at
-            else None
+            durable_job.started_at.isoformat() if durable_job.started_at else None
         ),
         "completed_at": (
-            durable_job.completed_at.isoformat()
-            if durable_job.completed_at
-            else None
+            durable_job.completed_at.isoformat() if durable_job.completed_at else None
         ),
         "has_file": bool(paper.s3_object_key) if paper else False,
         "has_metadata": bool(paper.abstract) if paper else False,

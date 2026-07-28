@@ -7,6 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
     ChatMessage,
     CitationArtifact,
+    Conversation,
     MessageTrace,
     Reference,
 } from '@/lib/schema';
@@ -59,7 +60,7 @@ function ProjectConversationPageContent() {
         collapseArtifacts,
     } = useProjectWorkspace();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [isOwner, setIsOwner] = useState<boolean>(true);
+    const [conversation, setConversation] = useState<Conversation | null>(null);
     const [mentionSelection, setMentionSelection] = useState<MentionSelection>(EMPTY_MENTION_SELECTION);
 
     const papers = useMemo(
@@ -164,10 +165,15 @@ function ProjectConversationPageContent() {
 
     const fetchMessages = useCallback(async (id: string) => {
         try {
-            const response = await fetchFromApi(`/api/conversations/${id}`);
-            if (response && response.messages) {
-                setMessages(response.messages);
-                setIsOwner(true);
+            const [detail, response] = await Promise.all([
+                fetchFromApi(`/api/conversations/${id}`) as Promise<Conversation>,
+                fetchFromApi(
+                    `/api/conversations/${id}/messages?page=1&page_size=100`,
+                ),
+            ]);
+            if (response?.items) {
+                setMessages(response.items);
+                setConversation(detail);
                 setConversationId(id);
                 setIsCentered(false);
             }
@@ -286,7 +292,12 @@ function ProjectConversationPageContent() {
 
         const query = message || currentMessage;
 
-        if (!query.trim() || isStreaming || !conversationId) return;
+        if (
+            !query.trim()
+            || isStreaming
+            || !conversationId
+            || conversation?.capabilities.send === false
+        ) return;
 
         // Get the artifacts panel out of the way so the reply is front-and-center.
         collapseArtifacts();
@@ -510,7 +521,20 @@ function ProjectConversationPageContent() {
             setStatusMessage('');
             refetchSubscription();
         }
-    }, [currentMessage, isStreaming, conversationId, projectId, router, refetchSubscription, mentionSelection, papers, openDocumentIds, collapseArtifacts, reasoningLevel]);
+    }, [
+        collapseArtifacts,
+        conversation,
+        conversationId,
+        currentMessage,
+        isStreaming,
+        mentionSelection,
+        openDocumentIds,
+        papers,
+        projectId,
+        reasoningLevel,
+        refetchSubscription,
+        router,
+    ]);
 
     const [error, setError] = useState<string | null>(null);
 
@@ -525,7 +549,8 @@ function ProjectConversationPageContent() {
             <div className="flex-1 min-h-0">
                 <ConversationView
                     messages={messages}
-                    isOwner={isOwner}
+                    canSend={conversation?.capabilities.send ?? true}
+                    readOnlyReason={conversation?.read_only_reason}
                     papers={papers}
                     isStreaming={isStreaming}
                     streamingChunks={streamingChunks}

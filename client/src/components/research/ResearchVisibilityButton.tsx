@@ -8,10 +8,7 @@ import { Button } from "@/components/ui/button";
 import { fetchFromApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export type ResearchOutputKind = "artifact" | "audio" | "data_table" | "highlight";
-
 interface ResearchVisibilityButtonProps {
-    kind: ResearchOutputKind;
     outputId: string;
     shared: boolean;
     canManage: boolean;
@@ -20,7 +17,6 @@ interface ResearchVisibilityButtonProps {
 }
 
 export function ResearchVisibilityButton({
-    kind,
     outputId,
     shared,
     canManage,
@@ -49,7 +45,7 @@ export function ResearchVisibilityButton({
         const nextShared = !shared;
         setIsSaving(true);
         try {
-            await fetchFromApi(`/api/research/${kind}/${outputId}/visibility`, {
+            await fetchFromApi(`/api/research-items/${outputId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ shared: nextShared }),

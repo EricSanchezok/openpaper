@@ -133,7 +133,7 @@ export function SharePaperButton() {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            <p className="text-sm text-muted-foreground">Make this paper public to share it with others via a unique link. All of your <b>annotations and chats</b> will be visible to anyone with the link.</p>
+                            <p className="text-sm text-muted-foreground">Make this paper public to share its PDF, canonical metadata, summary, and summary citations. Your annotations, research outputs, and chats remain private.</p>
                             <Button
                                 onClick={handleShare}
                                 disabled={isSharing}

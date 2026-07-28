@@ -113,6 +113,10 @@ class JobResponse(BaseModel):
     completed_at: datetime | None
 
 
+class JobListResponse(BaseModel):
+    items: list[JobResponse]
+
+
 class AudioSourceDocumentPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

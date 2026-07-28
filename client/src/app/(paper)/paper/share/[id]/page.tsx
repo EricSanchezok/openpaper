@@ -3,12 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PdfHighlighterViewer } from '@/components/PdfHighlighterViewer';
-import { AnnotationsView } from '@/components/AnnotationsView';
 import { fetchFromApi } from '@/lib/api';
 import {
     PaperData,
-    PaperHighlight,
-    PaperHighlightAnnotation,
     SharedPaper,
 } from '@/lib/schema';
 import PaperMetadata from '@/components/PaperMetadata';
@@ -21,47 +18,37 @@ import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css' // `rehype-katex` does not import the CSS for you
 
 import { PaperSidebar } from '@/components/PaperSidebar';
-import { Lightbulb, Highlighter } from 'lucide-react';
+import { Lightbulb } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { CopyableTable } from '@/components/AnimatedMarkdown';
 import CustomCitationLink from '@/components/utils/CustomCitationLink';
-import { BasicUser } from '@/lib/auth';
-
 
 export default function SharedPaperView() {
     const params = useParams();
     const shareId = params.id as string;
 
     const [paperData, setPaperData] = useState<PaperData | null>(null);
-    const [highlights, setHighlights] = useState<PaperHighlight[]>([]);
-    const [annotations, setAnnotations] = useState<PaperHighlightAnnotation[]>([]);
-    const [owner, setOwner] = useState<BasicUser | undefined>(undefined);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeHighlight, setActiveHighlight] = useState<PaperHighlight | null>(null);
     const isMobile = useIsMobile();
     const [mobileView, setMobileView] = useState<'reader' | 'panel'>('reader');
     const [rightSideFunction, setRightSideFunction] = useState('Overview');
     const [activeCitationKey, setActiveCitationKey] = useState<string | null>(null);
     const [activeCitationMessageIndex, setActiveCitationMessageIndex] = useState<number | null>(null);
     const [explicitSearchTerm, setExplicitSearchTerm] = useState<string>();
-    const [showAnnotationCards, setShowAnnotationCards] = useState(true);
 
     const dynamicPaperToolset = useMemo(() => {
-        const navItems = [
-            { name: 'Annotations', label: 'All annotations', icon: Highlighter },
-        ];
+        const navItems: Array<{
+            name: string;
+            label: string;
+            icon: typeof Lightbulb;
+        }> = [];
         if (paperData?.summary) {
             navItems.unshift({ name: 'Overview', label: 'Overview', icon: Lightbulb });
         }
         return { nav: navItems };
     }, [paperData?.summary]);
 
-
-    const handleHighlightClick = useCallback((highlight: PaperHighlight) => {
-        // Allow clicking highlights to potentially scroll/focus, but no editing
-        setActiveHighlight(highlight);
-    }, [setActiveHighlight]);
 
     const matchesCurrentCitation = useCallback((key: string, messageIndex: number) => {
         return activeCitationKey === key.toString() && activeCitationMessageIndex === messageIndex;
@@ -156,16 +143,10 @@ export default function SharedPaperView() {
             try {
                 const response: SharedPaper = await fetchFromApi(`/api/paper/share?id=${shareId}`);
                 setPaperData(response.paper);
-                setHighlights(response.highlights || []);
-                setAnnotations(response.annotations || []);
-                setOwner(response.owner);
             } catch (err) {
                 console.error("Error fetching shared paper data:", err);
                 setError("Failed to load shared paper. The link might be invalid or expired.");
                 setPaperData(null);
-                setHighlights([]);
-                setAnnotations([]);
-                setOwner(undefined);
             } finally {
                 setLoading(false);
             }
@@ -212,8 +193,8 @@ export default function SharedPaperView() {
                             {paperData.file_url ? (
                                 <PdfHighlighterViewer
                                     pdfUrl={paperData.file_url}
-                                    highlights={highlights}
-                                    activeHighlight={activeHighlight}
+                                    highlights={[]}
+                                    activeHighlight={null}
                                     setUserMessageReferences={() => { }}
                                     setSelectedText={() => { }}
                                     setTooltipPosition={() => { }}
@@ -225,16 +206,13 @@ export default function SharedPaperView() {
                                     explicitSearchTerm={explicitSearchTerm}
                                     selectedText={''}
                                     tooltipPosition={null}
-                                    setActiveHighlight={setActiveHighlight}
+                                    setActiveHighlight={() => { }}
                                     addHighlight={() => { }}
                                     loadHighlights={async () => { }}
                                     removeHighlight={() => { }}
                                     renderAnnotations={() => { }}
-                                    annotations={annotations}
+                                    annotations={[]}
                                     onRefreshUrl={refreshPdfUrl}
-                                    currentUser={owner ?? null}
-                                    showAnnotationCards={showAnnotationCards}
-                                    onToggleAnnotationCards={() => setShowAnnotationCards((v) => !v)}
                                     sidePanelOpen
                                 />
                             ) : (
@@ -244,18 +222,6 @@ export default function SharedPaperView() {
                     ) : (
                         <div className="w-full h-full flex flex-row relative pr-[60px]">
                             <div className="flex-grow overflow-y-auto">
-                                {rightSideFunction === 'Annotations' && owner && (
-                                    <>
-                                        <AnnotationsView
-                                            highlights={highlights}
-                                            annotations={annotations}
-                                            onHighlightClick={handleHighlightClick}
-                                            activeHighlight={activeHighlight}
-                                            user={owner}
-                                            readonly={true}
-                                        />
-                                    </>
-                                )}
                                 {rightSideFunction === 'Overview' && (
                                                                         <div className={'flex flex-col md:px-2 m-2 relative animate-fade-in'}>
                                                                              <PaperMetadata
@@ -297,8 +263,6 @@ export default function SharedPaperView() {
                                 rightSideFunction={rightSideFunction}
                                 setRightSideFunction={setRightSideFunction}
                                 PaperToolset={dynamicPaperToolset}
-                                showAnnotationCards={showAnnotationCards}
-                                onToggleAnnotationCards={() => setShowAnnotationCards((v) => !v)}
                             />
                         </div>
                     )}
@@ -327,8 +291,8 @@ export default function SharedPaperView() {
                     {paperData.file_url ? (
                         <PdfHighlighterViewer
                             pdfUrl={paperData.file_url}
-                            highlights={highlights}
-                            activeHighlight={activeHighlight}
+                            highlights={[]}
+                            activeHighlight={null}
                             setUserMessageReferences={() => { }}
                             setSelectedText={() => { }}
                             setTooltipPosition={() => { }}
@@ -340,18 +304,13 @@ export default function SharedPaperView() {
                             setHighlights={() => { }}
                             selectedText={''}
                             tooltipPosition={null}
-                            setActiveHighlight={setActiveHighlight}
+                            setActiveHighlight={() => { }}
                             addHighlight={() => { }}
                             loadHighlights={async () => { }}
                             removeHighlight={() => { }}
                             renderAnnotations={() => { }}
-                            annotations={annotations}
+                            annotations={[]}
                             onRefreshUrl={refreshPdfUrl}
-                            currentUser={owner ?? null}
-                            showAnnotationCards={showAnnotationCards}
-                            onToggleAnnotationCards={() =>
-                                setShowAnnotationCards((v) => !v)
-                            }
                             sidePanelOpen
                         />
                     ) : (
@@ -362,21 +321,6 @@ export default function SharedPaperView() {
                 {/* Right Side: Sidebar and Content */}
                 <div className="w-2/5 h-full flex flex-row relative pr-[60px]">
                     <div className="flex-grow">
-                        {rightSideFunction === 'Annotations' && owner && (
-                            <>
-                                <PaperMetadata
-                                    paperData={paperData}
-                                />
-                                <AnnotationsView
-                                    highlights={highlights}
-                                    annotations={annotations}
-                                    onHighlightClick={handleHighlightClick}
-                                    activeHighlight={activeHighlight}
-                                    readonly={true}
-                                    user={owner}
-                                />
-                            </>
-                        )}
                         {rightSideFunction === 'Overview' && paperData.summary && (
                             <div className={`flex flex-col ${heightClass} md:px-2 overflow-y-auto m-2 relative animate-fade-in`}>
                                 {/* Paper Metadata Section */}

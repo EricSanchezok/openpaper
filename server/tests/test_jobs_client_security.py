@@ -25,12 +25,15 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
         client = JobsClient(
             celery_broker_url="amqp://user:password@rabbitmq:5672//",
         )
-        assert client.publish_task(
-            task_name="upload_and_process_file",
-            queue="pdf_processing",
-            job_id="job-pdf",
-            kwargs={"s3_object_key": "documents/hash/source.pdf"},
-        ) == "task_pdf"
+        assert (
+            client.publish_task(
+                task_name="upload_and_process_file",
+                queue="pdf_processing",
+                job_id="job-pdf",
+                kwargs={"s3_object_key": "documents/hash/source.pdf"},
+            )
+            == "task_pdf"
+        )
 
     celery.assert_called_once()
     assert celery_app.send_task.call_count == 1

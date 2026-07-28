@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
     ChatMessage,
     CitationArtifact,
+    Conversation,
     MessageTrace,
     Reference,
 } from '@/lib/schema';
@@ -75,6 +76,7 @@ function UnderstandPageContent() {
     const [currentMessage, setCurrentMessage] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
+    const [conversation, setConversation] = useState<Conversation | null>(null);
     const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
     const [streamingReferences, setStreamingReferences] = useState<Reference | undefined>(undefined);
     const [streamingArtifacts, setStreamingArtifacts] = useState<CitationArtifact[]>([]);
@@ -129,9 +131,15 @@ function UnderstandPageContent() {
 
     const fetchMessages = useCallback(async (id: string) => {
         try {
-            const response = await fetchFromApi(`/api/conversations/${id}`);
-            if (response && response.messages) {
-                setMessages(response.messages);
+            const [detail, response] = await Promise.all([
+                fetchFromApi(`/api/conversations/${id}`) as Promise<Conversation>,
+                fetchFromApi(
+                    `/api/conversations/${id}/messages?page=1&page_size=100`,
+                ),
+            ]);
+            if (response?.items) {
+                setConversation(detail);
+                setMessages(response.items);
                 setConversationId(id);
                 setIsCentered(false);
             }
@@ -155,6 +163,7 @@ function UnderstandPageContent() {
         } else if (!id && !isStreaming) {
             setMessages([]);
             setConversationId(null);
+            setConversation(null);
             setIsCentered(true);
             setIsSessionLoading(false);
 
@@ -233,7 +242,11 @@ function UnderstandPageContent() {
             e.preventDefault();
         }
 
-        if (!currentMessage.trim() || isStreaming) return;
+        if (
+            !currentMessage.trim()
+            || isStreaming
+            || (conversation && !conversation.capabilities.send)
+        ) return;
 
         // Snapshot @-mention scope for this send, then clear it from the input.
         const submittedMentions = mentionSelection;
@@ -260,7 +273,7 @@ function UnderstandPageContent() {
             try {
                 const newConversationResponse = await fetchFromApi('/api/conversations', {
                     method: 'POST',
-                    body: JSON.stringify({ conversable_type: 'everything' }),
+                    body: JSON.stringify({ scope_type: 'global' }),
                 });
                 currentConversationId = newConversationResponse.id;
                 setConversationId(currentConversationId);
@@ -390,7 +403,14 @@ function UnderstandPageContent() {
             setStatusMessage('');
             refetchSubscription();
         }
-    }, [currentMessage, isStreaming, conversationId, mentionSelection, reasoningLevel]);
+    }, [
+        conversation,
+        conversationId,
+        currentMessage,
+        isStreaming,
+        mentionSelection,
+        reasoningLevel,
+    ]);
 
     const [error, setError] = useState<string | null>(null);
 
@@ -430,7 +450,8 @@ function UnderstandPageContent() {
         <div className="h-[calc(100vh-64px)] mx-2">
             <ConversationView
                 messages={messages}
-                isOwner={true}
+                canSend={!conversation || conversation.capabilities.send}
+                readOnlyReason={conversation?.read_only_reason}
                 papers={papers}
                 isStreaming={isStreaming}
                 streamingChunks={streamingChunks}

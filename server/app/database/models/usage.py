@@ -3,7 +3,15 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import UUID, BigInteger, Date, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    UUID,
+    BigInteger,
+    Date,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base

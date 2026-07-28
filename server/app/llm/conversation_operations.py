@@ -7,8 +7,6 @@ from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
     NAME_DATA_TABLE_SYSTEM_PROMPT,
     NAME_DATA_TABLE_USER_MESSAGE,
-    PROPOSE_DATA_TABLE_SCHEMA_SYSTEM_PROMPT,
-    PROPOSE_DATA_TABLE_SCHEMA_USER_MESSAGE,
     RENAME_CONVERSATION_SYSTEM_PROMPT,
     RENAME_CONVERSATION_USER_MESSAGE,
 )
@@ -17,16 +15,9 @@ from app.repositories.conversations import conversation_repository
 from app.schemas.conversations import ConversationUpdateRequest
 from app.schemas.user import CurrentUser
 from fastapi import Depends
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-
-class DataTableSchemaProposal(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    columns: list[str] = Field(description="Column labels for the data table")
 
 
 class ConversationOperations(BaseLLMClient):
@@ -131,52 +122,6 @@ class DataTableOperations(BaseLLMClient):
         else:
             logger.error("Failed to generate a title for the data table.")
             return None
-
-    def propose_data_table_schema(
-        self,
-        prompt: str,
-        paper_titles: list[str],
-    ) -> list[str] | None:
-        """
-        Propose data table column labels from a natural language description.
-
-        Args:
-            prompt: The user's description of what they want to extract or compare
-            paper_titles: List of paper titles in the project, used as context
-
-        Returns:
-            A list of proposed column labels, or None if generation fails
-        """
-        formatted_papers = "\n".join([f"- {title}" for title in paper_titles])
-
-        formatted_prompt = PROPOSE_DATA_TABLE_SCHEMA_USER_MESSAGE.format(
-            paper_titles=formatted_papers,
-            prompt=prompt,
-        )
-
-        message_content = [
-            TextContent(text=formatted_prompt),
-        ]
-
-        response = self.generate_content(
-            contents=message_content,
-            system_prompt=PROPOSE_DATA_TABLE_SCHEMA_SYSTEM_PROMPT,
-            response_model=DataTableSchemaProposal,
-        )
-
-        if response and response.text:
-            try:
-                proposal = DataTableSchemaProposal.model_validate_json(response.text)
-                columns = [c.strip() for c in proposal.columns if c.strip()]
-                if columns:
-                    return columns
-            except ValidationError:
-                logger.warning(
-                    f"Failed to parse data table schema proposal: {response.text}"
-                )
-
-        logger.error("Failed to propose a schema for the data table.")
-        return None
 
 
 conversation_operations = ConversationOperations()

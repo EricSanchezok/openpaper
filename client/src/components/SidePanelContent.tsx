@@ -145,6 +145,7 @@ export function SidePanelContent({
     const chatInputFormRef = useRef<HTMLFormElement | null>(null);
     const inputMessageRef = useRef<HTMLTextAreaElement | null>(null);
     const {
+        conversation,
         conversationId,
         fetchMoreMessages,
         handleScroll,
@@ -328,7 +329,11 @@ export function SidePanelContent({
             e.preventDefault();
         }
 
-        if (!currentMessage.trim() || isStreaming) return;
+        if (
+            !currentMessage.trim()
+            || isStreaming
+            || conversation?.capabilities.send === false
+        ) return;
 
         setErrorState(null);
 
@@ -481,7 +486,17 @@ export function SidePanelContent({
         } finally {
             setIsStreaming(false);
         }
-    }, [currentMessage, isStreaming, conversationId, id, userMessageReferences, reasoningLevel, transformReferencesToFormat, refetchSubscription]);
+    }, [
+        conversation,
+        conversationId,
+        currentMessage,
+        id,
+        isStreaming,
+        reasoningLevel,
+        refetchSubscription,
+        transformReferencesToFormat,
+        userMessageReferences,
+    ]);
 
 
     const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -724,7 +739,7 @@ export function SidePanelContent({
                                         </div>
                                     ) : (
                                         <div className="space-y-3">
-                                            <p className="text-sm text-muted-foreground">Make this paper public to share it with others via a unique link. All of your <b>annotations and chats</b> will be visible to anyone with the link.</p>
+                                            <p className="text-sm text-muted-foreground">Make this paper public to share its PDF, canonical metadata, summary, and summary citations. Your annotations, research outputs, and chats remain private.</p>
                                             <Button
                                                 onClick={handleShare}
                                                 disabled={isSharing}
@@ -793,9 +808,7 @@ export function SidePanelContent({
                             rightSideFunction === 'Audio' && (
                                 <div className={`flex flex-col ${heightClass} md:px-2 overflow-y-auto`}>
                                     <AudioOverviewPanel
-                                        paper_id={id}
-                                        paper_title={paperData.title}
-                                        setExplicitSearchTerm={setExplicitSearchTerm} />
+                                        paper_id={id} />
                                 </div>
                             )
                         }
@@ -1000,7 +1013,11 @@ export function SidePanelContent({
                                                 ref={inputMessageRef}
                                                 placeholder="Ask something about this paper."
                                                 className="border-none bg-secondary dark:bg-secondary rounded-md resize-none hover:resize-y p-2 focus-visible:outline-none focus-visible:ring-0 shadow-none min-h-[2rem] max-h-32"
-                                                disabled={isStreaming || (creditUsage?.usagePercentage ?? 0) >= 100}
+                                                disabled={
+                                                    isStreaming
+                                                    || (creditUsage?.usagePercentage ?? 0) >= 100
+                                                    || conversation?.capabilities.send === false
+                                                }
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter' && !e.shiftKey) {
                                                         e.preventDefault();
@@ -1058,7 +1075,10 @@ export function SidePanelContent({
                                                     }}
                                                     variant="default"
                                                     className="w-fit rounded-full h-fit !px-2 py-2 bg-blue-500 hover:bg-blue-400"
-                                                    disabled={isStreaming}
+                                                    disabled={
+                                                        isStreaming
+                                                        || conversation?.capabilities.send === false
+                                                    }
                                                 >
                                                     <ArrowUp
                                                         className="h-4 w-4 rounded-full"
@@ -1088,6 +1108,14 @@ export function SidePanelContent({
                                                     </Link>
                                                 </div>
                                             </div>
+                                        )}
+                                        {conversation?.read_only && (
+                                            <p className="px-2 text-xs text-amber-700 dark:text-amber-300">
+                                                This conversation is read-only
+                                                {conversation.read_only_reason
+                                                    ? `: ${conversation.read_only_reason.replaceAll("_", " ")}`
+                                                    : "."}
+                                            </p>
                                         )}
                                     </form>
                                 </div>

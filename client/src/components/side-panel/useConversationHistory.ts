@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchFromApi } from "@/lib/api";
-import type { ChatMessage } from "@/lib/schema";
-
-interface ConversationResponse {
-	id: string;
-}
+import type { ChatMessage, Conversation } from "@/lib/schema";
 
 interface ConversationListResponse {
-	items: ConversationResponse[];
+	items: Conversation[];
 }
 
 interface MessagePageResponse {
-	messages: ChatMessage[];
+	items: ChatMessage[];
 }
 
 interface UseConversationHistoryOptions {
@@ -27,6 +23,7 @@ export function useConversationHistory({
 	initialConversationId,
 }: UseConversationHistoryOptions) {
 	const [conversationId, setConversationId] = useState<string | null>(null);
+	const [conversation, setConversation] = useState<Conversation | null>(null);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [hasMoreMessages, setHasMoreMessages] = useState(true);
 	const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
@@ -45,10 +42,10 @@ export function useConversationHistory({
 		setIsLoadingMoreMessages(true);
 		try {
 			const response = (await fetchFromApi(
-				`/api/conversations/${conversationId}?page=${page}`,
+				`/api/conversations/${conversationId}/messages?page=${page}&page_size=50`,
 				{ method: "GET" },
 			)) as MessagePageResponse;
-			const fetchedMessages = response.messages.map((message) => ({
+			const fetchedMessages = response.items.map((message) => ({
 				role: message.role,
 				content: message.content,
 				id: message.id,
@@ -88,16 +85,32 @@ export function useConversationHistory({
 			try {
 				let id: string | null = initialConversationId ?? null;
 				if (id) {
-					if (!cancelled) setConversationId(id);
+					const detail = await fetchFromApi(
+						`/api/conversations/${id}`,
+					) as Conversation;
+					if (!cancelled) {
+						setConversationId(id);
+						setConversation(detail);
+					}
 					return;
 				}
 				const existing = (await fetchFromApi(
-					`/api/conversations?conversable_type=paper&conversable_id=${paperId}&limit=1`,
+					"/api/conversations?limit=100",
 					{ method: "GET" },
 				)) as ConversationListResponse;
-				id = existing.items[0]?.id ?? null;
+				id = existing.items.find(
+					(conversation) =>
+						conversation.scope_type === "paper"
+						&& conversation.scope_id === paperId,
+				)?.id ?? null;
 				if (id) {
-					if (!cancelled) setConversationId(id);
+					const detail = await fetchFromApi(
+						`/api/conversations/${id}`,
+					) as Conversation;
+					if (!cancelled) {
+						setConversationId(id);
+						setConversation(detail);
+					}
 					return;
 				}
 				try {
@@ -106,12 +119,15 @@ export function useConversationHistory({
 						{
 							method: "POST",
 							body: JSON.stringify({
-								conversable_type: "paper",
-								conversable_id: paperId,
+								scope_type: "paper",
+								scope_id: paperId,
 							}),
 						},
-					)) as ConversationResponse;
-					if (!cancelled) setConversationId(created.id);
+					)) as Conversation;
+					if (!cancelled) {
+						setConversationId(created.id);
+						setConversation(created);
+					}
 				} catch {
 					if (!cancelled) setIsFetchingHistory(false);
 				}
@@ -148,6 +164,7 @@ export function useConversationHistory({
 
 	return {
 		conversationId,
+		conversation,
 		fetchMoreMessages,
 		handleScroll,
 		hasMoreMessages,

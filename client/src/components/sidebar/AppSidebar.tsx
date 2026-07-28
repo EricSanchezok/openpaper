@@ -58,6 +58,31 @@ export function AppSidebar() {
         router.push('/login');
     }
 
+    const handleConversationChanged = (conversation: Conversation | string) => {
+        setEverythingConversations((current) => {
+            if (typeof conversation === "string") {
+                return current.filter((item) => item.id !== conversation);
+            }
+            if (conversation.archived_at) {
+                return current.filter((item) => item.id !== conversation.id);
+            }
+            const existing = current.some((item) => item.id === conversation.id);
+            const next = existing
+                ? current.map((item) =>
+                    item.id === conversation.id ? conversation : item,
+                )
+                : [...current, conversation];
+            return next.sort((left, right) => {
+                if (!!left.pinned_at !== !!right.pinned_at) {
+                    return left.pinned_at ? -1 : 1;
+                }
+                const leftTime = left.pinned_at ?? left.updated_at;
+                const rightTime = right.pinned_at ?? right.updated_at;
+                return rightTime.localeCompare(leftTime);
+            });
+        });
+    };
+
     const currentWarning = getSubscriptionWarning(subscription, user, subscriptionLoading);
     const shouldShowWarning = currentWarning && dismissedWarning !== currentWarning.key;
 
@@ -76,6 +101,7 @@ export function AppSidebar() {
                     papers={allPapers}
                     conversations={everythingConversations}
                     projects={projects}
+                    onConversationChanged={handleConversationChanged}
                 />
             </SidebarContent>
             <AppSidebarFooter

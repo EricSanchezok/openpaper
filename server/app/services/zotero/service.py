@@ -972,7 +972,9 @@ async def _import_one_paper(
                     cleanup_err,
                 )
         if upload_job_id:
-            upload_reservation_repository.mark_as_failed(db=db, job_id=upload_job_id, user=user)
+            upload_reservation_repository.mark_as_failed(
+                db=db, job_id=upload_job_id, user=user
+            )
         return {
             "status": "error",
             "zotero_item_key": item_key,

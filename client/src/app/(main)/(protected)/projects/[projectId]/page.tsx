@@ -83,8 +83,8 @@ export default function ProjectPage() {
                 method: "POST",
                 body: JSON.stringify({
                     title: "New conversation",
-                    conversable_type: "project",
-                    conversable_id: projectId,
+                    scope_type: "project",
+                    scope_id: projectId,
                 }),
             });
             localStorage.setItem(`pending-query-${newConversation.id}`, newQuery);

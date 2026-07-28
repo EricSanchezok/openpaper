@@ -614,7 +614,9 @@ async def chat_message_multipaper(
                             datetime.now(timezone.utc) - start_time
                         ).total_seconds(),
                         "type": conversation.scope_type,
-                        "project_id": str(project_id) if project_id is not None else None,
+                        "project_id": str(project_id)
+                        if project_id is not None
+                        else None,
                         **mention_scope_props,
                     },
                     user_id=str(current_user.id),

@@ -7,7 +7,7 @@ from typing import Literal
 
 from app.auth.dependencies import get_required_user
 from app.database.database import get_db
-from app.database.models import Document, JobOperation, ProjectPaper
+from app.database.models import Document, JobOperation, JobStatus, ProjectPaper
 from app.database.models.base import JsonValue
 from app.errors import AppError
 from app.helpers.ai_limits import (
@@ -25,6 +25,7 @@ from app.schemas.jobs import (
     AudioOverviewTaskPayload,
     AudioSourceDocumentPayload,
     JobResponse,
+    JobListResponse,
     DataTableSourceDocumentPayload,
     DataTableTaskPayload,
     DataTableTaskTablePayload,
@@ -277,6 +278,26 @@ async def create_project_audio_overview(
         request=request,
         idempotency_key=idempotency_key,
     )
+
+
+@jobs_router.get("", response_model=JobListResponse)
+def list_jobs(
+    project_id: uuid.UUID | None = None,
+    document_id: uuid.UUID | None = None,
+    operation: JobOperation | None = None,
+    active: bool = False,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_required_user),
+) -> JobListResponse:
+    jobs = job_repository.list_for_requester(
+        db,
+        requested_by_id=current_user.id,
+        project_id=project_id,
+        document_id=document_id,
+        operation=operation,
+        statuses=(JobStatus.PENDING, JobStatus.RUNNING) if active else None,
+    )
+    return JobListResponse(items=[_job_response(job) for job in jobs])
 
 
 @jobs_router.get("/{job_id}", response_model=JobResponse)

@@ -399,7 +399,6 @@ export function AnnotationsView({
 									{projectId && onVisibilityChanged && (
 										<div className="flex justify-end">
 											<ResearchVisibilityButton
-												kind="highlight"
 												outputId={hid}
 												shared={Boolean(highlight.is_shared)}
 												canManage={canManageVisibility}

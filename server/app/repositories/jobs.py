@@ -42,6 +42,38 @@ class EnqueueJob(CreateJob):
 
 
 class JobRepository:
+    @staticmethod
+    def list_for_requester(
+        db: Session,
+        *,
+        requested_by_id: int,
+        project_id: uuid.UUID | None = None,
+        document_id: uuid.UUID | None = None,
+        operation: JobOperation | None = None,
+        statuses: tuple[JobStatus, ...] | None = None,
+        limit: int = 100,
+    ) -> list[DurableJob]:
+        statement = select(DurableJob).where(
+            DurableJob.requested_by_id == requested_by_id
+        )
+        if project_id is not None:
+            statement = statement.where(DurableJob.project_id == project_id)
+        if document_id is not None:
+            statement = statement.where(DurableJob.document_id == document_id)
+        if operation is not None:
+            statement = statement.where(DurableJob.operation == operation.value)
+        if statuses is not None:
+            statement = statement.where(
+                DurableJob.status.in_(status.value for status in statuses)
+            )
+        return list(
+            db.scalars(
+                statement.order_by(
+                    DurableJob.created_at.desc(), DurableJob.id.desc()
+                ).limit(limit)
+            ).all()
+        )
+
     def create(self, db: Session, *, request: CreateJob) -> DurableJob:
         job_id = request.job_id or uuid.uuid4()
         inserted_id = db.scalar(
@@ -91,9 +123,7 @@ class JobRepository:
             kwargs=kwargs,
             available_at=available_at or datetime.now(UTC),
         )
-        db.add(
-            dispatch
-        )
+        db.add(dispatch)
         db.flush()
         return dispatch
 

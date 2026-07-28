@@ -34,8 +34,6 @@ export interface PaperData {
 
 export interface SharedPaper {
     paper: PaperData;
-    highlights: PaperHighlight[];
-    annotations: PaperHighlightAnnotation[];
     owner: BasicUser;
 }
 
@@ -58,17 +56,6 @@ export interface CitationArtifact {
     method: string;
     missing_fields: string[];
     confidence?: number | null;
-}
-
-// A Project research artifact. Private conversation and message identifiers are
-// deliberately absent from this shared representation.
-export interface ProjectArtifact {
-    id: string;
-    kind: 'citation';
-    payload: CitationArtifact;
-    is_shared: boolean;
-    created_by: ResearchCreator | null;
-    created_at?: string | null;
 }
 
 export interface MessageTraceToolCall {
@@ -145,8 +132,65 @@ export interface ScaledPosition {
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple';
 
 export interface ResearchCreator {
-    id: number;
+    id: number | null;
     display_name: string | null;
+}
+
+export interface ResearchItemCapabilities {
+    share: boolean;
+    edit: boolean;
+    delete: boolean;
+}
+
+export interface ResearchItem {
+    id: string;
+    kind: 'highlight_thread' | 'citation' | 'audio_overview' | 'data_table';
+    scope_type: 'personal' | 'document' | 'project';
+    scope_id: string | null;
+    is_shared: boolean;
+    created_by: ResearchCreator;
+    created_at: string;
+    updated_at: string;
+    capabilities: ResearchItemCapabilities;
+    citation: {
+        snapshot: Record<string, unknown>;
+    } | null;
+    audio_overview: {
+        title: string | null;
+        transcript: string;
+        citations: Record<string, unknown>[];
+        audio_url: string;
+        voice_id: string;
+        model_version: string;
+    } | null;
+    data_table: {
+        title: string | null;
+        columns: string[];
+        rows: Record<string, unknown>[];
+        citations: Record<string, unknown>[];
+        row_failures: string[];
+    } | null;
+    highlight_thread: {
+        quote_text: string;
+        page_number: number | null;
+        start_offset: number | null;
+        end_offset: number | null;
+        position: Record<string, unknown> | null;
+        color: string;
+        role: string;
+        comments: unknown[];
+    } | null;
+}
+
+export interface DurableJob {
+    id: string;
+    operation: string;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+    progress_message: string | null;
+    error_code: string | null;
+    created_at: string;
+    started_at: string | null;
+    completed_at: string | null;
 }
 
 export interface PaperHighlight {
@@ -188,10 +232,12 @@ export interface Conversation {
     id: string;
     title: string;
     updated_at: string;
-    conversable_type: 'everything' | 'project' | 'paper';
-    conversable_id: string | null;
+    scope_type: 'global' | 'project' | 'paper';
+    scope_id: string | null;
     scope_label: string | null;
     scope_access: 'active' | 'lost';
+    read_only: boolean;
+    read_only_reason: 'scope_access_lost' | 'project_deleted' | 'document_deleted' | null;
     pinned_at: string | null;
     archived_at: string | null;
     capabilities: {
@@ -436,28 +482,6 @@ export interface CreditUsage {
     isCritical: boolean;
 }
 
-export interface AudioOverview {
-    id: string;
-    conversable_id: string;
-    conversable_type: string;
-    audio_url: string;
-    transcript: string;
-    title: string;
-    citations: ReferenceCitation[];
-    created_at: string;
-    updated_at: string;
-    job_id: string;
-    is_shared: boolean;
-    created_by: ResearchCreator | null;
-}
-
-export interface AudioOverviewJob extends JobStatusResponse {
-    id: string;
-    conversable_id: string;
-    conversable_type: string;
-    status_message: string | null;
-}
-
 export interface Project {
     id: string;
     title: string;
@@ -539,55 +563,6 @@ export interface ProjectInvitation {
     permissions: ProjectPermissions;
     expires_at: string;
     created_at: string;
-}
-
-export interface DataTableJob {
-    id: string;
-    project_id: string | null;
-    columns: string[] | null;
-    task_id: string | null;
-    title: string | null;
-    status: JobStatus;
-    started_at: string | null;
-    completed_at: string | null;
-    created_at: string | null;
-    updated_at: string | null;
-    error_message: string | null;
-    result_id: string | null;
-    is_shared: boolean;
-    created_by: ResearchCreator | null;
-}
-
-// Response from /api/projects/tables/{job_id} status endpoint
-export interface DataTableJobStatusResponse extends JobStatusResponse {
-    columns: string[] | null;
-    task_id: string | null;
-    error_message: string | null;
-    celery_status: string | null;
-    celery_progress_message: string | null;
-    celery_error: string | null;
-}
-
-export interface DataTableCellValue {
-    value: string;
-    citations: ReferenceCitation[];
-}
-
-export interface DataTableRow {
-    id: string;
-    paper_id: string;
-    values: {
-        [columnName: string]: DataTableCellValue;
-    };
-}
-
-export interface DataTableResult {
-    success: boolean;
-    title: string;
-    columns: string[];
-    rows: DataTableRow[];
-    row_failures: string[] | null;
-    created_at: string | null;
 }
 
 export interface SubscriptionLimits {

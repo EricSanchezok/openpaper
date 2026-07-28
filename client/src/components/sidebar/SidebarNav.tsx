@@ -13,35 +13,23 @@ import { CollapsibleSidebarMenu } from "../CollapsibleSidebarMenu";
 import { navItems } from "./navItems";
 import { User } from "@/lib/auth";
 import { Conversation, PaperItem, Project } from "@/lib/schema";
+import { ConversationSidebarMenu } from "./ConversationSidebarMenu";
 
 interface SidebarNavProps {
     user: User | null;
     papers: PaperItem[];
     conversations: Conversation[];
     projects: Project[];
+    onConversationChanged: (conversation: Conversation | string) => void;
 }
 
-function getConversationUrl(conversation: Conversation): string {
-    if (
-        conversation.conversable_type === "project"
-        && conversation.conversable_id
-    ) {
-        return `/projects/${conversation.conversable_id}/conversations/${conversation.id}`;
-    }
-    if (
-        conversation.conversable_type === "paper"
-        && conversation.conversable_id
-    ) {
-        const query = new URLSearchParams({
-            rsf: "chat",
-            conversation: conversation.id,
-        });
-        return `/paper/${conversation.conversable_id}?${query.toString()}`;
-    }
-    return `/understand?id=${conversation.id}`;
-}
-
-export function SidebarNav({ user, papers, conversations, projects }: SidebarNavProps) {
+export function SidebarNav({
+    user,
+    papers,
+    conversations,
+    projects,
+    onConversationChanged,
+}: SidebarNavProps) {
     return (
         <SidebarGroup>
             <SidebarGroupContent>
@@ -64,19 +52,11 @@ export function SidebarNav({ user, papers, conversations, projects }: SidebarNav
                         }
                         if (item.title === "Ask") {
                             return (
-                                <CollapsibleSidebarMenu
+                                <ConversationSidebarMenu
                                     key={item.title}
-                                    title={item.title}
-                                    icon={item.icon}
-                                    url={item.url}
-                                    items={conversations}
-                                    getItemUrl={getConversationUrl}
-                                    getItemMeta={(conversation) =>
-                                        conversation.scope_label
-                                    }
-                                    viewAllUrl="/understand/past"
-                                    viewAllText="View all chats"
-                                    defaultOpen={false}
+                                    conversations={conversations}
+                                    projects={projects}
+                                    onChanged={onConversationChanged}
                                 />
                             )
                         }

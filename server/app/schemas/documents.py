@@ -29,7 +29,9 @@ class DocumentMetadataOverrides(BaseModel):
             return None
         normalized = [value.strip() for value in values]
         if any(not value or len(value) > 500 for value in normalized):
-            raise ValueError("metadata list values must be between 1 and 500 characters")
+            raise ValueError(
+                "metadata list values must be between 1 and 500 characters"
+            )
         return normalized
 
 

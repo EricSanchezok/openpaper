@@ -38,7 +38,8 @@ import { PdfHighlighterViewer } from "@/components/PdfHighlighterViewer";
 
 interface ConversationViewProps {
 	messages: ChatMessage[];
-	isOwner: boolean;
+	canSend: boolean;
+	readOnlyReason?: string | null;
 	papers: PaperItem[];
 	isPapersLoading?: boolean;
 	isStreaming: boolean;
@@ -79,7 +80,8 @@ interface ConversationViewProps {
 
 export const ConversationView = ({
 	messages,
-	isOwner,
+	canSend,
+	readOnlyReason,
 	papers,
 	isPapersLoading = false,
 	isStreaming,
@@ -526,7 +528,7 @@ export const ConversationView = ({
 							selection={mentionSelection}
 							onSelectionChange={onMentionSelectionChange}
 							placeholder={isCentered ? "Look for a specific citation. Find a relevant paper. Collate evidence across your library." : "Ask a follow-up"}
-							disabled={isStreaming || (!isPapersLoading && papers.length === 0) || tokenCreditLimitReached || !isOwner}
+							disabled={isStreaming || (!isPapersLoading && papers.length === 0) || tokenCreditLimitReached || !canSend}
 							sendDisabled={!currentMessage.trim()}
 							busy={isStreaming}
 							autoFocus
@@ -553,6 +555,12 @@ export const ConversationView = ({
 									Upgrade your plan to use more.
 								</Link>
 							</div>
+						)}
+						{!canSend && (
+							<p className="mt-2 text-center text-xs text-amber-700 dark:text-amber-300">
+								This conversation is read-only
+								{readOnlyReason ? `: ${readOnlyReason.replaceAll("_", " ")}` : "."}
+							</p>
 						)}
 					</form>
 					{!isCentered && (

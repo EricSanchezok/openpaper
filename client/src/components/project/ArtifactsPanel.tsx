@@ -1,30 +1,22 @@
 "use client";
 
-import { Loader2, Sparkles, Table, Volume2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Loader2, Sparkles, Table, Trash2, Volume2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { fetchFromApi } from "@/lib/api";
-import {
-    AudioOverview,
-    AudioOverviewJob,
-    DataTableJob,
-    ProjectArtifact,
-} from "@/lib/schema";
-import { Badge } from "@/components/ui/badge";
+
+import DataTableSchemaModal, {
+    FieldDefinition,
+} from "@/components/DataTableSchemaModal";
+import { ResearchVisibilityButton } from "@/components/research/ResearchVisibilityButton";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
     Dialog,
-    DialogClose,
     DialogContent,
     DialogDescription,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
@@ -32,36 +24,34 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import AudioOverviewCard from "@/components/AudioOverviewCard";
-import { CitationArtifactCard } from "@/components/CitationArtifactCard";
-import AudioOverviewGenerationJobCard from "@/components/AudioOverviewGenerationJobCard";
-import DataTableGenerationJobCard from "@/components/DataTableGenerationJobCard";
-import DataTableSchemaModal, { FieldDefinition } from "@/components/DataTableSchemaModal";
-import { useAudioPlayback } from "@/hooks/useAudioPlayback";
-import {
-    isTokenCreditAtLimit,
-    useSubscription,
-} from "@/hooks/useSubscription";
+import { Textarea } from "@/components/ui/textarea";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
-import { useAuth } from "@/lib/auth";
-import { ResearchVisibilityButton } from "@/components/research/ResearchVisibilityButton";
+import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
+import { fetchFromApi } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import type { DurableJob, ResearchItem } from "@/lib/schema";
 
 const audioLengthOptions = [
-    { label: "Short (5-10 mins)", value: "short" },
-    { label: "Medium (10-20 mins)", value: "medium" },
+    { label: "Short (5–10 mins)", value: "short" },
+    { label: "Medium (10–20 mins)", value: "medium" },
     { label: "Long (20+ mins)", value: "long" },
-];
+] as const;
 
 interface CreateTileProps {
     icon: React.ReactNode;
     label: string;
-    sub: string;
-    isNew?: boolean;
-    disabled?: boolean;
+    description: string;
+    disabled: boolean;
     onClick: () => void;
 }
 
-function CreateTile({ icon, label, sub, isNew, disabled, onClick }: CreateTileProps) {
+function CreateTile({
+    icon,
+    label,
+    description,
+    disabled,
+    onClick,
+}: CreateTileProps) {
     return (
         <button
             type="button"
@@ -69,243 +59,228 @@ function CreateTile({ icon, label, sub, isNew, disabled, onClick }: CreateTilePr
             disabled={disabled}
             className="flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
-            <div className="flex items-center justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                    {icon}
-                </div>
-                {isNew && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-300">New</Badge>}
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                {icon}
             </div>
             <span className="text-sm font-semibold">{label}</span>
-            <span className="text-xs leading-snug text-muted-foreground">{sub}</span>
+            <span className="text-xs leading-snug text-muted-foreground">
+                {description}
+            </span>
         </button>
     );
 }
 
-// Right-pane artifacts view: creation up top, pending + completed below.
-// Shares the right slot with the reader panel; kept mounted (CSS-hidden) while
-// inactive so in-progress polling and audio playback survive mode switches.
+function ResearchItemCard({
+    item,
+    onChanged,
+    onDeleted,
+}: {
+    item: ResearchItem;
+    onChanged: (shared: boolean) => void;
+    onDeleted: () => void;
+}) {
+    const deleteItem = async () => {
+        try {
+            await fetchFromApi(`/api/research-items/${item.id}`, {
+                method: "DELETE",
+            });
+            onDeleted();
+        } catch (error) {
+            console.error("Failed to delete research item", error);
+            toast.error("Could not delete this research item.");
+        }
+    };
+
+    return (
+        <article className="space-y-3 rounded-lg border p-3">
+            <header className="flex items-center justify-between gap-2">
+                <div>
+                    <p className="text-sm font-medium">
+                        {item.audio_overview?.title
+                            || item.data_table?.title
+                            || (item.kind === "citation" ? "Citation" : "Research item")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        {item.kind.replaceAll("_", " ")}
+                        {item.created_by.display_name
+                            ? ` · ${item.created_by.display_name}`
+                            : ""}
+                    </p>
+                </div>
+                <div className="flex items-center">
+                    <ResearchVisibilityButton
+                        outputId={item.id}
+                        shared={item.is_shared}
+                        canManage={item.capabilities.share}
+                        onChanged={onChanged}
+                    />
+                    {item.capabilities.delete && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => void deleteItem()}
+                            aria-label="Delete research item"
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                    )}
+                </div>
+            </header>
+
+            {item.audio_overview && (
+                <>
+                    <audio
+                        controls
+                        preload="metadata"
+                        className="w-full"
+                        src={item.audio_overview.audio_url}
+                    />
+                    <details className="text-xs">
+                        <summary className="cursor-pointer text-muted-foreground">
+                            Transcript
+                        </summary>
+                        <p className="mt-2 whitespace-pre-wrap leading-relaxed">
+                            {item.audio_overview.transcript}
+                        </p>
+                    </details>
+                </>
+            )}
+
+            {item.data_table && (
+                <div className="overflow-x-auto text-xs">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr>
+                                {item.data_table.columns.map((column) => (
+                                    <th
+                                        key={column}
+                                        className="border-b px-2 py-1 text-left font-medium"
+                                    >
+                                        {column}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {item.data_table.rows.slice(0, 5).map((row, index) => (
+                                <tr key={index}>
+                                    {item.data_table?.columns.map((column) => (
+                                        <td key={column} className="border-b px-2 py-1 align-top">
+                                            {JSON.stringify(row[column] ?? "")}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {item.data_table.rows.length > 5 && (
+                        <p className="mt-2 text-muted-foreground">
+                            Showing 5 of {item.data_table.rows.length} rows.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {item.citation && (
+                <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">
+                    {JSON.stringify(item.citation.snapshot, null, 2)}
+                </pre>
+            )}
+        </article>
+    );
+}
+
 export function ArtifactsPanel() {
-    const { projectId, project, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
-    const { user } = useAuth();
-    const router = useRouter();
+    const { projectId, papers, rightPanel, closeArtifacts } = useProjectWorkspace();
     const { subscription, refetch: refetchSubscription } = useSubscription();
     const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
-
+    const [items, setItems] = useState<ResearchItem[]>([]);
+    const [jobs, setJobs] = useState<DurableJob[]>([]);
     const [audioInstructions, setAudioInstructions] = useState("");
-    const [selectedAudioLength, setSelectedAudioLength] = useState("medium");
-    const [isCreatingAudio, setIsCreatingAudio] = useState(false);
-    const [isCreateAudioDialogOpen, setCreateAudioDialogOpen] = useState(false);
-    const [audioOverviews, setAudioOverviews] = useState<AudioOverview[]>([]);
-    const [audioJobs, setAudioJobs] = useState<AudioOverviewJob[]>([]);
-    const pollingInterval = useRef<NodeJS.Timeout | null>(null);
-
-    const {
-        playingAudioId,
-        loadingAudioId,
-        activatedAudioIds,
-        audioProgress,
-        audioVolume,
-        audioSpeed,
-        handlePlayAudio,
-        handleSeek,
-        handleVolumeChange,
-        handleSpeedChange,
-        skipBackward,
-        skipForward,
-        formatTime,
-        getProgressPercentage,
-    } = useAudioPlayback(projectId);
-
-    const [isDataTableSchemaModalOpen, setDataTableSchemaModalOpen] = useState(false);
-    const [isCreatingDataTable, setIsCreatingDataTable] = useState(false);
-    const [dataTableJobs, setDataTableJobs] = useState<DataTableJob[]>([]);
-    const [projectArtifacts, setProjectArtifacts] = useState<ProjectArtifact[]>([]);
-    const canManageResearchOutput = useCallback(
-        (createdById: number | null) =>
-            project?.membership.kind === "owner" || createdById === user?.id,
-        [project?.membership.kind, user?.id],
+    const [audioLength, setAudioLength] = useState<"short" | "medium" | "long">(
+        "medium",
     );
+    const [audioDialogOpen, setAudioDialogOpen] = useState(false);
+    const [tableDialogOpen, setTableDialogOpen] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
-    const fetchProjectArtifacts = useCallback(async () => {
+    const refresh = useCallback(async () => {
         try {
-            const response = await fetchFromApi(`/api/projects/artifacts/${projectId}`);
-            setProjectArtifacts(response.artifacts ?? []);
-        } catch (err) {
-            console.error("Failed to fetch Project artifacts:", err);
-        }
-    }, [projectId]);
-
-    const getProjectAudioOverviews = useCallback(async () => {
-        try {
-            const fetchedAudioOverviews = await fetchFromApi(`/api/projects/audio/${projectId}`);
-            setAudioOverviews(fetchedAudioOverviews);
-        } catch (err) {
-            console.error("Failed to fetch audio overviews:", err);
-        }
-    }, [projectId]);
-
-    const getProjectAudioJobs = useCallback(async () => {
-        try {
-            const fetchedJobs = await fetchFromApi(`/api/projects/audio/jobs/${projectId}`);
-            setAudioJobs(fetchedJobs);
-            return fetchedJobs;
-        } catch (err) {
-            console.error("Failed to fetch audio jobs:", err);
-            return [];
-        }
-    }, [projectId]);
-
-    const fetchDataTableJobs = useCallback(async () => {
-        try {
-            const fetchedJobs = await fetchFromApi(`/api/projects/tables/jobs/${projectId}`);
-            setDataTableJobs(fetchedJobs.jobs);
-            return fetchedJobs.jobs;
-        } catch (err) {
-            console.error("Failed to fetch data table jobs:", err);
-            return [];
-        }
-    }, [projectId]);
-
-    const stopPolling = useCallback(() => {
-        if (pollingInterval.current) {
-            clearInterval(pollingInterval.current);
-            pollingInterval.current = null;
-        }
-    }, []);
-
-    const startPolling = useCallback(() => {
-        stopPolling();
-
-        const interval = setInterval(async () => {
-            const [audioJobs, dataTableJobs] = await Promise.all([
-                getProjectAudioJobs(),
-                fetchDataTableJobs()
+            const [researchResponse, jobResponse] = await Promise.all([
+                fetchFromApi(`/api/projects/${projectId}/research-items`),
+                fetchFromApi(`/api/jobs?project_id=${projectId}&active=true`),
             ]);
-            const hasPendingAudioJobs = audioJobs.some((job: AudioOverviewJob) => job.status === 'pending' || job.status === 'running');
-            const hasPendingDataTableJobs = dataTableJobs.some((job: DataTableJob) => job.status === 'pending' || job.status === 'running');
-
-            if (!hasPendingAudioJobs && !hasPendingDataTableJobs) {
-                // No more pending jobs, stop polling and refresh overviews
-                stopPolling();
-                getProjectAudioOverviews();
-            }
-        }, 20000); // Poll every 20 seconds
-
-        pollingInterval.current = interval;
-    }, [getProjectAudioJobs, fetchDataTableJobs, getProjectAudioOverviews, stopPolling]);
+            setItems(researchResponse.items ?? []);
+            setJobs(jobResponse.items ?? []);
+        } catch (error) {
+            console.error("Failed to load Project research items", error);
+        }
+    }, [projectId]);
 
     useEffect(() => {
-        if (projectId) {
-            getProjectAudioOverviews();
-            fetchProjectArtifacts();
-            Promise.all([
-                getProjectAudioJobs(),
-                fetchDataTableJobs()
-            ]).then(([audioJobs, dataTableJobs]) => {
-                const hasPendingAudioJobs = audioJobs.some((job: AudioOverviewJob) => job.status === 'pending' || job.status === 'running');
-                const hasPendingDataTableJobs = dataTableJobs.some((job: DataTableJob) => job.status === 'pending' || job.status === 'running');
-                if (hasPendingAudioJobs || hasPendingDataTableJobs) {
-                    startPolling();
-                }
-            });
-        }
+        void refresh();
+    }, [refresh]);
 
-        // Cleanup polling on unmount
-        return () => {
-            stopPolling();
-        };
-    }, [
-        projectId,
-        fetchProjectArtifacts,
-        getProjectAudioJobs,
-        fetchDataTableJobs,
-        startPolling,
-        stopPolling,
-        getProjectAudioOverviews,
-    ]);
+    useEffect(() => {
+        if (jobs.length === 0) return;
+        const timer = window.setInterval(() => void refresh(), 5_000);
+        return () => window.clearInterval(timer);
+    }, [jobs.length, refresh]);
 
-    const pollAudioData = useCallback(async () => {
-        const jobs = await getProjectAudioJobs();
-        await getProjectAudioOverviews();
-        const hasPendingJobs = jobs.some((job: AudioOverviewJob) => job.status === 'pending' || job.status === 'running');
-        return hasPendingJobs;
-    }, [getProjectAudioJobs, getProjectAudioOverviews]);
-
-    const handleCreateAudioOverview = async () => {
+    const createAudio = async () => {
         if (tokenCreditLimitReached) {
-            toast.error("You have used this week's Token Credits. Please upgrade to continue.");
-            setCreateAudioDialogOpen(false);
+            toast.error("Your weekly Token Credits are exhausted.");
             return;
         }
-        setCreateAudioDialogOpen(false);
-        setIsCreatingAudio(true);
+        setSubmitting(true);
         try {
-            toast.info("Your audio overview is being generated. This may take a few minutes.");
-            const requestData = {
-                additional_instructions: audioInstructions.trim() || null,
-                length: selectedAudioLength,
-            };
-
-            await fetchFromApi(`/api/projects/audio/${projectId}`, {
+            await fetchFromApi(`/api/projects/${projectId}/audio-overviews`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(requestData),
-            });
-
-            setAudioInstructions("");
-
-            refetchSubscription();
-
-            // Immediately poll for jobs and overviews, then start interval polling
-            const hasPendingJobs = await pollAudioData();
-            if (hasPendingJobs) {
-                startPolling();
-            }
-        } catch (err) {
-            console.error("Failed to create audio overview:", err);
-        } finally {
-            setIsCreatingAudio(false);
-        }
-    };
-
-    const handleCreateDataTable = async (columns: FieldDefinition[]) => {
-        setDataTableSchemaModalOpen(false);
-        setIsCreatingDataTable(true);
-
-        try {
-            toast.info("Creating data table...");
-
-            const response: DataTableJob = await fetchFromApi(`/api/projects/tables/`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    project_id: projectId,
-                    columns: columns.map(col => col.label),
+                    additional_instructions: audioInstructions.trim() || null,
+                    length: audioLength,
                 }),
             });
-
-            if (!response.id) {
-                throw new Error("No job ID returned from API");
-            }
-
-            await fetchDataTableJobs();
-            startPolling();
-            setIsCreatingDataTable(false);
-            toast.success("Data table generation started!");
-
-            refetchSubscription();
-        } catch (err) {
-            console.error("Failed to create data table:", err);
-            toast.error("Failed to create data table. Please try again.");
+            setAudioDialogOpen(false);
+            setAudioInstructions("");
+            await refresh();
+            await refetchSubscription();
+        } catch (error) {
+            console.error("Failed to create audio overview", error);
+            toast.error("Could not start the audio overview.");
+        } finally {
+            setSubmitting(false);
         }
     };
 
-    const artifactCount =
-        dataTableJobs.length + audioJobs.length + audioOverviews.length + projectArtifacts.length;
+    const createDataTable = async (columns: FieldDefinition[]) => {
+        setTableDialogOpen(false);
+        setSubmitting(true);
+        try {
+            await fetchFromApi(`/api/projects/${projectId}/data-tables`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    columns: columns.map((column) => column.label),
+                }),
+            });
+            await refresh();
+            await refetchSubscription();
+        } catch (error) {
+            console.error("Failed to create data table", error);
+            toast.error("Could not start the data table.");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const activeJobs = useMemo(
+        () => jobs.filter((job) => job.status === "pending" || job.status === "running"),
+        [jobs],
+    );
 
     return (
         <>
@@ -318,226 +293,149 @@ export function ArtifactsPanel() {
             >
                 <div className="flex h-11 shrink-0 items-center justify-between border-b px-4">
                     <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-blue-500" aria-hidden />
-                        <h2 className="text-sm font-semibold">Artifacts</h2>
+                        <Sparkles className="h-4 w-4 text-blue-500" />
+                        <h2 className="text-sm font-semibold">Research</h2>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeArtifacts} aria-label="Close artifacts">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={closeArtifacts}
+                        aria-label="Close research panel"
+                    >
                         <X className="h-4 w-4" />
                     </Button>
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
-                    {/* Create */}
-                    <div>
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Create new</div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <CreateTile
-                                icon={<Volume2 className="h-4 w-4" />}
-                                label="Audio Overview"
-                                sub="Podcast-style discussion of your papers"
-                                disabled={papers.length === 0}
-                                onClick={() => setCreateAudioDialogOpen(true)}
-                            />
-                            <CreateTile
-                                icon={<Table className="h-4 w-4" />}
-                                label="Data Table"
-                                sub="Compare findings across papers"
-                                isNew
-                                disabled={papers.length === 0}
-                                onClick={() => setDataTableSchemaModalOpen(true)}
-                            />
+                    <div className="grid grid-cols-2 gap-2">
+                        <CreateTile
+                            icon={<Volume2 className="h-4 w-4" />}
+                            label="Audio overview"
+                            description="A spoken synthesis of Project papers"
+                            disabled={papers.length === 0 || submitting}
+                            onClick={() => setAudioDialogOpen(true)}
+                        />
+                        <CreateTile
+                            icon={<Table className="h-4 w-4" />}
+                            label="Data table"
+                            description="Compare findings across Project papers"
+                            disabled={papers.length === 0 || submitting}
+                            onClick={() => setTableDialogOpen(true)}
+                        />
+                    </div>
+
+                    {activeJobs.map((job) => (
+                        <div
+                            key={job.id}
+                            className="flex items-center gap-2 rounded-lg border p-3 text-xs"
+                        >
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span className="capitalize">
+                                {job.operation.replaceAll("_", " ")}
+                            </span>
+                            <span className="ml-auto text-muted-foreground">
+                                {job.progress_message || job.status}
+                            </span>
                         </div>
-                        {papers.length === 0 && (
-                            <p className="mt-2 text-xs text-muted-foreground">Add papers to your project to create artifacts.</p>
+                    ))}
+
+                    <div className="space-y-3">
+                        {items.map((item) => (
+                            <ResearchItemCard
+                                key={item.id}
+                                item={item}
+                                onChanged={(shared) =>
+                                    setItems((current) =>
+                                        current.map((candidate) =>
+                                            candidate.id === item.id
+                                                ? { ...candidate, is_shared: shared }
+                                                : candidate,
+                                        ),
+                                    )
+                                }
+                                onDeleted={() =>
+                                    setItems((current) =>
+                                        current.filter(
+                                            (candidate) => candidate.id !== item.id,
+                                        ),
+                                    )
+                                }
+                            />
+                        ))}
+                        {items.length === 0 && activeJobs.length === 0 && (
+                            <p className="text-xs text-muted-foreground">
+                                No research outputs yet.
+                            </p>
                         )}
                     </div>
-
-                    {/* List */}
-                    <div className="flex min-h-0 flex-col">
-                        <div className="mb-2 flex items-center justify-between">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your artifacts</div>
-                            <span className="text-xs text-muted-foreground">{artifactCount}</span>
-                        </div>
-                        {/* Bottom padding lives on the content, not the scroll
-                            container — Chromium drops a scroller's own bottom
-                            padding from the scrollable overflow area. */}
-                        <div className="space-y-3 pb-6">
-                            {dataTableJobs.map((job) => (
-                                <div key={job.id} className="relative">
-                                    <ResearchVisibilityButton
-                                        kind="data_table"
-                                        outputId={job.id}
-                                        shared={job.is_shared}
-                                        canManage={canManageResearchOutput(job.created_by?.id ?? null)}
-                                        onChanged={(shared) =>
-                                            setDataTableJobs((jobs) =>
-                                                jobs.map((item) =>
-                                                    item.id === job.id
-                                                        ? { ...item, is_shared: shared }
-                                                        : item,
-                                                ),
-                                            )
-                                        }
-                                        className="absolute right-9 top-2 z-10"
-                                    />
-                                    <DataTableGenerationJobCard job={job} projectId={projectId} />
-                                </div>
-                            ))}
-                            {audioJobs.map((job) => (
-                                <AudioOverviewGenerationJobCard key={job.id} job={job} />
-                            ))}
-                            {audioOverviews.map((overview) => (
-                                <div key={overview.id} className="relative">
-                                    <ResearchVisibilityButton
-                                        kind="audio"
-                                        outputId={overview.id}
-                                        shared={overview.is_shared}
-                                        canManage={canManageResearchOutput(overview.created_by?.id ?? null)}
-                                        onChanged={(shared) =>
-                                            setAudioOverviews((items) =>
-                                                items.map((item) =>
-                                                    item.id === overview.id
-                                                        ? { ...item, is_shared: shared }
-                                                        : item,
-                                                ),
-                                            )
-                                        }
-                                        className="absolute right-2 top-2 z-10"
-                                    />
-                                    <AudioOverviewCard
-                                        overview={overview}
-                                        onOpenTranscript={() => router.push(`/projects/${projectId}/audio/${overview.id}`)}
-                                        isPlaying={playingAudioId === overview.id}
-                                        isLoading={loadingAudioId === overview.id}
-                                        isActivated={activatedAudioIds.includes(overview.id)}
-                                        progress={audioProgress[overview.id]}
-                                        volume={audioVolume[overview.id] || 1}
-                                        speed={audioSpeed[overview.id] || 1}
-                                        progressPercentage={getProgressPercentage(overview.id)}
-                                        onPlayPause={() => handlePlayAudio(overview.id)}
-                                        onSeek={(percentage) => handleSeek(overview.id, percentage)}
-                                        onVolumeChange={(volume) => handleVolumeChange(overview.id, volume)}
-                                        onSpeedChange={(speed) => handleSpeedChange(overview.id, speed)}
-                                        onSkipBackward={() => skipBackward(overview.id)}
-                                        onSkipForward={() => skipForward(overview.id)}
-                                        formatTime={formatTime}
-                                    />
-                                </div>
-                            ))}
-                            {projectArtifacts.map((artifact) => (
-                                <div key={artifact.id} className="rounded-lg border p-3">
-                                    <div className="mb-2 flex items-center justify-between">
-                                        <ResearchVisibilityButton
-                                            kind="artifact"
-                                            outputId={artifact.id}
-                                            shared={artifact.is_shared}
-                                            canManage={canManageResearchOutput(artifact.created_by?.id ?? null)}
-                                            onChanged={(shared) =>
-                                                setProjectArtifacts((items) =>
-                                                    items.map((item) =>
-                                                        item.id === artifact.id
-                                                            ? { ...item, is_shared: shared }
-                                                            : item,
-                                                    ),
-                                                )
-                                            }
-                                        />
-                                        {artifact.created_at && (
-                                            <span className="shrink-0 text-xs text-muted-foreground">
-                                                {new Date(artifact.created_at).toLocaleDateString()}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <CitationArtifactCard artifacts={[artifact.payload]} />
-                                </div>
-                            ))}
-                            {artifactCount === 0 && (
-                                <p className="text-xs text-muted-foreground">
-                                    Nothing here yet. Artifacts you generate appear in this list.
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="shrink-0 border-t px-4 py-2.5 text-xs text-muted-foreground">
-                    Generation runs in the background — keep working while artifacts build.
                 </div>
             </aside>
 
-            {/* Audio overview creation dialog */}
-            <Dialog open={isCreateAudioDialogOpen} onOpenChange={setCreateAudioDialogOpen}>
+            <Dialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Create an Audio Overview</DialogTitle>
+                        <DialogTitle>Create audio overview</DialogTitle>
                         <DialogDescription>
-                            Generate an audio overview of your project papers. Add custom instructions to guide the content.
+                            Scholens will synthesize the current Project papers.
                         </DialogDescription>
                     </DialogHeader>
-                    {tokenCreditLimitReached ? (
-                        <div className="mt-4 text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/30 rounded-md">
-                            <p className="text-sm text-yellow-800 dark:text-yellow-200">You&apos;ve used this week&apos;s Token Credits.</p>
-                            <Link href="/pricing" passHref>
-                                <Button variant="link" className="p-0 h-auto text-sm">Upgrade your plan to create more.</Button>
-                            </Link>
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="audio-length">Length</Label>
+                            <Select
+                                value={audioLength}
+                                onValueChange={(value) =>
+                                    setAudioLength(value as typeof audioLength)
+                                }
+                            >
+                                <SelectTrigger id="audio-length">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {audioLengthOptions.map((option) => (
+                                        <SelectItem
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                    ) : (
-                        <div className="space-y-4 mt-4">
-                            <div>
-                                <Label htmlFor="audio-length" className="text-sm font-medium">
-                                    Audio Length
-                                </Label>
-                                <Select value={selectedAudioLength} onValueChange={setSelectedAudioLength}>
-                                    <SelectTrigger className="mt-2">
-                                        <SelectValue placeholder="Select audio length" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {audioLengthOptions.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                                {option.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <Label htmlFor="audio-instructions" className="text-sm font-medium">
-                                    Custom Instructions (Optional)
-                                </Label>
-                                <Textarea
-                                    id="audio-instructions"
-                                    placeholder="Add any specific topics, focus areas, or instructions for the audio overview..."
-                                    value={audioInstructions}
-                                    onChange={(e) => setAudioInstructions(e.target.value)}
-                                    className="mt-2 min-h-[100px] resize-none"
-                                />
-                            </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="audio-instructions">
+                                Additional instructions
+                            </Label>
+                            <Textarea
+                                id="audio-instructions"
+                                maxLength={10_000}
+                                value={audioInstructions}
+                                onChange={(event) =>
+                                    setAudioInstructions(event.target.value)
+                                }
+                            />
                         </div>
-                    )}
-                    {!tokenCreditLimitReached && (
-                        <div className="flex justify-end gap-2 mt-6">
-                            <DialogClose asChild>
-                                <Button variant="secondary">
-                                    Cancel
-                                </Button>
-                            </DialogClose>
-                            <Button onClick={handleCreateAudioOverview} disabled={isCreatingAudio || tokenCreditLimitReached}>
-                                {isCreatingAudio ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Volume2 className="mr-2 h-4 w-4" />}
-                                Create
-                            </Button>
-                        </div>
-                    )}
+                        <Button
+                            className="w-full"
+                            disabled={submitting}
+                            onClick={() => void createAudio()}
+                        >
+                            {submitting && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Create
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
 
-            {/* Data Table Schema Modal */}
             <DataTableSchemaModal
-                open={isDataTableSchemaModalOpen}
-                onOpenChange={setDataTableSchemaModalOpen}
-                onSubmit={handleCreateDataTable}
-                projectId={projectId}
-                isCreating={isCreatingDataTable}
-                atLimit={tokenCreditLimitReached}
+                open={tableDialogOpen}
+                onOpenChange={setTableDialogOpen}
+                onSubmit={(columns) => void createDataTable(columns)}
+                isCreating={submitting}
             />
         </>
     );

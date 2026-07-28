@@ -326,9 +326,7 @@ def _enqueue_parser_upgrade(
                 "webhook_url": (
                     f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/pdf-upgrade"
                 ),
-                "claim_url": (
-                    f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/claim"
-                ),
+                "claim_url": (f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/claim"),
             },
             job_id=upgrade_job_id,
         ),
@@ -357,8 +355,7 @@ def _enqueue_pdf_postprocess(
             queue="pdf_processing",
             task_kwargs={
                 "callback_url": (
-                    f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/"
-                    "pdf-postprocess"
+                    f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/pdf-postprocess"
                 ),
                 "claim_url": (
                     f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/claim"
@@ -493,9 +490,7 @@ def handle_failed_upload(
         document_id = durable_job.document_id
         assert document_id is not None
         document = db.scalar(
-            select(Document)
-            .where(Document.id == document_id)
-            .with_for_update()
+            select(Document).where(Document.id == document_id).with_for_update()
         )
         if document is not None and document.processing_job_id == job.id:
             document.processing_status = DocumentProcessingStatus.FAILED.value
@@ -718,7 +713,9 @@ async def handle_paper_processing_webhook(
     """Handle webhook from paper processing jobs service."""
 
     # Get the job from your database (without user filtering since this is a webhook)
-    job = upload_reservation_repository.get_by(db=db, task_id=webhook_data.task_id, id=job_id)
+    job = upload_reservation_repository.get_by(
+        db=db, task_id=webhook_data.task_id, id=job_id
+    )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -982,7 +979,9 @@ async def handle_paper_processing_webhook(
             )
 
             # Mark job as completed
-            upload_reservation_repository.mark_as_completed(db=db, job_id=job_id, user=job_user)
+            upload_reservation_repository.mark_as_completed(
+                db=db, job_id=job_id, user=job_user
+            )
             _complete_pdf_job(
                 db,
                 job_id=uuid.UUID(job_id),
@@ -1059,7 +1058,9 @@ async def handle_paper_processing_webhook(
                 f"Failed to cleanup paper for job {job_id}: {str(cleanup_error)}"
             )
             # Still mark job as failed even if cleanup fails
-            upload_reservation_repository.mark_as_failed(db=db, job_id=job_id, user=job_user)
+            upload_reservation_repository.mark_as_failed(
+                db=db, job_id=job_id, user=job_user
+            )
 
         raise HTTPException(status_code=500, detail="Error processing webhook")
     finally:

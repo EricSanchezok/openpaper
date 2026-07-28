@@ -402,12 +402,14 @@ class ProjectRepository:
 
         now = datetime.now(timezone.utc)
         pending = db.scalar(
-            select(ProjectInvitation).where(
+            select(ProjectInvitation)
+            .where(
                 ProjectInvitation.project_id == project_id,
                 ProjectInvitation.email == normalized_email,
                 ProjectInvitation.accepted_at.is_(None),
                 ProjectInvitation.revoked_at.is_(None),
-            ).with_for_update()
+            )
+            .with_for_update()
         )
         if pending is not None:
             _require_grant_subset(actor, _invitation_permissions(pending))

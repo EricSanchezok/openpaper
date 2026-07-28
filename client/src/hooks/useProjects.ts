@@ -170,15 +170,16 @@ export function useProjectConversations(projectId?: string): UseProjectConversat
         setIsLoading(true);
         setError(null);
         try {
-            const query = new URLSearchParams({
-                conversable_type: "project",
-                conversable_id: projectId,
-                limit: "100",
-            });
             const response = await fetchFromApi(
-                `/api/conversations?${query.toString()}`,
+                "/api/conversations?limit=100",
             ) as ConversationListResponse;
-            setConversations(response.items);
+            setConversations(
+                response.items.filter(
+                    (conversation) =>
+                        conversation.scope_type === "project"
+                        && conversation.scope_id === projectId,
+                ),
+            );
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch conversations for project ${projectId}`));
             console.error(`Error fetching conversations for project ${projectId}:`, err);
