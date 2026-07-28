@@ -5,7 +5,7 @@ from pathlib import Path
 
 import resend
 from app.database.models import Onboarding
-from app.schemas.orm_responses import serialize_onboarding
+from app.schemas.onboarding import serialize_onboarding
 
 logger = logging.getLogger(__name__)
 

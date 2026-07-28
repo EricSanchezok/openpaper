@@ -129,9 +129,11 @@ def get_job(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> JobResponse:
-    job = job_repository.require(db, job_id=job_id)
-    if job.requested_by_id != current_user.id:
-        raise AppError(code="job_not_found", message="Job not found", status_code=404)
+    job = job_repository.require_for_requester(
+        db,
+        job_id=job_id,
+        requested_by_id=current_user.id,
+    )
     return _job_response(job)
 
 

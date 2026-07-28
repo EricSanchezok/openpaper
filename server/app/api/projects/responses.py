@@ -23,7 +23,7 @@ from app.schemas.projects import (
     ProjectPermissionSet,
     ProjectResponse,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 
@@ -54,11 +54,19 @@ def _project_counts(
             ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
             ResearchItem.project_id == project_id,
             ResearchItem.kind == ResearchItemKind.AUDIO_OVERVIEW.value,
+            or_(
+                ResearchItem.is_shared.is_(True),
+                ResearchItem.created_by_id == current_user_id,
+            ),
         ),
         select(func.count(ResearchItem.id)).where(
             ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
             ResearchItem.project_id == project_id,
             ResearchItem.kind == ResearchItemKind.DATA_TABLE.value,
+            or_(
+                ResearchItem.is_shared.is_(True),
+                ResearchItem.created_by_id == current_user_id,
+            ),
         ),
         select(func.count(ProjectCollaborator.id)).where(
             ProjectCollaborator.project_id == project_id

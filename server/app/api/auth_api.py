@@ -13,13 +13,14 @@ from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.schemas.user import BlockUserRequest, CurrentUser
 from app.schemas.zotero import (
     ZoteroConnectResponse,
     ZoteroDisconnectResponse,
     ZoteroStatusResponse,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -46,8 +47,10 @@ async def block_user(
 ) -> dict[str, object]:
     target_user = user_repository.get(db, id=request.user_id)
     if target_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            code="user_not_found",
+            message="User not found",
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
     user_repository.set_blocked(db, user_id=request.user_id, blocked=request.blocked)
@@ -65,9 +68,10 @@ async def zotero_connect(
 ) -> ZoteroConnectResponse:
     request_token = zotero_auth_client.get_request_token()
     if request_token is None:
-        raise HTTPException(
+        raise AppError(
+            code="zotero_connection_failed",
+            message="Zotero authorization is temporarily unavailable",
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to get request token",
         )
 
     zotero_crud.delete_pending_for_user(db=db, user_id=current_user.id)

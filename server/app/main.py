@@ -11,9 +11,9 @@ from app.api.conversation_api import conversation_router
 from app.api.documents import document_router, library_router, public_document_router
 from app.api.message_api import message_router
 from app.api.onboarding_api import onboarding_router
+from app.api.library_tags_api import library_tags_router
+from app.api.document_upload_api import document_upload_router
 from app.api.paper_search_api import paper_search_router
-from app.api.paper_tag_api import paper_tag_router
-from app.api.paper_upload_api import paper_upload_router
 from app.api.research_api import (
     document_research_router,
     project_research_router,
@@ -108,6 +108,7 @@ app.include_router(cloud_user_router, prefix="/api/user", tags=["user"])
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(conversation_router, prefix="/api/conversations")
 app.include_router(library_router, prefix="/api/library")
+app.include_router(library_tags_router, prefix="/api/library")
 app.include_router(document_router, prefix="/api/documents")
 app.include_router(public_document_router, prefix="/api/public")
 app.include_router(message_router, prefix="/api/message")
@@ -116,14 +117,13 @@ app.include_router(project_papers_router, prefix="/api/projects")
 app.include_router(projects_invitation_router, prefix="/api")
 app.include_router(paper_search_router, prefix="/api/search/global")
 app.include_router(search_router, prefix="/api/search/local")
-app.include_router(paper_upload_router, prefix="/api/paper/upload")
+app.include_router(document_upload_router, prefix="/api/documents/uploads")
 app.include_router(document_research_router, prefix="/api/documents")
 app.include_router(project_research_router, prefix="/api/projects")
 app.include_router(research_router, prefix="/api")
 app.include_router(document_generation_router, prefix="/api/documents")
 app.include_router(project_generation_router, prefix="/api/projects")
 app.include_router(jobs_router, prefix="/api/jobs")
-app.include_router(paper_tag_router, prefix="/api/paper/tag")
 app.include_router(
     subscription_router, prefix="/api/subscription"
 )  # Subscription routes

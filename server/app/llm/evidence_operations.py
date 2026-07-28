@@ -12,7 +12,7 @@ from typing import (
     cast,
 )
 
-from app.database.crud.message_crud import message_crud
+from app.repositories.messages import message_repository
 from app.repositories.documents import document_repository
 from app.repositories.project_documents import project_document_repository
 from app.database.database import get_db
@@ -123,10 +123,10 @@ class EvidenceOperations(BaseLLMClient):
         and citations from the user's knowledge base.
         """
         conversation_history = (
-            message_crud.get_conversation_messages(
+            message_repository.get_conversation_messages(
                 db,
                 conversation_id=uuid.UUID(conversation_id),
-                current_user=current_user,
+                user_id=current_user.id,
             )
             if conversation_id
             else []

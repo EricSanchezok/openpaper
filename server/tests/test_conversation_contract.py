@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from app.api.conversation_api import get_conversation, get_conversation_messages
 from app.api.message_api import chat_message_multipaper
-from app.database.crud.message_crud import message_crud
+from app.repositories.messages import message_repository
 from app.database.models import Conversation, Message
 from app.errors import AppError
 from app.main import app
@@ -14,10 +14,10 @@ from app.schemas.conversations import (
     ConversationCreateRequest,
     ConversationMoveRequest,
     ConversationUpdateRequest,
+    serialize_messages,
 )
 from app.schemas.message import MultiPaperChatRequest
-from app.database.crud.message_crud import MessageCreate
-from app.schemas.orm_responses import serialize_messages
+from app.repositories.messages import MessageCreate
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
@@ -52,7 +52,7 @@ def test_assistant_trace_serializes_as_an_object() -> None:
 
     serialized = serialize_messages([message])
 
-    assert serialized[0]["trace"] == {
+    assert serialized[0].trace == {
         "citations": [],
         "tool_calls": [{"name": "search", "status": "completed"}],
         "status_messages": ["Searching the library"],
@@ -101,14 +101,14 @@ def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
     conversation.updated_at = original_updated_at
     db.scalar.side_effect = [conversation, 3]
 
-    message = message_crud.create(
+    message = message_repository.create(
         db,
-        obj_in=MessageCreate(
+        request=MessageCreate(
             conversation_id=conversation.id,
             role="user",
             content="Question",
         ),
-        user=_current_user(),
+        user_id=_current_user().id,
         auto_commit=False,
     )
 
@@ -124,14 +124,14 @@ def test_message_creation_rejects_a_conversation_owned_by_someone_else() -> None
     db.scalar.return_value = None
 
     with pytest.raises(AppError) as exc_info:
-        message_crud.create(
+        message_repository.create(
             db,
-            obj_in=MessageCreate(
+            request=MessageCreate(
                 conversation_id=uuid.uuid4(),
                 role="user",
                 content="Question",
             ),
-            user=_current_user(),
+            user_id=_current_user().id,
         )
 
     assert exc_info.value.code == "conversation_not_found"
@@ -320,7 +320,7 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
         lambda *_args, **_kwargs: conversation,
     )
     monkeypatch.setattr(
-        message_crud,
+        message_repository,
         "get_conversation_messages",
         lambda *_args, **_kwargs: [MagicMock()],
     )

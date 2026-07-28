@@ -114,7 +114,7 @@ export function AddPapersSheet() {
             formData.append("file", file);
 
             try {
-                const response = await fetchFromApi(`/api/paper/upload?project_id=${projectId}`, {
+                const response = await fetchFromApi(`/api/documents/uploads?project_id=${projectId}`, {
                     method: "POST",
                     body: formData,
                 });

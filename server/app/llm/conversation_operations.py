@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from app.database.crud.message_crud import message_crud
+from app.repositories.messages import message_repository
 from app.database.database import get_db
 from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
@@ -37,8 +37,8 @@ class ConversationOperations(BaseLLMClient):
             db, conversation_id=casted_uuid, user_id=user.id
         )
 
-        chat_history = message_crud.get_conversation_messages(
-            db, conversation_id=casted_uuid, current_user=user
+        chat_history = message_repository.get_conversation_messages(
+            db, conversation_id=casted_uuid, user_id=user.id
         )
 
         if not chat_history:

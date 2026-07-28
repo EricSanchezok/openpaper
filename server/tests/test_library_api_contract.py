@@ -10,9 +10,13 @@ from app.api.documents.router import (
     list_library_papers,
 )
 from app.database.models import Document, LibraryPaper, PaperStatus
+from app.main import app
 from app.helpers.s3 import s3_service
 from app.repositories.documents import document_repository
 from app.schemas.user import CurrentUser
+from app.schemas.tags import LibraryTagAssignmentRequest
+from pydantic import ValidationError
+import pytest
 from sqlalchemy.orm import Session
 
 
@@ -125,3 +129,41 @@ def test_revoking_share_removes_the_only_public_credential() -> None:
 
     assert entry.is_public is False
     assert entry.share_token_hash is None
+
+
+def test_library_tag_api_uses_library_document_boundaries() -> None:
+    paths = app.openapi()["paths"]
+
+    assert "/api/documents/uploads" in paths
+    assert "/api/documents/uploads/from-url" in paths
+    assert "/api/library/tags" in paths
+    assert "/api/library/tags/assignments" in paths
+    assert "/api/library/papers/by-document/{document_id}/tags/{tag_id}" in paths
+    assert not any(path.startswith("/api/paper/tag") for path in paths)
+    assert not any(path.startswith("/api/paper/upload") for path in paths)
+
+
+def test_library_tag_assignment_is_strict_and_bounded() -> None:
+    document_id = uuid4()
+    tag_id = uuid4()
+    request = LibraryTagAssignmentRequest(
+        document_ids=[document_id],
+        tag_ids=[tag_id],
+    )
+    assert request.document_ids == [document_id]
+
+    with pytest.raises(ValidationError):
+        LibraryTagAssignmentRequest.model_validate(
+            {
+                "document_ids": [str(document_id), str(document_id)],
+                "tag_ids": [str(tag_id)],
+            }
+        )
+    with pytest.raises(ValidationError):
+        LibraryTagAssignmentRequest.model_validate(
+            {
+                "document_ids": [str(document_id)],
+                "tag_ids": [str(tag_id)],
+                "legacy": True,
+            }
+        )

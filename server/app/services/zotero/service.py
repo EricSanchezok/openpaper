@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
-from app.database.crud.paper_tag_crud import PaperTagCreate, paper_tag_crud
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -35,6 +34,7 @@ from app.services.resource_quotas import (
 from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
 from app.repositories.documents import document_repository
+from app.repositories.library_tags import library_tag_repository
 from app.repositories.research import HighlightThreadCreate, research_repository
 from app.schemas.documents import DocumentUpdate
 from app.schemas.user import CurrentUser
@@ -635,24 +635,17 @@ def _apply_zotero_tags(
         tag_name = (tag_entry.get("tag") or "").strip()
         if not tag_name:
             continue
-        try:
-            tag = paper_tag_crud.get_by_name(db, name=tag_name, user=user)
-            if not tag:
-                tag = paper_tag_crud.create(
-                    db, obj_in=PaperTagCreate(name=tag_name), user=user
-                )
-            if tag is None:
-                raise RuntimeError("Failed to create Zotero paper tag")
-            paper_tag_crud.add_tag_to_paper(
-                db, paper_id=paper_id, tag_id=UUID(str(tag.id)), user=user
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to apply Zotero tag '%s' to paper %s: %s",
-                tag_name,
-                paper_id,
-                e,
-            )
+        tag = library_tag_repository.get_or_create(
+            db,
+            user_id=user.id,
+            name=tag_name,
+        )
+        library_tag_repository.assign_to_document(
+            db,
+            user_id=user.id,
+            document_id=paper_id,
+            tag_id=tag.id,
+        )
 
 
 def _compute_max_new_imports(

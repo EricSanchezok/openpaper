@@ -89,6 +89,9 @@ class UploadReservation(Base):
 
 class PaperTag(Base):
     __tablename__ = "paper_tags"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_paper_tags_user_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

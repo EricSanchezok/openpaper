@@ -15,7 +15,7 @@ from app.repositories.documents import document_repository
 from app.errors import AppError
 from app.schemas.documents import DocumentUpdate
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 # API routes for effectively searching and retrieving papers from external sources
@@ -117,8 +117,8 @@ async def get_paper_graph(
 @paper_search_router.get("/author", response_model=OpenAlexResponse)
 async def get_author_works(
     request: Request,
-    author_id: str,
-    page: int = 1,
+    author_id: str = Query(min_length=2, max_length=100),
+    page: int = Query(default=1, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> OpenAlexResponse:

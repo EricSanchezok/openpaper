@@ -8,7 +8,7 @@ from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,10 @@ def create_customer_portal_session(
         subscription = subscription_crud.get_by_user_id(db, current_user.id)
 
         if not subscription or not subscription.stripe_customer_id:
-            raise HTTPException(
+            raise AppError(
+                code="stripe_customer_not_found",
+                message="No billing account is available for this user",
                 status_code=400,
-                detail="No active subscription found or customer ID not available",
             )
 
         portal_session = stripe.billing_portal.Session.create(

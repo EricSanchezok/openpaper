@@ -14,7 +14,7 @@ from app.database.models import SubscriptionStatus
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,6 @@ def create_checkout_session(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> dict[str, str | None]:
-    if interval not in SubscriptionInterval:
-        raise HTTPException(status_code=400, detail="Invalid subscription interval")
-
     try:
         # Get or initialize customer ID
         subscription = subscription_crud.get_by_user_id(db, current_user.id)
@@ -43,9 +40,10 @@ def create_checkout_session(
             SubscriptionStatus.PAST_DUE,
             SubscriptionStatus.TRIALING,
         ]:
-            raise HTTPException(
+            raise AppError(
+                code="subscription_already_active",
+                message="Use the customer portal to manage the active subscription",
                 status_code=400,
-                detail="You already have an active subscription. Please use the customer portal to manage your subscription or update your payment method.",
             )
 
         # Cancel any incomplete Stripe subscription before creating a new checkout session
@@ -92,7 +90,11 @@ def create_checkout_session(
                 )
 
         if not price_id:
-            raise HTTPException(status_code=500, detail="Price ID not configured")
+            raise AppError(
+                code="stripe_price_not_configured",
+                message="Subscription billing is not configured",
+                status_code=503,
+            )
 
         # Create session parameters
         session_params: stripe.checkout.Session.CreateParams = {

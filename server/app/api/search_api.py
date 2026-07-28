@@ -6,10 +6,15 @@ from app.database.models import (
     ResearchItem,
     ResearchItemKind,
 )
-from app.database.queries.search import SearchResults, search_knowledge_base
+from app.database.queries.search import (
+    SearchResults,
+    SearchStats,
+    search_knowledge_base,
+)
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,15 +24,16 @@ search_router = APIRouter()
 
 @search_router.get("/")
 async def search_knowledge_base_endpoint(
-    q: str = Query(..., description="Search query string"),
+    q: str = Query(
+        ...,
+        min_length=2,
+        max_length=1_000,
+        description="Search query string",
+    ),
     limit: int = Query(
         50, ge=1, le=100, description="Maximum number of papers to return"
     ),
     offset: int = Query(0, ge=0, description="Number of papers to skip for pagination"),
-    papers_filter: str = Query(
-        None,
-        description="Comma-separated list of paper IDs to filter results by specific papers",
-    ),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> SearchResults:
@@ -43,24 +49,26 @@ async def search_knowledge_base_endpoint(
     Results are organized by paper, with matching highlights and annotations
     sub-referenced under each paper's metadata.
     """
-    if not q or len(q.strip()) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Search query must be at least 2 characters long",
+    query = q.strip()
+    if len(query) < 2:
+        raise AppError(
+            code="search_query_invalid",
+            message="Search query must contain at least 2 characters",
+            status_code=422,
         )
+
     results = search_knowledge_base(
         db=db,
         user=current_user,
-        query=q.strip(),
+        query=query,
         limit=limit,
         offset=offset,
-        papers_filter=papers_filter.split(",") if papers_filter else None,
     )
     track_event(
         "knowledge_base_search",
         user_id=str(current_user.id),
         properties={
-            "query": q.strip(),
+            "query": query,
             "total_papers": results.total_papers,
             "total_highlights": results.total_highlights,
             "total_annotations": results.total_annotations,
@@ -72,11 +80,11 @@ async def search_knowledge_base_endpoint(
     return results
 
 
-@search_router.get("/stats")
+@search_router.get("/stats", response_model=SearchStats)
 async def get_search_stats(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> dict[str, int]:
+) -> SearchStats:
     """
     Get statistics about the user's knowledge base for search context.
 
@@ -107,9 +115,9 @@ async def get_search_stats(
         )
         or 0
     )
-    return {
-        "total_papers": total_papers,
-        "total_highlights": total_highlights,
-        "total_annotations": total_annotations,
-        "searchable_items": total_papers + total_highlights + total_annotations,
-    }
+    return SearchStats(
+        total_papers=total_papers,
+        total_highlights=total_highlights,
+        total_annotations=total_annotations,
+        searchable_items=total_papers + total_highlights + total_annotations,
+    )

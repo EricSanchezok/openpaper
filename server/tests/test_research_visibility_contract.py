@@ -17,6 +17,7 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.main import app
+from app.api.projects.responses import _project_counts
 from app.policies.research import research_item_policy
 from app.policies.research import research_item_visible_to
 from app.repositories.research import research_repository
@@ -222,6 +223,23 @@ def test_public_paper_share_has_no_research_route() -> None:
     paths = app.openapi()["paths"]
     public_paths = [path for path in paths if "/public/" in path or "/share/" in path]
     assert all("research" not in path for path in public_paths)
+
+
+def test_project_summary_counts_only_research_visible_to_the_requester() -> None:
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = 0
+
+    _project_counts(
+        db,
+        project_id=uuid.uuid4(),
+        current_user_id=73,
+    )
+
+    audio_statement = str(db.scalar.call_args_list[2].args[0])
+    table_statement = str(db.scalar.call_args_list[3].args[0])
+    for statement in (audio_statement, table_statement):
+        assert "research_items.is_shared IS true" in statement
+        assert "research_items.created_by_id" in statement
 
 
 def test_clean_baseline_contains_typed_research_constraints() -> None:

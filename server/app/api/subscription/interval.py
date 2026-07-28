@@ -14,7 +14,7 @@ from app.database.telemetry import track_event
 from app.helpers.email import notify_converted_billing_interval
 from app.errors import AppError
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -45,14 +45,17 @@ def change_subscription_interval(
     stripe_sub = stripe.Subscription.retrieve(subscription_id)
 
     if stripe_sub.status not in ["active", "trialing"]:
-        raise HTTPException(
+        raise AppError(
+            code="subscription_interval_unavailable",
+            message="The billing interval cannot be changed for this subscription",
             status_code=400,
-            detail=f"Cannot change interval for subscription with status: {stripe_sub.status}",
         )
 
     if MONTHLY_PRICE_ID is None or YEARLY_PRICE_ID is None:
-        raise HTTPException(
-            status_code=500, detail="Stripe price IDs not properly configured"
+        raise AppError(
+            code="stripe_price_not_configured",
+            message="Subscription billing is not configured",
+            status_code=503,
         )
 
     new_price_id: str = (

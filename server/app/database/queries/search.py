@@ -62,6 +62,13 @@ class SearchResults(BaseModel):
     total_annotations: int
 
 
+class SearchStats(BaseModel):
+    total_papers: int
+    total_highlights: int
+    total_annotations: int
+    searchable_items: int
+
+
 def _visible_research(user_id: int) -> ColumnElement[bool]:
     return or_(
         ResearchItem.is_shared.is_(True),
@@ -75,7 +82,6 @@ def search_knowledge_base(
     query: str,
     limit: int = 50,
     offset: int = 0,
-    papers_filter: list[str] | None = None,
 ) -> SearchResults:
     search_pattern = f"%{query.lower()}%"
     matching_highlight_documents = (
@@ -117,9 +123,6 @@ def search_knowledge_base(
         )
         .order_by(LibraryPaper.last_accessed_at.desc())
     )
-    if papers_filter:
-        paper_statement = paper_statement.where(Document.id.in_(papers_filter))
-
     total_papers = int(
         db.scalar(
             select(func.count()).select_from(paper_statement.order_by(None).subquery())

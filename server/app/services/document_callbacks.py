@@ -4,8 +4,8 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from app.database.crud.message_crud import MessageCreate, message_crud
-from app.database.crud.sanitization import sanitize_for_postgres
+from app.repositories.messages import MessageCreate, message_repository
+from app.helpers.postgres import sanitize_for_postgres
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
@@ -725,15 +725,15 @@ async def handle_paper_processing_webhook(
                             )
                         )
 
-                        message_crud.create(
+                        message_repository.create(
                             db,
-                            obj_in=MessageCreate(
+                            request=MessageCreate(
                                 conversation_id=uuid.UUID(str(conversation.id)),
                                 role="assistant",
                                 content=metadata.summary,
                                 references=_JSON_OBJECT.validate_python(citations_dict),
                             ),
-                            user=job_user,
+                            user_id=job_user.id,
                             auto_commit=False,
                         )
 

@@ -102,7 +102,7 @@ class DocumentResponse(BaseModel):
 class LibraryPaperTagResponse(BaseModel):
     id: UUID
     name: str
-    color: str
+    color: str | None
 
 
 class LibraryPaperResponse(BaseModel):

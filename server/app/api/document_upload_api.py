@@ -23,10 +23,8 @@ from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 from app.auth.dependencies import get_required_user
-from app.repositories.documents import document_repository
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.database import get_db
-from app.database.models import JobStatus
 from app.errors import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -42,7 +40,6 @@ from app.schemas.user import CurrentUser
 from app.schemas.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
-    UploadStatusResponse,
 )
 from app.services.document_submission import dispatch_reserved_document
 from app.services.upload_reservations import reserve_upload
@@ -51,7 +48,6 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
-    HTTPException,
     Request,
     UploadFile,
 )
@@ -62,62 +58,11 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Create API router with prefix
-paper_upload_router = APIRouter()
+document_upload_router = APIRouter()
 
 
-@paper_upload_router.get("/status/{job_id}", response_model=UploadStatusResponse)
-async def get_upload_status(
-    job_id: str,
-    current_user: CurrentUser = Depends(get_required_user),
-    db: Session = Depends(get_db),
-) -> UploadStatusResponse:
-    """
-    Get the durable status of a paper ingestion from PostgreSQL.
-    """
-    paper_upload_job = upload_reservation_repository.get(
-        db=db, id=job_id, user=current_user
-    )
-
-    if not paper_upload_job:
-        raise AppError(
-            code="upload_job_not_found",
-            message="Upload job not found",
-            status_code=404,
-        )
-
-    paper = document_repository.find_by_upload_job(
-        db=db, upload_job_id=str(paper_upload_job.id), user=current_user
-    )
-
-    durable_job = paper_upload_job.job
-    if durable_job.status == JobStatus.COMPLETED:
-        # Verify the paper exists
-        if not paper:
-            raise AppError(
-                code="document_not_found",
-                message="Processed document not found",
-                status_code=404,
-            )
-
-    # Build response with both job status and task status
-    return UploadStatusResponse(
-        job_id=paper_upload_job.id,
-        status=JobStatus(durable_job.status),
-        task_id=durable_job.id if durable_job.dispatch is not None else None,
-        started_at=durable_job.started_at,
-        completed_at=durable_job.completed_at,
-        has_file=bool(paper.s3_object_key) if paper else False,
-        has_metadata=bool(paper.abstract) if paper else False,
-        paper_id=paper.id if paper else None,
-        parser_quality=paper.parser_quality if paper else None,
-        parser_warning_code=paper.parser_warning_code if paper else None,
-        progress_message=durable_job.progress_message,
-        error_code=durable_job.error_code,
-    )
-
-
-@paper_upload_router.post(
-    "/from-url/",
+@document_upload_router.post(
+    "/from-url",
     response_model=UploadAcceptedResponse,
     status_code=202,
 )
@@ -138,7 +83,11 @@ async def upload_pdf_from_url(
             feature="upload",
         )
     except AILimitExceeded as exc:
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
+        raise AppError(
+            code=exc.code,
+            message="Upload rate limit exceeded",
+            status_code=429,
+        ) from None
 
     # Validate the URL and fetch PDF content
     url = str(request.url)
@@ -175,7 +124,11 @@ async def upload_pdf_from_url(
             user=current_user,
             error_code=exc.code,
         )
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
+        raise AppError(
+            code=exc.code,
+            message="Too many background jobs are already running",
+            status_code=429,
+        ) from None
 
     await dispatch_reserved_document(
         pdf_bytes=pdf_bytes,
@@ -186,8 +139,8 @@ async def upload_pdf_from_url(
     return UploadAcceptedResponse(job_id=paper_upload_job.id)
 
 
-@paper_upload_router.post(
-    "/",
+@document_upload_router.post(
+    "",
     response_model=UploadAcceptedResponse,
     status_code=202,
 )
@@ -208,7 +161,11 @@ async def upload_pdf(
             feature="upload",
         )
     except AILimitExceeded as exc:
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
+        raise AppError(
+            code=exc.code,
+            message="Upload rate limit exceeded",
+            status_code=429,
+        ) from None
     max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     declared_size = request.headers.get("content-length")
     if declared_size and (
@@ -284,7 +241,11 @@ async def upload_pdf(
             user=current_user,
             error_code=exc.code,
         )
-        raise HTTPException(status_code=429, detail={"code": exc.code}) from None
+        raise AppError(
+            code=exc.code,
+            message="Too many background jobs are already running",
+            status_code=429,
+        ) from None
 
     await dispatch_reserved_document(
         pdf_bytes=file_contents,

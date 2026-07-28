@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.message_crud import message_crud
+from app.repositories.messages import message_repository
 from app.database.database import get_db
 from app.database.models import ConversationScopeType
 from app.database.telemetry import track_event
@@ -19,8 +19,8 @@ from app.schemas.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    serialize_messages,
 )
-from app.schemas.orm_responses import serialize_messages
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
@@ -106,15 +106,15 @@ def get_conversation_messages(
         conversation_id=conversation_id,
         user_id=current_user.id,
     )
-    messages = message_crud.get_conversation_messages(
+    messages = message_repository.get_conversation_messages(
         db,
         conversation_id=conversation_id,
-        current_user=current_user,
+        user_id=current_user.id,
         page=page,
         page_size=page_size,
     )
     return ConversationMessagesResponse(
-        items=[dict(message) for message in serialize_messages(messages)],
+        items=serialize_messages(messages),
         page=page,
         page_size=page_size,
     )

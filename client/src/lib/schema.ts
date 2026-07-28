@@ -450,7 +450,7 @@ export interface PaperUploadJobStatusResponse extends JobStatusResponse {
 export interface PaperTag {
     id: string;
     name: string;
-    color: string;
+    color: string | null;
 }
 
 export interface PaperItem {

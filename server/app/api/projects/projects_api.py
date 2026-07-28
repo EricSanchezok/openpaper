@@ -21,7 +21,7 @@ from app.schemas.projects import (
 )
 from app.schemas.user import CurrentUser
 from app.errors import AppError
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .responses import project_response
@@ -56,7 +56,7 @@ def create_project(
 
 @projects_router.get("", response_model=list[ProjectResponse])
 def get_projects(
-    limit: int | None = None,
+    limit: int | None = Query(default=None, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> list[ProjectResponse]:

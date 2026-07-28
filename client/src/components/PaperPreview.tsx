@@ -236,7 +236,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const handleRemoveTag = async (tagId: string) => {
         try {
-            await fetchFromApi(`/api/paper/tag/papers/${paper.id}/tags/${tagId}`, {
+            await fetchFromApi(`/api/library/papers/by-document/${paper.id}/tags/${tagId}`, {
                 method: "DELETE",
             });
             const updatedPaper = {

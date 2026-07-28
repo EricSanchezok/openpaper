@@ -8,7 +8,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from app.database.crud.sanitization import sanitize_for_postgres
+from app.helpers.postgres import sanitize_for_postgres
 from app.database.models import (
     AuthUser,
     Document,
@@ -21,7 +21,7 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.helpers.paper_search import normalize_doi
-from app.policies.documents import get_document_access
+from app.policies.documents import get_document_access, require_document_access
 from app.schemas.documents import DocumentUpdate, LibraryPaperUpdateRequest
 from app.schemas.user import CurrentUser
 from sqlalchemy import select, update
@@ -79,28 +79,21 @@ class DocumentRepository:
         db: Session,
         *,
         document: Document,
-        update: DocumentUpdate | dict[str, object],
+        update: DocumentUpdate,
         user: CurrentUser | None = None,
         auto_commit: bool = True,
-    ) -> Document | None:
+    ) -> Document:
         """Update canonical metadata after optional explicit access validation."""
         if user is not None:
-            access = get_document_access(
+            require_document_access(
                 db,
                 document_id=document.id,
                 user_id=user.id,
             )
-            if access is None:
-                return None
-        values = (
-            update
-            if isinstance(update, dict)
-            else update.model_dump(exclude_unset=True)
-        )
+        values = update.model_dump(exclude_unset=True)
         sanitized = sanitize_for_postgres(values)
         for field, value in sanitized.items():
-            if hasattr(document, field):
-                setattr(document, field, value)
+            setattr(document, field, value)
         if auto_commit:
             db.commit()
             db.refresh(document)

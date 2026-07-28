@@ -4,8 +4,7 @@ from app.database.crud.onboarding_crud import OnboardingCreate, onboarding_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.email import send_profile_email
-from app.schemas.onboarding import CreateOnboardingRequest
-from app.schemas.orm_responses import OnboardingResponse
+from app.schemas.onboarding import CreateOnboardingRequest, OnboardingResponse
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session

@@ -152,6 +152,27 @@ class JobRepository:
         return job
 
     @staticmethod
+    def require_for_requester(
+        db: Session,
+        *,
+        job_id: uuid.UUID,
+        requested_by_id: int,
+    ) -> DurableJob:
+        job = db.scalar(
+            select(DurableJob).where(
+                DurableJob.id == job_id,
+                DurableJob.requested_by_id == requested_by_id,
+            )
+        )
+        if job is None:
+            raise AppError(
+                code="job_not_found",
+                message="Job not found",
+                status_code=404,
+            )
+        return job
+
+    @staticmethod
     def claim(
         db: Session,
         *,

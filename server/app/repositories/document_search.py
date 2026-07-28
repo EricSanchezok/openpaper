@@ -7,7 +7,7 @@ import re
 import uuid
 from typing import TypedDict
 
-from app.database.crud.sanitization import sanitize_for_postgres
+from app.helpers.postgres import sanitize_for_postgres
 from app.database.models import PaperTag
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session

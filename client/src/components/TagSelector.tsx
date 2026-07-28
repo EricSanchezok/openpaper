@@ -24,7 +24,7 @@ export function TagSelector({ paperIds, onTagsApplied }: TagSelectorProps) {
     useEffect(() => {
         const getTags = async () => {
             try {
-                const allTags = await fetchFromApi("/api/paper/tag/");
+                const allTags = await fetchFromApi("/api/library/tags");
                 setTags(allTags);
             } catch (error) {
                 console.error("Failed to fetch tags", error);
@@ -53,7 +53,7 @@ export function TagSelector({ paperIds, onTagsApplied }: TagSelectorProps) {
     const handleCreateTag = async () => {
         if (!newTagName.trim()) return;
         try {
-            const newTag = await fetchFromApi("/api/paper/tag/", {
+            const newTag = await fetchFromApi("/api/library/tags", {
                 method: "POST",
                 body: JSON.stringify({ name: newTagName }),
             });
@@ -68,10 +68,10 @@ export function TagSelector({ paperIds, onTagsApplied }: TagSelectorProps) {
 
     const handleApplyTags = async () => {
         try {
-            await fetchFromApi("/api/paper/tag/bulk", {
+            await fetchFromApi("/api/library/tags/assignments", {
                 method: "POST",
                 body: JSON.stringify({
-                    paper_ids: paperIds,
+                    document_ids: paperIds,
                     tag_ids: Array.from(selectedTags),
                 }),
             });

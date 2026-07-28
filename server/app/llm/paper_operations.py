@@ -2,7 +2,7 @@ import logging
 import uuid
 from typing import AsyncGenerator, Literal, Sequence
 
-from app.database.crud.message_crud import message_crud
+from app.repositories.messages import message_repository
 from app.repositories.documents import document_repository
 from app.database.database import get_db
 from app.database.models import Document, ReasoningLevel
@@ -107,8 +107,8 @@ class PaperOperations(BaseLLMClient):
 
         casted_conversation_id = uuid.UUID(conversation_id)
 
-        conversation_history = message_crud.get_conversation_messages(
-            db, conversation_id=casted_conversation_id, current_user=current_user
+        conversation_history = message_repository.get_conversation_messages(
+            db, conversation_id=casted_conversation_id, user_id=current_user.id
         )
 
         additional_instructions = ""

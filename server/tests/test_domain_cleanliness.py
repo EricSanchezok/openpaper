@@ -36,6 +36,8 @@ def test_removed_domain_concepts_do_not_return() -> None:
         "BackgroundTasks",
         "paper_crud",
         "project_paper_crud",
+        "paper_tag_crud",
+        "message_crud",
     )
     for pattern in forbidden:
         assert pattern not in source
@@ -45,6 +47,7 @@ def test_old_ownership_and_shared_conversation_routes_do_not_return() -> None:
     source = _business_source()
     for route in (
         '"/api/paper"',
+        '"/api/paper/upload"',
         '"/api/conversation/share',
         '"/api/projects/conversations',
     ):
@@ -80,3 +83,11 @@ def test_api_modules_do_not_own_broad_exception_boundaries() -> None:
             ):
                 violations.append(f"{path.relative_to(api_root)}:{node.lineno}")
     assert violations == []
+
+
+def test_api_modules_use_the_stable_application_error_contract() -> None:
+    api_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "server" / "app" / "api").rglob("*.py")
+    )
+    assert "HTTPException" not in api_source

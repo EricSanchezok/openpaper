@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.message_crud import MessageCreate, message_crud
+from app.repositories.messages import MessageCreate, message_repository
 from app.repositories.documents import document_repository
 from app.repositories.project_documents import project_document_repository
 from app.database.database import get_db
@@ -501,9 +501,9 @@ async def chat_message_multipaper(
         )
 
         # Save user message, with the @-mention scope snapshot attached.
-        message_crud.create(
+        message_repository.create(
             db,
-            obj_in=MessageCreate(
+            request=MessageCreate(
                 conversation_id=uuid.UUID(request.conversation_id),
                 role="user",
                 content=request.user_query,
@@ -518,14 +518,14 @@ async def chat_message_multipaper(
                     else None
                 ),
             ),
-            user=current_user,
+            user_id=current_user.id,
         )
 
         # Save assistant message with content, evidence, and trace.
         # Artifacts go into their own table, linked back via message_id.
-        assistant_message = message_crud.create(
+        assistant_message = message_repository.create(
             db,
-            obj_in=MessageCreate(
+            request=MessageCreate(
                 conversation_id=uuid.UUID(request.conversation_id),
                 role="assistant",
                 content=full_content,
@@ -536,7 +536,7 @@ async def chat_message_multipaper(
                     else None
                 ),
             ),
-            user=current_user,
+            user_id=current_user.id,
         )
 
         if assistant_message and artifacts_collected:
@@ -720,9 +720,9 @@ async def chat_message_stream(
         )
 
         # Save user message
-        message_crud.create(
+        message_repository.create(
             db,
-            obj_in=MessageCreate(
+            request=MessageCreate(
                 conversation_id=uuid.UUID(request.conversation_id),
                 role="user",
                 content=request.user_query,
@@ -732,13 +732,13 @@ async def chat_message_stream(
                     else None
                 ),
             ),
-            user=current_user,
+            user_id=current_user.id,
         )
 
         # Save assistant message with both content and evidence
-        message_crud.create(
+        message_repository.create(
             db,
-            obj_in=MessageCreate(
+            request=MessageCreate(
                 conversation_id=uuid.UUID(request.conversation_id),
                 role="assistant",
                 content=full_content,
@@ -749,7 +749,7 @@ async def chat_message_stream(
                     else None
                 ),
             ),
-            user=current_user,
+            user_id=current_user.id,
         )
 
         # Track chat message event

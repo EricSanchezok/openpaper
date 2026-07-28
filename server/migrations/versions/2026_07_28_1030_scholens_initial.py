@@ -221,6 +221,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("user_id", "name", name="uq_paper_tags_user_name"),
         schema="scholens",
     )
     op.create_table(

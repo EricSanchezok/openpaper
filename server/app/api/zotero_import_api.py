@@ -4,6 +4,7 @@ from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import get_db
 from app.database.models import ZoteroImportedItem
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.services.resource_quotas import can_user_upload_paper
 from app.schemas.user import CurrentUser
 from app.schemas.zotero import (
@@ -18,7 +19,7 @@ from app.schemas.zotero import (
     ZoteroSyncResponse,
 )
 from app.services.zotero.service import import_batch, list_library, sync_batch
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 zotero_router = APIRouter()
@@ -32,9 +33,10 @@ def zotero_library(
     """List importable journal articles, conference papers, and preprints from the user's Zotero library."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zotero account not connected",
+        raise AppError(
+            code="zotero_not_connected",
+            message="Connect a Zotero account before using this feature",
+            status_code=400,
         )
     result = list_library(db, user=current_user)
 
@@ -53,25 +55,28 @@ async def zotero_import(
     """Import selected journal articles, conference papers, and preprints from Zotero (PDF or URL fallback)."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zotero account not connected",
+        raise AppError(
+            code="zotero_not_connected",
+            message="Connect a Zotero account before importing",
+            status_code=400,
         )
 
     can_upload, upload_err = can_user_upload_paper(db, current_user)
     if not can_upload:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=upload_err or "Upload limit reached",
+        raise AppError(
+            code="paper_quota_exceeded",
+            message=upload_err or "Upload limit reached",
+            status_code=403,
         )
 
     try:
         result = await import_batch(db, user=current_user, item_keys=request.item_keys)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="internal_error",
-        ) from e
+    except ValueError as exc:
+        raise AppError(
+            code="zotero_import_invalid",
+            message="The selected Zotero items could not be imported",
+            status_code=400,
+        ) from exc
 
     if result["imported_count"] > 0:
         track_event(
@@ -98,9 +103,10 @@ async def zotero_sync(
     """Manually trigger annotation sync for all already-imported Zotero PDF papers. Available to all plan tiers."""
     connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zotero account not connected",
+        raise AppError(
+            code="zotero_not_connected",
+            message="Connect a Zotero account before synchronizing",
+            status_code=400,
         )
 
     result = await sync_batch(db, user=current_user, limit=50)
