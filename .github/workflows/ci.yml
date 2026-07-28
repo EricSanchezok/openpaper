@@ -395,7 +395,9 @@ jobs:
                );
              INSERT INTO scholens.token_usage_events
                (id, user_id, week_start, idempotency_key, operation_id,
-                feature, provider, model, reasoning_level, total_tokens, status)
+                feature, provider, model, reasoning_level, prompt_tokens,
+                completion_tokens, reasoning_tokens, cache_hit_tokens,
+                cache_miss_tokens, total_tokens, status)
                VALUES (
                  '00000000-0000-0000-0000-000000000005',
                  (SELECT id FROM auth.users
@@ -407,6 +409,11 @@ jobs:
                  'deepseek',
                  'fixture-model',
                  'standard',
+                 11,
+                 6,
+                 0,
+                 0,
+                 0,
                  17,
                  'settled'
                );
