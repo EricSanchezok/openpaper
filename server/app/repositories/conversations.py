@@ -131,6 +131,7 @@ class ConversationRepository:
         *,
         request: ConversationCreateRequest,
         user_id: int,
+        auto_commit: bool = True,
     ) -> Conversation:
         project_id: uuid.UUID | None = None
         document_id: uuid.UUID | None = None
@@ -175,8 +176,11 @@ class ConversationRepository:
             scope_label_snapshot=scope_label,
         )
         db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
+        if auto_commit:
+            db.commit()
+            db.refresh(conversation)
+        else:
+            db.flush()
         return conversation
 
     def list(

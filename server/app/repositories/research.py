@@ -171,6 +171,7 @@ class ResearchRepository:
         document_id: uuid.UUID,
         user_id: int,
         create: HighlightThreadCreate,
+        auto_commit: bool = True,
     ) -> ResearchItem:
         require_document_access(db, document_id=document_id, user_id=user_id)
         item = ResearchItem(
@@ -191,8 +192,11 @@ class ResearchRepository:
             zotero_annotation_key=create.zotero_annotation_key,
         )
         db.add(item)
-        db.commit()
-        db.refresh(item)
+        if auto_commit:
+            db.commit()
+            db.refresh(item)
+        else:
+            db.flush()
         return item
 
     def has_assistant_highlight(
@@ -373,6 +377,7 @@ class ResearchRepository:
         user_id: int,
         content: str,
         role: str = RoleType.USER.value,
+        auto_commit: bool = True,
     ) -> AnnotationComment:
         item = self.require_visible(db, item_id=thread_id, user_id=user_id)
         if item.kind != ResearchItemKind.HIGHLIGHT_THREAD.value:
@@ -395,8 +400,11 @@ class ResearchRepository:
             role=role,
         )
         db.add(comment)
-        db.commit()
-        db.refresh(comment)
+        if auto_commit:
+            db.commit()
+            db.refresh(comment)
+        else:
+            db.flush()
         return comment
 
     def require_owned_comment(

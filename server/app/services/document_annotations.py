@@ -60,6 +60,7 @@ def create_ai_highlights(
     document_id: uuid.UUID,
     metadata: PaperMetadataExtraction,
     user: CurrentUser,
+    auto_commit: bool = True,
 ) -> None:
     if research_repository.has_assistant_highlight(
         db,
@@ -92,6 +93,7 @@ def create_ai_highlights(
                 is_shared=True,
                 role=RoleType.ASSISTANT.value,
             ),
+            auto_commit=False,
         )
         research_repository.add_comment(
             db,
@@ -99,4 +101,7 @@ def create_ai_highlights(
             user_id=user.id,
             content=highlight.annotation,
             role=RoleType.ASSISTANT.value,
+            auto_commit=False,
         )
+    if auto_commit:
+        db.commit()

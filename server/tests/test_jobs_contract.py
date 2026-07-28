@@ -173,7 +173,7 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
     index_passages = MagicMock()
     release_lock = MagicMock()
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.documents.job_repository.require",
+        "app.services.document_callbacks.job_repository.require",
         MagicMock(
             return_value=SimpleNamespace(
                 operation=JobOperation.PDF_PARSER_UPGRADE.value,
@@ -183,15 +183,15 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
         ),
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.documents.AdvisoryLock.acquire",
+        "app.services.document_callbacks.AdvisoryLock.acquire",
         MagicMock(return_value=True),
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.documents.AdvisoryLock.release",
+        "app.services.document_callbacks.AdvisoryLock.release",
         release_lock,
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.documents."
+        "app.services.document_callbacks."
         "document_search_repository.replace_passage_index",
         index_passages,
     )

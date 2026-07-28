@@ -2,8 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.api.subscription import webhook
-from app.api.subscription.webhook_ledger import WebhookClaim
+from app.services import stripe_webhook as webhook
+from app.services.stripe_webhook_ledger import WebhookClaim
 from app.database.models import StripeWebhookEventStatus
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ async def test_invalid_signature_is_rejected_without_creating_ledger_row() -> No
         patch.object(webhook, "begin_webhook_attempt") as begin,
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await webhook.handle_stripe_webhook(
+            await webhook.process_stripe_webhook(
                 request=_request(),
                 stripe_signature="invalid",
                 db=db,
@@ -60,7 +60,7 @@ async def test_completed_delivery_is_acknowledged_without_reprocessing() -> None
         ),
         patch.object(webhook, "complete_webhook") as complete,
     ):
-        result = await webhook.handle_stripe_webhook(
+        result = await webhook.process_stripe_webhook(
             request=_request(),
             stripe_signature="valid",
             db=db,
@@ -92,7 +92,7 @@ async def test_unsupported_event_is_recorded_as_ignored() -> None:
         ),
         patch.object(webhook, "complete_webhook") as complete,
     ):
-        result = await webhook.handle_stripe_webhook(
+        result = await webhook.process_stripe_webhook(
             request=_request(),
             stripe_signature="valid",
             db=db,
@@ -122,7 +122,7 @@ async def test_concurrent_delivery_returns_retryable_error_without_failing_owner
         patch.object(webhook, "fail_webhook") as fail,
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await webhook.handle_stripe_webhook(
+            await webhook.process_stripe_webhook(
                 request=_request(),
                 stripe_signature="valid",
                 db=db,
@@ -164,7 +164,7 @@ async def test_core_processing_failure_is_recorded_and_retried_by_stripe() -> No
         patch.object(webhook, "fail_webhook") as fail,
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await webhook.handle_stripe_webhook(
+            await webhook.process_stripe_webhook(
                 request=_request(),
                 stripe_signature="valid",
                 db=db,
