@@ -88,62 +88,62 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
         user.id = "user-1"
         return user
 
-    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.resource_usage_repository")
     @patch("app.services.resource_quotas.get_user_subscription_plan")
-    def test_basic_5_used(self, mock_plan, mock_paper_crud):
+    def test_basic_5_used(self, mock_plan, mock_resource_usage):
         from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.BASIC
-        mock_paper_crud.get_total_paper_count.return_value = 5
+        mock_resource_usage.completed_reference_count.return_value = 5
 
         result = get_remaining_paper_upload_slots(MagicMock(), self._make_user())
 
         self.assertEqual(result, 5)
 
-    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.resource_usage_repository")
     @patch("app.services.resource_quotas.get_user_subscription_plan")
-    def test_basic_at_limit(self, mock_plan, mock_paper_crud):
+    def test_basic_at_limit(self, mock_plan, mock_resource_usage):
         from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.BASIC
-        mock_paper_crud.get_total_paper_count.return_value = 10
+        mock_resource_usage.completed_reference_count.return_value = 10
 
         result = get_remaining_paper_upload_slots(MagicMock(), self._make_user())
 
         self.assertEqual(result, 0)
 
-    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.resource_usage_repository")
     @patch("app.services.resource_quotas.get_user_subscription_plan")
-    def test_researcher_499(self, mock_plan, mock_paper_crud):
+    def test_researcher_499(self, mock_plan, mock_resource_usage):
         from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.RESEARCHER
-        mock_paper_crud.get_total_paper_count.return_value = 499
+        mock_resource_usage.completed_reference_count.return_value = 499
 
         result = get_remaining_paper_upload_slots(MagicMock(), self._make_user())
 
         self.assertEqual(result, 1)
 
-    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.resource_usage_repository")
     @patch("app.services.resource_quotas.get_user_subscription_plan")
-    def test_researcher_at_limit(self, mock_plan, mock_paper_crud):
+    def test_researcher_at_limit(self, mock_plan, mock_resource_usage):
         from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.RESEARCHER
-        mock_paper_crud.get_total_paper_count.return_value = 500
+        mock_resource_usage.completed_reference_count.return_value = 500
 
         result = get_remaining_paper_upload_slots(MagicMock(), self._make_user())
 
         self.assertEqual(result, 0)
 
-    @patch("app.services.resource_quotas.paper_crud")
+    @patch("app.services.resource_quotas.resource_usage_repository")
     @patch("app.services.resource_quotas.get_user_subscription_plan")
-    def test_over_limit_clamps_to_zero(self, mock_plan, mock_paper_crud):
+    def test_over_limit_clamps_to_zero(self, mock_plan, mock_resource_usage):
         """If somehow over limit, return 0 not negative."""
         from app.services.resource_quotas import get_remaining_paper_upload_slots
 
         mock_plan.return_value = SubscriptionPlan.BASIC
-        mock_paper_crud.get_total_paper_count.return_value = 15
+        mock_resource_usage.completed_reference_count.return_value = 15
 
         result = get_remaining_paper_upload_slots(MagicMock(), self._make_user())
 

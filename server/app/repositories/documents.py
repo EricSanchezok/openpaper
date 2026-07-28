@@ -8,17 +8,24 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import (
     AuthUser,
     Document,
     DocumentProcessingStatus,
+    DurableJob,
     LibraryPaper,
     PaperStatus,
     ProjectPaper,
+    UploadReservation,
 )
 from app.errors import AppError
-from app.schemas.documents import LibraryPaperUpdateRequest
+from app.helpers.paper_search import normalize_doi
+from app.policies.documents import get_document_access
+from app.schemas.documents import DocumentUpdate, LibraryPaperUpdateRequest
+from app.schemas.user import CurrentUser
 from sqlalchemy import select
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -42,6 +49,124 @@ class PublicLibraryPaper:
 
 
 class DocumentRepository:
+    def find_accessible(
+        self,
+        db: Session,
+        *,
+        document_id: object,
+        user: CurrentUser,
+        update_last_accessed: bool = False,
+    ) -> Document | None:
+        """Return a Document only through an explicit user access check."""
+        try:
+            parsed_id = uuid.UUID(str(document_id))
+        except (TypeError, ValueError):
+            return None
+        access = get_document_access(
+            db,
+            document_id=parsed_id,
+            user_id=user.id,
+        )
+        if access is None:
+            return None
+        if update_last_accessed and access.library_paper is not None:
+            access.library_paper.last_accessed_at = datetime.now(timezone.utc)
+            db.commit()
+        return access.document
+
+    def update_canonical(
+        self,
+        db: Session,
+        *,
+        document: Document,
+        update: DocumentUpdate | dict[str, object],
+        user: CurrentUser | None = None,
+    ) -> Document | None:
+        """Update canonical metadata after optional explicit access validation."""
+        if user is not None:
+            access = get_document_access(
+                db,
+                document_id=document.id,
+                user_id=user.id,
+            )
+            if access is None:
+                return None
+        values = (
+            update
+            if isinstance(update, dict)
+            else update.model_dump(exclude_unset=True)
+        )
+        sanitized = sanitize_for_postgres(values)
+        for field, value in sanitized.items():
+            if hasattr(document, field):
+                setattr(document, field, value)
+        db.commit()
+        db.refresh(document)
+        return document
+
+    def find_by_upload_job(
+        self,
+        db: Session,
+        *,
+        upload_job_id: str,
+        user: CurrentUser,
+    ) -> Document | None:
+        """Return the Document produced by one of the user's durable jobs."""
+        return db.scalar(
+            select(Document)
+            .join(DurableJob, DurableJob.document_id == Document.id)
+            .join(UploadReservation, UploadReservation.id == DurableJob.id)
+            .where(
+                UploadReservation.id == upload_job_id,
+                DurableJob.requested_by_id == user.id,
+            )
+        )
+
+    def list_available_library_documents(
+        self,
+        db: Session,
+        *,
+        user: CurrentUser,
+        query: str | None = None,
+        document_ids: list[str] | None = None,
+    ) -> list[Document]:
+        statement = (
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(
+                LibraryPaper.user_id == user.id,
+                Document.ts_vector.isnot(None),
+            )
+        )
+        if document_ids:
+            statement = statement.where(Document.id.in_(document_ids))
+        if query:
+            ts_query = func.to_tsquery("english", " & ".join(query.split()))
+            statement = statement.where(Document.ts_vector.op("@@")(ts_query))
+        return list(db.scalars(statement.order_by(Document.updated_at.desc())).all())
+
+    def find_library_document_by_doi(
+        self,
+        db: Session,
+        *,
+        user_id: int,
+        doi: str,
+    ) -> Document | None:
+        normalized = normalize_doi(doi)
+        if not normalized:
+            return None
+        escaped = (
+            normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        return db.scalars(
+            select(Document)
+            .join(LibraryPaper, LibraryPaper.document_id == Document.id)
+            .where(
+                LibraryPaper.user_id == user_id,
+                func.lower(Document.doi).like(f"%{escaped}", escape="\\"),
+            )
+        ).first()
+
     def list_library(self, db: Session, *, user_id: int) -> list[LibraryPaper]:
         return list(
             db.scalars(

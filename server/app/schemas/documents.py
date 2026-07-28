@@ -3,9 +3,42 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from app.database.models import DocumentProcessingStatus, PaperStatus
+from app.database.models import DocumentProcessingStatus, JsonValue, PaperStatus
 from app.schemas.responses import ResponseCitation
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class DocumentUpdate(BaseModel):
+    """Validated canonical metadata written by trusted ingestion workflows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    preview_s3_key: str | None = None
+    authors: list[str] | None = None
+    title: str | None = None
+    abstract: str | None = None
+    institutions: list[str] | None = None
+    keywords: list[str] | None = None
+    summary: str | None = None
+    summary_citations: list[ResponseCitation] | None = None
+    starter_questions: list[str] | None = None
+    publish_date: datetime | str | None = None
+    raw_content: str | None = None
+    parser_markdown_s3_key: str | None = None
+    parser_archive_s3_key: str | None = None
+    parser_backend: str | None = None
+    parser_quality: str | None = None
+    parser_version: str | None = None
+    parser_warning_code: str | None = None
+    processing_status: str | None = None
+    processing_job_id: UUID | None = None
+    gc_after: datetime | None = None
+    page_offset_map: dict[int, list[int]] | None = None
+    doi: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    attempted_metadata_at: datetime | None = None
+    field_provenance: dict[str, JsonValue] | None = None
 
 
 class DocumentMetadataOverrides(BaseModel):

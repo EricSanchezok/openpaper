@@ -975,7 +975,7 @@ def upgrade() -> None:
         sa.Column(
             "reserved_reference_count", sa.Integer(), server_default="1", nullable=False
         ),
-        sa.Column("content_sha256", sa.String(length=64), nullable=True),
+        sa.Column("content_sha256", sa.String(length=64), nullable=False),
         sa.Column(
             "reference_created", sa.Boolean(), server_default="false", nullable=False
         ),

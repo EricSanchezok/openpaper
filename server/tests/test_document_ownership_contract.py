@@ -1,82 +1,59 @@
 """Contracts for canonical documents and their user/project references."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
 import uuid
+from unittest.mock import MagicMock
 
-from app.database.crud.paper_crud import PaperCreate, paper_crud
-from app.database.models import Base, Document, LibraryPaper
-from app.schemas.user import CurrentUser
+from app.database.models import Base, Document
+from app.repositories.documents import document_repository
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).parents[2]
 
 
-def _user() -> CurrentUser:
-    return CurrentUser(
-        id=42,
-        email="reader@example.com",
-        status="active",
-        email_verified=True,
-        is_active=True,
-    )
-
-
-def _session() -> MagicMock:
-    db = MagicMock(spec=Session)
-
-    def assign_document_id(instance: object) -> None:
-        if isinstance(instance, Document) and instance.id is None:
-            instance.id = uuid.uuid4()
-
-    db.add.side_effect = assign_document_id
-    return db
-
-
 def test_project_upload_can_create_a_document_without_personal_library_entry() -> None:
-    db = _session()
+    db = MagicMock(spec=Session)
+    document = Document(
+        id=uuid.uuid4(),
+        sha256="a" * 64,
+        original_filename="document.pdf",
+        mime_type="application/pdf",
+        size_bytes=1024,
+        s3_object_key=f"documents/{'a' * 64}/source.pdf",
+    )
+    db.scalar.return_value = document.id
+    db.get.return_value = document
 
-    document = paper_crud.create(
+    result = document_repository.get_or_create(
         db,
-        obj_in=PaperCreate(
-            sha256="a" * 64,
-            original_filename="document.pdf",
-            size_bytes=1024,
-            s3_object_key=f"documents/{'a' * 64}/source.pdf",
-        ),
-        user=_user(),
-        add_to_library=False,
-        auto_commit=False,
+        sha256=document.sha256,
+        original_filename=document.original_filename,
+        mime_type=document.mime_type,
+        size_bytes=document.size_bytes,
+        s3_object_key=document.s3_object_key,
+        created_by_id=42,
+        processing_job_id=uuid.uuid4(),
     )
 
-    assert isinstance(document, Document)
-    added = [call.args[0] for call in db.add.call_args_list]
-    assert any(isinstance(item, Document) for item in added)
-    assert not any(isinstance(item, LibraryPaper) for item in added)
+    assert result.document is document
+    assert result.created is True
+    db.add.assert_not_called()
 
 
-def test_personal_upload_creates_exactly_one_library_entry() -> None:
-    db = _session()
+def test_personal_reference_attachment_is_conflict_safe() -> None:
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = None
 
-    document = paper_crud.create(
+    result = document_repository.attach_library(
         db,
-        obj_in=PaperCreate(
-            sha256="a" * 64,
-            original_filename="document.pdf",
-            size_bytes=1024,
-            s3_object_key=f"documents/{'a' * 64}/source.pdf",
-        ),
-        user=_user(),
-        auto_commit=False,
+        document_id=uuid.uuid4(),
+        user_id=42,
     )
 
-    assert isinstance(document, Document)
-    added = [call.args[0] for call in db.add.call_args_list]
-    entries = [item for item in added if isinstance(item, LibraryPaper)]
-    assert len(entries) == 1
-    assert entries[0].document_id == document.id
-    assert entries[0].user_id == 42
+    assert result.created is False
+    statement = str(db.scalar.call_args.args[0])
+    assert "ON CONFLICT" in statement
 
 
 def test_metadata_and_baseline_expose_only_canonical_ownership_tables() -> None:

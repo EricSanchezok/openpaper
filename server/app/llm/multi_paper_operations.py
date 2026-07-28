@@ -12,8 +12,8 @@ from typing import (
 )
 
 from app.database.crud.message_crud import message_crud
-from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
+from app.repositories.documents import document_repository
+from app.repositories.project_documents import project_document_repository
 from app.database.database import get_db
 from app.database.models import Document, ReasoningLevel
 from app.llm.citation_handler import CitationHandler
@@ -367,11 +367,13 @@ class MultiPaperOperations(EvidenceOperations):
             )
             if project_access is None:
                 raise ValueError("Project not found.")
-            all_papers = project_paper_crud.get_all_papers_by_project_id(
+            all_papers = project_document_repository.get_all_papers_by_project_id(
                 db, project_id=uuid.UUID(project_id), user=current_user
             )
         else:
-            all_papers = paper_crud.get_all_available_papers(db, user=current_user)
+            all_papers = document_repository.list_available_library_documents(
+                db, user=current_user
+            )
 
         paper_metadata = {
             str(paper.id): {

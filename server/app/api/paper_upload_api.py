@@ -24,7 +24,7 @@ from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.paper_crud import paper_crud
+from app.repositories.documents import document_repository
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.database import get_db
 from app.database.models import JobStatus, UploadReservation
@@ -87,7 +87,7 @@ async def get_upload_status(
     if not paper_upload_job:
         return JSONResponse(status_code=404, content={"message": "Job not found"})
 
-    paper = paper_crud.get_by_upload_job_id(
+    paper = document_repository.find_by_upload_job(
         db=db, upload_job_id=str(paper_upload_job.id), user=current_user
     )
 

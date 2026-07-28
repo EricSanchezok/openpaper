@@ -27,7 +27,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, load_only
 
 
-class ProjectPaperCRUD:
+class ProjectDocumentRepository:
     def attach_library_documents(
         self,
         db: Session,
@@ -392,4 +392,4 @@ class ProjectPaperCRUD:
         return document
 
 
-project_paper_crud = ProjectPaperCRUD()
+project_document_repository = ProjectDocumentRepository()

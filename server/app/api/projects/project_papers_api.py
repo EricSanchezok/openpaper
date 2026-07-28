@@ -2,7 +2,7 @@ from uuid import UUID
 
 from app.auth.dependencies import get_required_user
 from app.repositories.upload_reservations import upload_reservation_repository
-from app.database.crud.projects.project_paper_crud import project_paper_crud
+from app.repositories.project_documents import project_document_repository
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError
@@ -48,7 +48,7 @@ async def collect_paper_from_project(
     Add a project document to the current user's personal library without
     copying its S3 object or parsed content.
     """
-    collected_document = project_paper_crud.add_project_paper_to_library(
+    collected_document = project_document_repository.add_project_paper_to_library(
         db,
         document_id=request.paper_id,
         project_id=request.source_project_id,
@@ -96,7 +96,7 @@ async def add_paper_to_project(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> ProjectPapersAddedResponse:
-    associations, existing_count = project_paper_crud.attach_library_documents(
+    associations, existing_count = project_document_repository.attach_library_documents(
         db,
         document_ids=request.paper_ids,
         user=current_user,
@@ -137,11 +137,11 @@ async def get_project_papers(
     that need a URL for a single paper should use the
     ``/{project_id}/{paper_id}/file-url`` endpoint instead.
     """
-    papers = project_paper_crud.get_papers_metadata_by_project_id(
+    papers = project_document_repository.get_papers_metadata_by_project_id(
         db, project_id=project_id, user=current_user
     )
     library_document_ids = set(
-        project_paper_crud.get_library_document_ids(
+        project_document_repository.get_library_document_ids(
             db,
             document_ids=[paper.id for paper in papers],
             user=current_user,
@@ -226,7 +226,7 @@ async def get_project_paper_file_url(
     "my URL expired, give me a fresh one" — callers should use this instead
     of refetching the whole project paper list.
     """
-    paper = project_paper_crud.get_paper_by_project(
+    paper = project_document_repository.get_paper_by_project(
         db,
         paper_id=paper_id,
         project_id=project_id,
@@ -254,7 +254,7 @@ async def get_projects_from_paper_id(
     current_user: CurrentUser = Depends(get_required_user),
 ) -> list[ProjectResponse]:
     """Get all projects associated with a specific paper"""
-    projects = project_paper_crud.get_projects_by_paper_id(
+    projects = project_document_repository.get_projects_by_paper_id(
         db, paper_id=paper_id, user=current_user
     )
     return [
@@ -274,7 +274,7 @@ async def remove_paper_from_project(
     current_user: CurrentUser = Depends(get_required_user),
 ) -> Response:
     """Remove a paper from a project"""
-    project_paper_crud.remove_by_paper_and_project(
+    project_document_repository.remove_by_paper_and_project(
         db,
         paper_id=document_id,
         project_id=project_id,

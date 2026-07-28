@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from app.database.crud.paper_crud import paper_crud
+from app.repositories.resource_usage import resource_usage_repository
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.models import (
     AuthUser,
@@ -111,7 +111,9 @@ def _require_incremental_account_capacity(
     owner = get_quota_user(db, user_id=owner_id)
     plan = get_user_subscription_plan(db, owner)
     limits = get_plan_limits(plan)
-    current_count = paper_crud.get_total_paper_count(db=db, user=owner)
+    current_count = resource_usage_repository.completed_reference_count(
+        db, user_id=owner.id
+    )
     if current_count + len(documents) > limits[PAPER_UPLOAD_KEY]:
         raise AppError(
             code=(
@@ -123,7 +125,7 @@ def _require_incremental_account_capacity(
             status_code=403,
         )
 
-    current_size = paper_crud.get_size_of_knowledge_base(db, user=owner)
+    current_size = resource_usage_repository.completed_storage_kb(db, user_id=owner.id)
     added_size = sum((document.size_bytes + 1023) // 1024 for document in documents)
     if current_size + added_size > limits[KB_SIZE_KEY]:
         raise AppError(
@@ -200,7 +202,9 @@ def get_remaining_paper_upload_slots(db: Session, user: CurrentUser) -> int:
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
     paper_limit = limits[PAPER_UPLOAD_KEY]
-    current_paper_count = paper_crud.get_total_paper_count(db=db, user=user)
+    current_paper_count = resource_usage_repository.completed_reference_count(
+        db, user_id=user.id
+    )
     return max(0, int(paper_limit) - current_paper_count)
 
 
@@ -214,7 +218,9 @@ def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, str | N
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
 
-    current_paper_count = paper_crud.get_total_paper_count(db=db, user=user)
+    current_paper_count = resource_usage_repository.completed_reference_count(
+        db, user_id=user.id
+    )
     paper_limit = limits[PAPER_UPLOAD_KEY]
 
     # If the user has reached their paper upload limit
@@ -286,9 +292,11 @@ def get_user_usage_info(db: Session, user: CurrentUser) -> dict[str, object]:
 
     plan = get_user_subscription_plan(db, user)
     limits = get_plan_limits(plan)
-    current_paper_count = paper_crud.get_total_paper_count(db=db, user=user)
+    current_paper_count = resource_usage_repository.completed_reference_count(
+        db, user_id=user.id
+    )
     paper_limit = limits[PAPER_UPLOAD_KEY]
-    total_size = paper_crud.get_size_of_knowledge_base(db, user=user)
+    total_size = resource_usage_repository.completed_storage_kb(db, user_id=user.id)
     total_size_allowed = limits[KB_SIZE_KEY]
     current_project_count = int(
         db.scalar(select(func.count(Project.id)).where(Project.owner_id == user.id))

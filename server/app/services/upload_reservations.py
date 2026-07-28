@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from uuid import UUID, uuid4
 
-from app.database.crud.paper_crud import paper_crud
+from app.repositories.resource_usage import resource_usage_repository
 from app.database.models import (
     Document,
     DurableJob,
@@ -76,6 +76,36 @@ def _unattached_project_reservations(
     )
 
 
+def _has_active_duplicate_reservation(
+    db: Session,
+    *,
+    requester_id: int,
+    project_id: UUID | None,
+    content_sha256: str,
+) -> bool:
+    """Detect an in-flight upload to the same logical collection.
+
+    The caller holds the quota owner's account lock, so this check and the
+    reservation insert are serialized across personal and Project uploads.
+    """
+    statement = (
+        select(func.count(UploadReservation.id))
+        .join(DurableJob, DurableJob.id == UploadReservation.id)
+        .where(
+            UploadReservation.content_sha256 == content_sha256,
+            DurableJob.status.in_(ACTIVE_UPLOAD_STATUSES),
+        )
+    )
+    if project_id is None:
+        statement = statement.where(
+            DurableJob.project_id.is_(None),
+            DurableJob.requested_by_id == requester_id,
+        )
+    else:
+        statement = statement.where(DurableJob.project_id == project_id)
+    return bool(db.scalar(statement))
+
+
 def reassign_project_quota_owner(
     db: Session,
     *,
@@ -84,10 +114,10 @@ def reassign_project_quota_owner(
 ) -> None:
     """Validate a transfer and move every active reservation to the new owner.
 
-    The caller must hold a row lock on ``project``. Completed documents are
-    charged only when they are not already present in the new owner's Library
-    or another Project they own. In-progress uploads are represented solely by
-    their durable reservations, so they are not counted twice.
+    The caller must hold a row lock on ``project``. Every logical ProjectPaper
+    reference is billed even when the same Document also exists in the new
+    owner's Library or another owned Project. In-progress uploads are
+    represented by their durable reservations.
     """
     lock_account_resource_quota(db, user_id=new_owner_id)
     owner = get_quota_user(db, user_id=new_owner_id)
@@ -151,7 +181,9 @@ def reassign_project_quota_owner(
         ).all()
     )
 
-    completed_count = paper_crud.get_total_paper_count(db=db, user=owner)
+    completed_count = resource_usage_repository.completed_reference_count(
+        db, user_id=owner.id
+    )
     if (
         completed_count
         + existing_active_count
@@ -165,7 +197,9 @@ def reassign_project_quota_owner(
             status_code=409,
         )
 
-    completed_size_kb = paper_crud.get_size_of_knowledge_base(db, user=owner)
+    completed_size_kb = resource_usage_repository.completed_storage_kb(
+        db, user_id=owner.id
+    )
     incremental_size_kb = sum(
         (document.size_bytes + 1023) // 1024 for document in project_documents
     )
@@ -270,6 +304,17 @@ def reserve_upload(
 
     lock_account_resource_quota(db, user_id=owner_id)
     cleanup_plan = reap_stale_uploads(db, quota_owner_id=owner_id)
+    if _has_active_duplicate_reservation(
+        db,
+        requester_id=requester.id,
+        project_id=project_id,
+        content_sha256=content_sha256,
+    ):
+        raise AppError(
+            code="document_upload_in_progress",
+            message="This document is already being uploaded to this collection",
+            status_code=409,
+        )
     owner = get_quota_user(db, user_id=owner_id)
     limits = get_plan_limits(get_user_subscription_plan(db, owner))
     reserved_reference_count = 0 if reference_already_exists else 1
@@ -280,7 +325,9 @@ def reserve_upload(
         db,
         owner_id=owner_id,
     )
-    completed_count = paper_crud.get_total_paper_count(db=db, user=owner)
+    completed_count = resource_usage_repository.completed_reference_count(
+        db, user_id=owner.id
+    )
     if (
         completed_count + reserved_count + reserved_reference_count
         > limits[PAPER_UPLOAD_KEY]
@@ -295,13 +342,9 @@ def reserve_upload(
             status_code=403,
         )
 
-    if paper_crud.has_unknown_billed_document_size(db, user_id=owner_id):
-        raise AppError(
-            code="storage_usage_unavailable",
-            message="Storage usage is still being reconciled",
-            status_code=409,
-        )
-    completed_size_kb = paper_crud.get_size_of_knowledge_base(db, user=owner)
+    completed_size_kb = resource_usage_repository.completed_storage_kb(
+        db, user_id=owner.id
+    )
     if completed_size_kb + active_size_kb + reserved_size_kb > limits[KB_SIZE_KEY]:
         raise AppError(
             code=(

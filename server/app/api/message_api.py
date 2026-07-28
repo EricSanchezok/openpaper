@@ -6,8 +6,8 @@ from typing import Any, AsyncGenerator, TypedDict
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.message_crud import MessageCreate, message_crud
-from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
+from app.repositories.documents import document_repository
+from app.repositories.project_documents import project_document_repository
 from app.database.database import get_db
 from app.database.models import (
     ConversationScopeType,
@@ -249,14 +249,16 @@ def _resolve_mention_scope(
         # In a project chat, resolve via project access (papers may be shared,
         # i.e. not owned by the current user); otherwise resolve by ownership.
         if project_id is not None:
-            paper = project_paper_crud.get_paper_by_project(
+            paper = project_document_repository.get_paper_by_project(
                 db,
                 paper_id=uuid.UUID(paper_id),
                 project_id=project_id,
                 user=current_user,
             )
         else:
-            paper = paper_crud.get(db, id=paper_id, user=current_user)
+            paper = document_repository.find_accessible(
+                db, document_id=paper_id, user=current_user
+            )
         if paper:
             scoped.add(str(paper.id))
             snapshot.append(
@@ -272,7 +274,7 @@ def _resolve_mention_scope(
         if project_access is None:
             continue
         project = project_access.project
-        paper_ids = project_paper_crud.get_project_paper_ids_by_project_id(
+        paper_ids = project_document_repository.get_project_paper_ids_by_project_id(
             db, project_id=uuid.UUID(mentioned_project_id), user=current_user
         )
         scoped.update(str(pid) for pid in paper_ids)
@@ -302,7 +304,9 @@ def _resolve_mention_scope(
 
         group = highlights_by_paper.get(paper_id_str)
         if group is None:
-            paper = paper_crud.get(db, id=paper_id_str, user=current_user)
+            paper = document_repository.find_accessible(
+                db, document_id=paper_id_str, user=current_user
+            )
             group = {
                 "paper_id": paper_id_str,
                 "paper_title": paper.title if paper else None,
@@ -468,11 +472,13 @@ async def chat_message_multipaper(
                 yield f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}{END_DELIMITER}"
 
                 if project_id is not None:
-                    all_papers = project_paper_crud.get_all_papers_by_project_id(
-                        db, project_id=project_id, user=current_user
+                    all_papers = (
+                        project_document_repository.get_all_papers_by_project_id(
+                            db, project_id=project_id, user=current_user
+                        )
                     )
                 else:
-                    all_papers = paper_crud.get_all_available_papers(
+                    all_papers = document_repository.list_available_library_documents(
                         db,
                         user=current_user,
                     )

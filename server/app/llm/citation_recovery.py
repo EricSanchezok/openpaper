@@ -16,7 +16,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.models import Document
 from app.helpers.citations import CitationFields, bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import extract_doi_from_url
@@ -26,7 +25,9 @@ from app.integrations.mcp import (
     discover_function_declarations_sync,
 )
 from app.llm.base import BaseLLMClient
+from app.repositories.documents import document_repository
 from app.schemas.citation import CitationStep
+from app.schemas.documents import DocumentUpdate
 from app.schemas.responses import TextContent, ToolCallResult
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
@@ -403,10 +404,10 @@ class MetadataRecoveryAgent(BaseLLMClient):
             )
             return {}
 
-        paper_crud.update(
-            db=db,
-            db_obj=paper,
-            obj_in=PaperUpdate(field_provenance=provenance, **filled),
+        document_repository.update_canonical(
+            db,
+            document=paper,
+            update=DocumentUpdate(field_provenance=provenance, **filled),
             user=current_user,
         )
         steps.append(

@@ -69,9 +69,7 @@ class UploadReservation(Base):
         default=1,
         server_default="1",
     )
-    content_sha256: Mapped[str | None] = mapped_column(
-        String(64), nullable=True, index=True
-    )
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     reference_created: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

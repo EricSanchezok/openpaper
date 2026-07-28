@@ -7,7 +7,7 @@ import hashlib
 import logging
 import time
 
-from app.database.crud.projects.project_paper_crud import project_paper_crud
+from app.repositories.project_documents import project_document_repository
 from app.database.models import (
     DocumentProcessingStatus,
     UploadReservation,
@@ -80,7 +80,7 @@ async def submit_reserved_document(
         )
         upload_job.reference_created = reference.created
     else:
-        association, created = project_paper_crud.attach_reserved_upload(
+        association, created = project_document_repository.attach_reserved_upload(
             db=db,
             document=document,
             upload_job=upload_job,

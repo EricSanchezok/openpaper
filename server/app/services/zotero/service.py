@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
-from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.paper_tag_crud import PaperTagCreate, paper_tag_crud
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.zotero_crud import zotero_crud
@@ -35,8 +34,11 @@ from app.services.resource_quotas import (
 )
 from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
+from app.repositories.documents import document_repository
 from app.repositories.research import HighlightThreadCreate, research_repository
+from app.schemas.documents import DocumentUpdate
 from app.schemas.user import CurrentUser
+from app.services.document_annotations import require_parsed_content
 from app.services.upload_reservations import reserve_upload
 from app.services.document_submission import submit_reserved_document
 from sqlalchemy import select
@@ -719,8 +721,10 @@ async def _discover_import_candidates(
             if existing_import:
                 paper_still_exists = False
                 if existing_import.paper_id:
-                    linked_paper = paper_crud.get(
-                        db, id=str(existing_import.paper_id), user=user
+                    linked_paper = document_repository.find_accessible(
+                        db,
+                        document_id=str(existing_import.paper_id),
+                        user=user,
                     )
                     paper_still_exists = bool(linked_paper)
 
@@ -736,7 +740,7 @@ async def _discover_import_candidates(
 
             doi = normalize_doi(item_data.get("DOI"))
             if doi:
-                target_paper = paper_crud.get_by_doi_for_user(
+                target_paper = document_repository.find_library_document_by_doi(
                     db, user_id=user.id, doi=doi
                 )
                 if target_paper:
@@ -802,10 +806,10 @@ def _apply_metadata_from_zotero(
     """
     authors = _zotero_creators_to_authors(item_data.get("creators") or [])
     publish_date = _parse_zotero_date(item_data.get("date"))
-    paper_crud.update(
-        db=db,
-        db_obj=paper,
-        obj_in=PaperUpdate(
+    document_repository.update_canonical(
+        db,
+        document=paper,
+        update=DocumentUpdate(
             title=item_data.get("title") or None,
             authors=authors or None,
             abstract=item_data.get("abstractNote") or None,
@@ -891,7 +895,7 @@ async def _import_one_paper(
         )
 
         data = item.get("data", {})
-        paper = paper_crud.get_by_upload_job_id(
+        paper = document_repository.find_by_upload_job(
             db=db,
             upload_job_id=upload_job_id,
             user=user,
@@ -964,7 +968,16 @@ async def _import_one_paper(
         # an orphan with no content (the import row's FK is ON DELETE SET NULL).
         if created_paper_id:
             try:
-                paper_crud.remove(db=db, id=created_paper_id, user=user)
+                entry = document_repository.require_library_paper_by_document(
+                    db,
+                    document_id=UUID(str(created_paper_id)),
+                    user_id=user.id,
+                )
+                document_repository.delete_library_paper(
+                    db,
+                    library_paper_id=entry.id,
+                    user_id=user.id,
+                )
             except Exception as cleanup_err:
                 logger.warning(
                     "Failed to clean up paper %s after Zotero import error: %s",
@@ -1148,8 +1161,10 @@ async def _discover_candidates_by_keys(
         if existing_import:
             paper_still_exists = False
             if existing_import.paper_id:
-                linked_paper = paper_crud.get(
-                    db, id=str(existing_import.paper_id), user=user
+                linked_paper = document_repository.find_accessible(
+                    db,
+                    document_id=str(existing_import.paper_id),
+                    user=user,
                 )
                 paper_still_exists = bool(linked_paper)
 
@@ -1165,7 +1180,9 @@ async def _discover_candidates_by_keys(
 
         doi = normalize_doi(item_data.get("DOI"))
         if doi:
-            target_paper = paper_crud.get_by_doi_for_user(db, user_id=user.id, doi=doi)
+            target_paper = document_repository.find_library_document_by_doi(
+                db, user_id=user.id, doi=doi
+            )
             if target_paper:
                 await _link_zotero_item_to_existing_paper(
                     db,
@@ -1290,7 +1307,9 @@ async def import_batch(
             first_paper_id = item_key_to_paper_id.get(first_item_key)
             if not first_paper_id:
                 continue
-            paper = paper_crud.get(db, id=first_paper_id, user=user)
+            paper = document_repository.find_accessible(
+                db, document_id=first_paper_id, user=user
+            )
             if not paper:
                 continue
             await _link_zotero_item_to_existing_paper(
@@ -1337,8 +1356,10 @@ def apply_zotero_annotations(
         return
 
     try:
-        raw_file = paper_crud.read_raw_document_content(
-            db, paper_id=paper_id, current_user=user
+        raw_file = require_parsed_content(
+            db,
+            document_id=UUID(paper_id),
+            user=user,
         )
         raw_content = raw_file.raw_content or ""
         page_offsets = raw_file.page_offsets
@@ -1346,7 +1367,7 @@ def apply_zotero_annotations(
         # Page dimensions are needed to convert Zotero annotation positions. The
         # stored payload no longer carries them (the worker, not the server,
         # processes the PDF), so derive them from the PDF here.
-        paper = paper_crud.get(db, id=paper_id, user=user)
+        paper = document_repository.find_accessible(db, document_id=paper_id, user=user)
         page_dims = _get_page_dims_for_paper(paper) if paper else {}
 
         annotations_payload = cast(
@@ -1401,7 +1422,9 @@ def _sync_item(
     if not paper_id or not import_row.zotero_attachment_key:
         raise ValueError("Import row is missing paper or attachment key")
 
-    paper = paper_crud.get(db, id=str(paper_id), user=user)
+    paper = document_repository.find_accessible(
+        db, document_id=str(paper_id), user=user
+    )
     if not paper:
         raise ValueError("Linked paper no longer exists")
 
@@ -1422,8 +1445,10 @@ def _sync_item(
     new_annotations_count = 0
     if missing_annotations:
         page_dims = _get_page_dims_for_paper(paper)
-        raw_file = paper_crud.read_raw_document_content(
-            db, paper_id=str(paper_id), current_user=user
+        raw_file = require_parsed_content(
+            db,
+            document_id=UUID(str(paper_id)),
+            user=user,
         )
         raw_content = raw_file.raw_content or ""
         page_offsets = raw_file.page_offsets

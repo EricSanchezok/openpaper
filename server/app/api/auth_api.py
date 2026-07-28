@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from app.auth.dependencies import get_admin_user, get_required_user
 from app.auth.zotero import zotero_auth_client
-from app.database.crud.paper_crud import paper_crud
+from app.repositories.document_search import document_search_repository
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -39,7 +39,7 @@ async def get_topics(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> list[str]:
-    topics = paper_crud.get_topics(db, user=current_user)
+    topics = document_search_repository.list_topics(db, user_id=current_user.id)
     random.shuffle(topics)
     return topics
 

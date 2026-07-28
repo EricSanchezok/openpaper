@@ -32,6 +32,8 @@ def test_removed_domain_concepts_do_not_return() -> None:
         "cached_presigned_url",
         "presigned_url_expires_at",
         "BackgroundTasks",
+        "paper_crud",
+        "project_paper_crud",
     )
     for pattern in forbidden:
         assert pattern not in source

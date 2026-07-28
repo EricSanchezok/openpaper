@@ -191,7 +191,8 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
         release_lock,
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.documents.paper_crud.index_paper_passages",
+        "app.api.jobs_webhooks.documents."
+        "document_search_repository.replace_passage_index",
         index_passages,
     )
     payload = PdfParserUpgradeWebhookData(
@@ -220,7 +221,7 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
     assert paper.parser_warning_code is None
     index_passages.assert_called_once_with(
         db,
-        paper_id=paper.id,
+        document_id=paper.id,
         raw_content="full MinerU content",
     )
     db.commit.assert_called_once()

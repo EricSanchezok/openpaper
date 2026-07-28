@@ -1,8 +1,6 @@
-from starlette.responses import Response as ApiResponse
 import logging
 
 from app.auth.dependencies import get_required_user
-from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import AILimitExceeded, enforce_rate_limit
@@ -13,9 +11,12 @@ from app.helpers.paper_search import (
     get_work_by_doi,
     search_open_alex,
 )
+from app.repositories.documents import document_repository
+from app.schemas.documents import DocumentUpdate
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
+from starlette.responses import Response as ApiResponse
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,9 @@ async def get_paper_graph(
 
         paper = None
         if paper_id:
-            paper = paper_crud.get(id=paper_id, db=db, user=current_user)
+            paper = document_repository.find_accessible(
+                db, document_id=paper_id, user=current_user
+            )
             if not paper:
                 raise HTTPException(status_code=404, detail="Paper not found")
             # Use paper's DOI if no DOI provided, or try to look it up
@@ -84,8 +87,11 @@ async def get_paper_graph(
 
         # Update the paper's DOI if we have a paper and DOI was provided directly
         if paper and doi and paper.doi != doi:
-            update_data = PaperUpdate(doi=doi)
-            paper_crud.update(db=db, db_obj=paper, obj_in=update_data)
+            document_repository.update_canonical(
+                db,
+                document=paper,
+                update=DocumentUpdate(doi=doi),
+            )
 
         graph = construct_citation_graph(work.id)
         track_event(

@@ -66,18 +66,14 @@ class TestZoteroSyncItem(unittest.TestCase):
 
     @patch.object(zotero_import_module, "zotero_import_crud")
     @patch.object(zotero_import_module, "research_repository")
-    @patch.object(zotero_import_module, "paper_crud")
+    @patch.object(zotero_import_module, "document_repository")
     def test_sync_appends_new_annotation(
         self,
-        mock_paper_crud: MagicMock,
+        mock_document_repository: MagicMock,
         mock_research_repository: MagicMock,
         mock_import_crud: MagicMock,
     ) -> None:
-        mock_paper_crud.get.return_value = self.paper
-        mock_paper_crud.read_raw_document_content.return_value = MagicMock(
-            raw_content="hello world",
-            page_offsets={1: (0, 11)},
-        )
+        mock_document_repository.find_accessible.return_value = self.paper
         mock_research_repository.get_zotero_annotation_keys.return_value = set()
         self.client.get_children.return_value = []
         self.client.get_annotations_for_attachment.return_value = [
@@ -102,6 +98,14 @@ class TestZoteroSyncItem(unittest.TestCase):
                 "_try_backfill_or_apply_annotation",
                 return_value=True,
             ) as mock_apply,
+            patch.object(
+                zotero_import_module,
+                "require_parsed_content",
+                return_value=MagicMock(
+                    raw_content="hello world",
+                    page_offsets={1: (0, 11)},
+                ),
+            ),
         ):
             result = _sync_item(
                 MagicMock(),
@@ -116,14 +120,14 @@ class TestZoteroSyncItem(unittest.TestCase):
 
     @patch.object(zotero_import_module, "zotero_import_crud")
     @patch.object(zotero_import_module, "research_repository")
-    @patch.object(zotero_import_module, "paper_crud")
+    @patch.object(zotero_import_module, "document_repository")
     def test_sync_is_idempotent(
         self,
-        mock_paper_crud: MagicMock,
+        mock_document_repository: MagicMock,
         mock_research_repository: MagicMock,
         mock_import_crud: MagicMock,
     ) -> None:
-        mock_paper_crud.get.return_value = self.paper
+        mock_document_repository.find_accessible.return_value = self.paper
         mock_research_repository.get_zotero_annotation_keys.return_value = {"ANN1"}
         self.client.get_children.return_value = []
         self.client.get_annotations_for_attachment.return_value = [

@@ -34,15 +34,15 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
             return_value=(active_count, active_size_kb),
         ),
         patch(
-            "app.services.upload_reservations.paper_crud.get_total_paper_count",
+            "app.services.upload_reservations.resource_usage_repository.completed_reference_count",
             return_value=0,
         ),
         patch(
-            "app.services.upload_reservations.paper_crud.has_unknown_billed_document_size",
+            "app.services.upload_reservations._has_active_duplicate_reservation",
             return_value=False,
         ),
         patch(
-            "app.services.upload_reservations.paper_crud.get_size_of_knowledge_base",
+            "app.services.upload_reservations.resource_usage_repository.completed_storage_kb",
             return_value=0,
         ),
         patch(
@@ -192,6 +192,41 @@ def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:
     db.commit.assert_not_called()
 
 
+def test_same_document_cannot_be_reserved_twice_for_one_library() -> None:
+    db = MagicMock()
+    db.scalar.return_value = None
+    requester = MagicMock(id=17)
+    patches = _quota_patches()
+
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patch(
+            "app.services.upload_reservations._has_active_duplicate_reservation",
+            return_value=True,
+        ),
+        patches[6],
+        patches[7],
+        patches[8],
+        pytest.raises(AppError) as error,
+    ):
+        reserve_upload(
+            db,
+            requester=requester,
+            project_id=None,
+            input_size_bytes=1_024,
+            original_filename="paper.pdf",
+            content_sha256="c" * 64,
+        )
+
+    assert error.value.code == "document_upload_in_progress"
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+
+
 def test_empty_upload_is_rejected_before_any_reservation() -> None:
     db = MagicMock()
 
@@ -248,15 +283,11 @@ def test_project_transfer_accounts_for_documents_and_active_reservations() -> No
             return_value=(1, 40),
         ),
         patch(
-            "app.services.upload_reservations.paper_crud.get_total_paper_count",
+            "app.services.upload_reservations.resource_usage_repository.completed_reference_count",
             return_value=2,
         ),
         patch(
-            "app.services.upload_reservations.paper_crud.has_unknown_billed_document_size",
-            return_value=False,
-        ),
-        patch(
-            "app.services.upload_reservations.paper_crud.get_size_of_knowledge_base",
+            "app.services.upload_reservations.resource_usage_repository.completed_storage_kb",
             return_value=200,
         ),
     ):

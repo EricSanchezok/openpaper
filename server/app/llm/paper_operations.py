@@ -3,7 +3,7 @@ import uuid
 from typing import AsyncGenerator, Literal, Sequence
 
 from app.database.crud.message_crud import message_crud
-from app.database.crud.paper_crud import paper_crud
+from app.repositories.documents import document_repository
 from app.database.database import get_db
 from app.database.models import Document, ReasoningLevel
 from app.llm.base import BaseLLMClient
@@ -40,7 +40,7 @@ class PaperOperations(BaseLLMClient):
         """
         Create a narrative summary of the paper using the specified model
         """
-        paper = paper_crud.get(db, id=paper_id, user=user)
+        paper = document_repository.find_accessible(db, document_id=paper_id, user=user)
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found.")
@@ -98,7 +98,9 @@ class PaperOperations(BaseLLMClient):
             else None
         )
 
-        paper: Document | None = paper_crud.get(db, id=paper_id, user=current_user)
+        paper: Document | None = document_repository.find_accessible(
+            db, document_id=paper_id, user=current_user
+        )
 
         if not paper:
             raise ValueError(f"Paper with ID {paper_id} not found.")

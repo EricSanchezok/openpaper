@@ -13,8 +13,8 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from app.database.crud.paper_crud import paper_crud
 from app.database.database import SessionLocal
+from app.repositories.document_search import document_search_repository
 from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -89,7 +89,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
 
             if dry_run:
                 for paper_id, raw_content in rows:
-                    passages = paper_crud.build_passages(raw_content)
+                    passages = document_search_repository.build_passages(raw_content)
                     logger.info(
                         f"[DRY RUN] Document {paper_id}: would index {len(passages)} passages"
                     )
@@ -101,7 +101,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 all_passages = []
                 for paper_id, raw_content in rows:
                     try:
-                        for p in paper_crud.build_passages(raw_content):
+                        for p in document_search_repository.build_passages(raw_content):
                             all_passages.append({"paper_id": paper_id, **p})
                     except Exception as e:
                         errors += 1

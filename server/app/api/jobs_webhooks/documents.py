@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 
 from app.database.crud.message_crud import MessageCreate, message_crud
-from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.user_repository import user_repository
@@ -33,8 +32,11 @@ from app.services.resource_quotas import can_user_auto_sync_zotero
 from app.services.document_gc import collect_document_if_due
 from app.llm.citation_handler import CitationHandler
 from app.repositories.conversations import conversation_repository
+from app.repositories.document_search import document_search_repository
+from app.repositories.documents import document_repository
 from app.repositories.jobs import EnqueueJob, job_repository
 from app.schemas.conversations import ConversationCreateRequest
+from app.schemas.documents import DocumentUpdate
 from app.schemas.jobs import (
     PdfParserUpgradeWebhookData,
     PDFProcessingResult,
@@ -46,6 +48,7 @@ from app.services.zotero.service import (
     auto_import_new_papers,
     sync_batch,
 )
+from app.services.document_annotations import create_ai_highlights
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, TypeAdapter
 from sqlalchemy import delete, select
@@ -172,16 +175,16 @@ def _finalize_zotero_import(
     partial deterministic outputs (e.g. preview/text). Returns the paper id, or
     None when there is no Zotero metadata to keep (cannot finalize).
     """
-    existing_paper = paper_crud.get_by_upload_job_id(
+    existing_paper = document_repository.find_by_upload_job(
         db=db, upload_job_id=job_id, user=job_user
     )
     if not existing_paper or not getattr(existing_paper, "title", None):
         # No Zotero metadata was applied; cannot finalize.
         return None
 
-    paper = paper_crud.update(
-        db=db,
-        obj_in=PaperUpdate(
+    paper = document_repository.update_canonical(
+        db,
+        update=DocumentUpdate(
             preview_s3_key=result.preview_s3_key,
             raw_content=result.raw_content,
             parser_markdown_s3_key=result.parser_markdown_s3_key,
@@ -193,7 +196,7 @@ def _finalize_zotero_import(
             page_offset_map=result.page_offset_map,
             processing_status=DocumentProcessingStatus.COMPLETED.value,
         ),
-        db_obj=existing_paper,
+        document=existing_paper,
         user=job_user,
     )
 
@@ -333,9 +336,9 @@ def post_process_paper(
     if not paper.raw_content:
         raise RuntimeError("pdf_postprocess_content_missing")
     paper.attempted_metadata_at = datetime.now(timezone.utc)
-    paper_crud.index_paper_passages(
+    document_search_repository.replace_passage_index(
         db,
-        paper_id=paper.id,
+        document_id=paper.id,
         raw_content=paper.raw_content,
     )
     hydrated = hydrate_paper_metadata(
@@ -649,16 +652,16 @@ async def handle_paper_processing_webhook(
 
             publish_date = metadata.publish_date if metadata.publish_date else None
 
-            existing_paper = paper_crud.get_by_upload_job_id(
+            existing_paper = document_repository.find_by_upload_job(
                 db=db, upload_job_id=job_id, user=job_user
             )
 
             # Create paper record
             if existing_paper is None:
                 raise HTTPException(status_code=404, detail="paper_not_found")
-            paper = paper_crud.update(
-                db=db,
-                obj_in=PaperUpdate(
+            paper = document_repository.update_canonical(
+                db,
+                update=DocumentUpdate(
                     preview_s3_key=result.preview_s3_key,
                     title=metadata.title,
                     authors=metadata.authors,
@@ -678,18 +681,18 @@ async def handle_paper_processing_webhook(
                     page_offset_map=result.page_offset_map,
                     processing_status=DocumentProcessingStatus.COMPLETED.value,
                 ),
-                db_obj=existing_paper,
+                document=existing_paper,
                 user=job_user,
             )
 
             # Create highlights/annotations if any
             if metadata.highlights and paper:
                 try:
-                    paper_crud.create_ai_annotations(
-                        db=db,
-                        paper_id=str(paper.id),
-                        extract_metadata=metadata,
-                        current_user=job_user,
+                    create_ai_highlights(
+                        db,
+                        document_id=paper.id,
+                        metadata=metadata,
+                        user=job_user,
                     )
                 except Exception:
                     logger.exception("Error creating annotations for job %s", job_id)
@@ -917,9 +920,9 @@ def handle_paper_parser_upgrade_webhook(
         paper.parser_version = result.parser_version
         paper.parser_warning_code = None
 
-        paper_crud.index_paper_passages(
+        document_search_repository.replace_passage_index(
             db,
-            paper_id=uuid.UUID(str(paper.id)),
+            document_id=uuid.UUID(str(paper.id)),
             raw_content=paper.raw_content,
         )
         job_repository.complete(

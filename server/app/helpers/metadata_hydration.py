@@ -15,12 +15,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.models import Document
 from app.helpers.citations import bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import get_doi, get_enriched_data
 from app.helpers.parser import parse_publication_date
 from app.llm.citation_recovery import get_recovery_agent
+from app.repositories.documents import document_repository
+from app.schemas.documents import DocumentUpdate
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 
@@ -69,8 +70,11 @@ def hydrate_paper_metadata(
                 list(paper.authors) if paper.authors else None,
             )
             if doi:
-                updated = paper_crud.update(
-                    db=db, db_obj=paper, obj_in=PaperUpdate(doi=doi), user=user
+                updated = document_repository.update_canonical(
+                    db,
+                    document=paper,
+                    update=DocumentUpdate(doi=doi),
+                    user=user,
                 )
                 if updated:
                     paper = updated
@@ -83,10 +87,10 @@ def hydrate_paper_metadata(
                     if enriched.publication_date
                     else paper.publish_date
                 )
-                updated = paper_crud.update(
+                updated = document_repository.update_canonical(
                     db=db,
-                    db_obj=paper,
-                    obj_in=PaperUpdate(
+                    document=paper,
+                    update=DocumentUpdate(
                         journal=enriched.journal,
                         publisher=enriched.publisher,
                         publish_date=(
@@ -109,10 +113,10 @@ def hydrate_paper_metadata(
     finally:
         # Stamp the attempt regardless of outcome so we respect the cache window.
         try:
-            updated = paper_crud.update(
+            updated = document_repository.update_canonical(
                 db=db,
-                db_obj=paper,
-                obj_in=PaperUpdate(attempted_metadata_at=datetime.now(timezone.utc)),
+                document=paper,
+                update=DocumentUpdate(attempted_metadata_at=datetime.now(timezone.utc)),
                 user=user,
             )
             if updated:

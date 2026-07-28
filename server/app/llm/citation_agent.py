@@ -16,8 +16,8 @@ import logging
 import uuid
 from typing import Any
 
-from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
+from app.repositories.documents import document_repository
+from app.repositories.project_documents import project_document_repository
 from app.database.models import Document
 from app.helpers.citations import (
     STYLE_DISPLAY_NAMES,
@@ -180,13 +180,15 @@ class CitationFinder(MetadataRecoveryAgent):
     ) -> Document | None:
         try:
             if project_id:
-                return project_paper_crud.get_paper_by_project(
+                return project_document_repository.get_paper_by_project(
                     db,
                     paper_id=uuid.UUID(paper_id),
                     project_id=uuid.UUID(project_id),
                     user=current_user,
                 )
-            return paper_crud.get(db, id=paper_id, user=current_user)
+            return document_repository.find_accessible(
+                db, document_id=paper_id, user=current_user
+            )
         except Exception:
             logger.exception("Failed to load paper %s for citation", paper_id)
             return None

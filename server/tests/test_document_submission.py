@@ -147,7 +147,7 @@ async def test_project_submission_consumes_reserved_project_destination(
         MagicMock(return_value=SimpleNamespace(document=document, created=True)),
     )
     monkeypatch.setattr(
-        "app.services.document_submission.project_paper_crud.attach_reserved_upload",
+        "app.services.document_submission.project_document_repository.attach_reserved_upload",
         attach,
     )
     monkeypatch.setattr(

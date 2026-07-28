@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app.api.projects.project_papers_api import AddPaperToProjectRequest
-from app.database.crud.projects.project_paper_crud import project_paper_crud
+from app.repositories.project_documents import project_document_repository
 from app.database.models import (
     Base,
     Document,
@@ -91,16 +91,16 @@ def test_project_papers_are_attached_in_one_transaction(
     db.scalars.side_effect = [empty_result, document_result]
 
     monkeypatch.setattr(
-        "app.database.crud.projects.project_paper_crud.require_project_permission",
+        "app.repositories.project_documents.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
     quota_check = MagicMock()
     monkeypatch.setattr(
-        "app.database.crud.projects.project_paper_crud.require_project_document_capacity",
+        "app.repositories.project_documents.require_project_document_capacity",
         quota_check,
     )
 
-    associations, existing_count = project_paper_crud.attach_library_documents(
+    associations, existing_count = project_document_repository.attach_library_documents(
         db,
         document_ids=[document.id for document in documents],
         project_id=project.id,
@@ -136,12 +136,12 @@ def test_project_paper_batch_rejects_partial_library_matches(
     db.scalar.return_value = project
     db.scalars.side_effect = [empty_result, partial_result]
     monkeypatch.setattr(
-        "app.database.crud.projects.project_paper_crud.require_project_permission",
+        "app.repositories.project_documents.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
 
     with pytest.raises(AppError) as exc_info:
-        project_paper_crud.attach_library_documents(
+        project_document_repository.attach_library_documents(
             db,
             document_ids=requested_ids,
             project_id=project.id,
@@ -185,12 +185,12 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
     document = _document(uuid.uuid4(), size_kb=100, seed="a")
     db.scalar.return_value = None
     monkeypatch.setattr(
-        "app.database.crud.projects.project_paper_crud.require_project_permission",
+        "app.repositories.project_documents.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
 
     with pytest.raises(AppError) as error:
-        project_paper_crud.attach_reserved_upload(
+        project_document_repository.attach_reserved_upload(
             db,
             document=document,
             upload_job=upload_job,

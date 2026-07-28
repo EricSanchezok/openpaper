@@ -3,9 +3,10 @@ import uuid
 from logging import getLogger
 from time import time
 
-from app.database.crud.paper_crud import paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.models import Document
+from app.repositories.document_search import document_search_repository
+from app.repositories.documents import document_repository
+from app.repositories.project_documents import project_document_repository
 from app.schemas.user import CurrentUser
 from sqlalchemy.orm import Session
 
@@ -132,14 +133,16 @@ def read_file(
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
     paper: Document | None = None
     if project_id:
-        paper = project_paper_crud.get_paper_by_project(
+        paper = project_document_repository.get_paper_by_project(
             db,
             paper_id=uuid.UUID(paper_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
-        paper = paper_crud.get(db, id=paper_id, user=current_user)
+        paper = document_repository.find_accessible(
+            db, document_id=paper_id, user=current_user
+        )
 
     if not paper:
         raise ValueError("Paper not found or access denied")
@@ -166,14 +169,16 @@ def search_file(
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
     paper: Document | None = None
     if project_id:
-        paper = project_paper_crud.get_paper_by_project(
+        paper = project_document_repository.get_paper_by_project(
             db,
             paper_id=uuid.UUID(paper_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
-        paper = paper_crud.get(db, id=paper_id, user=current_user)
+        paper = document_repository.find_accessible(
+            db, document_id=paper_id, user=current_user
+        )
 
     if not paper:
         raise ValueError("Paper not found or access denied")
@@ -215,7 +220,7 @@ def search_all_files(
 
     paper_ids: list[uuid.UUID] | None = None
     if project_id:
-        paper_ids = project_paper_crud.get_project_paper_ids_by_project_id(
+        paper_ids = project_document_repository.get_project_paper_ids_by_project_id(
             db, project_id=uuid.UUID(project_id), user=current_user
         )
         if not paper_ids:
@@ -231,8 +236,11 @@ def search_all_files(
         if not paper_ids:
             return {}
 
-    matching_lines_tuples = paper_crud.search_papers_and_get_matching_lines(
-        db, user=current_user, query=query, paper_ids=paper_ids
+    matching_lines_tuples = document_search_repository.matching_lines(
+        db,
+        user_id=current_user.id,
+        query=query,
+        document_ids=paper_ids,
     )
 
     end_time = time()
@@ -267,14 +275,16 @@ def view_file(
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
     paper: Document | None = None
     if project_id:
-        paper = project_paper_crud.get_paper_by_project(
+        paper = project_document_repository.get_paper_by_project(
             db,
             paper_id=uuid.UUID(paper_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
-        paper = paper_crud.get(db, id=paper_id, user=current_user)
+        paper = document_repository.find_accessible(
+            db, document_id=paper_id, user=current_user
+        )
 
     if not paper:
         raise ValueError("Paper not found or access denied")
@@ -309,14 +319,16 @@ def read_abstract(
     _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
     paper: Document | None = None
     if project_id:
-        paper = project_paper_crud.get_paper_by_project(
+        paper = project_document_repository.get_paper_by_project(
             db,
             paper_id=uuid.UUID(paper_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
-        paper = paper_crud.get(db, id=paper_id, user=current_user)
+        paper = document_repository.find_accessible(
+            db, document_id=paper_id, user=current_user
+        )
 
     if not paper:
         raise ValueError("Paper not found or access denied")
