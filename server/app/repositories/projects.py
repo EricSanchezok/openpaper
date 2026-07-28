@@ -493,17 +493,6 @@ class ProjectRepository:
                 message="This user already belongs to the Project",
                 status_code=409,
             )
-        existing = db.scalar(
-            select(ProjectCollaborator).where(
-                ProjectCollaborator.project_id == invitation.project_id,
-                ProjectCollaborator.user_id == user_id,
-            )
-        )
-        if existing is not None:
-            invitation.accepted_at = now
-            db.commit()
-            return existing
-
         inviter_access = get_project_access(
             db,
             project_id=invitation.project_id,
@@ -520,6 +509,17 @@ class ProjectRepository:
                 message="The inviter no longer has permission to grant this access",
                 status_code=409,
             )
+
+        existing = db.scalar(
+            select(ProjectCollaborator).where(
+                ProjectCollaborator.project_id == invitation.project_id,
+                ProjectCollaborator.user_id == user_id,
+            )
+        )
+        if existing is not None:
+            invitation.accepted_at = now
+            db.commit()
+            return existing
 
         collaborator = ProjectCollaborator(
             project_id=invitation.project_id,

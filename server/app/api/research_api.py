@@ -187,6 +187,7 @@ def create_annotation_comment(
     return research_repository.serialize_comment(
         comment,
         user_id=current_user.id,
+        has_scope_access=True,
     )
 
 
@@ -209,6 +210,7 @@ def update_annotation_comment(
     return research_repository.serialize_comment(
         comment,
         user_id=current_user.id,
+        has_scope_access=True,
     )
 
 

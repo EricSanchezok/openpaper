@@ -1,6 +1,7 @@
 """Contracts for typed research outputs and creator-owned visibility."""
 
 from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 import uuid
 
@@ -17,9 +18,12 @@ from app.database.models import (
 from app.errors import AppError
 from app.main import app
 from app.policies.research import research_item_policy
+from app.policies.research import research_item_visible_to
+from app.repositories.research import research_repository
 from app.schemas.research import CreateHighlightThreadRequest, ResearchVisibilityRequest
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects import postgresql
 
 ROOT = Path(__file__).parents[2]
 
@@ -98,6 +102,73 @@ def test_hidden_items_are_creator_only_and_creator_history_survives_access_loss(
     assert not creator.can_manage
     assert not creator.has_scope_access
     assert not collaborator.can_view
+
+
+def test_research_item_id_visibility_is_enforced_in_the_sql_query() -> None:
+    statement = str(
+        research_item_visible_to(7).compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+
+    assert "research_items.created_by_id = 7" in statement
+    assert "library_papers.user_id = 7" in statement
+    assert "project_collaborators.user_id = 7" in statement
+    assert "research_items.is_shared IS true" in statement
+
+
+def test_comment_capabilities_become_read_only_when_scope_access_is_lost() -> None:
+    now = datetime.now(timezone.utc)
+    comment = AnnotationComment(
+        id=uuid.uuid4(),
+        thread_id=uuid.uuid4(),
+        created_by_id=2,
+        content="Observation",
+        role="user",
+        created_at=now,
+        updated_at=now,
+    )
+
+    response = research_repository.serialize_comment(
+        comment,
+        user_id=2,
+        has_scope_access=False,
+    )
+
+    assert response.can_edit is False
+    assert response.can_delete is False
+
+
+def test_highlight_thread_with_other_authors_requires_explicit_delete_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = _item(
+        creator_id=2,
+        shared=True,
+        scope_type=ResearchScopeType.DOCUMENT,
+    )
+    item.kind = ResearchItemKind.HIGHLIGHT_THREAD.value
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = 3
+    monkeypatch.setattr(
+        research_repository,
+        "require_creator_owned",
+        lambda *_args, **_kwargs: item,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        research_repository.delete_item(
+            db,
+            item_id=item.id,
+            user_id=2,
+            confirm_delete_replies=False,
+        )
+
+    assert exc_info.value.code == "highlight_thread_has_other_replies"
+    assert exc_info.value.details == {"affected_reply_count": 3}
+    db.delete.assert_not_called()
+    db.commit.assert_not_called()
 
 
 def test_personal_research_is_always_private() -> None:

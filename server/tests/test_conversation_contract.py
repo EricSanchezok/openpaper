@@ -9,7 +9,11 @@ from app.database.models import Conversation, Message
 from app.errors import AppError
 from app.main import app
 from app.repositories.conversations import conversation_repository
-from app.schemas.conversations import ConversationCreateRequest
+from app.schemas.conversations import (
+    ConversationCreateRequest,
+    ConversationMoveRequest,
+    ConversationUpdateRequest,
+)
 from app.database.crud.message_crud import MessageCreate
 from app.schemas.orm_responses import serialize_messages
 from app.schemas.user import CurrentUser
@@ -128,6 +132,75 @@ def test_message_creation_rejects_a_conversation_owned_by_someone_else() -> None
         )
 
     assert exc_info.value.code == "conversation_not_found"
+
+
+def test_owned_conversation_lookup_filters_id_and_user_in_one_query() -> None:
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = None
+
+    with pytest.raises(AppError):
+        conversation_repository.require_owned(
+            db,
+            conversation_id=uuid.uuid4(),
+            user_id=73,
+        )
+
+    statement = str(db.scalar.call_args.args[0])
+    assert "conversations.id" in statement
+    assert "conversations.user_id" in statement
+
+
+def test_paper_conversation_scope_is_immutable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        title="Paper",
+        user_id=1,
+        scope_type="paper",
+        document_id=uuid.uuid4(),
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = conversation
+    monkeypatch.setattr(
+        "app.repositories.conversations.conversation_policy.require_can_continue",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        conversation_repository.move(
+            db,
+            conversation_id=conversation.id,
+            user_id=1,
+            request=ConversationMoveRequest(scope_type="global"),
+        )
+
+    assert exc_info.value.code == "paper_conversation_scope_fixed"
+    db.commit.assert_not_called()
+
+
+def test_archiving_a_conversation_also_unpins_it() -> None:
+    now = datetime.now(timezone.utc)
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        title="Pinned",
+        user_id=1,
+        scope_type="global",
+        pinned_at=now,
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = conversation
+
+    updated = conversation_repository.update(
+        db,
+        conversation_id=conversation.id,
+        user_id=1,
+        request=ConversationUpdateRequest(archived=True),
+    )
+
+    assert updated.archived_at is not None
+    assert updated.pinned_at is None
+    db.commit.assert_called_once()
 
 
 def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:

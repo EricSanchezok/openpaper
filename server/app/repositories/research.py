@@ -20,7 +20,7 @@ from app.database.models.base import JsonValue
 from app.errors import AppError
 from app.helpers.s3 import s3_service
 from app.policies.documents import require_document_access
-from app.policies.research import research_item_policy
+from app.policies.research import research_item_policy, research_item_visible_to
 from app.schemas.research import (
     AnnotationCommentResponse,
     AudioOverviewContent,
@@ -60,7 +60,10 @@ class ResearchRepository:
         user_id: int,
         for_update: bool = False,
     ) -> ResearchItem:
-        statement = select(ResearchItem).where(ResearchItem.id == item_id)
+        statement = select(ResearchItem).where(
+            ResearchItem.id == item_id,
+            research_item_visible_to(user_id),
+        )
         if for_update:
             statement = statement.with_for_update()
         item = db.scalar(statement)
@@ -284,6 +287,7 @@ class ResearchRepository:
             .where(
                 ResearchItem.id == thread_id,
                 ResearchItem.kind == ResearchItemKind.HIGHLIGHT_THREAD.value,
+                research_item_visible_to(user_id),
             )
             .options(
                 joinedload(ResearchItem.highlight_thread)
@@ -615,7 +619,11 @@ class ResearchRepository:
                 color=item.highlight_thread.color,
                 role=item.highlight_thread.role,
                 comments=[
-                    self.serialize_comment(comment, user_id=user_id)
+                    self.serialize_comment(
+                        comment,
+                        user_id=user_id,
+                        has_scope_access=access.has_scope_access,
+                    )
                     for comment in item.highlight_thread.comments
                 ],
             )
@@ -665,7 +673,9 @@ class ResearchRepository:
         comment: AnnotationComment,
         *,
         user_id: int,
+        has_scope_access: bool,
     ) -> AnnotationCommentResponse:
+        can_manage = comment.created_by_id == user_id and has_scope_access
         return AnnotationCommentResponse(
             id=comment.id,
             thread_id=comment.thread_id,
@@ -681,8 +691,8 @@ class ResearchRepository:
             ),
             created_at=comment.created_at,
             updated_at=comment.updated_at,
-            can_edit=comment.created_by_id == user_id,
-            can_delete=comment.created_by_id == user_id,
+            can_edit=can_manage,
+            can_delete=can_manage,
         )
 
 

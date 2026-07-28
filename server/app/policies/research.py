@@ -5,9 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.database.models import ResearchItem, ResearchScopeType
+from app.database.models import (
+    LibraryPaper,
+    Project,
+    ProjectCollaborator,
+    ProjectPaper,
+)
 from app.errors import AppError
 from app.policies.documents import get_document_access
 from app.policies.projects import get_project_access
+from sqlalchemy import and_, exists, or_, select
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.orm import Session
 
 
@@ -16,6 +24,67 @@ class ResearchItemAccess:
     can_view: bool
     can_manage: bool
     has_scope_access: bool
+
+
+def research_item_visible_to(user_id: int) -> ColumnElement[bool]:
+    """Return the complete SQL visibility predicate for a research item."""
+    document_library_access = exists(
+        select(LibraryPaper.id).where(
+            LibraryPaper.document_id == ResearchItem.document_id,
+            LibraryPaper.user_id == user_id,
+        )
+    )
+    document_project_access = exists(
+        select(ProjectPaper.id)
+        .join(Project, Project.id == ProjectPaper.project_id)
+        .outerjoin(
+            ProjectCollaborator,
+            and_(
+                ProjectCollaborator.project_id == Project.id,
+                ProjectCollaborator.user_id == user_id,
+            ),
+        )
+        .where(
+            ProjectPaper.document_id == ResearchItem.document_id,
+            or_(
+                Project.owner_id == user_id,
+                ProjectCollaborator.user_id == user_id,
+            ),
+        )
+    )
+    project_access = exists(
+        select(Project.id)
+        .outerjoin(
+            ProjectCollaborator,
+            and_(
+                ProjectCollaborator.project_id == Project.id,
+                ProjectCollaborator.user_id == user_id,
+            ),
+        )
+        .where(
+            Project.id == ResearchItem.project_id,
+            or_(
+                Project.owner_id == user_id,
+                ProjectCollaborator.user_id == user_id,
+            ),
+        )
+    )
+    return or_(
+        ResearchItem.created_by_id == user_id,
+        and_(
+            ResearchItem.is_shared.is_(True),
+            or_(
+                and_(
+                    ResearchItem.scope_type == ResearchScopeType.DOCUMENT.value,
+                    or_(document_library_access, document_project_access),
+                ),
+                and_(
+                    ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
+                    project_access,
+                ),
+            ),
+        ),
+    )
 
 
 class ResearchItemPolicy:

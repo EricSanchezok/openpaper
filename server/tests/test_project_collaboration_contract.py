@@ -1,6 +1,7 @@
 """Contracts for the lightweight project collaboration model."""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,14 +16,18 @@ from app.database.models import (
     JobStatus,
     Project,
     ProjectCollaborator,
+    ProjectInvitation,
     ProjectPaper,
     UploadReservation,
 )
 from app.errors import AppError
 from app.main import app
-from app.policies.projects import ProjectPermissions
+from app.policies.projects import ProjectAccess, ProjectPermissions
 from app.repositories.projects import project_repository
-from app.schemas.projects import ProjectInvitationCreateRequest
+from app.schemas.projects import (
+    ProjectInvitationCreateRequest,
+    ProjectPermissionSet,
+)
 from app.schemas.user import CurrentUser
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -54,6 +59,58 @@ def test_project_permission_sets_only_contain_their_own_powers() -> None:
     assert not paper_manager.contains(ProjectPermissions(manage_collaborators=True))
     assert collaborator_manager.contains(paper_manager)
     assert ProjectPermissions.all().contains(collaborator_manager)
+
+
+def test_collaborator_cannot_grant_or_manage_permissions_they_do_not_have(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project(id=uuid.uuid4(), owner_id=1, title="Project")
+    actor_membership = ProjectCollaborator(
+        project_id=project.id,
+        user_id=2,
+        can_manage_collaborators=True,
+    )
+    actor = ProjectAccess(
+        project=project,
+        user_id=2,
+        is_owner=False,
+        collaborator=actor_membership,
+        permissions=ProjectPermissions(manage_collaborators=True),
+    )
+    target = ProjectCollaborator(
+        project_id=project.id,
+        user_id=3,
+        can_manage_papers=True,
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = target
+    monkeypatch.setattr(
+        "app.repositories.projects.require_project_permission",
+        lambda *_args, **_kwargs: actor,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        project_repository.update_collaborator(
+            db,
+            project_id=project.id,
+            actor_id=2,
+            target_user_id=3,
+            requested=ProjectPermissionSet(manage_papers=True),
+        )
+
+    assert exc_info.value.code == "project_permission_escalation"
+    db.commit.assert_not_called()
+
+    with pytest.raises(AppError) as exc_info:
+        project_repository.remove_collaborator(
+            db,
+            project_id=project.id,
+            actor_id=2,
+            target_user_id=3,
+        )
+
+    assert exc_info.value.code == "project_collaborator_not_manageable"
+    db.delete.assert_not_called()
 
 
 def test_project_requests_reject_legacy_roles_and_unknown_fields() -> None:
@@ -245,6 +302,91 @@ def test_transfer_validates_and_reassigns_owner_quota(
     assert transferred.owner_id == 2
     db.delete.assert_called_once_with(new_owner_membership)
     db.commit.assert_called_once()
+
+
+def _invitation(
+    *,
+    project_id: uuid.UUID,
+    invited_by_id: int = 1,
+    email: str = "collaborator@example.com",
+) -> ProjectInvitation:
+    return ProjectInvitation(
+        id=uuid.uuid4(),
+        project_id=project_id,
+        email=email,
+        token_hash="a" * 64,
+        invited_by_id=invited_by_id,
+        can_manage_papers=True,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+
+
+def test_invitation_revalidates_inviter_before_accepting_existing_member(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_id = uuid.uuid4()
+    invitation = _invitation(project_id=project_id, invited_by_id=5)
+    db = MagicMock(spec=Session)
+    db.get.return_value = Project(id=project_id, owner_id=1, title="Project")
+    monkeypatch.setattr(
+        "app.repositories.projects.get_project_access",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        project_repository._accept_invitation(
+            db,
+            invitation=invitation,
+            user_id=2,
+            email=invitation.email,
+        )
+
+    assert exc_info.value.code == "project_invitation_authority_revoked"
+    assert invitation.accepted_at is None
+    db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("mutate", "email"),
+    [
+        (
+            lambda invitation: setattr(
+                invitation, "revoked_at", datetime.now(timezone.utc)
+            ),
+            "collaborator@example.com",
+        ),
+        (
+            lambda invitation: setattr(
+                invitation,
+                "expires_at",
+                datetime.now(timezone.utc) - timedelta(seconds=1),
+            ),
+            "collaborator@example.com",
+        ),
+        (lambda _invitation: None, "another@example.com"),
+    ],
+)
+def test_invalid_invitation_states_fail_without_side_effects(
+    mutate: object,
+    email: str,
+) -> None:
+    project_id = uuid.uuid4()
+    invitation = _invitation(project_id=project_id)
+    assert callable(mutate)
+    mutate(invitation)
+    db = MagicMock(spec=Session)
+
+    with pytest.raises(AppError) as exc_info:
+        project_repository._accept_invitation(
+            db,
+            invitation=invitation,
+            user_id=2,
+            email=email,
+        )
+
+    assert exc_info.value.code == "project_invitation_invalid"
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
 
 
 def test_project_api_exposes_capabilities_and_invitation_lifecycle() -> None:
