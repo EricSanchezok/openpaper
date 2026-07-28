@@ -17,7 +17,7 @@ from app.errors import AppError
 from app.schemas.documents import LibraryPaperUpdateRequest
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +36,10 @@ class DocumentRepository:
         return list(
             db.scalars(
                 select(LibraryPaper)
+                .options(
+                    selectinload(LibraryPaper.document),
+                    selectinload(LibraryPaper.tags),
+                )
                 .where(LibraryPaper.user_id == user_id)
                 .order_by(LibraryPaper.updated_at.desc(), LibraryPaper.id.desc())
             ).all()

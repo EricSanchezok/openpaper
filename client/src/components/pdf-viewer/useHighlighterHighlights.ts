@@ -1,10 +1,32 @@
 import { useState, useEffect, useCallback } from "react";
-import { PaperHighlight, ScaledPosition, HighlightColor } from "@/lib/schema";
+import {
+	PaperHighlight,
+	ScaledPosition,
+	HighlightColor,
+	ResearchItem,
+} from "@/lib/schema";
 import { fetchFromApi } from "@/lib/api";
+
+function toHighlight(item: ResearchItem): PaperHighlight | null {
+	const thread = item.highlight_thread;
+	if (!thread) return null;
+	return {
+		id: item.id,
+		raw_text: thread.quote_text,
+		role: thread.role === "assistant" ? "assistant" : "user",
+		start_offset: thread.start_offset ?? undefined,
+		end_offset: thread.end_offset ?? undefined,
+		page_number: thread.page_number ?? undefined,
+		position: thread.position as unknown as ScaledPosition | undefined,
+		color: thread.color as HighlightColor,
+		is_shared: item.is_shared,
+		created_by: item.created_by,
+	};
+}
 
 export function useHighlighterHighlights(
 	paperId: string,
-	projectId?: string | null,
+	_projectId?: string | null,
 	readOnlyHighlights: Array<PaperHighlight> = []
 ) {
 	const [highlights, setHighlights] = useState<Array<PaperHighlight>>([]);
@@ -21,8 +43,8 @@ export function useHighlighterHighlights(
 	// Fetch highlights from server
 	const fetchHighlights = useCallback(async () => {
 		try {
-			const data: PaperHighlight[] = await fetchFromApi(
-				`/api/highlight/${paperId}${projectId ? `?project_id=${projectId}` : ""}`,
+			const response = await fetchFromApi(
+				`/api/documents/${paperId}/highlight-threads`,
 				{
 					method: "GET",
 					headers: {
@@ -30,7 +52,10 @@ export function useHighlighterHighlights(
 						Accept: "application/json",
 					},
 				}
-			);
+			) as { items: ResearchItem[] };
+			const data = response.items
+				.map(toHighlight)
+				.filter((highlight): highlight is PaperHighlight => highlight !== null);
 
 			// Filter valid highlights - require either position or offsets
 			const validHighlights = data.filter(
@@ -57,7 +82,7 @@ export function useHighlighterHighlights(
 		} catch (error) {
 			console.error("Error loading highlights from server:", error);
 		}
-	}, [paperId, projectId]);
+	}, [paperId]);
 
 	// Send highlight to server
 	const sendHighlightToServer = async (
@@ -75,25 +100,28 @@ export function useHighlighterHighlights(
 		}
 
 		const payload = {
-			paper_id: paperId,
-			raw_text: highlight.raw_text,
+			quote_text: highlight.raw_text,
 			page_number: highlight.page_number,
+			start_offset: highlight.start_offset,
+			end_offset: highlight.end_offset,
 			position: highlight.position,
-			role: highlight.role || "user",
-			color: highlight.color,
-			project_id: projectId || undefined,
+			color: highlight.color ?? "yellow",
+			shared: true,
 		};
 
 		try {
-			const data = await fetchFromApi(`/api/highlight`, {
+			const item = await fetchFromApi(
+				`/api/documents/${paperId}/highlight-threads`,
+				{
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 					Accept: "application/json",
 				},
 				body: JSON.stringify(payload),
-			});
-			return data;
+				},
+			) as ResearchItem;
+			return toHighlight(item) ?? undefined;
 		} catch (error) {
 			console.error("Error sending highlight to server:", error);
 		}
@@ -102,12 +130,24 @@ export function useHighlighterHighlights(
 	// Remove highlight from server
 	const removeHighlightFromServer = async (highlight: PaperHighlight) => {
 		try {
-			await fetchFromApi(`/api/highlight/${highlight.id}`, {
+			await fetchFromApi(`/api/highlight-threads/${highlight.id}`, {
 				method: "DELETE",
 				headers: {
 					"Content-Type": "application/json",
 					Accept: "application/json",
 				},
+			}).catch(async () => {
+				if (
+					!window.confirm(
+						"This highlight has replies from other collaborators. Delete the thread and all replies?",
+					)
+				) {
+					throw new Error("highlight_delete_cancelled");
+				}
+				await fetchFromApi(
+					`/api/highlight-threads/${highlight.id}?confirm_delete_replies=true`,
+					{ method: "DELETE" },
+				);
 			});
 
 			setHighlights((prev) => prev.filter((h) => h.id !== highlight.id));

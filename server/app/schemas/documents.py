@@ -66,6 +66,12 @@ class DocumentResponse(BaseModel):
     updated_at: datetime
 
 
+class LibraryPaperTagResponse(BaseModel):
+    id: UUID
+    name: str
+    color: str
+
+
 class LibraryPaperResponse(BaseModel):
     id: UUID
     user_id: int
@@ -73,6 +79,8 @@ class LibraryPaperResponse(BaseModel):
     last_accessed_at: datetime
     metadata_overrides: DocumentMetadataOverrides
     is_public: bool
+    preview_url: str | None
+    tags: list[LibraryPaperTagResponse]
     document: DocumentResponse
     created_at: datetime
     updated_at: datetime

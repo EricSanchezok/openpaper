@@ -4,6 +4,7 @@ import { PdfHighlighterViewer } from '@/components/PdfHighlighterViewer';
 import type { RenderedHighlightPosition } from '@/components/PdfHighlighterViewer';
 import { Button } from '@/components/ui/button';
 import { fetchFromApi } from '@/lib/api';
+import { fetchUploadJobStatus } from '@/lib/documents';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -353,7 +354,8 @@ export default function PaperView() {
 
     const pollJobStatus = async (jobId: string) => {
         try {
-            const response: PaperUploadJobStatusResponse = await fetchFromApi(`/api/paper/upload/status/${jobId}`);
+            const response: PaperUploadJobStatusResponse =
+                await fetchUploadJobStatus(jobId);
             setLoadingMessage(response.celery_progress_message);
 
             if (response.status === 'completed') {

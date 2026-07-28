@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useProjects } from "@/hooks/useProjects";
 import { useRouter } from "next/navigation";
-import { fetchFromApi } from "@/lib/api";
 import {
 	Dialog,
 	DialogContent,
@@ -20,6 +19,7 @@ import { PaperItem, JobStatus, PaperUploadJobStatusResponse } from "@/lib/schema
 import { toast } from "sonner";
 import { useSubscription, isStorageAtLimit, isPaperUploadAtLimit, isPaperUploadNearLimit, isStorageNearLimit } from "@/hooks/useSubscription";
 import { uploadFiles, uploadFromUrlWithFallback } from "@/lib/uploadUtils";
+import { fetchRelevantPapers, fetchUploadJobStatus } from "@/lib/documents";
 
 // New components for redesigned home
 import { HomeSearch } from "@/components/HomeSearch";
@@ -246,7 +246,8 @@ export default function Home() {
 	// Poll job status
 	const pollJobStatus = async (jobId: string) => {
 		try {
-			const response: PaperUploadJobStatusResponse = await fetchFromApi(`/api/paper/upload/status/${jobId}`);
+			const response: PaperUploadJobStatusResponse =
+				await fetchUploadJobStatus(jobId);
 			setJobUploadStatus(response.status);
 
 			if (response.celery_progress_message) {
@@ -284,8 +285,7 @@ export default function Home() {
 		const fetchData = async () => {
 			setIsLoadingData(true);
 			try {
-				const papersResponse = await fetchFromApi("/api/paper/relevant");
-				setRelevantPapers(papersResponse?.papers || []);
+				setRelevantPapers(await fetchRelevantPapers());
 			} catch (error) {
 				console.error("Error fetching data:", error);
 				setRelevantPapers([]);
@@ -300,8 +300,7 @@ export default function Home() {
 	const refreshData = async () => {
 		if (!user) return;
 		try {
-			const papersResponse = await fetchFromApi("/api/paper/relevant");
-			setRelevantPapers(papersResponse?.papers || []);
+			setRelevantPapers(await fetchRelevantPapers());
 			refetchProjects();
 		} catch (error) {
 			console.error("Error refreshing data:", error);

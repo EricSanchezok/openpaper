@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchFromApi } from "@/lib/api";
 import { PaperUploadJobStatusResponse, JobStatus, MinimalJob } from "@/lib/schema";
+import { fetchUploadJobStatus } from "@/lib/documents";
 import { AlertTriangle, CheckCircle2, ChevronDown, XCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -73,7 +73,8 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 				if (job.status === 'pending' || job.status === 'running') {
 					hasPendingJobs = true;
 					try {
-						const statusResponse: PaperUploadJobStatusResponse = await fetchFromApi(`/api/paper/upload/status/${job.jobId}`);
+						const statusResponse: PaperUploadJobStatusResponse =
+							await fetchUploadJobStatus(job.jobId);
 						setJobs(prevJobs => prevJobs.map(j => j.jobId === job.jobId ? {
 							...j,
 							status: statusResponse.status,

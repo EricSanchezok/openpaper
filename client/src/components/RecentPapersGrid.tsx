@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, FileText, Clock } from "lucide-react";
-import { fetchFromApi } from "@/lib/api";
 import { PaperItem } from "@/lib/schema";
+import { fetchRelevantPapers } from "@/lib/documents";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils";
 
@@ -95,8 +95,7 @@ export function RecentPapersGrid({ papers: propPapers, limit = 6 }: RecentPapers
 
         const fetchPapers = async () => {
             try {
-                const response = await fetchFromApi("/api/paper/relevant");
-                setPapers((response?.papers || []).slice(0, limit));
+                setPapers(await fetchRelevantPapers(limit));
             } catch (error) {
                 console.error("Error fetching papers:", error);
             } finally {

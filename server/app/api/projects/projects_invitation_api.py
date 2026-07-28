@@ -59,20 +59,6 @@ def _send_invitation(
     )
 
 
-@router.get("/project-invitations", response_model=list[ProjectInvitationResponse])
-def get_user_invitations(
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
-) -> list[ProjectInvitationResponse]:
-    invitations = project_repository.list_user_invitations(
-        db, email=str(current_user.email)
-    )
-    return [
-        _invitation_response(db, invitation_id=invitation.id)
-        for invitation in invitations
-    ]
-
-
 @router.post(
     "/project-invitations/{token}/accept",
     status_code=status.HTTP_204_NO_CONTENT,

@@ -459,27 +459,6 @@ class ProjectRepository:
             ).all()
         )
 
-    def list_user_invitations(
-        self, db: Session, *, email: str
-    ) -> list[ProjectInvitation]:
-        now = datetime.now(timezone.utc)
-        return list(
-            db.scalars(
-                select(ProjectInvitation)
-                .where(
-                    ProjectInvitation.email == _normalized_email(email),
-                    ProjectInvitation.accepted_at.is_(None),
-                    ProjectInvitation.revoked_at.is_(None),
-                    ProjectInvitation.expires_at > now,
-                )
-                .options(
-                    joinedload(ProjectInvitation.invited_by),
-                    joinedload(ProjectInvitation.project),
-                )
-                .order_by(ProjectInvitation.created_at.desc())
-            ).all()
-        )
-
     def _accept_invitation(
         self,
         db: Session,

@@ -148,9 +148,9 @@ export async function getProjectPaperFileUrl(
 /**
  * Fetch a fresh presigned file URL for a single owned paper. The cheap path
  * for refreshing an expired URL — avoids the metadata enrichment and full
- * document payload of GET /api/paper.
+ * canonical document payload.
  */
 export async function getPaperFileUrl(paperId: string): Promise<string | null> {
-    const response = await fetchFromApi(`/api/paper/${paperId}/file-url`);
+    const response = await fetchFromApi(`/api/documents/${paperId}/file-url`);
     return response?.file_url ?? null;
 }

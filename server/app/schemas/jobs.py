@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from app.database.models.base import JsonValue
 from app.schemas.responses import PaperMetadataExtraction
 from app.schemas.responses import DataTableRow
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -105,9 +106,12 @@ class PdfParserUpgradeWebhookData(BaseModel):
 class JobResponse(BaseModel):
     id: UUID
     operation: str
+    document_id: UUID | None
+    project_id: UUID | None
     status: str
     progress_message: str | None
     error_code: str | None
+    result: dict[str, JsonValue] | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None

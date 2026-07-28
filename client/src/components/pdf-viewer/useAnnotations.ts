@@ -1,27 +1,38 @@
 import {
-    PaperHighlightAnnotation
+    PaperHighlightAnnotation,
+    ResearchItem,
+    ResearchComment,
 } from '@/lib/schema';
 import { fetchFromApi } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
 export function useAnnotations(paperId: string, projectId?: string | null) {
     const [annotations, setAnnotations] = useState<PaperHighlightAnnotation[]>([]);
+    const toAnnotation = (
+        comment: ResearchComment,
+    ): PaperHighlightAnnotation => ({
+        id: comment.id,
+        highlight_id: comment.thread_id,
+        paper_id: paperId,
+        content: comment.content,
+        role: comment.role,
+        created_at: comment.created_at,
+        created_by: comment.created_by,
+    });
 
     const addAnnotation = async (highlightId: string, content: string) => {
-        const newAnnotation: Partial<PaperHighlightAnnotation> = {
-            highlight_id: highlightId,
-            paper_id: paperId,
-            content,
-        };
-
         try {
-            const savedAnnotation: PaperHighlightAnnotation = await fetchFromApi('/api/annotation/', {
+            const savedComment = await fetchFromApi(
+                `/api/highlight-threads/${highlightId}/comments`,
+                {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(newAnnotation),
-            });
+                body: JSON.stringify({ content }),
+                },
+            ) as ResearchComment;
+            const savedAnnotation = toAnnotation(savedComment);
             setAnnotations(prev => [...prev, savedAnnotation]);
             return savedAnnotation;
         } catch (error) {
@@ -32,7 +43,7 @@ export function useAnnotations(paperId: string, projectId?: string | null) {
 
     const removeAnnotation = async (annotationId: string) => {
         try {
-            await fetchFromApi(`/api/annotation/${annotationId}`, {
+            await fetchFromApi(`/api/annotation-comments/${annotationId}`, {
                 method: 'DELETE',
             });
 
@@ -46,7 +57,7 @@ export function useAnnotations(paperId: string, projectId?: string | null) {
 
     const updateAnnotation = async (annotationId: string, content: string) => {
         try {
-            const updatedAnnotation: PaperHighlightAnnotation = await fetchFromApi(`/api/annotation/${annotationId}`, {
+            const updatedComment = await fetchFromApi(`/api/annotation-comments/${annotationId}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -54,7 +65,8 @@ export function useAnnotations(paperId: string, projectId?: string | null) {
                 body: JSON.stringify({
                     content,
                 }),
-            });
+            }) as ResearchComment;
+            const updatedAnnotation = toAnnotation(updatedComment);
 
             const updatedAnnotations = annotations.map(a =>
                 a.id === annotationId ? updatedAnnotation : a
@@ -70,9 +82,12 @@ export function useAnnotations(paperId: string, projectId?: string | null) {
 
     const fetchAnnotations = async () => {
         try {
-            const loadedAnnotations: PaperHighlightAnnotation[] = await fetchFromApi(`/api/annotation/${paperId}${projectId ? `?project_id=${projectId}` : ""}`, {
+            const response = await fetchFromApi(`/api/documents/${paperId}/highlight-threads`, {
                 method: 'GET',
-            });
+            }) as { items: ResearchItem[] };
+            const loadedAnnotations = response.items.flatMap((item) =>
+                item.highlight_thread?.comments.map(toAnnotation) ?? [],
+            );
 
             setAnnotations(loadedAnnotations);
             return loadedAnnotations;

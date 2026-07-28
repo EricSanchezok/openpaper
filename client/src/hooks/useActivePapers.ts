@@ -1,17 +1,18 @@
 import useSWR, { mutate as globalMutate } from "swr";
-import { fetchFromApi } from "@/lib/api";
 import { PaperItem } from "@/lib/schema";
+import { fetchLibraryPapers } from "@/lib/documents";
 
-export const ACTIVE_PAPERS_KEY = "/api/paper/active";
+export const ACTIVE_PAPERS_KEY = "/api/library/papers";
 
 async function fetchActivePapers(): Promise<PaperItem[]> {
-	const data = await fetchFromApi(ACTIVE_PAPERS_KEY);
-	const papers: PaperItem[] = data?.papers ?? [];
-	return papers.sort(
+	const papers = await fetchLibraryPapers();
+	return papers
+		.filter((paper) => paper.status === "reading")
+		.sort(
 		(a, b) =>
 			new Date(b.created_at || "").getTime() -
 			new Date(a.created_at || "").getTime(),
-	);
+		);
 }
 
 export function useActivePapers(enabled = true) {

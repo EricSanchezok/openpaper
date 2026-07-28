@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, Suspense, useMemo } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ProjectCard } from "@/components/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { Project } from "@/lib/schema";
@@ -13,7 +13,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import LoadingIndicator from "@/components/utils/Loading";
-import { ProjectInvitations } from "@/components/ProjectInvitations";
 
 type ProjectFilter = "hasAudio" | "hasChats" | "hasDataTables" | "shared";
 
@@ -28,7 +27,6 @@ function ProjectsPage() {
 	const { projects, isLoading, error, refetch: getProjects } = useProjects();
 	const { subscription } = useSubscription();
 	const router = useRouter();
-	const searchParams = useSearchParams();
 
 	const [showUsageAlert, setShowUsageAlert] = useState(true);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -36,7 +34,6 @@ function ProjectsPage() {
 
 	const atProjectLimit = subscription ? isProjectAtLimit(subscription) : false;
 	const nearProjectLimit = subscription ? isProjectNearLimit(subscription) : false;
-	const openInvites = searchParams.get("openInvites") !== null;
 
 	const toggleFilter = (filter: ProjectFilter) => {
 		setActiveFilters((prev) => {
@@ -215,7 +212,6 @@ function ProjectsPage() {
 			<div className="flex justify-between items-center mb-4">
 				<h1 className="text-2xl font-bold">Projects</h1>
 				<div className="flex gap-2">
-					<ProjectInvitations onInvitationAccepted={getProjects} defaultOpen={openInvites} />
 					{projects.length > 0 && (
 						atProjectLimit ? (
 							<Button className="bg-blue-500 dark:text-card-foreground hover:bg-blue-600 dark:hover:bg-blue-400" disabled>

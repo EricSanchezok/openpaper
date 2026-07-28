@@ -1,16 +1,14 @@
 import useSWR from 'swr';
-import { fetchFromApi } from '@/lib/api';
 import { PaperItem } from '@/lib/schema';
+import { fetchLibraryPapers } from '@/lib/documents';
 
-const fetcher = (url: string) => fetchFromApi(url).then(data => data.papers || data);
+const LIBRARY_PAPERS_KEY = "/api/library/papers";
 
-interface UserPapersProps {
-	detailed?: boolean;
-}
-
-export function usePapers({ detailed = false }: UserPapersProps = {}) {
-	const url = detailed ? '/api/paper/all?detailed=true' : '/api/paper/all';
-	const { data, error, isLoading, mutate } = useSWR<PaperItem[]>(url, fetcher);
+export function usePapers() {
+	const { data, error, isLoading, mutate } = useSWR<PaperItem[]>(
+		LIBRARY_PAPERS_KEY,
+		fetchLibraryPapers,
+	);
 
 	const setPapers = (paperId: string, updatedPaper: PaperItem) => {
 		if (data) {

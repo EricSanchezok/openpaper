@@ -68,6 +68,15 @@ def _library_response(library_paper: object) -> LibraryPaperResponse:
             "last_accessed_at": library_paper.last_accessed_at,
             "metadata_overrides": library_paper.metadata_overrides,
             "is_public": library_paper.is_public,
+            "preview_url": (
+                s3_service.generate_presigned_url(library_paper.document.preview_s3_key)
+                if library_paper.document.preview_s3_key
+                else None
+            ),
+            "tags": [
+                {"id": tag.id, "name": tag.name, "color": tag.color}
+                for tag in library_paper.tags
+            ],
             "document": _document_response(library_paper.document),
             "created_at": library_paper.created_at,
             "updated_at": library_paper.updated_at,

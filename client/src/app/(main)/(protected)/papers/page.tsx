@@ -106,11 +106,16 @@ function PapersPageContent() {
 
     const refetchPendingJobs = useCallback(async () => {
         try {
-            const response = await fetchFromApi("/api/paper/pending-jobs");
-            if (!response?.jobs?.length) return;
-            setPendingJobs(response.jobs.map((job: { job_id: string; title: string | null }) => ({
-                jobId: job.job_id,
-                fileName: job.title || "Uploading paper…",
+            const response = await fetchFromApi(
+                "/api/jobs?operation=pdf_process&active=true",
+            );
+            if (!response?.items?.length) return;
+            setPendingJobs(response.items.map((job: {
+                id: string;
+                progress_message: string | null;
+            }) => ({
+                jobId: job.id,
+                fileName: job.progress_message || "Uploading paper…",
             })));
         } catch (err) {
             console.error("Failed to fetch pending upload jobs", err);
@@ -138,7 +143,11 @@ function PapersPageContent() {
     };
 
     const deletePaper = async (paperId: string) => {
-        await fetchFromApi(`/api/paper?id=${paperId}`, {
+        const entry = papers?.find((paper) => paper.id === paperId);
+        if (!entry?.library_paper_id) {
+            throw new Error("Library reference is missing");
+        }
+        await fetchFromApi(`/api/library/papers/${entry.library_paper_id}`, {
             method: "DELETE",
         });
         // Optimistically drop the paper from the SWR cache that LibraryTable

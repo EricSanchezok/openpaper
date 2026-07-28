@@ -142,6 +142,18 @@ export interface ResearchItemCapabilities {
     delete: boolean;
 }
 
+export interface ResearchComment {
+    id: string;
+    thread_id: string;
+    content: string;
+    role: 'user' | 'assistant';
+    created_by: ResearchCreator;
+    created_at: string;
+    updated_at: string;
+    can_edit: boolean;
+    can_delete: boolean;
+}
+
 export interface ResearchItem {
     id: string;
     kind: 'highlight_thread' | 'citation' | 'audio_overview' | 'data_table';
@@ -178,16 +190,19 @@ export interface ResearchItem {
         position: Record<string, unknown> | null;
         color: string;
         role: string;
-        comments: unknown[];
+        comments: ResearchComment[];
     } | null;
 }
 
 export interface DurableJob {
     id: string;
     operation: string;
+    document_id: string | null;
+    project_id: string | null;
     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
     progress_message: string | null;
     error_code: string | null;
+    result: Record<string, unknown> | null;
     created_at: string;
     started_at: string | null;
     completed_at: string | null;
@@ -452,6 +467,7 @@ export interface PaperTag {
 
 export interface PaperItem {
     id: string
+    library_paper_id?: string
     title: string
     abstract?: string
     authors?: string[]
