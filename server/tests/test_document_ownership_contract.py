@@ -54,6 +54,9 @@ def test_personal_reference_attachment_is_conflict_safe() -> None:
     assert result.created is False
     statement = str(db.scalar.call_args.args[0])
     assert "ON CONFLICT" in statement
+    gc_update = str(db.execute.call_args.args[0])
+    assert "gc_after" in gc_update
+    assert "NULL" in gc_update
 
 
 def test_metadata_and_baseline_expose_only_canonical_ownership_tables() -> None:

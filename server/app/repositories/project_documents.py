@@ -6,7 +6,6 @@ from app.database.models import (
     DurableJob,
     JobStatus,
     LibraryPaper,
-    PaperStatus,
     UploadReservation,
     Project,
     ProjectCollaborator,
@@ -23,7 +22,7 @@ from app.policies.projects import (
     require_project_permission,
 )
 from app.schemas.user import CurrentUser
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, load_only
 
 
@@ -102,6 +101,14 @@ class ProjectDocumentRepository:
             for document in documents
         ]
         db.add_all(associations)
+        db.execute(
+            update(Document)
+            .where(
+                Document.id.in_(new_ids),
+                Document.gc_after.isnot(None),
+            )
+            .values(gc_after=None)
+        )
         project.updated_at = datetime.now(timezone.utc)
         db.commit()
         for association in associations:
@@ -381,12 +388,10 @@ class ProjectDocumentRepository:
             user=current_user,
             document=document,
         )
-        db.add(
-            LibraryPaper(
-                document_id=document.id,
-                user_id=current_user.id,
-                status=PaperStatus.reading,
-            )
+        document_repository.attach_library(
+            db,
+            document_id=document.id,
+            user_id=current_user.id,
         )
         db.commit()
         return document

@@ -175,6 +175,9 @@ def test_project_papers_are_attached_in_one_transaction(
     assert all(isinstance(item, ProjectPaper) for item in associations)
     quota_check.assert_called_once()
     db.add_all.assert_called_once_with(associations)
+    gc_update = str(db.execute.call_args.args[0])
+    assert "gc_after" in gc_update
+    assert "NULL" in gc_update
     db.commit.assert_called_once()
 
 

@@ -24,7 +24,7 @@ from app.helpers.paper_search import normalize_doi
 from app.policies.documents import get_document_access
 from app.schemas.documents import DocumentUpdate, LibraryPaperUpdateRequest
 from app.schemas.user import CurrentUser
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
@@ -81,6 +81,7 @@ class DocumentRepository:
         document: Document,
         update: DocumentUpdate | dict[str, object],
         user: CurrentUser | None = None,
+        auto_commit: bool = True,
     ) -> Document | None:
         """Update canonical metadata after optional explicit access validation."""
         if user is not None:
@@ -100,8 +101,11 @@ class DocumentRepository:
         for field, value in sanitized.items():
             if hasattr(document, field):
                 setattr(document, field, value)
-        db.commit()
-        db.refresh(document)
+        if auto_commit:
+            db.commit()
+            db.refresh(document)
+        else:
+            db.flush()
         return document
 
     def find_by_upload_job(
@@ -426,6 +430,11 @@ class DocumentRepository:
             )
             .returning(LibraryPaper.id)
         )
+        db.execute(
+            update(Document)
+            .where(Document.id == document_id, Document.gc_after.isnot(None))
+            .values(gc_after=None)
+        )
         return ReferenceResult(created=created_id is not None)
 
     def attach_project(
@@ -447,6 +456,11 @@ class DocumentRepository:
                 index_elements=[ProjectPaper.project_id, ProjectPaper.document_id]
             )
             .returning(ProjectPaper.id)
+        )
+        db.execute(
+            update(Document)
+            .where(Document.id == document_id, Document.gc_after.isnot(None))
+            .values(gc_after=None)
         )
         return ReferenceResult(created=created_id is not None)
 

@@ -196,6 +196,7 @@ def _finalize_zotero_import(
         ),
         document=existing_paper,
         user=job_user,
+        auto_commit=False,
     )
 
     upload_reservation_repository.mark_as_completed(db=db, job_id=job_id, user=job_user)
@@ -679,6 +680,7 @@ async def handle_paper_processing_webhook(
                 ),
                 document=existing_paper,
                 user=job_user,
+                auto_commit=False,
             )
 
             # Create highlights/annotations if any
