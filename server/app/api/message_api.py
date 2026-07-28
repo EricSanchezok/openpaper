@@ -13,6 +13,7 @@ from app.database.models import (
     ConversationScopeType,
     ReasoningLevel,
 )
+from app.database.models.base import JsonValue
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.ai_limits import (
@@ -35,7 +36,7 @@ from app.schemas.user import CurrentUser
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 from sqlalchemy.orm import Session
 
 load_dotenv()
@@ -49,6 +50,8 @@ message_router = APIRouter()
 
 END_DELIMITER = "END_OF_STREAM"
 MAX_REASONING_TRACE_CHARS = 100_000
+_JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
+_JSON_OBJECT_LIST = TypeAdapter(list[dict[str, JsonValue]])
 
 
 class EvidenceState(TypedDict):
@@ -541,11 +544,15 @@ async def chat_message_multipaper(
                         role="user",
                         content=request.user_query,
                         references=(
-                            dict(formatted_references)
+                            _JSON_OBJECT.validate_python(formatted_references)
                             if formatted_references is not None
                             else None
                         ),
-                        scope=scope_snapshot,
+                        scope=(
+                            _JSON_OBJECT_LIST.validate_python(scope_snapshot)
+                            if scope_snapshot is not None
+                            else None
+                        ),
                     ),
                     user=current_user,
                 )
@@ -559,7 +566,11 @@ async def chat_message_multipaper(
                         role="assistant",
                         content=full_content,
                         references=evidence if evidence else None,
-                        trace=assistant_trace,
+                        trace=(
+                            _JSON_OBJECT.validate_python(assistant_trace)
+                            if assistant_trace is not None
+                            else None
+                        ),
                     ),
                     user=current_user,
                 )
@@ -795,7 +806,7 @@ async def chat_message_stream(
                         role="user",
                         content=request.user_query,
                         references=(
-                            dict(formatted_references)
+                            _JSON_OBJECT.validate_python(formatted_references)
                             if formatted_references is not None
                             else None
                         ),
@@ -811,7 +822,11 @@ async def chat_message_stream(
                         role="assistant",
                         content=full_content,
                         references=evidence if evidence else None,
-                        trace=assistant_trace,
+                        trace=(
+                            _JSON_OBJECT.validate_python(assistant_trace)
+                            if assistant_trace is not None
+                            else None
+                        ),
                     ),
                     user=current_user,
                 )

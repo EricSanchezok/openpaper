@@ -323,12 +323,19 @@ jobs:
                SELECT id FROM auth.users
                WHERE email = 'ci-owner@example.invalid';
              INSERT INTO scholens.documents
-               (id, file_url, title, raw_content, created_by_id)
+               (id, sha256, original_filename, mime_type, size_bytes,
+                s3_object_key, title, raw_content, processing_status,
+                created_by_id)
                VALUES (
                  '00000000-0000-0000-0000-000000000001',
-                 's3://fixture',
+                 repeat('a', 64),
+                 'fixture.pdf',
+                 'application/pdf',
+                 1024,
+                 'documents/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/source.pdf',
                  'Semantic search',
                  'retrieval augmented generation',
+                 'completed',
                  (SELECT id FROM auth.users
                   WHERE email = 'ci-owner@example.invalid')
                );

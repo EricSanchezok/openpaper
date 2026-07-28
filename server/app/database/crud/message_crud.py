@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.models import Conversation, Message
+from app.database.models.base import JsonValue
 from app.errors import AppError
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
@@ -15,10 +15,10 @@ class MessageBase(BaseModel):
     conversation_id: UUID
     role: str
     content: str
-    references: dict[str, Any] | None = None
-    trace: dict[str, Any] | None = None
+    references: dict[str, JsonValue] | None = None
+    trace: dict[str, JsonValue] | None = None
     # Denormalized @-mention context snapshot: [{kind, id, title}].
-    scope: list[dict[str, Any]] | None = None
+    scope: list[dict[str, JsonValue]] | None = None
 
 
 class MessageCreate(MessageBase):
@@ -28,9 +28,9 @@ class MessageCreate(MessageBase):
 class MessageUpdate(BaseModel):
     role: str | None = None
     content: str | None = None
-    references: dict[str, Any] | None = None
-    trace: dict[str, Any] | None = None
-    scope: list[dict[str, Any]] | None = None
+    references: dict[str, JsonValue] | None = None
+    trace: dict[str, JsonValue] | None = None
+    scope: list[dict[str, JsonValue]] | None = None
 
 
 class MessageCRUD:
@@ -43,7 +43,7 @@ class MessageCRUD:
         obj_in: MessageCreate,
         user: CurrentUser | None = None,
         auto_commit: bool = True,
-    ) -> Message | None:
+    ) -> Message:
         """Create a new message with auto-incrementing sequence number"""
         if user is None:
             raise ValueError("User must be provided to create a message")

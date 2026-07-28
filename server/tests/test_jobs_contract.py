@@ -11,8 +11,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.jobs_webhooks import webhook_router
 from app.api.jobs_webhooks.router import handle_paper_parser_upgrade_webhook
+from app.main import app
 from app.api.documents.router import _document_response
 from app.database.models import Document, JobOperation
 from app.schemas.jobs import (
@@ -145,8 +145,7 @@ def test_parser_upgrade_contract_is_full_only_and_strict() -> None:
 
 
 def test_parser_upgrade_webhook_is_registered() -> None:
-    paths = {route.path for route in webhook_router.routes}
-    assert "/jobs/{job_id}/pdf-upgrade" in paths
+    assert "/api/webhooks/jobs/{job_id}/pdf-upgrade" in app.openapi()["paths"]
 
 
 def test_parser_upgrade_replaces_content_and_passages_atomically(
@@ -174,7 +173,7 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
     index_passages = MagicMock()
     release_lock = MagicMock()
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.router.job_repository.require",
+        "app.api.jobs_webhooks.documents.job_repository.require",
         MagicMock(
             return_value=SimpleNamespace(
                 operation=JobOperation.PDF_PARSER_UPGRADE.value,
@@ -184,15 +183,15 @@ def test_parser_upgrade_replaces_content_and_passages_atomically(
         ),
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.router.AdvisoryLock.acquire",
+        "app.api.jobs_webhooks.documents.AdvisoryLock.acquire",
         MagicMock(return_value=True),
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.router.AdvisoryLock.release",
+        "app.api.jobs_webhooks.documents.AdvisoryLock.release",
         release_lock,
     )
     monkeypatch.setattr(
-        "app.api.jobs_webhooks.router.paper_crud.index_paper_passages",
+        "app.api.jobs_webhooks.documents.paper_crud.index_paper_passages",
         index_passages,
     )
     payload = PdfParserUpgradeWebhookData(
