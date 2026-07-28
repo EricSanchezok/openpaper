@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -115,6 +116,13 @@ class ProjectInvitation(Base):
     __table_args__ = (
         Index("ix_project_invitations_project_email", "project_id", "email"),
         Index("ix_project_invitations_token_hash", "token_hash", unique=True),
+        Index(
+            "uq_project_invitations_pending_project_email",
+            "project_id",
+            "email",
+            unique=True,
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

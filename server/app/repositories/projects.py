@@ -401,18 +401,18 @@ class ProjectRepository:
                 )
 
         now = datetime.now(timezone.utc)
-        active = db.scalar(
+        pending = db.scalar(
             select(ProjectInvitation).where(
                 ProjectInvitation.project_id == project_id,
                 ProjectInvitation.email == normalized_email,
                 ProjectInvitation.accepted_at.is_(None),
                 ProjectInvitation.revoked_at.is_(None),
-                ProjectInvitation.expires_at > now,
-            )
+            ).with_for_update()
         )
-        if active is not None:
-            _require_grant_subset(actor, _invitation_permissions(active))
-            active.revoked_at = now
+        if pending is not None:
+            _require_grant_subset(actor, _invitation_permissions(pending))
+            pending.revoked_at = now
+            db.flush()
 
         raw_token = secrets.token_urlsafe(32)
         invitation = ProjectInvitation(

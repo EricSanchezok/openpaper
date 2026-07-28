@@ -63,9 +63,7 @@ class MossVoiceClient:
         self.voice_id = voice_id
         self.poll_seconds = float(os.getenv("MOSS_POLL_INTERVAL_SECONDS", "3"))
         self.timeout_seconds = float(os.getenv("MOSS_TASK_TIMEOUT_SECONDS", "600"))
-        self.max_bytes = int(
-            os.getenv("MOSS_MAX_AUDIO_BYTES", str(100 * 1024 * 1024))
-        )
+        self.max_bytes = int(os.getenv("MOSS_MAX_AUDIO_BYTES", str(100 * 1024 * 1024)))
         self.headers = {"Authorization": f"Bearer {api_key}"}
 
     @staticmethod
