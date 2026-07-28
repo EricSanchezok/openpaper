@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    ARRAY,
     UUID,
     BigInteger,
     Boolean,
@@ -13,26 +12,20 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     func,
-    Index,
     Integer,
     String,
-    Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, JsonValue
+from .base import Base
 from .enums import (
-    JobStatus,
     SubscriptionPlan,
     SubscriptionStatus,
     StripeWebhookEventStatus,
 )
 
 if TYPE_CHECKING:
-    from .content import Document
     from .identity import AuthUser
-    from .projects import Project
 
 
 class Subscription(Base):
@@ -140,141 +133,3 @@ class Onboarding(Base):
     reading_frequency: Mapped[str | None] = mapped_column(String, nullable=True)
 
     user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="onboarding")
-
-
-class DataTableExtractionJob(Base):
-    __tablename__ = "data_table_extraction_jobs"
-    __table_args__ = (
-        CheckConstraint(
-            "NOT is_shared OR project_id IS NOT NULL",
-            name="ck_data_table_jobs_shared_project",
-        ),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
-    )
-
-    columns: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )  # Columns to extract
-
-    task_id: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # For tracking task in Celery
-
-    status: Mapped[str] = mapped_column(
-        String, nullable=False, default=JobStatus.PENDING
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_shared: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default="true"
-    )
-
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="data_table_jobs"
-    )
-    project: Mapped["Project | None"] = relationship("Project")
-
-    # Relationship to results
-    result: Mapped["DataTableExtractionResult | None"] = relationship(
-        "DataTableExtractionResult",
-        back_populates="job",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-
-
-class DataTableExtractionResult(Base):
-    """
-    Stores the result of a data table extraction job.
-    Contains the columns extracted and links to individual row results.
-    """
-
-    __tablename__ = "data_table_extraction_results"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    title: Mapped[str | None] = mapped_column(String, nullable=True)
-    job_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("data_table_extraction_jobs.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-    )
-    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    columns: Mapped[list[str]] = mapped_column(
-        ARRAY(String), nullable=False
-    )  # List of column names
-    row_failures: Mapped[list[uuid.UUID] | None] = mapped_column(
-        ARRAY(UUID(as_uuid=True)), nullable=True, default=list
-    )  # List of paper IDs that failed
-
-    job: Mapped["DataTableExtractionJob"] = relationship(
-        "DataTableExtractionJob", back_populates="result"
-    )
-    rows: Mapped[list["DataTableRow"]] = relationship(
-        "DataTableRow",
-        back_populates="data_table",
-        cascade="all, delete-orphan",
-    )
-
-
-class DataTableRow(Base):
-    """
-    Stores a single row of extracted data for a paper.
-    The 'values' field is JSONB containing: {column_name: {value: str, citations: [{text, index}]}}
-    """
-
-    __tablename__ = "data_table_rows"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    data_table_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("data_table_extraction_results.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    paper_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    values: Mapped[dict[str, JsonValue]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
-    # values schema: {
-    #   "column_name": {
-    #     "value": "extracted value",
-    #     "citations": [{"text": "citation text", "index": 1}, ...]
-    #   }
-    # }
-
-    data_table: Mapped["DataTableExtractionResult"] = relationship(
-        "DataTableExtractionResult", back_populates="rows"
-    )
-    paper: Mapped["Document"] = relationship("Document")
-
-    # Index for efficient lookups by paper
-    __table_args__ = (
-        Index("ix_data_table_rows_paper_id", "paper_id"),
-        Index("ix_data_table_rows_data_table_id", "data_table_id"),
-    )

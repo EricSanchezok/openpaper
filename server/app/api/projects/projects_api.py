@@ -6,13 +6,13 @@ from app.auth.dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import (
     AuthUser,
-    AudioOverviewJob,
     Conversation,
-    DataTableExtractionJob,
-    JobStatus,
     Project,
     ProjectCollaborator,
     ProjectPaper,
+    ResearchItem,
+    ResearchItemKind,
+    ResearchScopeType,
 )
 from app.database.telemetry import track_event
 from app.services.resource_quotas import can_user_create_project
@@ -61,16 +61,17 @@ def _project_counts(
         )
     )
     num_audio = db.scalar(
-        select(func.count(AudioOverviewJob.id)).where(
-            AudioOverviewJob.conversable_type == "project",
-            AudioOverviewJob.conversable_id == project_id,
-            AudioOverviewJob.status == JobStatus.COMPLETED,
+        select(func.count(ResearchItem.id)).where(
+            ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
+            ResearchItem.project_id == project_id,
+            ResearchItem.kind == ResearchItemKind.AUDIO_OVERVIEW.value,
         )
     )
     num_tables = db.scalar(
-        select(func.count(DataTableExtractionJob.id)).where(
-            DataTableExtractionJob.project_id == project_id,
-            DataTableExtractionJob.status == JobStatus.COMPLETED,
+        select(func.count(ResearchItem.id)).where(
+            ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
+            ResearchItem.project_id == project_id,
+            ResearchItem.kind == ResearchItemKind.DATA_TABLE.value,
         )
     )
     num_collaborators = db.scalar(

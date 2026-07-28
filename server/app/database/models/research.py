@@ -26,6 +26,7 @@ from .enums import ResearchItemKind, ResearchScopeType
 if TYPE_CHECKING:
     from .content import Document, Message
     from .identity import AuthUser
+    from .jobs import DurableJob
     from .projects import Project
 
 
@@ -100,6 +101,12 @@ class ResearchItem(Base):
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,
     )
+    source_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+    )
 
     created_by: Mapped["AuthUser | None"] = relationship(
         "AuthUser",
@@ -112,6 +119,7 @@ class ResearchItem(Base):
         "Message",
         back_populates="research_items",
     )
+    source_job: Mapped["DurableJob | None"] = relationship("DurableJob")
     highlight_thread: Mapped["HighlightThread | None"] = relationship(
         "HighlightThread",
         back_populates="item",

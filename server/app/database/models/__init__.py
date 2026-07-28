@@ -2,10 +2,11 @@
 
 from .base import Base, JsonScalar, JsonValue
 from .enums import (
-    ConversableType,
     ConversationScopeType,
     DocumentProcessingStatus,
     HighlightType,
+    JobDispatchStatus,
+    JobOperation,
     JobStatus,
     PaperStatus,
     ReasoningLevel,
@@ -19,10 +20,9 @@ from .enums import (
     ZoteroImportStatus,
 )
 from .identity import AuthUser, UserProfile
+from .jobs import DurableJob, JobDispatch
 from .integrations import ZoteroConnection, ZoteroImportedItem, ZoteroOAuthPending
 from .content import (
-    AudioOverview,
-    AudioOverviewJob,
     Conversation,
     JobsWebhookNonce,
     LibraryPaper,
@@ -46,27 +46,22 @@ from .research import (
     ResearchItem,
 )
 from .commerce import (
-    DataTableExtractionJob,
-    DataTableExtractionResult,
-    DataTableRow,
     Onboarding,
     StripeWebhookEvent,
     Subscription,
 )
 
 __all__ = [
-    "AudioOverview",
-    "AudioOverviewJob",
     "AuthUser",
     "Base",
-    "ConversableType",
     "ConversationScopeType",
     "DocumentProcessingStatus",
     "Conversation",
-    "DataTableExtractionJob",
-    "DataTableExtractionResult",
-    "DataTableRow",
     "HighlightType",
+    "DurableJob",
+    "JobDispatch",
+    "JobDispatchStatus",
+    "JobOperation",
     "JobStatus",
     "JobsWebhookNonce",
     "LibraryPaper",

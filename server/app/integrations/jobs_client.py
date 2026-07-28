@@ -10,7 +10,6 @@ from app.helpers.celery_config import (
     get_webhook_base_url,
 )
 from app.helpers.redaction import redact_url
-from app.schemas.responses import DataTableSchema
 from celery import Celery
 from dotenv import load_dotenv
 
@@ -49,11 +48,44 @@ class JobsClient:
             broker_connection_retry_on_startup=True,
             broker_connection_retry=True,
             broker_connection_max_retries=3,
+            broker_transport_options={"confirm_publish": True},
             task_serializer="json",
             accept_content=["json"],
             result_serializer="json",
             task_always_eager=False,
+            task_publish_retry=True,
+            task_publish_retry_policy={
+                "max_retries": 3,
+                "interval_start": 0.2,
+                "interval_step": 0.5,
+                "interval_max": 2.0,
+            },
         )
+
+    def publish_task(
+        self,
+        *,
+        task_name: str,
+        queue: str,
+        job_id: str,
+        kwargs: dict[str, Any],
+    ) -> str:
+        """Publish one durable outbox record with broker confirmation enabled."""
+        try:
+            task = self._celery_app.send_task(
+                task_name,
+                kwargs=kwargs,
+                queue=queue,
+                task_id=job_id,
+            )
+            return str(task.id)
+        except Exception as exc:
+            error_text = str(exc)
+            if "ACCESS_REFUSED" in error_text:
+                raise RuntimeError("jobs_broker_authentication_failed") from exc
+            if "Connection refused" in error_text or "111" in error_text:
+                raise RuntimeError("jobs_broker_unavailable") from exc
+            raise RuntimeError("jobs_publish_failed") from exc
 
     def submit_pdf_processing_job(
         self,
@@ -126,55 +158,6 @@ class JobsClient:
                 )
                 raise RuntimeError("jobs_broker_unavailable") from e
             logger.exception("Failed to submit PDF processing job %s", job_id)
-            raise RuntimeError("jobs_submission_failed") from e
-
-    def submit_data_table_processing_job(
-        self, data_table: DataTableSchema, job_id: str
-    ) -> str:
-        """
-        Submit a data table processing job to the separate Celery service.
-
-        Args:
-            data_table: The data table to process
-            job_id: Your internal job ID for tracking
-
-        Returns:
-            str: Celery task ID
-        """
-        # Validate input data
-        if data_table is None:
-            raise ValueError("data_table cannot be None")
-        if not isinstance(data_table, DataTableSchema):
-            raise ValueError(
-                f"data_table must be DataTableSchema, got {type(data_table)}"
-            )
-
-        logger.info("Submitting data table processing job %s", job_id)
-
-        # Connect to Celery broker directly to submit task
-        try:
-            # Build webhook URL that includes your job ID
-            webhook_url = (
-                f"{self.webhook_base_url}/api/webhooks/data-table-processing/{job_id}"
-            )
-            task = self._celery_app.send_task(
-                "process_data_table",  # Task name as registered by the worker
-                kwargs={
-                    "data_table": data_table.model_dump(),
-                    "webhook_url": webhook_url,
-                },
-                queue="pdf_processing",
-                task_id=job_id,
-            )
-
-            logger.info(
-                "Submitted data table processing task %s for job %s",
-                task.id,
-                job_id,
-            )
-            return str(task.id)
-        except Exception as e:
-            logger.exception("Failed to submit data table processing job %s", job_id)
             raise RuntimeError("jobs_submission_failed") from e
 
     def check_celery_task_status(self, task_id: str) -> dict[str, Any]:

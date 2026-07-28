@@ -7,16 +7,16 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.database.models import (
-    AudioOverview,
-    AudioOverviewJob,
     Conversation,
     ConversationScopeType,
-    ConversableType,
-    DataTableExtractionJob,
+    DurableJob,
     JobStatus,
     PaperUploadJob,
     Project,
     ProjectPaper,
+    ResearchAudioOverview,
+    ResearchItem,
+    ResearchScopeType,
 )
 from app.errors import AppError
 from app.helpers.s3 import s3_service
@@ -40,14 +40,9 @@ def _active_project_job_count(db: Session, *, project_id: UUID) -> int:
             PaperUploadJob.project_id == project_id,
             PaperUploadJob.status.in_(ACTIVE_JOB_STATUSES),
         ),
-        select(AudioOverviewJob.id).where(
-            AudioOverviewJob.conversable_type == ConversableType.PROJECT.value,
-            AudioOverviewJob.conversable_id == project_id,
-            AudioOverviewJob.status.in_(ACTIVE_JOB_STATUSES),
-        ),
-        select(DataTableExtractionJob.id).where(
-            DataTableExtractionJob.project_id == project_id,
-            DataTableExtractionJob.status.in_(ACTIVE_JOB_STATUSES),
+        select(DurableJob.id).where(
+            DurableJob.project_id == project_id,
+            DurableJob.status.in_(ACTIVE_JOB_STATUSES),
         ),
     )
     return sum(
@@ -78,9 +73,14 @@ def prepare_project_deletion(
     storage_keys: set[str] = set()
     storage_keys.update(
         db.scalars(
-            select(AudioOverview.s3_object_key).where(
-                AudioOverview.conversable_type == ConversableType.PROJECT.value,
-                AudioOverview.conversable_id == project.id,
+            select(ResearchAudioOverview.s3_object_key)
+            .join(
+                ResearchItem,
+                ResearchItem.id == ResearchAudioOverview.research_item_id,
+            )
+            .where(
+                ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
+                ResearchItem.project_id == project.id,
             )
         ).all()
     )

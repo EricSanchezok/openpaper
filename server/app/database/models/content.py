@@ -19,16 +19,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    and_,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .base import Base, JsonValue
 from .enums import (
     ConversationScopeType,
-    ConversableType,
     DocumentProcessingStatus,
     JobStatus,
     PaperStatus,
@@ -476,26 +474,6 @@ class Document(Base):
         foreign_keys="Conversation.document_id",
         passive_deletes=True,
     )
-    audio_overviews: Mapped[list["AudioOverview"]] = relationship(
-        "AudioOverview",
-        cascade="all, delete-orphan",
-        primaryjoin=lambda: and_(
-            Document.id == foreign(AudioOverview.conversable_id),
-            AudioOverview.conversable_type == ConversableType.PAPER.value,
-        ),
-        overlaps="audio_overviews",
-    )
-
-    audio_overview_jobs: Mapped[list["AudioOverviewJob"]] = relationship(
-        "AudioOverviewJob",
-        cascade="all, delete-orphan",
-        primaryjoin=lambda: and_(
-            Document.id == foreign(AudioOverviewJob.conversable_id),
-            AudioOverviewJob.conversable_type == ConversableType.PAPER.value,
-        ),
-        overlaps="audio_overview_jobs",
-    )
-
     paper_images: Mapped[list["PaperImage"]] = relationship(
         "PaperImage", back_populates="paper", cascade="all, delete-orphan"
     )
@@ -635,117 +613,3 @@ class PaperImage(Base):
     )  # Placeholder ID for the image
 
     paper: Mapped["Document"] = relationship("Document", back_populates="paper_images")
-
-
-class AudioOverviewJob(Base):
-    __tablename__ = "audio_overview_jobs"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
-    )
-
-    conversable_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
-    conversable_type: Mapped[str] = mapped_column(
-        String, nullable=False, default=ConversableType.PAPER
-    )
-
-    status: Mapped[str] = mapped_column(
-        String, nullable=False, default=JobStatus.PENDING
-    )
-    status_message: Mapped[str | None] = mapped_column(String, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    user: Mapped["AuthUser"] = relationship(
-        "AuthUser", back_populates="audio_overview_jobs"
-    )
-
-    # Specific relationship for papers (viewonly)
-    paper: Mapped["Document | None"] = relationship(
-        "Document",
-        primaryjoin=lambda: and_(
-            foreign(AudioOverviewJob.conversable_id) == Document.id,
-            AudioOverviewJob.conversable_type == ConversableType.PAPER.value,
-        ),
-        viewonly=True,
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR "
-            "(conversable_type = 'project' AND conversable_id IS NOT NULL) OR "
-            "(conversable_type = 'everything' AND conversable_id IS NULL)",
-            name="check_audio_overview_job_conversable_consistency",
-        ),
-    )
-
-
-class AudioOverview(Base):
-    __tablename__ = "audio_overviews"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("auth.users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    s3_object_key: Mapped[str] = mapped_column(
-        String, nullable=False
-    )  # Store the S3 object key of the wav file
-
-    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    citations: Mapped[list[dict[str, JsonValue]] | None] = mapped_column(
-        JSONB, nullable=True
-    )  # Store citations in a JSONB format for flexibility. Typically, it would be a list of dicts with keys like `index` and `text`.
-
-    title: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    conversable_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
-    conversable_type: Mapped[str] = mapped_column(
-        String, nullable=False, default=ConversableType.PAPER
-    )
-    is_shared: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
-    user: Mapped["AuthUser | None"] = relationship(
-        "AuthUser", back_populates="audio_overviews"
-    )
-
-    # Specific relationship for papers (viewonly)
-    paper: Mapped["Document | None"] = relationship(
-        "Document",
-        primaryjoin=lambda: and_(
-            foreign(AudioOverview.conversable_id) == Document.id,
-            AudioOverview.conversable_type == ConversableType.PAPER.value,
-        ),
-        viewonly=True,
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "(conversable_type = 'paper' AND conversable_id IS NOT NULL) OR "
-            "(conversable_type = 'project' AND conversable_id IS NOT NULL) OR "
-            "(conversable_type = 'everything' AND conversable_id IS NULL)",
-            name="check_audio_overview_conversable_consistency",
-        ),
-        CheckConstraint(
-            "NOT is_shared OR conversable_type = 'project'",
-            name="ck_audio_overviews_shared_project",
-        ),
-    )

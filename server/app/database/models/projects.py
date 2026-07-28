@@ -21,7 +21,7 @@ from sqlalchemy.sql import func
 from .base import Base
 
 if TYPE_CHECKING:
-    from .content import AudioOverview, AudioOverviewJob, Conversation, Document
+    from .content import Conversation, Document
     from .identity import AuthUser
 
 
@@ -61,24 +61,6 @@ class Project(Base):
         back_populates="project",
         foreign_keys="Conversation.project_id",
         passive_deletes=True,
-    )
-    audio_overviews: Mapped[list["AudioOverview"]] = relationship(
-        "AudioOverview",
-        cascade="all, delete-orphan",
-        primaryjoin=(
-            "and_(Project.id == foreign(AudioOverview.conversable_id), "
-            "AudioOverview.conversable_type == 'project')"
-        ),
-        overlaps="audio_overviews",
-    )
-    audio_overview_jobs: Mapped[list["AudioOverviewJob"]] = relationship(
-        "AudioOverviewJob",
-        cascade="all, delete-orphan",
-        primaryjoin=(
-            "and_(Project.id == foreign(AudioOverviewJob.conversable_id), "
-            "AudioOverviewJob.conversable_type == 'project')"
-        ),
-        overlaps="audio_overview_jobs",
     )
 
 

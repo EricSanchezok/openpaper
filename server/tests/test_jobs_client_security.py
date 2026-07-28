@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 import requests
 from app.integrations.jobs_client import JobsClient
 from app.helpers.redaction import redact_url
-from app.schemas.responses import DataTableSchema
 
 
 def test_redact_url_removes_credentials_and_sensitive_query_values() -> None:
@@ -20,10 +19,7 @@ def test_redact_url_removes_credentials_and_sensitive_query_values() -> None:
 
 def test_jobs_client_reuses_one_configured_celery_producer() -> None:
     celery_app = MagicMock()
-    celery_app.send_task.side_effect = [
-        MagicMock(id="task_pdf"),
-        MagicMock(id="task_table"),
-    ]
+    celery_app.send_task.side_effect = [MagicMock(id="task_pdf")]
     with patch(
         "app.integrations.jobs_client.Celery", return_value=celery_app
     ) as celery:
@@ -36,15 +32,9 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
             client.submit_pdf_processing_job("papers/test.pdf", "job-pdf") == "task_pdf"
         )
 
-        table = DataTableSchema(columns=[], papers=[])
-        assert (
-            client.submit_data_table_processing_job(table, "job-table") == "task_table"
-        )
-
     celery.assert_called_once()
-    assert celery_app.send_task.call_count == 2
+    assert celery_app.send_task.call_count == 1
     assert celery_app.send_task.call_args_list[0].kwargs["task_id"] == "job-pdf"
-    assert celery_app.send_task.call_args_list[1].kwargs["task_id"] == "job-table"
 
 
 def test_jobs_status_failure_returns_stable_public_error() -> None:

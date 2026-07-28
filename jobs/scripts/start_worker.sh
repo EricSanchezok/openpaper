@@ -12,7 +12,7 @@ export CELERY_WORKER_MAX_MEMORY_PER_CHILD="500000"  # 500MB
 python -m celery --app src.celery_app worker \
     --loglevel=info \
     --concurrency=2 \
-    --queues=pdf_processing,zotero_sync \
+    --queues=pdf_processing,audio,data_table,zotero_sync \
     --max-tasks-per-child=1000 \
     --without-gossip \
     --without-mingle \

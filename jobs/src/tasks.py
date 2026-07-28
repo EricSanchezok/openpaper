@@ -13,7 +13,8 @@ from typing import Any
 import psutil
 import requests
 
-from src.schemas import DataTableSchema
+from src.schemas import DataTableSchema, DataTableTaskRequest, ResearchDataTableResult
+from src.audio import generate_audio
 from src.data_table_processor import construct_data_table
 from src.pdf.models import (
     ParserConfigurationError,
@@ -29,6 +30,7 @@ from src.s3_service import s3_service
 from src.token_usage import collect_token_usage
 from src.utils import time_it
 from src.webhook_signing import post_signed_json
+from src.schemas import AudioOverviewRequest
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,21 @@ def _deliver_webhook(
     except requests.RequestException:
         logger.exception("Failed to send webhook for task %s", task_id)
         return False
+
+
+def _claim_job(claim_url: str | None, *, task_id: str) -> bool:
+    if claim_url is None:
+        return True
+    try:
+        response = post_signed_json(claim_url, {}, timeout=30)
+        response.raise_for_status()
+        claimed = bool(response.json().get("claimed"))
+        if not claimed:
+            logger.info("Skipping already claimed durable job %s", task_id)
+        return claimed
+    except requests.RequestException:
+        logger.exception("Failed to claim durable job %s", task_id)
+        raise
 
 
 def _parser_upgrade_webhook_url(webhook_url: str) -> str:
@@ -276,19 +293,25 @@ def upgrade_pdf_parser(
     bind=True, name="process_data_table", soft_time_limit=900, time_limit=960
 )
 def construct_data_table_task(
-    self, data_table: DataTableSchema, webhook_url: str
-) -> None:
+    self,
+    request: dict[str, Any],
+    webhook_url: str,
+    claim_url: str | None = None,
+) -> dict[str, Any]:
     """
     Celery task to construct a data table based on the provided schema.
     """
     task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
     usage_events: list[dict[str, Any]] = []
     write_to_status = partial(_update_status, self, task_id)
 
     write_to_status("Starting data table construction")
 
     try:
-        data_table = DataTableSchema.model_validate(data_table)
+        task_request = DataTableTaskRequest.model_validate(request)
+        data_table = DataTableSchema.model_validate(task_request.table)
         with collect_token_usage(task_id) as usage:
             usage_events = usage.events
             result = asyncio.run(
@@ -300,11 +323,18 @@ def construct_data_table_task(
 
         write_to_status("Data table construction complete!")
 
+        research_result = ResearchDataTableResult(
+            research_item_id=task_request.research_item_id,
+            title=task_request.title,
+            columns=result.columns,
+            rows=result.rows,
+            row_failures=result.row_failures,
+        )
         webhook_payload = {
             "task_id": task_id,
             "status": "completed" if result.success else "failed",
-            "result": result.model_dump(),
-            "error": None,
+            "result": research_result.model_dump(mode="json"),
+            "error": None if result.success else "data_table_processing_failed",
             "usage_events": usage_events,
         }
 
@@ -312,7 +342,7 @@ def construct_data_table_task(
             webhook_payload["webhook_error"] = "webhook_delivery_failed"
 
         logger.info("Task %s completed", task_id)
-        return
+        return webhook_payload
 
     except Exception:
         logger.exception("Data table construction task %s failed", task_id)
@@ -325,6 +355,51 @@ def construct_data_table_task(
         }
 
         _deliver_webhook(webhook_url, failure_payload, task_id=task_id)
+        raise
+
+
+@celery_app.task(
+    bind=True,
+    name="generate_audio_overview",
+    soft_time_limit=1800,
+    time_limit=1860,
+)
+def generate_audio_overview_task(
+    self,
+    request: dict[str, Any],
+    webhook_url: str,
+    claim_url: str | None = None,
+) -> dict[str, Any]:
+    """Generate one idempotently-addressed audio research item."""
+    task_id = self.request.id
+    if not _claim_job(claim_url, task_id=task_id):
+        return {"task_id": task_id, "status": "duplicate"}
+
+    usage_events: list[dict[str, Any]] = []
+    try:
+        parsed_request = AudioOverviewRequest.model_validate(request)
+        with collect_token_usage(task_id) as usage:
+            usage_events = usage.events
+            result = asyncio.run(generate_audio(parsed_request))
+        payload = {
+            "task_id": task_id,
+            "status": "completed",
+            "result": result.model_dump(mode="json"),
+            "usage_events": usage_events,
+        }
+        if not _deliver_webhook(webhook_url, payload, task_id=task_id):
+            payload["webhook_error"] = "webhook_delivery_failed"
+        return payload
+    except Exception:
+        logger.exception("Audio overview task %s failed", task_id)
+        payload = {
+            "task_id": task_id,
+            "status": "failed",
+            "result": None,
+            "error": "audio_generation_failed",
+            "usage_events": usage_events,
+        }
+        _deliver_webhook(webhook_url, payload, task_id=task_id)
         raise
 
 

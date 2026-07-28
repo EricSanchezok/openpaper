@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from app.schemas.responses import PaperMetadataExtraction
+from app.schemas.responses import DataTableRow
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -97,3 +100,114 @@ class PdfParserUpgradeWebhookData(BaseModel):
 
     task_id: str = Field(min_length=1)
     result: PDFParserUpgradeResult
+
+
+class JobResponse(BaseModel):
+    id: UUID
+    operation: str
+    status: str
+    progress_message: str | None
+    error_code: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class AudioSourceDocumentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    title: str
+    canonical_s3_key: str
+
+
+class AudioOverviewTaskPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    research_item_id: UUID
+    scope_type: Literal["document", "project"]
+    scope_id: UUID
+    documents: list[AudioSourceDocumentPayload] = Field(min_length=1, max_length=100)
+    length: Literal["short", "medium", "long"]
+    additional_instructions: str | None = Field(default=None, max_length=10_000)
+
+
+class AudioOverviewResultPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    research_item_id: UUID
+    title: str
+    transcript: str = Field(min_length=1)
+    citations: list[dict[str, object]]
+    s3_object_key: str = Field(min_length=1, max_length=1024)
+    voice_id: str = Field(min_length=1, max_length=160)
+    model_version: str = Field(min_length=1, max_length=160)
+
+
+class AudioOverviewWebhookData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: UUID
+    status: Literal["completed", "failed"]
+    result: AudioOverviewResultPayload | None = None
+    error: str | None = None
+    usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_state(self) -> "AudioOverviewWebhookData":
+        if self.status == "completed" and self.result is None:
+            raise ValueError("completed audio job requires a result")
+        if self.status == "failed" and not self.error:
+            raise ValueError("failed audio job requires an error code")
+        return self
+
+
+class DataTableSourceDocumentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    title: str
+    raw_content: str
+
+
+class DataTableTaskTablePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[str] = Field(min_length=1, max_length=50)
+    papers: list[DataTableSourceDocumentPayload] = Field(min_length=1, max_length=500)
+
+
+class DataTableTaskPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    research_item_id: UUID
+    title: str | None = Field(default=None, max_length=240)
+    table: DataTableTaskTablePayload
+
+
+class ResearchDataTableResultPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    research_item_id: UUID
+    title: str | None = Field(default=None, max_length=240)
+    columns: list[str]
+    rows: list[DataTableRow]
+    row_failures: list[UUID]
+
+
+class DataTableWebhookData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: UUID
+    status: Literal["completed", "failed"]
+    result: ResearchDataTableResultPayload | None = None
+    error: str | None = None
+    usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_state(self) -> "DataTableWebhookData":
+        if self.status == "completed" and self.result is None:
+            raise ValueError("completed data-table job requires a result")
+        if self.status == "failed" and not self.error:
+            raise ValueError("failed data-table job requires an error code")
+        return self

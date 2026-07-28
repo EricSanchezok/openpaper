@@ -1,5 +1,8 @@
+import asyncio
 import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import uvicorn
 from app.api.api import router
@@ -8,20 +11,22 @@ from app.api.conversation_api import conversation_router
 from app.api.message_api import message_router
 from app.api.onboarding_api import onboarding_router
 from app.api.paper_api import paper_router
-from app.api.paper_audio_api import paper_audio_router
 from app.api.paper_image_api import paper_image_router
 from app.api.paper_search_api import paper_search_router
 from app.api.paper_tag_api import paper_tag_router
 from app.api.paper_upload_api import paper_upload_router
-from app.api.project_audio_api import project_audio_router
 from app.api.research_api import (
     document_research_router,
     project_research_router,
     research_router,
 )
+from app.api.research_generation_api import (
+    document_generation_router,
+    jobs_router,
+    project_generation_router,
+)
 from app.api.projects.project_papers_api import project_papers_router
 from app.api.projects.projects_api import projects_router
-from app.api.projects.projects_data_table_api import projects_data_table_router
 from app.api.projects.projects_invitation_api import (
     router as projects_invitation_router,
 )
@@ -37,6 +42,7 @@ from app.errors import (
     http_error_handler,
     unhandled_error_handler,
 )
+from app.services.job_dispatcher import run_job_dispatcher
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi import Depends
@@ -55,11 +61,27 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+
+@asynccontextmanager
+async def app_lifespan(application: FastAPI) -> AsyncIterator[None]:
+    stop_dispatcher = asyncio.Event()
+    async with auth_lifespan(application):
+        dispatcher = asyncio.create_task(
+            run_job_dispatcher(stop_dispatcher),
+            name="jobs-outbox-dispatcher",
+        )
+        try:
+            yield
+        finally:
+            stop_dispatcher.set()
+            await dispatcher
+
+
 app = FastAPI(
     title="Scholens",
     description="A web application for uploading and annotating papers.",
     version="1.0.0",
-    lifespan=auth_lifespan,
+    lifespan=app_lifespan,
     exception_handlers={
         AppError: app_error_handler,
         StarletteHTTPException: http_error_handler,
@@ -93,14 +115,14 @@ app.include_router(project_papers_router, prefix="/api/projects/papers")
 app.include_router(projects_invitation_router, prefix="/api")
 app.include_router(paper_search_router, prefix="/api/search/global")
 app.include_router(search_router, prefix="/api/search/local")
-app.include_router(paper_audio_router, prefix="/api/paper/audio")
 app.include_router(paper_image_router, prefix="/api/paper/image")
-app.include_router(projects_data_table_router, prefix="/api/projects/tables")
 app.include_router(paper_upload_router, prefix="/api/paper/upload")
-app.include_router(project_audio_router, prefix="/api/projects/audio")
 app.include_router(document_research_router, prefix="/api/documents")
 app.include_router(project_research_router, prefix="/api/projects")
 app.include_router(research_router, prefix="/api")
+app.include_router(document_generation_router, prefix="/api/documents")
+app.include_router(project_generation_router, prefix="/api/projects")
+app.include_router(jobs_router, prefix="/api/jobs")
 app.include_router(paper_tag_router, prefix="/api/paper/tag")
 app.include_router(
     subscription_router, prefix="/api/subscription"

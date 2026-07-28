@@ -3,9 +3,7 @@ from app.database.database import engine
 from app.database.models import (
     AnnotationComment,
     Conversation,
-    DataTableExtractionJob,
-    DataTableExtractionResult,
-    DataTableRow,
+    DurableJob,
     HighlightThread,
     Message,
     Onboarding,
@@ -174,41 +172,20 @@ class MessageAdmin(ModelView, model=Message):
     column_searchable_list = [Message.content]
 
 
-class DataTableExtractionJobAdmin(ModelView, model=DataTableExtractionJob):
+class DurableJobAdmin(ModelView, model=DurableJob):
     column_list = [
-        DataTableExtractionJob.id,
-        DataTableExtractionJob.project_id,
-        DataTableExtractionJob.status,
-        DataTableExtractionJob.created_at,
+        DurableJob.id,
+        DurableJob.operation,
+        DurableJob.requested_by_id,
+        DurableJob.project_id,
+        DurableJob.status,
+        DurableJob.created_at,
     ]
     column_searchable_list = [
-        DataTableExtractionJob.project_id,
-        DataTableExtractionJob.status,
-    ]
-
-
-class DataTableExtractionResultAdmin(ModelView, model=DataTableExtractionResult):
-    column_list = [
-        DataTableExtractionResult.id,
-        DataTableExtractionResult.success,
-        DataTableExtractionResult.created_at,
-    ]
-    column_searchable_list = [
-        DataTableExtractionResult.success,
-    ]
-
-
-class DataTableRowAdmin(ModelView, model=DataTableRow):
-    column_list = [
-        DataTableRow.id,
-        DataTableRow.data_table_id,
-        DataTableRow.paper_id,
-        DataTableRow.values,
-        DataTableRow.created_at,
-    ]
-    column_searchable_list = [
-        DataTableRow.data_table_id,
-        DataTableRow.paper_id,
+        DurableJob.operation,
+        DurableJob.requested_by_id,
+        DurableJob.project_id,
+        DurableJob.status,
     ]
 
 
@@ -320,9 +297,7 @@ def setup_admin(app: FastAPI) -> None:
     admin.add_view(ProjectCollaboratorAdmin)
     admin.add_view(ProjectPaperAdmin)
     admin.add_view(SubscriptionAdmin)
-    admin.add_view(DataTableExtractionJobAdmin)
-    admin.add_view(DataTableExtractionResultAdmin)
-    admin.add_view(DataTableRowAdmin)
+    admin.add_view(DurableJobAdmin)
     admin.add_view(ZoteroConnectionAdmin)
     admin.add_view(ZoteroImportedItemAdmin)
     admin.add_view(ZoteroOAuthPendingAdmin)

@@ -12,7 +12,13 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from src.prompts import EXTRACT_COLS_INSTRUCTION, EXTRACT_METADATA_PROMPT_TEMPLATE
-from src.schemas import DataTableCellValue, DataTableRow, PaperMetadataExtraction
+from src.schemas import (
+    AudioOverviewNarrative,
+    AudioOverviewRequest,
+    DataTableCellValue,
+    DataTableRow,
+    PaperMetadataExtraction,
+)
 from src.token_usage import record_token_usage
 from src.utils import time_it
 
@@ -168,6 +174,35 @@ class DeepSeekExtractionClient:
             values={
                 column: getattr(values, alias) for alias, column in aliases.items()
             },
+        )
+
+    async def create_audio_narrative(
+        self,
+        *,
+        request: AudioOverviewRequest,
+        document_contents: list[tuple[str, str, str]],
+    ) -> AudioOverviewNarrative:
+        word_targets = {"short": 450, "medium": 900, "long": 1500}
+        sources = "\n\n".join(
+            f"DOCUMENT {index + 1}\nID: {document_id}\nTITLE: {title}\n"
+            f"CONTENT:\n{content}"
+            for index, (document_id, title, content) in enumerate(document_contents)
+        )
+        prompt = (
+            "Create a cohesive spoken research overview grounded only in the supplied "
+            "documents. The transcript should be natural prose without Markdown "
+            "headings. Include inline citations such as [^1]. Each citation object "
+            "must contain the supporting source text, its sequential index, and the "
+            "document ID in paper_id. Do not cite a paper's bibliography as evidence. "
+            f"Target approximately {word_targets[request.length]} words.\n"
+            f"Additional instructions: {request.additional_instructions or 'None'}\n\n"
+            f"{sources}"
+        )
+        return await self._generate_structured(
+            prompt=prompt,
+            schema=AudioOverviewNarrative,
+            feature="audio_overview",
+            idempotency_suffix="audio_narrative",
         )
 
 

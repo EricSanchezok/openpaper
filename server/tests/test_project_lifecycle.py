@@ -33,7 +33,6 @@ def test_project_deletion_preserves_private_chats_and_schedules_document_gc() ->
     db.scalars.side_effect = [
         _scalars_result([]),
         _scalars_result([]),
-        _scalars_result([]),
         _scalars_result([document.id]),
         _scalars_result(["audio/project.mp3"]),
     ]
@@ -64,7 +63,6 @@ def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
     db.scalars.side_effect = [
         _scalars_result([uuid4()]),
         _scalars_result([]),
-        _scalars_result([]),
     ]
 
     with pytest.raises(AppError) as error:
@@ -74,7 +72,7 @@ def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
         )
 
     assert error.value.code == "project_has_active_jobs"
-    assert db.scalars.call_count == 3
+    assert db.scalars.call_count == 2
     db.execute.assert_not_called()
 
 

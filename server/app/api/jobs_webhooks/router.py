@@ -8,13 +8,6 @@ from app.database.crud.message_crud import MessageCreate, message_crud
 from app.database.crud.paper_crud import PaperUpdate, paper_crud
 from app.database.crud.sanitization import sanitize_for_postgres
 from app.database.crud.paper_upload_crud import paper_upload_job_crud
-from app.database.crud.projects.project_data_table_crud import (
-    DataTableResultCreate,
-    DataTableRowCreate,
-    data_table_job_crud,
-    data_table_result_crud,
-    data_table_row_crud,
-)
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -24,30 +17,39 @@ from app.database.models import (
     Document,
     DocumentProcessingStatus,
     JobStatus,
+    JobOperation,
     LibraryPaper,
     PaperUploadJob,
     ProjectPaper,
+    ResearchAudioOverview,
+    ResearchDataTable,
+    ResearchItem,
+    ResearchItemKind,
+    ResearchScopeType,
     ZoteroImportStatus,
 )
 from app.database.telemetry import track_event
+from app.errors import AppError
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
-from app.helpers.email import send_data_table_complete_email
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.jobs_webhooks import verify_jobs_webhook
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.services.resource_quotas import can_user_auto_sync_zotero
 from app.llm.citation_handler import CitationHandler
 from app.repositories.conversations import conversation_repository
+from app.repositories.jobs import job_repository
 from app.schemas.conversations import ConversationCreateRequest
-from app.llm.conversation_operations import data_table_operations
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.schemas.jobs import (
+    AudioOverviewTaskPayload,
+    AudioOverviewWebhookData,
+    DataTableTaskPayload,
+    DataTableWebhookData,
     PdfParserUpgradeWebhookData,
     PDFProcessingResult,
     PdfProcessingWebhookData,
     TokenUsageEventPayload,
 )
-from app.schemas.responses import DataTableResult
 from app.schemas.user import CurrentUser
 from app.services.zotero.service import (
     apply_zotero_annotations,
@@ -55,13 +57,201 @@ from app.services.zotero.service import (
     sync_batch,
 )
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 webhook_router = APIRouter(dependencies=[Depends(verify_jobs_webhook)])
+
+
+class JobClaimResponse(BaseModel):
+    claimed: bool
+
+
+@webhook_router.post("/jobs/{job_id}/claim", response_model=JobClaimResponse)
+def claim_durable_job(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    return JobClaimResponse(claimed=job_repository.claim(db, job_id=job_id) is not None)
+
+
+@webhook_router.post("/jobs/{job_id}/heartbeat", response_model=JobClaimResponse)
+def heartbeat_durable_job(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    updated = job_repository.heartbeat(db, job_id=job_id)
+    db.commit()
+    return JobClaimResponse(claimed=updated)
+
+
+@webhook_router.post("/jobs/{job_id}/audio", response_model=JobClaimResponse)
+async def complete_audio_job(
+    job_id: uuid.UUID,
+    webhook: AudioOverviewWebhookData,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    job = job_repository.require(db, job_id=job_id)
+    if job.operation != JobOperation.AUDIO_GENERATE.value:
+        raise AppError(
+            code="job_operation_mismatch",
+            message="Job operation does not match callback",
+            status_code=409,
+        )
+    if webhook.task_id != job_id:
+        raise AppError(
+            code="job_callback_mismatch",
+            message="Job callback ID does not match",
+            status_code=409,
+        )
+
+    if webhook.status == "failed":
+        _, changed = job_repository.fail(
+            db,
+            job_id=job_id,
+            error_code=webhook.error or "audio_generation_failed",
+        )
+        db.commit()
+    else:
+        task_payload = AudioOverviewTaskPayload.model_validate(job.payload)
+        result = webhook.result
+        if result is None:
+            raise RuntimeError("validated_audio_callback_without_result")
+        if result.research_item_id != task_payload.research_item_id:
+            raise AppError(
+                code="job_callback_mismatch",
+                message="Research output ID does not match",
+                status_code=409,
+            )
+        _, changed = job_repository.complete(
+            db,
+            job_id=job_id,
+            result=result.model_dump(mode="json"),
+        )
+        if changed:
+            scope_type = ResearchScopeType(task_payload.scope_type)
+            item = ResearchItem(
+                id=result.research_item_id,
+                kind=ResearchItemKind.AUDIO_OVERVIEW.value,
+                created_by_id=job.requested_by_id,
+                scope_type=scope_type.value,
+                document_id=(
+                    task_payload.scope_id
+                    if scope_type == ResearchScopeType.DOCUMENT
+                    else None
+                ),
+                project_id=(
+                    task_payload.scope_id
+                    if scope_type == ResearchScopeType.PROJECT
+                    else None
+                ),
+                is_shared=True,
+                source_job_id=job_id,
+            )
+            item.audio_overview = ResearchAudioOverview(
+                title=result.title,
+                transcript=result.transcript,
+                citations=result.citations,
+                s3_object_key=result.s3_object_key,
+                voice_id=result.voice_id,
+                model_version=result.model_version,
+            )
+            db.add(item)
+        db.commit()
+
+    if job.requested_by_id is not None:
+        _settle_jobs_usage(job.requested_by_id, webhook.usage_events)
+        await release_concurrency_by_id(
+            user_id=job.requested_by_id,
+            category="audio",
+            operation_id=str(job_id),
+        )
+        await release_concurrency_by_id(
+            user_id=job.requested_by_id,
+            category="background",
+            operation_id=str(job_id),
+        )
+    return JobClaimResponse(claimed=changed)
+
+
+@webhook_router.post("/jobs/{job_id}/data-table", response_model=JobClaimResponse)
+async def complete_data_table_job(
+    job_id: uuid.UUID,
+    webhook: DataTableWebhookData,
+    db: Session = Depends(get_db),
+) -> JobClaimResponse:
+    job = job_repository.require(db, job_id=job_id)
+    if job.operation != JobOperation.DATA_TABLE_GENERATE.value:
+        raise AppError(
+            code="job_operation_mismatch",
+            message="Job operation does not match callback",
+            status_code=409,
+        )
+    if webhook.task_id != job_id:
+        raise AppError(
+            code="job_callback_mismatch",
+            message="Job callback ID does not match",
+            status_code=409,
+        )
+    if webhook.status == "failed":
+        _, changed = job_repository.fail(
+            db,
+            job_id=job_id,
+            error_code=webhook.error or "data_table_processing_failed",
+        )
+        db.commit()
+    else:
+        task_payload = DataTableTaskPayload.model_validate(job.payload)
+        result = webhook.result
+        if result is None:
+            raise RuntimeError("validated_data_table_callback_without_result")
+        if result.research_item_id != task_payload.research_item_id:
+            raise AppError(
+                code="job_callback_mismatch",
+                message="Research output ID does not match",
+                status_code=409,
+            )
+        _, changed = job_repository.complete(
+            db,
+            job_id=job_id,
+            result=result.model_dump(mode="json"),
+        )
+        if changed:
+            item = ResearchItem(
+                id=result.research_item_id,
+                kind=ResearchItemKind.DATA_TABLE.value,
+                created_by_id=job.requested_by_id,
+                scope_type=ResearchScopeType.PROJECT.value,
+                project_id=job.project_id,
+                is_shared=True,
+                source_job_id=job_id,
+            )
+            item.data_table = ResearchDataTable(
+                title=result.title,
+                columns=result.columns,
+                rows=[row.model_dump(mode="json") for row in result.rows],
+                citations=[
+                    citation.model_dump(mode="json")
+                    for row in result.rows
+                    for cell in row.values.values()
+                    for citation in cell.citations
+                ],
+                row_failures=[str(paper_id) for paper_id in result.row_failures],
+            )
+            db.add(item)
+        db.commit()
+
+    if job.requested_by_id is not None:
+        _settle_jobs_usage(job.requested_by_id, webhook.usage_events)
+        await release_concurrency_by_id(
+            user_id=job.requested_by_id,
+            category="background",
+            operation_id=str(job_id),
+        )
+    return JobClaimResponse(claimed=changed)
 
 
 def _settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> None:
@@ -733,188 +923,6 @@ def handle_paper_parser_upgrade_webhook(
         ) from exc
     finally:
         upgrade_lock.release()
-
-
-class DataTableProcessingResultWebhookData(BaseModel):
-    """Schema for webhook data from data table processing service."""
-
-    task_id: str
-    status: str
-    result: DataTableResult | None = None
-    error: str | None = None
-    usage_events: list[TokenUsageEventPayload] = Field(default_factory=list)
-
-
-@webhook_router.post("/data-table-processing/{job_id}")
-async def handle_data_table_processing_webhook(
-    job_id: str,
-    webhook_data: DataTableProcessingResultWebhookData,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    """Handle webhook from data table processing jobs service."""
-
-    logger.info(
-        f"Received data table processing webhook for job {job_id} with status {webhook_data.status}"
-    )
-
-    task_id = webhook_data.task_id
-    status = webhook_data.status
-    error = webhook_data.error
-    job = data_table_job_crud.get_by_task_id(db=db, task_id=task_id)
-    if not job or not job.user:
-        raise HTTPException(status_code=404, detail="Data table job not found")
-    _settle_jobs_usage(int(job.user.id), webhook_data.usage_events)
-
-    result = webhook_data.result
-    if result is None:
-        data_table_job_crud.update_status(
-            db=db,
-            job_id=uuid.UUID(job_id),
-            status=JobStatus.FAILED,
-            error_message=error or "data_table_processing_failed",
-        )
-        await release_concurrency_by_id(
-            user_id=int(job.user.id),
-            category="background",
-            operation_id=job_id,
-        )
-        return {
-            "status": "data table webhook processed",
-            "job_id": job_id,
-            "task_id": task_id,
-            "success": False,
-            "rows_count": 0,
-        }
-
-    try:
-        if status == "completed" and result.success:
-            # Processing was successful
-            logger.info(
-                f"Data table processing completed for job {job_id}, "
-                f"extracted {len(result.rows)} rows with columns: {result.columns}"
-            )
-
-            # Update job status to completed
-            data_table_job_crud.update_status(
-                db=db,
-                job_id=uuid.UUID(job_id),
-                status=JobStatus.COMPLETED,
-            )
-
-            # Post-Processing
-            # Augment the DataCellValue citations with the paper_id
-            # The job only returns citation info without paper_id, but we can fill it in here
-            for col in result.columns:
-                for row in result.rows:
-                    cell_value = row.values.get(col)
-                    if cell_value:
-                        for citation in cell_value.citations:
-                            citation.paper_id = row.paper_id
-
-            paper_titles = []
-            for row in result.rows:
-                paper = paper_crud.get(db=db, id=uuid.UUID(row.paper_id))
-                if paper and paper.title:
-                    paper_titles.append(paper.title)
-                else:
-                    paper_titles.append("")
-
-            with llm_usage_context(
-                user_id=int(job.user.id),
-                feature="data_table_naming",
-                operation_id=f"{task_id}:name",
-            ):
-                title = (
-                    data_table_operations.name_data_table(
-                        paper_titles=paper_titles,
-                        column_labels=result.columns,
-                    )
-                    or f"Data Table ({', '.join(result.columns)})"
-                )
-
-            # Create the data table result
-            table_result = data_table_result_crud.create(
-                db=db,
-                obj_in=DataTableResultCreate(
-                    job_id=uuid.UUID(job_id),
-                    title=title,
-                    success=result.success,
-                    columns=result.columns,
-                    row_failures=[uuid.UUID(pid) for pid in result.row_failures],
-                ),
-            )
-
-            if table_result:
-                # Create all rows using create_many
-                # Convert DataTableCellValue objects to dicts for JSON serialization
-                row_creates = [
-                    DataTableRowCreate(
-                        data_table_id=uuid.UUID(str(table_result.id)),
-                        paper_id=uuid.UUID(row.paper_id),
-                        values={
-                            col: cell.model_dump() for col, cell in row.values.items()
-                        },
-                    )
-                    for row in result.rows
-                ]
-                if row_creates:
-                    data_table_row_crud.create_many(db=db, rows=row_creates)
-                    logger.info(
-                        f"Created {len(row_creates)} rows for data table result {table_result.id}"
-                    )
-
-                # Send email notification to user
-                if job and job.user and job.project:
-                    try:
-                        send_data_table_complete_email(
-                            to_email=job.user.email,
-                            table_title=title,
-                            columns=result.columns,
-                            row_count=len(result.rows),
-                            project_name=job.project.title or "Untitled project",
-                            project_id=str(job.project.id),
-                            result_id=str(table_result.id),
-                        )
-                    except Exception as email_error:
-                        logger.error(
-                            f"Failed to send data table complete email for job {job_id}: {email_error}",
-                            exc_info=True,
-                        )
-            else:
-                logger.error(f"Failed to create data table result for job {job_id}")
-
-        else:
-            # Processing failed
-            error_message = error if error else "Unknown error"
-            logger.error(
-                f"Data table processing failed for job {job_id}: {error_message}"
-            )
-
-            # Update job status to failed
-            data_table_job_crud.update_status(
-                db=db,
-                job_id=uuid.UUID(job_id),
-                status=JobStatus.FAILED,
-                error_message=error_message,
-            )
-
-    except Exception:
-        logger.exception("Error processing data table webhook for job %s", job_id)
-        raise HTTPException(status_code=500, detail="Error processing webhook")
-    finally:
-        await release_concurrency_by_id(
-            user_id=int(job.user.id),
-            category="background",
-            operation_id=job_id,
-        )
-
-    return {
-        "status": "data table webhook processed",
-        "job_id": job_id,
-        "task_id": task_id,
-        "success": result.success,
-        "rows_count": len(result.rows),
-    }
 
 
 @webhook_router.post("/internal/zotero-sync-all")

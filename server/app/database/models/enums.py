@@ -51,6 +51,20 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class JobOperation(str, Enum):
+    PDF_PROCESS = "pdf_process"
+    PDF_PARSER_UPGRADE = "pdf_parser_upgrade"
+    AUDIO_GENERATE = "audio_generate"
+    DATA_TABLE_GENERATE = "data_table_generate"
+    ZOTERO_POSTPROCESS = "zotero_postprocess"
+    DOCUMENT_GC = "document_gc"
+
+
+class JobDispatchStatus(str, Enum):
+    PENDING = "pending"
+    PUBLISHED = "published"
+
+
 class DocumentProcessingStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
@@ -67,14 +81,6 @@ class PaperStatus(str, Enum):
     todo = "todo"
     reading = "reading"
     completed = "completed"
-
-
-class ConversableType(str, Enum):
-    PAPER = "paper"
-    PROJECT = "project"
-    EVERYTHING = (
-        "everything"  # For conversations that are across the user's entire library
-    )
 
 
 class ConversationScopeType(str, Enum):

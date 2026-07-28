@@ -311,3 +311,52 @@ class DataTableResult(BaseModel):
     row_failures: list[str] = Field(
         default_factory=list, description="List of paper_ids that failed to process"
     )
+
+
+class DataTableTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    research_item_id: str
+    title: str | None = Field(default=None, max_length=240)
+    table: DataTableSchema
+
+
+class ResearchDataTableResult(BaseModel):
+    research_item_id: str
+    title: str | None
+    columns: list[str]
+    rows: list[DataTableRow]
+    row_failures: list[str]
+
+
+class AudioSourceDocument(BaseModel):
+    id: str
+    title: str
+    canonical_s3_key: str
+
+
+class AudioOverviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    research_item_id: str
+    scope_type: Literal["document", "project"]
+    scope_id: str
+    documents: list[AudioSourceDocument] = Field(min_length=1, max_length=100)
+    length: Literal["short", "medium", "long"] = "medium"
+    additional_instructions: str | None = Field(default=None, max_length=10_000)
+
+
+class AudioOverviewNarrative(BaseModel):
+    title: str
+    transcript: str
+    citations: list[ResponseCitation] = Field(default_factory=list)
+
+
+class AudioOverviewResult(BaseModel):
+    research_item_id: str
+    title: str
+    transcript: str
+    citations: list[ResponseCitation]
+    s3_object_key: str
+    voice_id: str
+    model_version: str
