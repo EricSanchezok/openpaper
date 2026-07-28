@@ -1,6 +1,7 @@
 """Regression gates for domain concepts intentionally removed before launch."""
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).parents[2]
 BUSINESS_ROOTS = (
@@ -44,3 +45,11 @@ def test_old_ownership_and_shared_conversation_routes_do_not_return() -> None:
         '"/api/projects/conversations',
     ):
         assert route not in source
+
+
+def test_streaming_errors_never_expose_exception_text() -> None:
+    source = _business_source()
+    exposed_exception = re.compile(
+        r"""["']content["']\s*:\s*str\((?:e|exc|error|exception)\)"""
+    )
+    assert exposed_exception.search(source) is None

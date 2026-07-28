@@ -390,12 +390,15 @@ class EvidenceOperations(BaseLLMClient):
                                     preserve_line_numbers=preserve_line_numbers,
                                 )
 
-                    except Exception as e:
-                        logger.error(f"Error executing function {fn_name}: {e}")
-                        evidence_collection.add_tool_call_result(
-                            fn_selected, f"Error: {str(e)}"
+                    except Exception:
+                        logger.exception(
+                            "Evidence tool execution failed",
+                            extra={"tool_name": fn_name},
                         )
-                        yield {"type": "error", "content": str(e)}
+                        evidence_collection.add_tool_call_result(
+                            fn_selected, "Error: tool_execution_failed"
+                        )
+                        yield {"type": "error", "content": "tool_execution_failed"}
                 else:
                     logger.warning(f"Unknown function called: {fn_name_raw}")
                     yield {

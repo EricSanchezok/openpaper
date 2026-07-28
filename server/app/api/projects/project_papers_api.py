@@ -7,12 +7,22 @@ from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.s3 import s3_service
-from app.schemas.orm_responses import serialize_project
+from app.schemas.projects import (
+    ProjectPaperCollectedResponse,
+    ProjectPaperFileUrlResponse,
+    ProjectPaperListResponse,
+    ProjectPaperSummaryResponse,
+    ProjectPapersAddedResponse,
+    ProjectPendingUploadResponse,
+    ProjectPendingUploadsResponse,
+    ProjectResponse,
+)
 from app.schemas.user import CurrentUser
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
+
+from .responses import project_response
 
 project_papers_router = APIRouter()
 
@@ -24,12 +34,16 @@ class CollectPaperFromProjectRequest(BaseModel):
     paper_id: UUID
 
 
-@project_papers_router.post("/papers/collect")
+@project_papers_router.post(
+    "/papers/collect",
+    response_model=ProjectPaperCollectedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def collect_paper_from_project(
     request: CollectPaperFromProjectRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> ProjectPaperCollectedResponse:
     """
     Add a project document to the current user's personal library without
     copying its S3 object or parsed content.
@@ -56,13 +70,7 @@ async def collect_paper_from_project(
         },
         db=db,
     )
-    return JSONResponse(
-        status_code=201,
-        content={
-            "message": "Paper added to your library",
-            "paper_id": str(collected_document.id),
-        },
-    )
+    return ProjectPaperCollectedResponse(paper_id=collected_document.id)
 
 
 class AddPaperToProjectRequest(BaseModel):
@@ -77,13 +85,17 @@ class AddPaperToProjectRequest(BaseModel):
         return self
 
 
-@project_papers_router.post("/{project_id}/papers")
+@project_papers_router.post(
+    "/{project_id}/papers",
+    response_model=ProjectPapersAddedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_paper_to_project(
     project_id: UUID,
     request: AddPaperToProjectRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> ProjectPapersAddedResponse:
     associations, existing_count = project_paper_crud.attach_library_documents(
         db,
         document_ids=request.paper_ids,
@@ -100,23 +112,22 @@ async def add_paper_to_project(
         },
         db=db,
     )
-    return JSONResponse(
-        status_code=201,
-        content={
-            "message": "Papers added to project successfully",
-            "added_count": len(associations),
-            "existing_count": existing_count,
-        },
+    return ProjectPapersAddedResponse(
+        added_count=len(associations),
+        existing_count=existing_count,
     )
 
 
-@project_papers_router.get("/{project_id}/papers")
+@project_papers_router.get(
+    "/{project_id}/papers",
+    response_model=ProjectPaperListResponse,
+)
 async def get_project_papers(
     project_id: UUID,
     load_urls: bool = False,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> ProjectPaperListResponse:
     """
     Get all papers for a specific project.
 
@@ -143,39 +154,37 @@ async def get_project_papers(
             {str(paper.id): paper.s3_object_key for paper in papers}
         )
 
-    return JSONResponse(
-        status_code=200,
-        content={
-            "papers": [
-                {
-                    "id": str(paper.id),
-                    "title": paper.title,
-                    "created_at": str(paper.created_at),
-                    "abstract": paper.abstract,
-                    "authors": paper.authors,
-                    "institutions": paper.institutions,
-                    "status": "reading",
-                    "journal": paper.journal,
-                    "publisher": paper.publisher,
-                    "doi": paper.doi,
-                    "publish_date": (
-                        str(paper.publish_date) if paper.publish_date else None
-                    ),
-                    "file_url": file_urls.get(str(paper.id)),
-                    "in_library": paper.id in library_document_ids,
-                }
-                for paper in papers
-            ]
-        },
+    return ProjectPaperListResponse(
+        papers=[
+            ProjectPaperSummaryResponse(
+                id=paper.id,
+                title=paper.title,
+                created_at=paper.created_at,
+                abstract=paper.abstract,
+                authors=paper.authors,
+                institutions=paper.institutions,
+                status="reading",
+                journal=paper.journal,
+                publisher=paper.publisher,
+                doi=paper.doi,
+                publish_date=paper.publish_date,
+                file_url=file_urls.get(str(paper.id)),
+                in_library=paper.id in library_document_ids,
+            )
+            for paper in papers
+        ]
     )
 
 
-@project_papers_router.get("/{project_id}/papers/pending-jobs")
+@project_papers_router.get(
+    "/{project_id}/papers/pending-jobs",
+    response_model=ProjectPendingUploadsResponse,
+)
 async def get_project_pending_jobs(
     project_id: UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> ProjectPendingUploadsResponse:
     """
     Get upload jobs still in progress for a project.
 
@@ -185,32 +194,30 @@ async def get_project_pending_jobs(
     jobs = upload_reservation_repository.get_in_progress_jobs_for_project(
         db, project_id=project_id, user=current_user
     )
-    return JSONResponse(
-        status_code=200,
-        content={
-            "jobs": [
-                {
-                    "job_id": str(job.id),
-                    "status": job.job.status,
-                    "paper_id": str(paper.id),
-                    "title": paper.title,
-                    "started_at": (
-                        job.job.started_at.isoformat() if job.job.started_at else None
-                    ),
-                }
-                for job, paper in jobs
-            ]
-        },
+    return ProjectPendingUploadsResponse(
+        jobs=[
+            ProjectPendingUploadResponse(
+                job_id=job.id,
+                status=job.job.status,
+                paper_id=paper.id,
+                title=paper.title,
+                started_at=job.job.started_at,
+            )
+            for job, paper in jobs
+        ]
     )
 
 
-@project_papers_router.get("/{project_id}/papers/{paper_id}/file-url")
+@project_papers_router.get(
+    "/{project_id}/papers/{paper_id}/file-url",
+    response_model=ProjectPaperFileUrlResponse,
+)
 async def get_project_paper_file_url(
     project_id: UUID,
     paper_id: UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> ProjectPaperFileUrlResponse:
     """
     Get a presigned file URL for a single paper within a project.
 
@@ -234,32 +241,38 @@ async def get_project_paper_file_url(
 
     file_url = s3_service.generate_presigned_url(paper.s3_object_key)
 
-    return JSONResponse(status_code=200, content={"file_url": file_url})
+    return ProjectPaperFileUrlResponse(file_url=file_url)
 
 
-@project_papers_router.get("/papers/from/{paper_id}")
+@project_papers_router.get(
+    "/papers/from/{paper_id}",
+    response_model=list[ProjectResponse],
+)
 async def get_projects_from_paper_id(
     paper_id: UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> list[ProjectResponse]:
     """Get all projects associated with a specific paper"""
     projects = project_paper_crud.get_projects_by_paper_id(
         db, paper_id=paper_id, user=current_user
     )
-    return JSONResponse(
-        status_code=200,
-        content=[serialize_project(project) for project in projects],
-    )
+    return [
+        project_response(db, project=project, current_user_id=current_user.id)
+        for project in projects
+    ]
 
 
-@project_papers_router.delete("/{project_id}/papers/{document_id}")
+@project_papers_router.delete(
+    "/{project_id}/papers/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def remove_paper_from_project(
     project_id: UUID,
     document_id: UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
-) -> JSONResponse:
+) -> Response:
     """Remove a paper from a project"""
     project_paper_crud.remove_by_paper_and_project(
         db,
@@ -268,7 +281,4 @@ async def remove_paper_from_project(
         user=current_user,
     )
     track_event("paper_removed_from_project", user_id=str(current_user.id), db=db)
-    return JSONResponse(
-        status_code=200,
-        content={"message": "Paper removed from project successfully"},
-    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

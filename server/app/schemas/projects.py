@@ -99,3 +99,48 @@ class ProjectInvitationResponse(BaseModel):
     permissions: ProjectPermissionSet
     expires_at: datetime
     created_at: datetime
+
+
+class ProjectPaperSummaryResponse(BaseModel):
+    id: UUID
+    title: str | None
+    created_at: datetime
+    abstract: str | None
+    authors: list[str] | None
+    institutions: list[str] | None
+    status: str
+    journal: str | None
+    publisher: str | None
+    doi: str | None
+    publish_date: datetime | None
+    file_url: str | None
+    in_library: bool
+
+
+class ProjectPaperListResponse(BaseModel):
+    papers: list[ProjectPaperSummaryResponse]
+
+
+class ProjectPapersAddedResponse(BaseModel):
+    added_count: int
+    existing_count: int
+
+
+class ProjectPaperCollectedResponse(BaseModel):
+    paper_id: UUID
+
+
+class ProjectPaperFileUrlResponse(BaseModel):
+    file_url: str
+
+
+class ProjectPendingUploadResponse(BaseModel):
+    job_id: UUID
+    status: str
+    paper_id: UUID
+    title: str | None
+    started_at: datetime | None
+
+
+class ProjectPendingUploadsResponse(BaseModel):
+    jobs: list[ProjectPendingUploadResponse]

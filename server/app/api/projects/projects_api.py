@@ -6,25 +6,14 @@ from app.auth.dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import (
     AuthUser,
-    Conversation,
-    Project,
-    ProjectCollaborator,
-    ProjectPaper,
-    ResearchItem,
-    ResearchItemKind,
-    ResearchScopeType,
 )
 from app.database.telemetry import track_event
 from app.services.resource_quotas import can_user_create_project
-from app.policies.projects import ProjectAccess
 from app.repositories.projects import project_repository
 from app.schemas.projects import (
-    ProjectCapabilitiesResponse,
     ProjectCreateRequest,
     ProjectCollaboratorResponse,
     ProjectCollaboratorUpdateRequest,
-    ProjectMembershipResponse,
-    ProjectOwnerResponse,
     ProjectPermissionSet,
     ProjectResponse,
     ProjectTransferRequest,
@@ -33,110 +22,11 @@ from app.schemas.projects import (
 from app.schemas.user import CurrentUser
 from app.errors import AppError
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .responses import project_response
+
 projects_router = APIRouter()
-
-
-def _permissions(access: ProjectAccess) -> ProjectPermissionSet:
-    return ProjectPermissionSet(
-        edit_project=access.permissions.edit_project,
-        manage_papers=access.permissions.manage_papers,
-        manage_collaborators=access.permissions.manage_collaborators,
-    )
-
-
-def _project_counts(
-    db: Session, *, project_id: uuid.UUID, current_user_id: int
-) -> tuple[int, int, int, int, int]:
-    num_papers = db.scalar(
-        select(func.count(ProjectPaper.id)).where(ProjectPaper.project_id == project_id)
-    )
-    num_conversations = db.scalar(
-        select(func.count(Conversation.id)).where(
-            Conversation.scope_type == "project",
-            Conversation.project_id == project_id,
-            Conversation.user_id == current_user_id,
-        )
-    )
-    num_audio = db.scalar(
-        select(func.count(ResearchItem.id)).where(
-            ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
-            ResearchItem.project_id == project_id,
-            ResearchItem.kind == ResearchItemKind.AUDIO_OVERVIEW.value,
-        )
-    )
-    num_tables = db.scalar(
-        select(func.count(ResearchItem.id)).where(
-            ResearchItem.scope_type == ResearchScopeType.PROJECT.value,
-            ResearchItem.project_id == project_id,
-            ResearchItem.kind == ResearchItemKind.DATA_TABLE.value,
-        )
-    )
-    num_collaborators = db.scalar(
-        select(func.count(ProjectCollaborator.id)).where(
-            ProjectCollaborator.project_id == project_id
-        )
-    )
-    return (
-        int(num_papers or 0),
-        int(num_conversations or 0),
-        int(num_audio or 0),
-        int(num_tables or 0),
-        int(num_collaborators or 0),
-    )
-
-
-def _project_response(
-    db: Session, *, project: Project, current_user_id: int
-) -> ProjectResponse:
-    access = project_repository.get_access(
-        db, project_id=project.id, user_id=current_user_id
-    )
-    owner = db.get(AuthUser, project.owner_id)
-    if owner is None:
-        raise RuntimeError(f"Project {project.id} has no owner")
-    (
-        num_papers,
-        num_conversations,
-        num_audio,
-        num_tables,
-        num_collaborators,
-    ) = _project_counts(
-        db,
-        project_id=project.id,
-        current_user_id=current_user_id,
-    )
-    return ProjectResponse(
-        id=project.id,
-        title=project.title,
-        description=project.description,
-        owner=ProjectOwnerResponse(
-            id=owner.id,
-            display_name=owner.display_name or owner.email,
-            email=owner.email,
-        ),
-        membership=ProjectMembershipResponse(
-            kind="owner" if access.is_owner else "collaborator",
-            permissions=_permissions(access),
-        ),
-        capabilities=ProjectCapabilitiesResponse(
-            edit_project=access.can_edit_project,
-            manage_papers=access.can_manage_papers,
-            manage_collaborators=access.can_manage_collaborators,
-            transfer=access.is_owner,
-            delete=access.is_owner,
-            leave=not access.is_owner,
-        ),
-        num_papers=num_papers,
-        num_conversations=num_conversations,
-        num_audio_overviews=num_audio,
-        num_data_tables=num_tables,
-        num_collaborators=num_collaborators,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-    )
 
 
 @projects_router.post(
@@ -161,7 +51,7 @@ def create_project(
         description=request.description,
     )
     track_event("project_created", user_id=str(current_user.id), db=db)
-    return _project_response(db, project=project, current_user_id=current_user.id)
+    return project_response(db, project=project, current_user_id=current_user.id)
 
 
 @projects_router.get("", response_model=list[ProjectResponse])
@@ -174,7 +64,7 @@ def get_projects(
         db, user_id=current_user.id, limit=limit
     )
     return [
-        _project_response(db, project=project, current_user_id=current_user.id)
+        project_response(db, project=project, current_user_id=current_user.id)
         for project in projects
     ]
 
@@ -188,9 +78,7 @@ def get_project(
     access = project_repository.get_access(
         db, project_id=project_id, user_id=current_user.id
     )
-    return _project_response(
-        db, project=access.project, current_user_id=current_user.id
-    )
+    return project_response(db, project=access.project, current_user_id=current_user.id)
 
 
 @projects_router.patch("/{project_id}", response_model=ProjectResponse)
@@ -207,7 +95,7 @@ def update_project(
         changes=request.model_dump(exclude_unset=True),
     )
     track_event("project_updated", user_id=str(current_user.id), db=db)
-    return _project_response(db, project=project, current_user_id=current_user.id)
+    return project_response(db, project=project, current_user_id=current_user.id)
 
 
 @projects_router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -342,4 +230,4 @@ def transfer_project(
         owner_id=current_user.id,
         new_owner_id=request.new_owner_id,
     )
-    return _project_response(db, project=project, current_user_id=current_user.id)
+    return project_response(db, project=project, current_user_id=current_user.id)
