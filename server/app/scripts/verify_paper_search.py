@@ -1,4 +1,4 @@
-"""PostgreSQL integration contract for the replaceable paper-search adapter."""
+"""PostgreSQL journey for search, reading, and project collaboration access."""
 
 from __future__ import annotations
 
@@ -13,6 +13,10 @@ from app.modules.papers.application.contracts.search import (
     PaperSearchScope,
 )
 from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
+from app.modules.papers.application.content import PaperContentCapabilities
+from app.modules.papers.infrastructure.content_gateway import (
+    SqlAlchemyPaperContentGateway,
+)
 from app.modules.papers.infrastructure.knowledge_search import PostgresPaperSearch
 from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
@@ -21,6 +25,7 @@ from app.modules.projects.infrastructure.document_visibility import (
     SqlProjectDocumentVisibility,
 )
 from app.shared.application import Actor
+from app.shared.domain import AppError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -53,12 +58,20 @@ def _search(db: Session) -> SearchPapers:
     )
 
 
+def _content(db: Session) -> PaperContentCapabilities:
+    return PaperContentCapabilities(
+        SqlAlchemyPaperContentGateway(db),
+        ListAccessibleProjectDocuments(SqlProjectDocumentVisibility(db)),
+    )
+
+
 def verify() -> None:
     with SessionLocal() as db:
         owner = _actor(db, "ci-search-owner@example.com")
         collaborator = _actor(db, "ci-search-collaborator@example.com")
         outsider = _actor(db, "ci-search-outsider@example.com")
         search = _search(db)
+        content = _content(db)
 
         first = search(
             actor=owner,
@@ -105,6 +118,13 @@ def verify() -> None:
             ),
         )
         assert [item.document_id for item in project.items] == [PROJECT_DOCUMENT_ID]
+        project_paper = content.read(
+            actor=collaborator,
+            document_id=PROJECT_DOCUMENT_ID,
+            project_id=PROJECT_ID,
+        )
+        assert project_paper.document_id == PROJECT_DOCUMENT_ID
+        assert project_paper.raw_content == "project-only fixture"
 
         restricted = search(
             actor=owner,
@@ -121,8 +141,18 @@ def verify() -> None:
         )
         assert hidden.items == []
         assert hidden.total == 0
+        try:
+            content.read(
+                actor=outsider,
+                document_id=PROJECT_DOCUMENT_ID,
+                project_id=PROJECT_ID,
+            )
+        except AppError as exc:
+            assert exc.code == "paper_not_found"
+        else:
+            raise AssertionError("outsider unexpectedly read a project document")
 
-    logger.info("PostgreSQL paper-search integration contract passed")
+    logger.info("PostgreSQL capability journey passed")
 
 
 if __name__ == "__main__":
