@@ -2,13 +2,14 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from app.transport.http.public_v1.billing import checkout
-from app.modules.billing.application.contracts import SubscriptionInterval
 from app.database.models import Base, Onboarding, UserProfile
 from app.main import app
-from sqlalchemy.orm import Session
+from app.modules.billing.infrastructure import application_gateway
+from app.modules.billing.infrastructure.application_gateway import (
+    StripePaymentProvider,
+)
 
 ROOT = Path(__file__).parents[2]
 
@@ -37,38 +38,22 @@ def test_initial_baseline_contains_no_referral_schema() -> None:
 
 
 def test_checkout_keeps_generic_promotion_codes_without_referral_discount() -> None:
-    db = MagicMock(spec=Session)
-    user = SimpleNamespace(id=7, email="user@example.com", display_name="User")
-    stripe_customer = SimpleNamespace(id="cus_test")
-    stripe_session = SimpleNamespace(client_secret="secret")
+    stripe_session = SimpleNamespace(
+        id="cs_test", client_secret="secret", status="open"
+    )
 
-    with (
-        patch.object(checkout, "MONTHLY_PRICE_ID", "price_monthly"),
-        patch.object(
-            checkout.subscription_repository,
-            "get_by_user_id",
-            return_value=None,
-        ),
-        patch.object(checkout.subscription_repository, "create_or_update"),
-        patch.object(
-            checkout.stripe.Customer,
-            "create",
-            return_value=stripe_customer,
-        ),
-        patch.object(
-            checkout.stripe.checkout.Session,
-            "create",
-            return_value=stripe_session,
-        ) as create_session,
-        patch.object(checkout, "track_event"),
-    ):
-        result = checkout.create_checkout_session(
-            interval=SubscriptionInterval.MONTHLY,
-            db=db,
-            current_user=user,
+    with patch.object(
+        application_gateway.stripe.checkout.Session,
+        "create",
+        return_value=stripe_session,
+    ) as create_session:
+        result = StripePaymentProvider().create_checkout_session(
+            user_id=7,
+            customer_id="cus_test",
+            price_id="price_monthly",
         )
 
-    assert result == {"client_secret": "secret"}
+    assert result.client_secret == "secret"
     params = create_session.call_args.kwargs
     assert params["allow_promotion_codes"] is True
     assert "discounts" not in params

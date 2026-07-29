@@ -45,6 +45,18 @@ from app.modules.identity.infrastructure.onboarding_adapters import (
     SqlAlchemyOnboardingWriter,
 )
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
+from app.modules.billing.application.billing import Billing
+from app.modules.billing.infrastructure.application_gateway import (
+    EmailBillingNotifier,
+    PostHogBillingEvents,
+    SqlAlchemySubscriptionStore,
+    SqlAlchemyUsageReader,
+    StripePaymentProvider,
+)
+from app.modules.billing.infrastructure.config import (
+    MONTHLY_PRICE_ID,
+    YEARLY_PRICE_ID,
+)
 from app.modules.billing.infrastructure.webhook_adapter import StripeWebhookAdapter
 from app.modules.papers.application.tags import LibraryTags
 from app.modules.papers.infrastructure.tag_gateway import (
@@ -177,6 +189,18 @@ def build_complete_onboarding(*, db: Session) -> CompleteOnboarding:
 
 def build_stripe_webhook_processor(*, db: Session) -> ProcessStripeWebhook:
     return ProcessStripeWebhook(StripeWebhookAdapter(db))
+
+
+def build_billing(*, db: Session) -> Billing:
+    return Billing(
+        subscriptions=SqlAlchemySubscriptionStore(db),
+        payments=StripePaymentProvider(),
+        usage=SqlAlchemyUsageReader(db),
+        events=PostHogBillingEvents(db),
+        notifier=EmailBillingNotifier(),
+        monthly_price_id=MONTHLY_PRICE_ID,
+        yearly_price_id=YEARLY_PRICE_ID,
+    )
 
 
 def build_library_tags(*, db: Session) -> LibraryTags:
