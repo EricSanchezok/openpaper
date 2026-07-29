@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.bootstrap.container import build_research_items
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.research.application.contracts import (
     AnnotationCommentResponse,
     CreateAnnotationCommentRequest,
@@ -18,10 +18,9 @@ from app.modules.research.application.contracts import (
     UpdateAnnotationCommentRequest,
     UpdateHighlightThreadRequest,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy.orm import Session
 
 document_research_router = APIRouter()
 project_research_router = APIRouter()
@@ -34,12 +33,16 @@ research_router = APIRouter()
 )
 def list_document_research_items(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
-    return build_research_items(db=db).list_document(
-        actor=current_user,
-        document_id=document_id,
+    return executor.query(
+        lambda capabilities: capabilities.research_items.list_document(
+            actor=current_user,
+            document_id=document_id,
+        )
     )
 
 
@@ -49,12 +52,16 @@ def list_document_research_items(
 )
 def list_project_research_items(
     project_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
-    return build_research_items(db=db).list_project(
-        actor=current_user,
-        project_id=project_id,
+    return executor.query(
+        lambda capabilities: capabilities.research_items.list_project(
+            actor=current_user,
+            project_id=project_id,
+        )
     )
 
 
@@ -64,13 +71,17 @@ def list_project_research_items(
 )
 def list_highlight_threads(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
-    return build_research_items(db=db).list_document(
-        actor=current_user,
-        document_id=document_id,
-        highlights_only=True,
+    return executor.query(
+        lambda capabilities: capabilities.research_items.list_document(
+            actor=current_user,
+            document_id=document_id,
+            highlights_only=True,
+        )
     )
 
 
@@ -82,13 +93,17 @@ def list_highlight_threads(
 def create_highlight_thread(
     document_id: UUID,
     request: CreateHighlightThreadRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
-    return build_research_items(db=db).create_highlight(
-        actor=current_user,
-        document_id=document_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.create_highlight(
+            actor=current_user,
+            document_id=document_id,
+            request=request,
+        )
     )
 
 
@@ -99,13 +114,17 @@ def create_highlight_thread(
 def update_highlight_thread(
     thread_id: UUID,
     request: UpdateHighlightThreadRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
-    return build_research_items(db=db).update_highlight(
-        actor=current_user,
-        thread_id=thread_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.update_highlight(
+            actor=current_user,
+            thread_id=thread_id,
+            request=request,
+        )
     )
 
 
@@ -116,13 +135,17 @@ def update_highlight_thread(
 def delete_highlight_thread(
     thread_id: UUID,
     request: DeleteHighlightThreadRequest = Depends(),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> DeleteResearchItemResponse:
-    return build_research_items(db=db).delete_highlight(
-        actor=current_user,
-        thread_id=thread_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.delete_highlight(
+            actor=current_user,
+            thread_id=thread_id,
+            request=request,
+        )
     )
 
 
@@ -134,13 +157,17 @@ def delete_highlight_thread(
 def create_annotation_comment(
     thread_id: UUID,
     request: CreateAnnotationCommentRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> AnnotationCommentResponse:
-    return build_research_items(db=db).create_comment(
-        actor=current_user,
-        thread_id=thread_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.create_comment(
+            actor=current_user,
+            thread_id=thread_id,
+            request=request,
+        )
     )
 
 
@@ -151,13 +178,17 @@ def create_annotation_comment(
 def update_annotation_comment(
     comment_id: UUID,
     request: UpdateAnnotationCommentRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> AnnotationCommentResponse:
-    return build_research_items(db=db).update_comment(
-        actor=current_user,
-        comment_id=comment_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.update_comment(
+            actor=current_user,
+            comment_id=comment_id,
+            request=request,
+        )
     )
 
 
@@ -167,12 +198,16 @@ def update_annotation_comment(
 )
 def delete_annotation_comment(
     comment_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    build_research_items(db=db).delete_comment(
-        actor=current_user,
-        comment_id=comment_id,
+    executor.command(
+        lambda capabilities: capabilities.research_items.delete_comment(
+            actor=current_user,
+            comment_id=comment_id,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -184,13 +219,17 @@ def delete_annotation_comment(
 def update_research_item(
     item_id: UUID,
     request: ResearchVisibilityRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
-    return build_research_items(db=db).set_visibility(
-        actor=current_user,
-        item_id=item_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.set_visibility(
+            actor=current_user,
+            item_id=item_id,
+            request=request,
+        )
     )
 
 
@@ -200,10 +239,14 @@ def update_research_item(
 )
 def delete_research_item(
     item_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> DeleteResearchItemResponse:
-    return build_research_items(db=db).delete_item(
-        actor=current_user,
-        item_id=item_id,
+    return executor.command(
+        lambda capabilities: capabilities.research_items.delete_item(
+            actor=current_user,
+            item_id=item_id,
+        )
     )

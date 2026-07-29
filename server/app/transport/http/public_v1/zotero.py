@@ -1,8 +1,8 @@
 """HTTP adapters for the Zotero integration."""
 
-from app.bootstrap.container import build_zotero
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.bootstrap.settings import AppSettings
-from app.database.database import get_db
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
     ZoteroImportRequest,
@@ -12,11 +12,10 @@ from app.modules.integrations.zotero.application.contracts import (
     ZoteroStatusResponse,
     ZoteroSyncResponse,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
 
 zotero_router = APIRouter()
 zotero_oauth_router = APIRouter()
@@ -25,9 +24,13 @@ zotero_oauth_router = APIRouter()
 @zotero_oauth_router.get("/connect", response_model=ZoteroConnectResponse)
 def zotero_connect(
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> ZoteroConnectResponse:
-    return build_zotero(db=db).connect(actor=current_user)
+    return executor.command(
+        lambda capabilities: capabilities.zotero.connect(actor=current_user)
+    )
 
 
 @zotero_oauth_router.get("/callback", response_class=RedirectResponse)
@@ -35,12 +38,16 @@ def zotero_callback(
     request: Request,
     oauth_token: str = Query(...),
     oauth_verifier: str = Query(...),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> RedirectResponse:
     settings: AppSettings = request.app.state.settings
-    success = build_zotero(db=db).callback(
-        oauth_token=oauth_token,
-        oauth_verifier=oauth_verifier,
+    success = executor.command(
+        lambda capabilities: capabilities.zotero.callback(
+            oauth_token=oauth_token,
+            oauth_verifier=oauth_verifier,
+        )
     )
     state = "connected" if success else "error"
     return RedirectResponse(
@@ -52,9 +59,13 @@ def zotero_callback(
 @zotero_router.get("/connection", response_model=ZoteroStatusResponse)
 def zotero_status(
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> ZoteroStatusResponse:
-    return build_zotero(db=db).status(actor=current_user)
+    return executor.query(
+        lambda capabilities: capabilities.zotero.status(actor=current_user)
+    )
 
 
 @zotero_router.delete(
@@ -63,18 +74,26 @@ def zotero_status(
 )
 def zotero_disconnect(
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> Response:
-    build_zotero(db=db).disconnect(actor=current_user)
+    executor.command(
+        lambda capabilities: capabilities.zotero.disconnect(actor=current_user)
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @zotero_router.get("/library-items", response_model=ZoteroLibraryResponse)
 def zotero_library(
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> ZoteroLibraryResponse:
-    return build_zotero(db=db).library(actor=current_user)
+    return executor.query(
+        lambda capabilities: capabilities.zotero.library(actor=current_user)
+    )
 
 
 @zotero_router.post(
@@ -86,12 +105,16 @@ async def zotero_import(
     request: ZoteroImportRequest,
     idempotency_key: str | None = Header(default=None, max_length=128),
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> ZoteroImportResponse:
-    return await build_zotero(db=db).import_items(
-        actor=current_user,
-        request=request,
-        idempotency_key=idempotency_key,
+    return await executor.command_async(
+        lambda capabilities: capabilities.zotero.import_items(
+            actor=current_user,
+            request=request,
+            idempotency_key=idempotency_key,
+        )
     )
 
 
@@ -102,18 +125,26 @@ async def zotero_import(
 )
 async def zotero_sync(
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> ZoteroSyncResponse:
-    return await build_zotero(db=db).sync(actor=current_user)
+    return await executor.command_async(
+        lambda capabilities: capabilities.zotero.sync(actor=current_user)
+    )
 
 
 @zotero_router.get("/imports", response_model=ZoteroImportStatusListResponse)
 def zotero_import_status_list(
     item_keys: list[str] | None = Query(None),
     current_user: Actor = Depends(get_required_user),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> ZoteroImportStatusListResponse:
-    return build_zotero(db=db).imports(
-        actor=current_user,
-        item_keys=item_keys,
+    return executor.query(
+        lambda capabilities: capabilities.zotero.imports(
+            actor=current_user,
+            item_keys=item_keys,
+        )
     )

@@ -1,14 +1,13 @@
-from app.bootstrap.container import build_billing
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.billing.application.contracts import (
     CheckoutSessionResponse,
     CheckoutSessionStatusResponse,
     SubscriptionInterval,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -20,10 +19,17 @@ router = APIRouter()
 )
 def create_checkout_session(
     interval: SubscriptionInterval,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> CheckoutSessionResponse:
-    return build_billing(db=db).create_checkout(current_user, interval)
+    return executor.command(
+        lambda capabilities: capabilities.billing.create_checkout(
+            current_user,
+            interval,
+        )
+    )
 
 
 @router.get(
@@ -32,6 +38,10 @@ def create_checkout_session(
 )
 def session_status(
     session_id: str,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> CheckoutSessionStatusResponse:
-    return build_billing(db=db).checkout_status(session_id)
+    return executor.query(
+        lambda capabilities: capabilities.billing.checkout_status(session_id)
+    )

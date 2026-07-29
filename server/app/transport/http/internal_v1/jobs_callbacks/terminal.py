@@ -2,14 +2,14 @@
 
 import uuid
 
-from app.bootstrap.container import build_job_callbacks
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.jobs.application.contracts import (
     JobClaimResponse,
     JobFailureCallback,
 )
+from app.shared.application import ApplicationExecutor
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 
 terminal_router = APIRouter()
 
@@ -18,9 +18,16 @@ terminal_router = APIRouter()
 async def complete_job(
     job_id: uuid.UUID,
     payload: dict[str, object],
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> object:
-    return await build_job_callbacks(db=db).complete(job_id=job_id, payload=payload)
+    return await executor.command_async(
+        lambda capabilities: capabilities.job_callbacks.complete(
+            job_id=job_id,
+            payload=payload,
+        )
+    )
 
 
 @terminal_router.post(
@@ -30,16 +37,27 @@ async def complete_job(
 def fail_job(
     job_id: uuid.UUID,
     callback: JobFailureCallback,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> JobClaimResponse:
-    return build_job_callbacks(db=db).fail(job_id=job_id, callback=callback)
+    return executor.command(
+        lambda capabilities: capabilities.job_callbacks.fail(
+            job_id=job_id,
+            callback=callback,
+        )
+    )
 
 
 @terminal_router.post("/schedules/zotero-sync")
 def schedule_zotero_sync(
     threshold_seconds: int = Query(default=24 * 3600),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> dict[str, int]:
-    return build_job_callbacks(db=db).schedule_zotero_sync(
-        threshold_seconds=threshold_seconds
+    return executor.command(
+        lambda capabilities: capabilities.job_callbacks.schedule_zotero_sync(
+            threshold_seconds=threshold_seconds
+        )
     )

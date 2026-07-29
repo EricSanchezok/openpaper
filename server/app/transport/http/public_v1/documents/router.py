@@ -4,15 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.bootstrap.container import (
-    build_paper_content,
-    build_citation_resolver,
-    build_paper_details,
-    build_paper_download,
-    build_paper_library,
-)
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.papers.application.contracts.citation import CitationResult
-from app.database.database import get_db
 from app.modules.papers.application.contracts.documents import (
     CollectPublicPaperResponse,
     DocumentContentResponse,
@@ -24,10 +18,9 @@ from app.modules.papers.application.contracts.documents import (
     LibraryPaperUpdateRequest,
     PublicPaperResponse,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy.orm import Session
 
 document_router = APIRouter()
 library_router = APIRouter()
@@ -36,10 +29,14 @@ public_document_router = APIRouter()
 
 @library_router.get("/papers", response_model=LibraryPaperListResponse)
 def list_library_papers(
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperListResponse:
-    return build_paper_library(db=db).list(actor=current_user)
+    return executor.query(
+        lambda capabilities: capabilities.paper_library.list(actor=current_user)
+    )
 
 
 @library_router.patch(
@@ -49,13 +46,17 @@ def list_library_papers(
 def update_library_paper(
     document_id: UUID,
     request: LibraryPaperUpdateRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperResponse:
-    return build_paper_library(db=db).update(
-        actor=current_user,
-        document_id=document_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.paper_library.update(
+            actor=current_user,
+            document_id=document_id,
+            request=request,
+        )
     )
 
 
@@ -65,12 +66,16 @@ def update_library_paper(
 )
 def get_library_paper_by_document(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperResponse:
-    return build_paper_library(db=db).get(
-        actor=current_user,
-        document_id=document_id,
+    return executor.query(
+        lambda capabilities: capabilities.paper_library.get(
+            actor=current_user,
+            document_id=document_id,
+        )
     )
 
 
@@ -81,12 +86,16 @@ def get_library_paper_by_document(
 )
 def share_library_paper(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperShareResponse:
-    return build_paper_library(db=db).share(
-        actor=current_user,
-        document_id=document_id,
+    return executor.command(
+        lambda capabilities: capabilities.paper_library.share(
+            actor=current_user,
+            document_id=document_id,
+        )
     )
 
 
@@ -96,12 +105,16 @@ def share_library_paper(
 )
 def unshare_library_paper(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    build_paper_library(db=db).unshare(
-        actor=current_user,
-        document_id=document_id,
+    executor.command(
+        lambda capabilities: capabilities.paper_library.unshare(
+            actor=current_user,
+            document_id=document_id,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -112,12 +125,16 @@ def unshare_library_paper(
 )
 def delete_library_paper(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    build_paper_library(db=db).remove(
-        actor=current_user,
-        document_id=document_id,
+    executor.command(
+        lambda capabilities: capabilities.paper_library.remove(
+            actor=current_user,
+            document_id=document_id,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -126,13 +143,17 @@ def delete_library_paper(
 def get_document(
     document_id: UUID,
     project_id: UUID | None = None,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> DocumentResponse:
-    return build_paper_details(db=db)(
-        actor=current_user,
-        document_id=document_id,
-        project_id=project_id,
+    return executor.query(
+        lambda capabilities: capabilities.paper_details(
+            actor=current_user,
+            document_id=document_id,
+            project_id=project_id,
+        )
     )
 
 
@@ -143,13 +164,17 @@ def get_document(
 def get_document_content(
     document_id: UUID,
     project_id: UUID | None = None,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> DocumentContentResponse:
-    paper = build_paper_content(db=db).read(
-        actor=current_user,
-        document_id=document_id,
-        project_id=project_id,
+    paper = executor.query(
+        lambda capabilities: capabilities.paper_content.read(
+            actor=current_user,
+            document_id=document_id,
+            project_id=project_id,
+        )
     )
     return DocumentContentResponse(
         document_id=paper.document_id,
@@ -166,13 +191,17 @@ def get_document_content(
 def get_document_file_url(
     document_id: UUID,
     project_id: UUID | None = None,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> DocumentFileUrlResponse:
-    return build_paper_download(db=db)(
-        actor=current_user,
-        document_id=document_id,
-        project_id=project_id,
+    return executor.query(
+        lambda capabilities: capabilities.paper_download(
+            actor=current_user,
+            document_id=document_id,
+            project_id=project_id,
+        )
     )
 
 
@@ -184,14 +213,18 @@ def get_document_citation(
     document_id: UUID,
     style: str = "APA",
     project_id: UUID | None = None,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> CitationResult:
-    return build_citation_resolver(db=db)(
-        actor=current_user,
-        document_id=document_id,
-        style=style,
-        project_id=project_id,
+    return executor.query(
+        lambda capabilities: capabilities.citations(
+            actor=current_user,
+            document_id=document_id,
+            style=style,
+            project_id=project_id,
+        )
     )
 
 
@@ -201,9 +234,15 @@ def get_document_citation(
 )
 def get_public_paper(
     share_token: str,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> PublicPaperResponse:
-    return build_paper_library(db=db).get_public(share_token=share_token)
+    return executor.query(
+        lambda capabilities: capabilities.paper_library.get_public(
+            share_token=share_token
+        )
+    )
 
 
 @public_document_router.post(
@@ -213,10 +252,14 @@ def get_public_paper(
 )
 def collect_public_paper(
     share_token: str,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> CollectPublicPaperResponse:
-    return build_paper_library(db=db).collect_public(
-        actor=current_user,
-        share_token=share_token,
+    return executor.command(
+        lambda capabilities: capabilities.paper_library.collect_public(
+            actor=current_user,
+            share_token=share_token,
+        )
     )

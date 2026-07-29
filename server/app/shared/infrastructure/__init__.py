@@ -1,5 +1,5 @@
 """Shared infrastructure adapters."""
 
-from .unit_of_work import SqlAlchemyUnitOfWork
+from .executor import SqlAlchemyApplicationExecutor
 
-__all__ = ["SqlAlchemyUnitOfWork"]
+__all__ = ["SqlAlchemyApplicationExecutor"]

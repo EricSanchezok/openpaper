@@ -1,24 +1,14 @@
-from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.bootstrap.container import (
-    build_paper_search,
-    build_project_document_visibility,
-)
-from app.bootstrap.settings import AppSettings
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.database.telemetry import track_event
 from app.modules.papers.application.contracts.search import (
     PaperSearchRequest,
     PaperSearchResponse,
     PaperSearchStats,
 )
-from app.modules.papers.application.search import (
-    GetPaperSearchStats,
-    SearchCursorCodec,
-    SearchPapers,
-)
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.orm import Session
 
 # API router for knowledge base search functionality
 search_router = APIRouter()
@@ -28,7 +18,9 @@ search_router = APIRouter()
 async def search_knowledge_base_endpoint(
     request: PaperSearchRequest,
     http_request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> PaperSearchResponse:
     """
@@ -43,14 +35,11 @@ async def search_knowledge_base_endpoint(
     Results are organized by paper, with matching highlights and annotations
     sub-referenced under each paper's metadata.
     """
-    settings: AppSettings = http_request.app.state.settings
-    results = SearchPapers(
-        build_paper_search(backend=settings.paper_search_backend, db=db),
-        SearchCursorCodec(settings.paper_search_cursor_secret),
-        build_project_document_visibility(db=db),
-    )(
-        actor=current_user,
-        request=request,
+    results = executor.query(
+        lambda capabilities: capabilities.paper_search(
+            actor=current_user,
+            request=request,
+        )
     )
     track_event(
         "knowledge_base_search",
@@ -61,15 +50,15 @@ async def search_knowledge_base_endpoint(
             "limit": request.limit,
             "has_cursor": request.cursor is not None,
         },
-        db=db,
     )
     return results
 
 
 @search_router.get("/stats", response_model=PaperSearchStats)
 async def get_search_stats(
-    request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> PaperSearchStats:
     """
@@ -77,8 +66,6 @@ async def get_search_stats(
 
     Returns counts of papers, highlights, and annotations.
     """
-    settings: AppSettings = request.app.state.settings
-    return GetPaperSearchStats(
-        build_paper_search(backend=settings.paper_search_backend, db=db),
-        build_project_document_visibility(db=db),
-    )(actor=current_user)
+    return executor.query(
+        lambda capabilities: capabilities.paper_search_stats(actor=current_user)
+    )

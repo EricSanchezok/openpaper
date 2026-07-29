@@ -2,12 +2,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.settings import AppSettings
 from app.database import admin_auth
 from app.database.models import AuthUser, Base
 from app.modules.identity.infrastructure import cloud_auth as runtime
 from app.modules.identity.infrastructure import application_gateway
 from app.transport.http.public_v1 import auth_dependencies as dependencies
 from app.shared.domain import AppError, FailureKind
+from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -22,6 +25,13 @@ def _cloud_user() -> UserRecord:
         display_name="Reader",
         status="active",
         email_verified=True,
+    )
+
+
+def _executor(db: MagicMock) -> SqlAlchemyApplicationExecutor[ApplicationCapabilities]:
+    return SqlAlchemyApplicationExecutor(
+        MagicMock(return_value=db),
+        lambda session: ApplicationCapabilities(session, AppSettings()),
     )
 
 
@@ -48,7 +58,7 @@ def test_all_orm_mappers_and_relationships_configure() -> None:
 
 @pytest.mark.asyncio
 async def test_optional_auth_returns_none_without_token() -> None:
-    result = await dependencies.get_current_user(None, MagicMock())
+    result = await dependencies.get_current_user(None, _executor(MagicMock()))
     assert result is None
 
 
@@ -65,7 +75,7 @@ async def test_cloud_identity_is_enriched_with_scholens_profile() -> None:
         "get_or_create_profile",
         return_value=profile,
     ) as get_profile:
-        result = await dependencies.get_current_user(_cloud_user(), db)
+        result = await dependencies.get_current_user(_cloud_user(), _executor(db))
 
     assert result is not None
     assert result.id == 42
@@ -86,7 +96,10 @@ async def test_product_block_does_not_modify_shared_account() -> None:
         return_value=profile,
     ):
         with pytest.raises(AppError) as exc_info:
-            await dependencies.get_current_user(_cloud_user(), MagicMock())
+            await dependencies.get_current_user(
+                _cloud_user(),
+                _executor(MagicMock()),
+            )
 
     assert exc_info.value.kind is FailureKind.PERMISSION_DENIED
     assert exc_info.value.message == "Scholens access is suspended"

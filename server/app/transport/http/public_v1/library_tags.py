@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.bootstrap.container import build_library_tags
-from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.papers.application.contracts.tags import (
     LibraryTagAssignmentRequest,
     LibraryTagAssignmentResponse,
@@ -14,19 +13,23 @@ from app.modules.papers.application.contracts.tags import (
     LibraryTagListResponse,
     LibraryTagResponse,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy.orm import Session
 
 library_tags_router = APIRouter()
 
 
 @library_tags_router.get("/tags", response_model=LibraryTagListResponse)
 def list_library_tags(
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryTagListResponse:
-    return build_library_tags(db=db).list(actor=current_user)
+    return executor.query(
+        lambda capabilities: capabilities.library_tags.list(actor=current_user)
+    )
 
 
 @library_tags_router.post(
@@ -36,10 +39,17 @@ def list_library_tags(
 )
 def create_library_tag(
     request: LibraryTagCreateRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryTagResponse:
-    return build_library_tags(db=db).create(actor=current_user, request=request)
+    return executor.command(
+        lambda capabilities: capabilities.library_tags.create(
+            actor=current_user,
+            request=request,
+        )
+    )
 
 
 @library_tags_router.post(
@@ -49,10 +59,17 @@ def create_library_tag(
 )
 def assign_library_tags(
     request: LibraryTagAssignmentRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryTagAssignmentResponse:
-    return build_library_tags(db=db).assign(actor=current_user, request=request)
+    return executor.command(
+        lambda capabilities: capabilities.library_tags.assign(
+            actor=current_user,
+            request=request,
+        )
+    )
 
 
 @library_tags_router.delete(
@@ -62,12 +79,16 @@ def assign_library_tags(
 def remove_library_tag_assignment(
     document_id: UUID,
     tag_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    build_library_tags(db=db).remove(
-        actor=current_user,
-        document_id=document_id,
-        tag_id=tag_id,
+    executor.command(
+        lambda capabilities: capabilities.library_tags.remove(
+            actor=current_user,
+            document_id=document_id,
+            tag_id=tag_id,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -5,6 +5,8 @@ import hashlib
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.settings import AppSettings
 from app.transport.http.public_v1.documents.router import list_library_papers
 from app.database.models import Document, LibraryPaper, PaperStatus
 from app.main import app
@@ -14,6 +16,7 @@ from app.modules.papers.infrastructure.library_gateway import (
     library_paper_response,
 )
 from app.shared.application import Actor
+from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from app.modules.papers.application.contracts.tags import LibraryTagAssignmentRequest
 from pydantic import ValidationError
 import pytest
@@ -27,6 +30,13 @@ def _current_user() -> Actor:
         status="active",
         email_verified=True,
         is_active=True,
+    )
+
+
+def _executor() -> SqlAlchemyApplicationExecutor[ApplicationCapabilities]:
+    return SqlAlchemyApplicationExecutor(
+        MagicMock(return_value=MagicMock(spec=Session)),
+        lambda session: ApplicationCapabilities(session, AppSettings()),
     )
 
 
@@ -67,7 +77,7 @@ def test_library_list_uses_empty_collection_for_new_user(monkeypatch) -> None:
     )
 
     response = list_library_papers(
-        db=MagicMock(spec=Session),
+        executor=_executor(),
         current_user=_current_user(),
     )
 

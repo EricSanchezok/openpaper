@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.bootstrap.container import build_conversations
-from app.bootstrap.settings import AppSettings
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.conversations.application.contracts.conversations import (
     ConversationAutoTitleResponse,
     ConversationCreateRequest,
@@ -17,37 +16,30 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationSummaryResponse,
     ConversationUpdateRequest,
 )
-from app.modules.conversations.application.conversations import Conversations
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from fastapi import APIRouter, Depends, Query, Request, Response, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query, Response, status
 
 conversation_router = APIRouter()
 
 
-def _conversations(request: Request, db: Session) -> Conversations:
-    settings: AppSettings = request.app.state.settings
-    return build_conversations(
-        db=db,
-        cursor_secret=settings.paper_search_cursor_secret,
-    )
-
-
 @conversation_router.get("", response_model=ConversationListResponse)
 def list_conversations(
-    request: Request,
     archived: bool = False,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationListResponse:
-    return _conversations(request, db).list_page(
-        actor=current_user,
-        archived=archived,
-        cursor=cursor,
-        limit=limit,
+    return executor.query(
+        lambda capabilities: capabilities.conversations.list_page(
+            actor=current_user,
+            archived=archived,
+            cursor=cursor,
+            limit=limit,
+        )
     )
 
 
@@ -58,13 +50,16 @@ def list_conversations(
 )
 def create_conversation(
     request: ConversationCreateRequest,
-    http_request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationDetailResponse:
-    return _conversations(http_request, db).create(
-        actor=current_user,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.conversations.create(
+            actor=current_user,
+            request=request,
+        )
     )
 
 
@@ -74,13 +69,16 @@ def create_conversation(
 )
 def get_conversation(
     conversation_id: UUID,
-    request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationDetailResponse:
-    return _conversations(request, db).get(
-        actor=current_user,
-        conversation_id=conversation_id,
+    return executor.query(
+        lambda capabilities: capabilities.conversations.get(
+            actor=current_user,
+            conversation_id=conversation_id,
+        )
     )
 
 
@@ -90,17 +88,20 @@ def get_conversation(
 )
 def get_conversation_messages(
     conversation_id: UUID,
-    request: Request,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationMessagesResponse:
-    return _conversations(request, db).messages(
-        actor=current_user,
-        conversation_id=conversation_id,
-        cursor=cursor,
-        limit=limit,
+    return executor.query(
+        lambda capabilities: capabilities.conversations.messages(
+            actor=current_user,
+            conversation_id=conversation_id,
+            cursor=cursor,
+            limit=limit,
+        )
     )
 
 
@@ -111,14 +112,17 @@ def get_conversation_messages(
 def update_conversation(
     conversation_id: UUID,
     request: ConversationUpdateRequest,
-    http_request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationSummaryResponse:
-    return _conversations(http_request, db).update(
-        actor=current_user,
-        conversation_id=conversation_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.conversations.update(
+            actor=current_user,
+            conversation_id=conversation_id,
+            request=request,
+        )
     )
 
 
@@ -129,14 +133,17 @@ def update_conversation(
 def move_conversation(
     conversation_id: UUID,
     request: ConversationMoveRequest,
-    http_request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationSummaryResponse:
-    return _conversations(http_request, db).move(
-        actor=current_user,
-        conversation_id=conversation_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.conversations.move(
+            actor=current_user,
+            conversation_id=conversation_id,
+            request=request,
+        )
     )
 
 
@@ -146,13 +153,16 @@ def move_conversation(
 )
 def auto_title_conversation(
     conversation_id: UUID,
-    request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ConversationAutoTitleResponse:
-    return _conversations(request, db).auto_title(
-        actor=current_user,
-        conversation_id=conversation_id,
+    return executor.command(
+        lambda capabilities: capabilities.conversations.auto_title(
+            actor=current_user,
+            conversation_id=conversation_id,
+        )
     )
 
 
@@ -162,12 +172,15 @@ def auto_title_conversation(
 )
 def delete_conversation(
     conversation_id: UUID,
-    request: Request,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    _conversations(request, db).delete(
-        actor=current_user,
-        conversation_id=conversation_id,
+    executor.command(
+        lambda capabilities: capabilities.conversations.delete(
+            actor=current_user,
+            conversation_id=conversation_id,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

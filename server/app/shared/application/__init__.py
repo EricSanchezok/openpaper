@@ -2,6 +2,6 @@
 
 from .actor import Actor
 from .cursors import SignedCursorCodec
-from .unit_of_work import UnitOfWork
+from .executor import ApplicationExecutor
 
-__all__ = ["Actor", "SignedCursorCodec", "UnitOfWork"]
+__all__ = ["Actor", "ApplicationExecutor", "SignedCursorCodec"]

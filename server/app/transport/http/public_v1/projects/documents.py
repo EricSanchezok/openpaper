@@ -2,8 +2,8 @@
 
 from uuid import UUID
 
-from app.bootstrap.container import build_projects
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.projects.application.contracts import (
     AddPaperToProjectRequest,
     CollectPaperFromProjectRequest,
@@ -14,10 +14,9 @@ from app.modules.projects.application.contracts import (
     ProjectPapersAddedResponse,
     ProjectPendingUploadsResponse,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy.orm import Session
 
 project_papers_router = APIRouter()
 paper_projects_router = APIRouter()
@@ -31,12 +30,16 @@ library_project_papers_router = APIRouter()
 )
 def collect_paper_from_project(
     request: CollectPaperFromProjectRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperCollectedResponse:
-    return build_projects(db=db).collect_document(
-        actor=current_user,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.projects.collect_document(
+            actor=current_user,
+            request=request,
+        )
     )
 
 
@@ -48,13 +51,17 @@ def collect_paper_from_project(
 def add_paper_to_project(
     project_id: UUID,
     request: AddPaperToProjectRequest,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPapersAddedResponse:
-    return build_projects(db=db).add_documents(
-        actor=current_user,
-        project_id=project_id,
-        request=request,
+    return executor.command(
+        lambda capabilities: capabilities.projects.add_documents(
+            actor=current_user,
+            project_id=project_id,
+            request=request,
+        )
     )
 
 
@@ -65,13 +72,17 @@ def add_paper_to_project(
 def get_project_papers(
     project_id: UUID,
     load_urls: bool = False,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperListResponse:
-    return build_projects(db=db).documents(
-        actor=current_user,
-        project_id=project_id,
-        load_urls=load_urls,
+    return executor.query(
+        lambda capabilities: capabilities.projects.documents(
+            actor=current_user,
+            project_id=project_id,
+            load_urls=load_urls,
+        )
     )
 
 
@@ -81,12 +92,16 @@ def get_project_papers(
 )
 def get_project_pending_jobs(
     project_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPendingUploadsResponse:
-    return build_projects(db=db).pending_uploads(
-        actor=current_user,
-        project_id=project_id,
+    return executor.query(
+        lambda capabilities: capabilities.projects.pending_uploads(
+            actor=current_user,
+            project_id=project_id,
+        )
     )
 
 
@@ -97,13 +112,17 @@ def get_project_pending_jobs(
 def get_project_paper_file_url(
     project_id: UUID,
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperFileUrlResponse:
-    return build_projects(db=db).document_download(
-        actor=current_user,
-        project_id=project_id,
-        document_id=document_id,
+    return executor.query(
+        lambda capabilities: capabilities.projects.document_download(
+            actor=current_user,
+            project_id=project_id,
+            document_id=document_id,
+        )
     )
 
 
@@ -113,12 +132,16 @@ def get_project_paper_file_url(
 )
 def get_projects_from_document_id(
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectListResponse:
-    return build_projects(db=db).projects_for_document(
-        actor=current_user,
-        document_id=document_id,
+    return executor.query(
+        lambda capabilities: capabilities.projects.projects_for_document(
+            actor=current_user,
+            document_id=document_id,
+        )
     )
 
 
@@ -129,12 +152,16 @@ def get_projects_from_document_id(
 def remove_paper_from_project(
     project_id: UUID,
     document_id: UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    build_projects(db=db).remove_document(
-        actor=current_user,
-        project_id=project_id,
-        document_id=document_id,
+    executor.command(
+        lambda capabilities: capabilities.projects.remove_document(
+            actor=current_user,
+            project_id=project_id,
+            document_id=document_id,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

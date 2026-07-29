@@ -1,9 +1,9 @@
 """HTTP binding for the durable Stripe webhook processor."""
 
-from app.database.database import get_db
-from app.bootstrap.container import build_stripe_webhook_processor
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
+from app.shared.application import ApplicationExecutor
 from fastapi import APIRouter, Depends, Header, Request
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -12,9 +12,14 @@ router = APIRouter()
 async def handle_stripe_webhook(
     request: Request,
     stripe_signature: str = Header(None),
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> dict[str, object]:
-    return await build_stripe_webhook_processor(db=db)(
-        payload=await request.body(),
-        signature=stripe_signature,
+    payload = await request.body()
+    return await executor.command_async(
+        lambda capabilities: capabilities.stripe_webhooks(
+            payload=payload,
+            signature=stripe_signature,
+        )
     )

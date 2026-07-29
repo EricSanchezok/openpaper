@@ -57,6 +57,7 @@ from app.modules.identity.infrastructure.cloud_auth import (
     cloud_user_router,
 )
 from app.bootstrap.lifespan import app_lifespan
+from app.bootstrap.execution import create_application_executor
 from app.bootstrap.settings import (
     INTERNAL_API_PREFIX,
     PUBLIC_API_PREFIX,
@@ -137,6 +138,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         },
     )
     application.state.settings = runtime_settings
+    application.state.application_executor = create_application_executor(
+        runtime_settings
+    )
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[runtime_settings.client_domain],

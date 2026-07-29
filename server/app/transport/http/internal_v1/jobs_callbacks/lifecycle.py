@@ -2,11 +2,11 @@
 
 import uuid
 
-from app.bootstrap.container import build_job_callbacks
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import get_application_executor
 from app.modules.jobs.application.contracts import JobClaimResponse
+from app.shared.application import ApplicationExecutor
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 lifecycle_webhook_router = APIRouter()
 
@@ -17,9 +17,13 @@ lifecycle_webhook_router = APIRouter()
 )
 def claim_durable_job(
     job_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> JobClaimResponse:
-    return build_job_callbacks(db=db).claim(job_id=job_id)
+    return executor.command(
+        lambda capabilities: capabilities.job_callbacks.claim(job_id=job_id)
+    )
 
 
 @lifecycle_webhook_router.post(
@@ -28,6 +32,10 @@ def claim_durable_job(
 )
 def heartbeat_durable_job(
     job_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
 ) -> JobClaimResponse:
-    return build_job_callbacks(db=db).heartbeat(job_id=job_id)
+    return executor.command(
+        lambda capabilities: capabilities.job_callbacks.heartbeat(job_id=job_id)
+    )
