@@ -322,7 +322,7 @@ class ProjectDocumentRepository:
 
         db.delete(project_paper)
         db.flush()
-        from app.modules.papers.infrastructure.garbage_collection import (
+        from app.bootstrap.adapters.document_gc import (
             schedule_document_gc,
         )
 

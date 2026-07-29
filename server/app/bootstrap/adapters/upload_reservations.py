@@ -32,7 +32,7 @@ from app.modules.billing.infrastructure.quotas import (
 from app.modules.projects.infrastructure.access import require_project_permission
 from app.shared.application import Actor
 from app.modules.jobs.infrastructure.repository import CreateJob, job_repository
-from app.modules.papers.infrastructure.upload_lifecycle import (
+from app.bootstrap.adapters.upload_lifecycle import (
     reap_stale_uploads,
 )
 from sqlalchemy import func, select, update

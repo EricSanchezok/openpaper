@@ -1,4 +1,4 @@
-"""OAuth, SQLAlchemy, quota, and telemetry adapters for Zotero use cases."""
+"""Cross-module OAuth, SQLAlchemy, and telemetry adapter for Zotero."""
 
 from __future__ import annotations
 
@@ -190,6 +190,8 @@ class DefaultZoteroGateway:
                 for row, title in rows
             ]
         )
+
+
 class PostHogZoteroEvents:
     def __init__(self, db: Session) -> None:
         self._db = db

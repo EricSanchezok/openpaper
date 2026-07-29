@@ -275,14 +275,7 @@ class DocumentRepository:
             user_id=user_id,
             for_update=True,
         )
-        document_id = entry.document_id
         db.delete(entry)
-        db.flush()
-        from app.modules.papers.infrastructure.garbage_collection import (
-            schedule_document_gc,
-        )
-
-        schedule_document_gc(db, document_id=document_id)
         db.flush()
 
     def rotate_public_share(

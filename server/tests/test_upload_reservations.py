@@ -20,9 +20,7 @@ from app.bootstrap.adapters.upload_reservations import (
 
 def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
     return (
-        patch(
-            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
-        ),
+        patch("app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"),
         patch(
             "app.bootstrap.adapters.upload_reservations.get_quota_user",
             return_value=MagicMock(),
@@ -257,9 +255,7 @@ def test_idempotency_key_returns_the_original_reservation() -> None:
     db.get.return_value = reservation
 
     with (
-        patch(
-            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
-        ),
+        patch("app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"),
         patch(
             "app.bootstrap.adapters.upload_reservations.job_repository.find_by_idempotency_key",
             return_value=existing_job,
@@ -337,9 +333,7 @@ def test_project_transfer_rejects_new_owner_project_limit() -> None:
     db.scalar.return_value = 2
 
     with (
-        patch(
-            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
-        ),
+        patch("app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"),
         patch(
             "app.bootstrap.adapters.upload_reservations.get_quota_user",
             return_value=MagicMock(),

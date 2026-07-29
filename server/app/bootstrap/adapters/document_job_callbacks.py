@@ -37,7 +37,7 @@ from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.celery_config import get_webhook_base_url
 from app.modules.billing.infrastructure.quotas import can_user_auto_sync_zotero
-from app.modules.papers.infrastructure.garbage_collection import collect_document_if_due
+from app.bootstrap.adapters.document_gc import collect_document_if_due
 from app.llm.citation_handler import CitationHandler
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.modules.papers.infrastructure.search_repository import (
@@ -268,7 +268,7 @@ def handle_failed_upload(
                     )
                 )
             db.flush()
-            from app.modules.papers.infrastructure.garbage_collection import (
+            from app.bootstrap.adapters.document_gc import (
                 schedule_document_gc,
             )
 

@@ -63,9 +63,7 @@ async def get_paper_graph(
     )
 
 
-@author_discovery_router.get(
-    "/authors", response_model=DiscoveryPaperListResponse
-)
+@author_discovery_router.get("/authors", response_model=DiscoveryPaperListResponse)
 async def get_author_works(
     request: Request,
     author_id: str = Query(min_length=2, max_length=100),

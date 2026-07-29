@@ -1,6 +1,6 @@
 """Infrastructure implementation of the Stripe webhook port."""
 
-from app.modules.billing.infrastructure.stripe_webhook import (
+from app.bootstrap.adapters.stripe_webhook import (
     process_stripe_webhook,
 )
 from sqlalchemy.orm import Session

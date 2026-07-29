@@ -1,3 +1,5 @@
+"""Cross-module Stripe webhook workflow adapter."""
+
 import logging
 from datetime import datetime
 

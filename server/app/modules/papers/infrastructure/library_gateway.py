@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
 
 from app.helpers.s3 import s3_service
@@ -72,8 +73,14 @@ def library_paper_response(entry: LibraryPaper) -> LibraryPaperResponse:
 
 
 class SqlAlchemyPaperLibraryGateway:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        *,
+        document_removed: Callable[[UUID], object],
+    ) -> None:
         self._db = db
+        self._document_removed = document_removed
 
     def list(self, *, user_id: int) -> list[LibraryPaperResponse]:
         return [
@@ -126,6 +133,7 @@ class SqlAlchemyPaperLibraryGateway:
             document_id=document_id,
             user_id=user_id,
         )
+        self._document_removed(document_id)
 
     def public_share(self, *, share_token: str) -> PublicShare:
         shared = document_repository.require_public_share(

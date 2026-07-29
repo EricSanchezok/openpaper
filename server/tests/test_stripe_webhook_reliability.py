@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.modules.billing.infrastructure import stripe_webhook as webhook
+from app.bootstrap.adapters import stripe_webhook as webhook
 from app.modules.billing.infrastructure.stripe_webhook_ledger import WebhookClaim
 from app.database.models import StripeWebhookEventStatus
 from app.shared.domain import AppError

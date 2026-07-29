@@ -57,7 +57,7 @@ from app.modules.billing.infrastructure.config import (
     MONTHLY_PRICE_ID,
     YEARLY_PRICE_ID,
 )
-from app.modules.billing.infrastructure.webhook_adapter import StripeWebhookAdapter
+from app.bootstrap.adapters.stripe_webhook_adapter import StripeWebhookAdapter
 from app.modules.papers.application.tags import LibraryTags
 from app.modules.papers.infrastructure.tag_gateway import (
     SqlAlchemyLibraryTagGateway,
@@ -76,6 +76,7 @@ from app.modules.papers.infrastructure.details import SqlAlchemyPaperDetails
 from app.modules.papers.infrastructure.library_gateway import (
     SqlAlchemyPaperLibraryGateway,
 )
+from app.bootstrap.adapters.document_gc import schedule_document_gc
 from app.modules.projects.application.projects import Projects
 from app.bootstrap.adapters.project_gateway import (
     EmailProjectInvitationNotifier,
@@ -115,7 +116,7 @@ from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
 from app.modules.papers.application.topics import PaperTopics
 from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
 from app.modules.integrations.zotero.application.zotero import Zotero
-from app.modules.integrations.zotero.infrastructure.application_gateway import (
+from app.bootstrap.adapters.zotero_gateway import (
     DefaultZoteroGateway,
     PostHogZoteroEvents,
 )
@@ -229,7 +230,13 @@ def build_paper_discovery(*, db: Session, cursor_secret: str) -> DiscoverPapers:
 
 def build_paper_library(*, db: Session) -> PaperLibrary:
     return PaperLibrary(
-        gateway=SqlAlchemyPaperLibraryGateway(db),
+        gateway=SqlAlchemyPaperLibraryGateway(
+            db,
+            document_removed=lambda document_id: schedule_document_gc(
+                db,
+                document_id=document_id,
+            ),
+        ),
         capacity=BillingLibraryCapacity(db),
         signer=S3PaperDownloadSigner(),
     )

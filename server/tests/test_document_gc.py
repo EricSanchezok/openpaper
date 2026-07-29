@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from app.database.models import Document
-from app.modules.papers.infrastructure.garbage_collection import collect_document_if_due
+from app.bootstrap.adapters.document_gc import collect_document_if_due
 from sqlalchemy.orm import Session
 
 
@@ -32,7 +32,7 @@ def test_document_gc_is_cancelled_when_a_reference_reappears(
     db.scalar.side_effect = [document, True]
     delete_files = MagicMock()
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.garbage_collection.s3_service.delete_files",
+        "app.bootstrap.adapters.document_gc.s3_service.delete_files",
         delete_files,
     )
 
@@ -55,7 +55,7 @@ def test_document_gc_retries_without_deleting_database_state_on_s3_failure(
     db.scalar.side_effect = [document, False]
     db.scalars.return_value.all.return_value = []
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.garbage_collection.s3_service.delete_files",
+        "app.bootstrap.adapters.document_gc.s3_service.delete_files",
         MagicMock(return_value=[document.s3_object_key]),
     )
 

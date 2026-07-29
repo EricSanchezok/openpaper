@@ -47,7 +47,7 @@ def test_project_deletion_preserves_private_chats_and_schedules_document_gc() ->
     schedule_gc = MagicMock()
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.garbage_collection.schedule_document_gc",
+        "app.bootstrap.adapters.document_gc.schedule_document_gc",
         schedule_gc,
     )
     try:

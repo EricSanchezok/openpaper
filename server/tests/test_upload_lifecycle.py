@@ -11,7 +11,7 @@ from app.database.models import (
     JobStatus,
     UploadReservation,
 )
-from app.modules.papers.infrastructure.upload_lifecycle import (
+from app.bootstrap.adapters.upload_lifecycle import (
     UPLOAD_PROCESSING_TIMEOUT,
     UPLOAD_SUBMISSION_TIMEOUT,
     active_upload_freshness_clause,
@@ -83,7 +83,7 @@ def test_reaper_fails_job_and_schedules_canonical_document_gc() -> None:
     schedule_gc = MagicMock()
 
     with patch(
-        "app.modules.papers.infrastructure.garbage_collection.schedule_document_gc",
+        "app.bootstrap.adapters.document_gc.schedule_document_gc",
         schedule_gc,
     ):
         reap_stale_uploads(db, quota_owner_id=9, now=now)

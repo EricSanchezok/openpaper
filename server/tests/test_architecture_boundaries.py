@@ -25,6 +25,32 @@ def _imports(path: Path) -> set[str]:
     return modules
 
 
+def _runtime_imports(path: Path) -> set[str]:
+    """Return imports outside TYPE_CHECKING-only ORM relationship blocks."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    modules: set[str] = set()
+
+    def visit(statements: list[ast.stmt], *, type_checking: bool = False) -> None:
+        for node in statements:
+            guarded = type_checking or (
+                isinstance(node, ast.If)
+                and isinstance(node.test, ast.Name)
+                and node.test.id == "TYPE_CHECKING"
+            )
+            if not guarded:
+                if isinstance(node, ast.Import):
+                    modules.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    modules.add(node.module)
+            for field in ("body", "orelse"):
+                nested = getattr(node, field, None)
+                if isinstance(nested, list):
+                    visit(nested, type_checking=guarded)
+
+    visit(tree.body)
+    return modules
+
+
 def test_domain_and_application_contracts_are_framework_independent() -> None:
     forbidden_roots = {
         "fastapi",
@@ -93,14 +119,41 @@ def test_application_never_selects_infrastructure_adapters() -> None:
     assert violations == []
 
 
+def test_modules_do_not_reach_into_another_modules_infrastructure() -> None:
+    violations: list[str] = []
+    modules_root = APP_ROOT / "modules"
+    for path in modules_root.rglob("*.py"):
+        owner = path.relative_to(modules_root).parts[0]
+        for imported in _runtime_imports(path):
+            if imported.startswith("app.bootstrap.adapters"):
+                violations.append(
+                    f"{path.relative_to(APP_ROOT)} imports composition adapter {imported}"
+                )
+            prefix = "app.modules."
+            if not imported.startswith(prefix):
+                continue
+            imported_parts = imported.split(".")
+            if (
+                len(imported_parts) > 3
+                and imported_parts[2] != owner
+                and imported_parts[3] == "infrastructure"
+            ):
+                violations.append(f"{path.relative_to(APP_ROOT)} imports {imported}")
+    assert violations == []
+
+
 def test_explicit_commits_are_limited_to_owned_background_transactions() -> None:
     allowed = {
+        "bootstrap/adapters/document_gc.py",
         "modules/billing/infrastructure/stripe_webhook_ledger.py",
         "modules/jobs/infrastructure/dispatcher.py",
-        "modules/papers/infrastructure/garbage_collection.py",
     }
     violations: list[str] = []
-    for path in (APP_ROOT / "modules").rglob("*.py"):
+    transaction_roots = (
+        APP_ROOT / "modules",
+        APP_ROOT / "bootstrap" / "adapters",
+    )
+    for path in (path for root in transaction_roots for path in root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         if not any(
             isinstance(node, ast.Call)

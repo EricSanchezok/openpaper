@@ -21,7 +21,6 @@ from app.database.models import (
 from app.database.telemetry import track_event
 from app.shared.domain import AppError
 from app.shared.application import Actor
-from app.modules.identity.infrastructure.users import actor_from_auth_user
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -99,7 +98,17 @@ def get_quota_user(db: Session, *, user_id: int) -> Actor:
             message="The account that owns this resource no longer exists",
             status_code=409,
         )
-    return actor_from_auth_user(user)
+    profile = user.profile
+    return Actor.from_identity_projection(
+        user_id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        status=str(user.status),
+        email_verified=user.email_verified_at is not None,
+        locale=profile.locale if profile else None,
+        is_admin=profile.is_admin if profile else False,
+        is_blocked=profile.is_blocked if profile else False,
+    )
 
 
 def _require_incremental_account_capacity(

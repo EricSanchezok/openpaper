@@ -467,6 +467,8 @@ class SqlAlchemyProjectGateway:
             project_id=project_id,
             user=actor,
         )
+
+
 class PostHogProjectEvents:
     def __init__(self, db: Session) -> None:
         self._db = db

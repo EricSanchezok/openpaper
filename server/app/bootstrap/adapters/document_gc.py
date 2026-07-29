@@ -1,4 +1,4 @@
-"""Delayed, reference-safe cleanup for canonical documents."""
+"""Cross-module delayed, reference-safe cleanup for canonical documents."""
 
 from __future__ import annotations
 

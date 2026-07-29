@@ -55,8 +55,8 @@ user_repository = UserRepository()
 def actor_from_auth_user(user: AuthUser) -> Actor:
     """Map the shared auth projection into a transport-neutral caller."""
     profile = user.profile
-    return Actor(
-        id=user.id,
+    return Actor.from_identity_projection(
+        user_id=user.id,
         email=user.email,
         display_name=user.display_name,
         status=str(user.status),
@@ -64,5 +64,4 @@ def actor_from_auth_user(user: AuthUser) -> Actor:
         locale=profile.locale if profile else None,
         is_admin=profile.is_admin if profile else False,
         is_blocked=profile.is_blocked if profile else False,
-        is_active=str(user.status) == "active",
     )
