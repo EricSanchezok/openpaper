@@ -123,17 +123,10 @@ export function useProjectPapers(
         try {
             const query = loadUrls ? "?load_urls=true" : "";
             const response = await fetchFromApi<{
-                items: Array<Omit<PaperItem, "id"> & { document_id: string }>;
+                items: PaperItem[];
                 next_cursor: string | null;
             }>(`/projects/${projectId}/papers${query}`);
-            setPapers(
-                (response.items || []).map(
-                    (paper: Omit<PaperItem, "id"> & { document_id: string }) => ({
-                        ...paper,
-                        id: paper.document_id,
-                    }),
-                ),
-            );
+            setPapers(response.items);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch papers for project ${projectId}`));
             console.error(`Error fetching papers for project ${projectId}:`, err);
@@ -147,7 +140,7 @@ export function useProjectPapers(
     }, [fetchPapers]);
 
     const updatePaper = useCallback((documentId: string, patch: Partial<PaperItem>) => {
-        setPapers(prev => prev.map(p => (p.id === documentId ? { ...p, ...patch } : p)));
+        setPapers(prev => prev.map(p => (p.document_id === documentId ? { ...p, ...patch } : p)));
     }, []);
 
     return {

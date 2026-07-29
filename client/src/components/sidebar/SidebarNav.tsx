@@ -42,7 +42,10 @@ export function SidebarNav({
                                     title={item.title}
                                     icon={item.icon}
                                     url={item.url}
-                                    items={papers}
+                                    items={papers.map((paper) => ({
+                                        id: paper.document_id,
+                                        title: paper.title,
+                                    }))}
                                     getItemUrl={(paper) => `/paper/${paper.id}`}
                                     viewAllUrl="/papers"
                                     viewAllText="View all papers"

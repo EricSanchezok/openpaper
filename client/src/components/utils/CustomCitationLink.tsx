@@ -34,7 +34,7 @@ function CitationLink({
     papers,
 }: CitationLinkProps) {
     const matchingCitation = citations?.find(citation => 'key' in citation ? String(citation.key) === citationKey : String(citation.index) === citationKey) || null;
-    const paper = matchingCitation && 'document_id' in matchingCitation && papers ? papers.find(p => p.id === matchingCitation.document_id) : null;
+    const paper = matchingCitation && 'document_id' in matchingCitation && papers ? papers.find(p => p.document_id === matchingCitation.document_id) : null;
 
     const onClickCitation = (e: React.MouseEvent) => {
         e.preventDefault();

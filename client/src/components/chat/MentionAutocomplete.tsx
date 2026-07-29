@@ -102,7 +102,7 @@ export function selectionToScopeItems(
 	papers: PaperItem[],
 	projects: Project[],
 ): MessageScopeItem[] {
-	const paperById = new Map(papers.map((p) => [p.id, p]));
+	const paperById = new Map(papers.map((p) => [p.document_id, p]));
 	const projectById = new Map(projects.map((p) => [p.id, p]));
 	return [
 		...selection.documentIds.map((id) => ({
@@ -174,7 +174,7 @@ function findMentionToken(
 function paperToEntity(paper: PaperItem): MentionEntity {
 	return {
 		kind: "paper",
-		id: paper.id,
+		id: paper.document_id,
 		label: paper.title || "Untitled paper",
 		sublabel: paper.authors?.length ? paper.authors.join(", ") : undefined,
 	};
@@ -282,7 +282,7 @@ export function useMentionAutocomplete({
 		const matches = (text: string) => !q || text.toLowerCase().includes(q);
 
 		const paperItems = papers
-			.filter((p) => !selectedDocumentIds.has(p.id) && matches(p.title || ""))
+			.filter((p) => !selectedDocumentIds.has(p.document_id) && matches(p.title || ""))
 			.slice(0, MAX_PER_SECTION)
 			.map(paperToEntity);
 
@@ -453,7 +453,7 @@ export function useMentionAutocomplete({
 	// Resolve selected ids back to entities for the chips row. Papers/projects
 	// resolve from the in-memory lists; highlights are already stored as entities.
 	const selectedEntities = useMemo<MentionEntity[]>(() => {
-		const paperById = new Map(papers.map((p) => [p.id, p]));
+		const paperById = new Map(papers.map((p) => [p.document_id, p]));
 		const projectById = new Map(projects.map((p) => [p.id, p]));
 		return [
 			...selection.documentIds.map((id) => {

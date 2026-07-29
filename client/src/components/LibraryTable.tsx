@@ -71,12 +71,12 @@ export function LibraryTable({
 		mutate(
 			(currentPapers: PaperItem[] | undefined) => {
 				if (!currentPapers) return [];
-				return currentPapers.map(p => (p.id === documentId ? updatedPaper : p));
+				return currentPapers.map(p => (p.document_id === documentId ? updatedPaper : p));
 			},
 			{ revalidate: false }
 		);
 
-		if (selectedPaperForPreview && selectedPaperForPreview.id === documentId) {
+		if (selectedPaperForPreview && selectedPaperForPreview.document_id === documentId) {
 			setSelectedPaperForPreview(updatedPaper);
 		}
 	};
@@ -149,7 +149,7 @@ export function LibraryTable({
 	}, [papers, searchTerm, filters, sortConfig]);
 
 	const availablePapers = useMemo(() => {
-		return processedPapers.filter(p => !projectDocumentIds.includes(p.id));
+		return processedPapers.filter(p => !projectDocumentIds.includes(p.document_id));
 	}, [processedPapers, projectDocumentIds]);
 
 	const requestSort = (key: SortKey) => {
@@ -162,7 +162,7 @@ export function LibraryTable({
 
 	const handleSelectAll = (checked: boolean) => {
 		if (checked) {
-			setSelectedPapers(new Set(availablePapers.map((p) => p.id)));
+			setSelectedPapers(new Set(availablePapers.map((p) => p.document_id)));
 		} else {
 			setSelectedPapers(new Set());
 		}
@@ -184,7 +184,7 @@ export function LibraryTable({
 
 	const handleAction = (action: string) => {
 		if (onSelectFiles) {
-			const selectedItems = (papers || []).filter((p) => selectedPapers.has(p.id));
+			const selectedItems = (papers || []).filter((p) => selectedPapers.has(p.document_id));
 			onSelectFiles(selectedItems, action);
 			setSelectedPapers(new Set());
 		}
@@ -490,13 +490,13 @@ export function LibraryTable({
 							<TableBody>
 							{processedPapers.length > 0 ? (
 								processedPapers.map((paper, index) => {
-									const isAlreadyInProject = projectDocumentIds.includes(paper.id);
+									const isAlreadyInProject = projectDocumentIds.includes(paper.document_id);
 									return (
 										<TableRow
-											key={paper.id}
+											key={paper.document_id}
 											onClick={() => {
 												if (selectable && !isAlreadyInProject) {
-													handleSelect(paper.id)
+													handleSelect(paper.document_id)
 												}
 											}}
 											className={`
@@ -516,9 +516,9 @@ export function LibraryTable({
 														<CheckCheck className="h-5 w-5 text-green-500 mx-auto" />
 													) : (
 														<Checkbox
-															checked={selectedPapers.has(paper.id)}
+															checked={selectedPapers.has(paper.document_id)}
 															onCheckedChange={(checked) =>
-																handleSelect(paper.id, !!checked)
+																handleSelect(paper.document_id, !!checked)
 															}
 														/>
 													)}
@@ -549,7 +549,7 @@ export function LibraryTable({
 												<div className="text-xs leading-relaxed">
 													{paper.tags?.length ? (
 														<div className="flex flex-wrap gap-1 items-center">
-															{(expandedTags.has(paper.id) ? paper.tags : paper.tags.slice(0, 3)).map((tag) => (
+															{(expandedTags.has(paper.document_id) ? paper.tags : paper.tags.slice(0, 3)).map((tag) => (
 																<span
 																	key={tag.id}
 																	onClick={(e) => { e.stopPropagation(); handleTagClick(tag.name); }}
@@ -559,7 +559,7 @@ export function LibraryTable({
 																	<button
 																		onClick={(e) => {
 																			e.stopPropagation();
-																			handleRemoveTag(paper.id, tag.id);
+																			handleRemoveTag(paper.document_id, tag.id);
 																		}}
 																		className="ml-1.5 -mr-1 p-0.5 bg-foreground/10 text-muted-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
 																	>
@@ -567,9 +567,9 @@ export function LibraryTable({
 																	</button>
 																</span>
 															))}
-															{paper.tags.length > 3 && !expandedTags.has(paper.id) && (
+															{paper.tags.length > 3 && !expandedTags.has(paper.document_id) && (
 																<button
-																	onClick={(e) => { e.stopPropagation(); toggleExpandedTags(paper.id); }}
+																	onClick={(e) => { e.stopPropagation(); toggleExpandedTags(paper.document_id); }}
 																	className="text-muted-foreground text-xs hover:underline"
 																>
 																	+ {paper.tags.length - 3} more

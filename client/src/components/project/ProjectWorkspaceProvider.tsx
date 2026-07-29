@@ -123,8 +123,8 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
     const [uploadJobs, setUploadJobs] = useState<MinimalJob[]>([]);
 
     const openDocument = useCallback((paper: PaperItem, searchTerm: string | null = null) => {
-        setOpenDocumentIds((prev) => (prev.includes(paper.id) ? prev : [...prev, paper.id]));
-        setActiveDocumentId(paper.id);
+        setOpenDocumentIds((prev) => (prev.includes(paper.document_id) ? prev : [...prev, paper.document_id]));
+        setActiveDocumentId(paper.document_id);
         setReaderSearchTerm(searchTerm);
         setRightPanel("reader");
     }, []);

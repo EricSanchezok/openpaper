@@ -4,7 +4,7 @@ import { PaperStatus, PaperStatusEnum } from "@/components/utils/PdfStatus";
 
 // Common interface for papers (can be PaperItem or PaperResult)
 export interface PaperBase {
-    id: string;
+    document_id: string;
     title?: string;
     authors?: string[];
     status?: PaperStatus;
@@ -248,7 +248,7 @@ export const handleStatusChange = async <T extends PaperBase>(
     setPaper: (documentId: string, paper: T) => void
 ): Promise<void> => {
     try {
-        await fetchFromApi(`/library/papers/${paper.id}`, {
+        await fetchFromApi(`/library/papers/${paper.document_id}`, {
             method: 'PATCH',
             body: JSON.stringify({ status }),
         });
@@ -270,7 +270,7 @@ export const handleStatusChange = async <T extends PaperBase>(
                 }
             );
         }
-        setPaper(paper.id, { ...paper, status });
+        setPaper(paper.document_id, { ...paper, status });
     } catch (error) {
         console.error('Error updating paper status:', error);
         toast.error("Failed to update paper status.");

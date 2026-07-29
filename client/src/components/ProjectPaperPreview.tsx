@@ -23,12 +23,12 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
 
     const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
         try {
-            return await getProjectPaperFileUrl(projectId, paper.id);
+            return await getProjectPaperFileUrl(projectId, paper.document_id);
         } catch (error) {
             console.error("Error refreshing PDF URL:", error);
             return null;
         }
-    }, [projectId, paper.id]);
+    }, [projectId, paper.document_id]);
 
     const handleCollect = async () => {
         if (!projectId) {
@@ -44,7 +44,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
         try {
             const requestBody = {
                 source_project_id: projectId,
-                document_id: paper.id,
+                document_id: paper.document_id,
             };
 
             const response = await fetchFromApi<CollectPaperResponse>('/library/papers', {
@@ -82,7 +82,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                     <div className="flex shrink-0 items-center gap-1">
                         <CitePaperButton paper={[paper]} minimalist={true} />
                         {isInLibrary ? (
-                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => router.push(`/paper/${paper.id}?project_id=${projectId}`)}>
+                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => router.push(`/paper/${paper.document_id}?project_id=${projectId}`)}>
                                 <FilePlus2 className="h-3.5 w-3.5 mr-1.5" />
                                 Open
                             </Button>

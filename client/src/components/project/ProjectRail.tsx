@@ -49,13 +49,13 @@ function SectionHeading({ label, count, children }: { label: string; count?: num
 
 function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => void }) {
     const { project, projectId, openDocument, openDocumentIds, activeDocumentId, refetchPapers } = useProjectWorkspace();
-    const isOpen = openDocumentIds.includes(paper.id);
-    const isActive = activeDocumentId === paper.id;
+    const isOpen = openDocumentIds.includes(paper.document_id);
+    const isActive = activeDocumentId === paper.document_id;
     const canManagePapers = project?.capabilities.manage_papers === true;
 
     const handleUnlink = async () => {
         try {
-            await fetchFromApi(`/projects/${projectId}/papers/${paper.id}`, {
+            await fetchFromApi(`/projects/${projectId}/papers/${paper.document_id}`, {
                 method: "DELETE",
             });
             toast.success("Paper removed from project.");
@@ -108,7 +108,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenuItem asChild>
-                        <Link href={`/paper/${paper.id}?project_id=${projectId}`}>
+                        <Link href={`/paper/${paper.document_id}?project_id=${projectId}`}>
                             <ExternalLink className="h-4 w-4" />
                             Open full page
                         </Link>
@@ -195,7 +195,7 @@ export function ProjectRail({ onNavigate }: ProjectRailProps) {
                         </div>
                     ) : filteredPapers.length > 0 ? (
                         filteredPapers.map((paper) => (
-                            <PaperRow key={paper.id} paper={paper} onNavigate={onNavigate} />
+                            <PaperRow key={paper.document_id} paper={paper} onNavigate={onNavigate} />
                         ))
                     ) : papers.length > 0 ? (
                         <p className="px-2 pt-2 text-xs text-muted-foreground">

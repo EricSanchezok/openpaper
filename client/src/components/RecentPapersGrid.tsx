@@ -21,7 +21,7 @@ function PaperCardCompact({ paper }: { paper: PaperItem }) {
 
     return (
         <Link
-            href={`/paper/${paper.id}`}
+            href={`/paper/${paper.document_id}`}
             className="group flex flex-col rounded-xl border border-border/50 bg-card hover:border-border hover:shadow-sm transition-all h-full overflow-hidden"
         >
             {showPreview ? (
@@ -144,7 +144,7 @@ export function RecentPapersGrid({ papers: propPapers, limit = 6 }: RecentPapers
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {papers.map((paper) => (
-                    <PaperCardCompact key={paper.id} paper={paper} />
+                    <PaperCardCompact key={paper.document_id} paper={paper} />
                 ))}
             </div>
         </div>

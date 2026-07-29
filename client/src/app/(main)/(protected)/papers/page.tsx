@@ -143,17 +143,17 @@ function PapersPageContent() {
     };
 
     const deletePaper = async (documentId: string) => {
-        const entry = papers?.find((paper) => paper.id === documentId);
+        const entry = papers?.find((paper) => paper.document_id === documentId);
         if (!entry) {
             throw new Error("Library reference is missing");
         }
-        await fetchFromApi(`/library/papers/${entry.id}`, {
+        await fetchFromApi(`/library/papers/${entry.document_id}`, {
             method: "DELETE",
         });
         // Optimistically drop the paper from the SWR cache that LibraryTable
         // renders. Throws propagate to the caller, which reports the outcome.
         mutate(
-            (current) => current?.filter((paper) => paper.id !== documentId),
+            (current) => current?.filter((paper) => paper.document_id !== documentId),
             { revalidate: false },
         );
         removeActivePaper(documentId);
@@ -176,7 +176,7 @@ function PapersPageContent() {
     };
 
     const handleCreateProjectSubmit = async (title: string, description: string) => {
-        const documentIds = papersForNewProject.map(p => p.id);
+        const documentIds = papersForNewProject.map(p => p.document_id);
 
         try {
             const project = await fetchFromApi<Project>("/projects", {

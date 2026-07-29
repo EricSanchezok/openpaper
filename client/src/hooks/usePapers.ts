@@ -12,7 +12,7 @@ export function usePapers() {
 
 	const setPapers = (documentId: string, updatedPaper: PaperItem) => {
 		if (data) {
-			const updatedPapers = data.map(p => (p.id === documentId ? updatedPaper : p));
+			const updatedPapers = data.map(p => (p.document_id === documentId ? updatedPaper : p));
 			mutate(updatedPapers, false); // Update local data without revalidating
 		}
 	};

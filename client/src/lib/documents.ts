@@ -174,7 +174,7 @@ export function libraryPaperToPaperItem(entry: LibraryPaper): PaperItem {
     const document = entry.document;
     const overrides = entry.metadata_overrides;
     return {
-        id: document.document_id,
+        document_id: document.document_id,
         title: overrides.title ?? document.title ?? document.original_filename,
         abstract: overrides.abstract ?? document.abstract ?? undefined,
         authors: overrides.authors ?? document.authors ?? undefined,

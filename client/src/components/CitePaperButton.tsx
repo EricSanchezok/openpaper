@@ -140,7 +140,7 @@ export function CitePaperButton({ paper, documentId: providedDocumentId, minimal
                         const paperAsPaperBase = (p: PaperData | PaperItem, id?: string): PaperBase => {
                             const combined = p as Partial<PaperData> & Partial<PaperItem>;
                             return {
-                                id: id || combined.id || '',
+                                document_id: id || combined.document_id || '',
                                 title: combined.title || '',
                                 authors: combined.authors || [],
                                 created_at: combined.publish_date || combined.created_at,

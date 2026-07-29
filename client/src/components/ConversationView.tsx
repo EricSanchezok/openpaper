@@ -169,7 +169,7 @@ export const ConversationView = ({
 			onOpenDocumentExternal(paper, searchText);
 			return;
 		}
-		setActiveDocumentId(paper.id);
+		setActiveDocumentId(paper.document_id);
 		setPdfTitle(paper.title);
 		setSearchTerm(searchText);
 		setIsPdfVisible(true);
@@ -182,7 +182,7 @@ export const ConversationView = ({
 		// Clear any stale PDF from a previously opened paper while we fetch.
 		setPdfUrl(null);
 		if (onRefreshPaperUrl) {
-			const freshUrl = await onRefreshPaperUrl(paper.id);
+			const freshUrl = await onRefreshPaperUrl(paper.document_id);
 			if (freshUrl) {
 				setPdfUrl(freshUrl);
 			}
@@ -197,7 +197,7 @@ export const ConversationView = ({
 		const citation = message.references.citations.find(c => String(c.key) === key);
 		if (!citation) return;
 
-		const paper = papers.find(p => p.id === citation.document_id);
+		const paper = papers.find(p => p.document_id === citation.document_id);
 		if (!paper) return;
 
 		// Strip quotes from the reference if wrapped in them

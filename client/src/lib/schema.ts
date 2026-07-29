@@ -551,7 +551,7 @@ export interface PendingPaperJobListResponse {
 }
 
 export interface PaperItem {
-    id: string
+    document_id: string
     title: string
     abstract?: string
     authors?: string[]

@@ -198,7 +198,7 @@ function EditableListField({
 }
 
 export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
-    const { highlights } = useHighlighterHighlights(paper.id);
+    const { highlights } = useHighlighterHighlights(paper.document_id);
     const [showAllHighlights, setShowAllHighlights] = useState(false);
     const [loadedPaper, setLoadedPaper] = useState<PaperData | null>(null);
     const [previewLoaded, setPreviewLoaded] = useState(false);
@@ -207,21 +207,21 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
         // Fetch the full paper data to get tags and other details
         setLoadedPaper(null);
         setPreviewLoaded(false);
-        fetchPaperData(paper.id)
+        fetchPaperData(paper.document_id)
             .then(data => setLoadedPaper(data))
             .catch(error => console.error("Failed to load paper data", error));
-    }, [paper.id]);
+    }, [paper.document_id]);
 
     const highlightCount = highlights?.filter(highlight => highlight.role === 'user').length || 0;
 
     const updateField = async (fields: Partial<PaperItem>) => {
         try {
-            await fetchFromApi(`/library/papers/${paper.id}`, {
+            await fetchFromApi(`/library/papers/${paper.document_id}`, {
                 method: "PATCH",
                 body: JSON.stringify({ metadata_overrides: fields }),
             });
             const updatedPaper = { ...paper, ...fields };
-            setPaper(paper.id, updatedPaper);
+            setPaper(paper.document_id, updatedPaper);
             if (loadedPaper) {
                 setLoadedPaper({ ...loadedPaper, ...fields } as PaperData);
             }
@@ -233,14 +233,14 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const handleRemoveTag = async (tagId: string) => {
         try {
-            await fetchFromApi(`/library/papers/${paper.id}/tags/${tagId}`, {
+            await fetchFromApi(`/library/papers/${paper.document_id}/tags/${tagId}`, {
                 method: "DELETE",
             });
             const updatedPaper = {
                 ...paper,
                 tags: paper.tags?.filter(t => t.id !== tagId)
             };
-            setPaper(paper.id, updatedPaper);
+            setPaper(paper.document_id, updatedPaper);
         } catch (error) {
             console.error("Failed to remove tag", error);
             toast.error("Failed to remove tag.");
@@ -249,9 +249,9 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const onTagsApplied = () => {
         // Let's try to update the paper by refetching it.
-        fetchPaperData(paper.id).then(updatedPaper => {
+        fetchPaperData(paper.document_id).then(updatedPaper => {
             setLoadedPaper(updatedPaper);
-            setPaper(paper.id, { ...paper, tags: updatedPaper.tags });
+            setPaper(paper.document_id, { ...paper, tags: updatedPaper.tags });
         });
     };
 
@@ -269,14 +269,14 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
                 {/* Title + Actions */}
                 <div>
-                    <Link href={`/paper/${paper.id}`} passHref>
+                    <Link href={`/paper/${paper.document_id}`} passHref>
                         <h3 className="font-bold text-lg mb-2 pr-8 hover:underline cursor-pointer flex items-center gap-2">
                             {paper.title || 'Untitled'}
                             <ExternalLink className="h-4 w-4 flex-shrink-0" />
                         </h3>
                     </Link>
                     <div className="flex items-center gap-2 flex-wrap">
-                        <Link href={`/paper/${paper.id}`} passHref>
+                        <Link href={`/paper/${paper.document_id}`} passHref>
                             <Button size="sm" variant="outline" className="h-8 px-3 text-xs">
                                 <FileText className="h-3.5 w-3.5 mr-1.5" />
                                 Open
@@ -328,7 +328,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
                         )}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                            key={paper.id}
+                            key={paper.document_id}
                             src={paper.preview_url}
                             alt="Paper preview"
                             className={`w-full h-auto rounded-md ${!previewLoaded ? "hidden" : ""}`}
@@ -499,7 +499,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-80" align="start">
                                 <TagSelector
-                                    documentIds={[paper.id]}
+                                    documentIds={[paper.document_id]}
                                     onTagsApplied={onTagsApplied}
                                 />
                             </DropdownMenuContent>
@@ -522,7 +522,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
                 {/* Projects Section */}
                 <div className="border-t border-border pt-4 mt-4">
-                    <PaperProjects id={paper.id} view='compact' />
+                    <PaperProjects id={paper.document_id} view='compact' />
                 </div>
             </div>
         </div>

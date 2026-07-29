@@ -42,16 +42,16 @@ export default function ReferencePaperCards({ citations, papers, messageId, mess
     return (
         <div className="mt-3 space-y-3">
             {Object.entries(paperCitationGroups).map(([documentId, paperCitations]) => {
-                const paper = papers.find(p => p.id === documentId);
+                const paper = papers.find(p => p.document_id === documentId);
                 if (!paper) return null;
                 const citationNumbers = paperCitations.map(c => parseInt(c.key));
-                const cardId = messageId ? `${messageId}-reference-paper-card-${paper.id}` : `${messageIndex}-reference-paper-card-${paper.id}`;
-                const isHighlighted = highlightedPaper === paper.id;
-                const isExpanded = expandedPaper === paper.id;
+                const cardId = messageId ? `${messageId}-reference-paper-card-${paper.document_id}` : `${messageIndex}-reference-paper-card-${paper.document_id}`;
+                const isHighlighted = highlightedPaper === paper.document_id;
+                const isExpanded = expandedPaper === paper.document_id;
 
                 return (
                     <div
-                        key={`${paper.id}-${messageId || messageIndex}`}
+                        key={`${paper.document_id}-${messageId || messageIndex}`}
                         id={cardId}
                         className={`space-y-3 p-4 rounded-lg border transition-all duration-500 ${isHighlighted
                             ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
@@ -66,7 +66,7 @@ export default function ReferencePaperCards({ citations, papers, messageId, mess
                                 className="flex-shrink-0 bg-secondary rounded-lg px-2 py-1 cursor-pointer hover:bg-secondary/80 transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    toggleExpanded(paper.id);
+                                    toggleExpanded(paper.document_id);
                                 }}
                             >
                                 <span className="text-xs font-bold text-gray-500">{groupConsecutiveNumbers(citationNumbers)}</span>

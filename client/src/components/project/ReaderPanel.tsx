@@ -23,14 +23,14 @@ export function ReaderPanel() {
     } = useProjectWorkspace();
 
     const openDocuments = openDocumentIds
-        .map((id) => papers.find((p) => p.id === id))
+        .map((id) => papers.find((p) => p.document_id === id))
         .filter((p) => p !== undefined);
-    const activePaper = openDocuments.find((p) => p.id === activeDocumentId) ?? null;
+    const activePaper = openDocuments.find((p) => p.document_id === activeDocumentId) ?? null;
 
     // file URLs are loaded lazily; fetch one for the active paper when missing.
     useEffect(() => {
         if (activePaper && !activePaper.file_url) {
-            refreshPaperUrl(activePaper.id);
+            refreshPaperUrl(activePaper.document_id);
         }
     }, [activePaper, refreshPaperUrl]);
 
@@ -52,11 +52,11 @@ export function ReaderPanel() {
             <div className="flex shrink-0 items-center gap-1 border-b bg-muted/30 px-2 py-1.5">
                 <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
                     {openDocuments.map((paper) => {
-                        const isActive = paper.id === activeDocumentId;
+                        const isActive = paper.document_id === activeDocumentId;
                         return (
                             <div
-                                key={paper.id}
-                                onClick={() => activatePaper(paper.id)}
+                                key={paper.document_id}
+                                onClick={() => activatePaper(paper.document_id)}
                                 className={cn(
                                     "flex max-w-[200px] shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
                                     isActive
@@ -72,7 +72,7 @@ export function ReaderPanel() {
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        closePaper(paper.id);
+                                        closePaper(paper.document_id);
                                     }}
                                     className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                                     aria-label={`Close ${paper.title}`}
@@ -98,8 +98,8 @@ export function ReaderPanel() {
                 {activePaper ? (
                     activePaper.file_url ? (
                         <ProjectPaperPreviewPane
-                            key={activePaper.id}
-                            documentId={activePaper.id}
+                            key={activePaper.document_id}
+                            documentId={activePaper.document_id}
                             searchTerm={readerSearchTerm}
                         />
                     ) : (
@@ -117,7 +117,7 @@ export function ReaderPanel() {
 // without remounting when only file_url changes.
 function ProjectPaperPreviewPane({ documentId, searchTerm }: { documentId: string; searchTerm: string | null }) {
     const { projectId, papers } = useProjectWorkspace();
-    const paper = papers.find((p) => p.id === documentId);
+    const paper = papers.find((p) => p.document_id === documentId);
     if (!paper) return null;
     return <ProjectPaperPreview paper={paper} projectId={projectId} searchTerm={searchTerm} />;
 }
