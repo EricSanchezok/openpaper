@@ -23,6 +23,41 @@ from sqlalchemy.orm import Session
 paper_search_router = APIRouter()
 
 
+@paper_search_router.get("/search", response_model=OpenAlexResponse)
+async def search_external_papers(
+    request: Request,
+    query: str = Query(min_length=2, max_length=500),
+    page: int = Query(default=1, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Actor = Depends(get_required_user),
+) -> OpenAlexResponse:
+    """Search the external scholarly catalogue without mixing local results."""
+    try:
+        await enforce_rate_limit(
+            user_id=int(current_user.id),
+            ip_address=request.client.host if request.client else "unknown",
+            feature="external_search",
+        )
+    except AILimitExceeded as exc:
+        raise AppError(
+            code=exc.code,
+            message="External search rate limit exceeded",
+            status_code=429,
+        ) from None
+    results = search_open_alex(search_term=query, page=page)
+    track_event(
+        "external_paper_search",
+        user_id=str(current_user.id),
+        properties={
+            "page": page,
+            "results_count": len(results.results),
+            "total_count": results.meta.get("count", 0),
+        },
+        db=db,
+    )
+    return results
+
+
 @paper_search_router.post("/match", response_model=OpenAlexCitationGraph)
 async def get_paper_graph(
     request: Request,
@@ -114,7 +149,7 @@ async def get_paper_graph(
     return graph
 
 
-@paper_search_router.get("/author", response_model=OpenAlexResponse)
+@paper_search_router.get("/authors", response_model=OpenAlexResponse)
 async def get_author_works(
     request: Request,
     author_id: str = Query(min_length=2, max_length=100),

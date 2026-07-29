@@ -23,7 +23,7 @@ from app.modules.integrations.zotero.infrastructure.import_repository import (
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.shared.domain import AppError
-from app.modules.identity.application import BlockUserRequest
+from app.modules.identity.application import SetUserBlockedRequest
 from app.shared.application import Actor
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter()
+admin_router = APIRouter()
 zotero_oauth_router = APIRouter()
 client_domain = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
 
@@ -50,13 +51,14 @@ async def get_topics(
     return topics
 
 
-@auth_router.post("/admin/block")
+@admin_router.put("/users/{user_id}/block")
 async def block_user(
-    request: BlockUserRequest,
+    user_id: int,
+    request: SetUserBlockedRequest,
     admin_user: Actor = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    target_user = user_repository.get(db, id=request.user_id)
+    target_user = user_repository.get(db, id=user_id)
     if target_user is None:
         raise AppError(
             code="user_not_found",
@@ -64,7 +66,7 @@ async def block_user(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    user_repository.set_blocked(db, user_id=request.user_id, blocked=request.blocked)
+    user_repository.set_blocked(db, user_id=user_id, blocked=request.blocked)
     action = "blocked" if request.blocked else "unblocked"
     logger.info(
         "Scholens user %s %s by %s", target_user.email, action, admin_user.email

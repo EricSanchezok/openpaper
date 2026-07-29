@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import logging
 
-from app.transport.http.public_v1.auth import auth_router, zotero_oauth_router
+from app.transport.http.public_v1.auth import (
+    admin_router,
+    auth_router,
+    zotero_oauth_router,
+)
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
 from app.transport.http.public_v1.documents import (
@@ -78,6 +82,7 @@ def _public_router() -> APIRouter:
     router.include_router(cloud_auth_router, prefix="/auth", tags=["auth"])
     router.include_router(cloud_user_router, prefix="/me", tags=["user"])
     router.include_router(auth_router, prefix="/auth")
+    router.include_router(admin_router, prefix="/admin")
     router.include_router(
         zotero_oauth_router,
         prefix="/integrations/zotero/oauth",

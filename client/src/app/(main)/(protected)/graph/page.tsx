@@ -114,7 +114,7 @@ function CitationGraphContent() {
 
         try {
             const response: OpenAlexResponse = await fetchFromApi(
-                `/discovery/papers/author?author_id=${encodeURIComponent(authorId)}`
+                `/discovery/papers/authors?author_id=${encodeURIComponent(authorId)}`
             );
 
             setAuthorData(response);

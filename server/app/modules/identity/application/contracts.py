@@ -3,8 +3,7 @@
 from pydantic import BaseModel, ConfigDict
 
 
-class BlockUserRequest(BaseModel):
+class SetUserBlockedRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    user_id: int
     blocked: bool

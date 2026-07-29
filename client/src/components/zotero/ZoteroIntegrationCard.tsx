@@ -74,7 +74,7 @@ export function ZoteroIntegrationCard() {
 
 	const fetchRecentImports = useCallback(async () => {
 		try {
-			const data = await fetchFromApi("/integrations/zotero/import/status");
+			const data = await fetchFromApi("/integrations/zotero/imports");
 			setRecentImports(data.items ?? []);
 		} catch {
 			setRecentImports([]);
@@ -158,7 +158,7 @@ export function ZoteroIntegrationCard() {
 		setLibraryLoading(true);
 		setShowLibraryModal(true);
 		try {
-			const data: ZoteroLibraryResponse = await fetchFromApi("/integrations/zotero/library");
+			const data: ZoteroLibraryResponse = await fetchFromApi("/integrations/zotero/library-items");
 			const items = data.items ?? [];
 			const remainingSlots = data.remaining_slots ?? 0;
 			setLibraryItems(items);
@@ -208,7 +208,7 @@ export function ZoteroIntegrationCard() {
 			if (importDoneRef.current) return;
 			try {
 				const data = await fetchFromApi(
-					`/integrations/zotero/import/status?${statusQuery}`,
+					`/integrations/zotero/imports?${statusQuery}`,
 				);
 				if (importDoneRef.current) return;
 				const items: ZoteroImportStatusItem[] = data.items ?? [];
@@ -229,7 +229,7 @@ export function ZoteroIntegrationCard() {
 		void pollImportStatus();
 
 		try {
-			const data: ZoteroImportResponse = await fetchFromApi("/integrations/zotero/import", {
+			const data: ZoteroImportResponse = await fetchFromApi("/integrations/zotero/imports", {
 				method: "POST",
 				body: JSON.stringify({ item_keys: keysToImport }),
 			});
@@ -312,7 +312,7 @@ export function ZoteroIntegrationCard() {
 	const handleZoteroSync = async () => {
 		setZoteroSyncLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/sync", { method: "POST" });
+			const data = await fetchFromApi("/integrations/zotero/sync-runs", { method: "POST" });
 			if (data.new_annotations_count > 0) {
 				toast.success(
 					`Synced ${data.new_annotations_count} new annotation${data.new_annotations_count === 1 ? "" : "s"} across ${data.synced_papers_count} paper${data.synced_papers_count === 1 ? "" : "s"}.`

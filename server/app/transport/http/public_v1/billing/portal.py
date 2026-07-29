@@ -14,7 +14,7 @@ from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.shared.domain import AppError
 from app.shared.application import Actor
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/create-portal-session")
+@router.post("/portal-sessions", status_code=status.HTTP_201_CREATED)
 def create_customer_portal_session(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
@@ -54,7 +54,7 @@ def create_customer_portal_session(
         ) from exc
 
 
-@router.post("/resubscribe")
+@router.post("/subscription/resume")
 def resubscribe(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),

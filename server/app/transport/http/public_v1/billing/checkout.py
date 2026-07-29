@@ -16,7 +16,7 @@ from app.database.models import SubscriptionStatus
 from app.database.telemetry import track_event
 from app.shared.domain import AppError
 from app.shared.application import Actor
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/create-checkout-session")
+@router.post("/checkout-sessions", status_code=status.HTTP_201_CREATED)
 def create_checkout_session(
     interval: SubscriptionInterval,
     db: Session = Depends(get_db),
@@ -133,7 +133,7 @@ def create_checkout_session(
         ) from exc
 
 
-@router.get("/session-status")
+@router.get("/checkout-sessions/{session_id}")
 async def session_status(
     session_id: str,
     db: Session = Depends(get_db),

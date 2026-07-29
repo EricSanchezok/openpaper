@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/user-subscription")
+@router.get("/subscription")
 async def get_user_subscription(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),

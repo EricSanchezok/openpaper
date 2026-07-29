@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/change-interval")
+@router.patch("/subscription/interval")
 def change_subscription_interval(
     new_interval: SubscriptionInterval,
     db: Session = Depends(get_db),
@@ -161,7 +161,7 @@ def change_subscription_interval(
     }
 
 
-@router.post("/cancel-scheduled-change")
+@router.delete("/subscription/interval")
 def cancel_scheduled_change(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),

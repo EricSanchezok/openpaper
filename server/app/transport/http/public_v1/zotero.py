@@ -27,13 +27,13 @@ from app.modules.integrations.zotero.infrastructure.service import (
     list_library,
     sync_batch,
 )
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 zotero_router = APIRouter()
 
 
-@zotero_router.get("/library", response_model=ZoteroLibraryResponse)
+@zotero_router.get("/library-items", response_model=ZoteroLibraryResponse)
 def zotero_library(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
@@ -56,7 +56,11 @@ def zotero_library(
     )
 
 
-@zotero_router.post("/import", response_model=ZoteroImportResponse)
+@zotero_router.post(
+    "/imports",
+    response_model=ZoteroImportResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def zotero_import(
     request: ZoteroImportRequest,
     current_user: Actor = Depends(get_required_user),
@@ -107,7 +111,11 @@ async def zotero_import(
     )
 
 
-@zotero_router.post("/sync", response_model=ZoteroSyncResponse)
+@zotero_router.post(
+    "/sync-runs",
+    response_model=ZoteroSyncResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def zotero_sync(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
@@ -161,7 +169,7 @@ def _zotero_import_status_items(
     ]
 
 
-@zotero_router.get("/import/status", response_model=ZoteroImportStatusListResponse)
+@zotero_router.get("/imports", response_model=ZoteroImportStatusListResponse)
 async def zotero_import_status_list(
     item_keys: list[str] | None = Query(None),
     current_user: Actor = Depends(get_required_user),

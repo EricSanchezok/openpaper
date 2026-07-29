@@ -64,7 +64,7 @@ function SubscribedPageContent() {
 
         const fetchSessionStatus = async () => {
             try {
-                const response = await fetchFromApi(`/billing/session-status?session_id=${sessionId}`)
+                const response = await fetchFromApi(`/billing/checkout-sessions/${encodeURIComponent(sessionId)}`)
                 setSessionStatus(response)
             } catch (err) {
                 setError('Failed to fetch subscription status')
