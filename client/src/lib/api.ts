@@ -4,6 +4,7 @@ import {
     refreshAccessToken,
 } from "./auth-session";
 import { apiUrl } from "./api-config";
+import type { Project, ProjectListResponse } from "./schema";
 
 async function requestWithAuth(endpoint: string, options: RequestInit): Promise<Response> {
     const token = getAccessToken();
@@ -123,8 +124,11 @@ export async function fetchStreamFromApi(
     return response.body;
 }
 
-export async function getProjectsForPaper(documentId: string) {
-    return fetchFromApi(`/projects/papers/from/${documentId}`);
+export async function getProjectsForPaper(documentId: string): Promise<Project[]> {
+    const response = await fetchFromApi(
+        `/papers/${documentId}/projects`,
+    ) as ProjectListResponse;
+    return response.items;
 }
 
 /**

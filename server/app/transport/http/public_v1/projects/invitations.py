@@ -1,65 +1,22 @@
+"""HTTP adapter for Project invitations."""
+
 from __future__ import annotations
 
-import uuid
+from uuid import UUID
 
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.bootstrap.container import build_projects
 from app.database.database import get_db
-from app.database.models import AuthUser, Project, ProjectInvitation
-from app.helpers.email import send_project_invite_email
-from app.modules.projects.infrastructure.repository import (
-    CreatedInvitation,
-    project_repository,
-)
 from app.modules.projects.application.contracts import (
     ProjectInvitationCreateRequest,
+    ProjectInvitationListResponse,
     ProjectInvitationResponse,
-    ProjectPermissionSet,
 )
 from app.shared.application import Actor
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 router = APIRouter()
-
-
-def _invitation_response(
-    db: Session, *, invitation_id: uuid.UUID
-) -> ProjectInvitationResponse:
-    invitation = db.get(ProjectInvitation, invitation_id)
-    if invitation is None:
-        raise RuntimeError(f"Invitation {invitation_id} disappeared after commit")
-    project = db.get(Project, invitation.project_id)
-    inviter = db.get(AuthUser, invitation.invited_by_id)
-    if project is None or inviter is None:
-        raise RuntimeError(f"Invitation {invitation_id} has invalid relationships")
-    return ProjectInvitationResponse(
-        id=invitation.id,
-        project_id=invitation.project_id,
-        project_name=project.title,
-        email=invitation.email,
-        invited_by=inviter.display_name or inviter.email,
-        permissions=ProjectPermissionSet(
-            edit_project=invitation.can_edit_project,
-            manage_papers=invitation.can_manage_papers,
-            manage_collaborators=invitation.can_manage_collaborators,
-        ),
-        expires_at=invitation.expires_at,
-        created_at=invitation.created_at,
-    )
-
-
-def _send_invitation(
-    db: Session, *, created: CreatedInvitation, inviter: Actor
-) -> None:
-    project = db.get(Project, created.invitation.project_id)
-    if project is None:
-        raise RuntimeError("Invitation project disappeared after commit")
-    send_project_invite_email(
-        to_email=created.invitation.email,
-        from_name=str(inviter.display_name or inviter.email),
-        project_title=project.title,
-        invitation_token=created.raw_token,
-    )
 
 
 @router.post(
@@ -71,31 +28,23 @@ def accept_invitation_token(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    project_repository.accept_invitation_token(
-        db,
-        raw_token=token,
-        user_id=current_user.id,
-        email=str(current_user.email),
-    )
+    build_projects(db=db).accept_invitation(actor=current_user, raw_token=token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
     "/projects/{project_id}/invitations",
-    response_model=list[ProjectInvitationResponse],
+    response_model=ProjectInvitationListResponse,
 )
 def get_project_invitations(
-    project_id: uuid.UUID,
+    project_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
-) -> list[ProjectInvitationResponse]:
-    invitations = project_repository.list_project_invitations(
-        db, project_id=project_id, actor_id=current_user.id
+) -> ProjectInvitationListResponse:
+    return build_projects(db=db).invitations(
+        actor=current_user,
+        project_id=project_id,
     )
-    return [
-        _invitation_response(db, invitation_id=invitation.id)
-        for invitation in invitations
-    ]
 
 
 @router.post(
@@ -104,20 +53,16 @@ def get_project_invitations(
     status_code=status.HTTP_201_CREATED,
 )
 def create_project_invitation(
-    project_id: uuid.UUID,
+    project_id: UUID,
     request: ProjectInvitationCreateRequest,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectInvitationResponse:
-    created = project_repository.create_invitation(
-        db,
+    return build_projects(db=db).create_invitation(
+        actor=current_user,
         project_id=project_id,
-        actor_id=current_user.id,
-        email=str(request.email),
-        requested=request,
+        request=request,
     )
-    _send_invitation(db, created=created, inviter=current_user)
-    return _invitation_response(db, invitation_id=created.invitation.id)
 
 
 @router.post(
@@ -125,19 +70,16 @@ def create_project_invitation(
     response_model=ProjectInvitationResponse,
 )
 def resend_project_invitation(
-    project_id: uuid.UUID,
-    invitation_id: uuid.UUID,
+    project_id: UUID,
+    invitation_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectInvitationResponse:
-    created = project_repository.resend_invitation(
-        db,
+    return build_projects(db=db).resend_invitation(
+        actor=current_user,
         project_id=project_id,
         invitation_id=invitation_id,
-        actor_id=current_user.id,
     )
-    _send_invitation(db, created=created, inviter=current_user)
-    return _invitation_response(db, invitation_id=created.invitation.id)
 
 
 @router.delete(
@@ -145,15 +87,14 @@ def resend_project_invitation(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def revoke_project_invitation(
-    project_id: uuid.UUID,
-    invitation_id: uuid.UUID,
+    project_id: UUID,
+    invitation_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    project_repository.revoke_invitation(
-        db,
+    build_projects(db=db).revoke_invitation(
+        actor=current_user,
         project_id=project_id,
         invitation_id=invitation_id,
-        actor_id=current_user.id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -9,7 +9,7 @@ import { useIsDarkMode } from "@/hooks/useDarkMode";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useActivePapers } from "@/hooks/useActivePapers";
-import { Conversation, ConversationListResponse, Project } from "@/lib/schema";
+import { Conversation, ConversationListResponse, Project, ProjectListResponse } from "@/lib/schema";
 import { SidebarNav } from "./SidebarNav";
 import { AppSidebarFooter } from "./SidebarFooter";
 import { getSubscriptionWarning } from "./subscriptionWarning";
@@ -42,7 +42,7 @@ export function AppSidebar() {
                 setEverythingConversations(
                     (conversationsResponse as ConversationListResponse).items,
                 );
-                setProjects(projectsResponse || []);
+                setProjects((projectsResponse as ProjectListResponse).items);
             } catch (error) {
                 console.error("Error fetching sidebar data:", error);
                 setEverythingConversations([]);

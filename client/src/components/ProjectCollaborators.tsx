@@ -82,16 +82,17 @@ export function ProjectCollaborators({
 
     const load = useCallback(async () => {
         try {
-            const loadedCollaborators = await fetchFromApi(
+            const loadedCollaboratorsResponse = await fetchFromApi(
                 `/projects/${project.id}/members`,
-            ) as Collaborator[];
+            ) as { items: Collaborator[]; next_cursor: string | null };
+            const loadedCollaborators = loadedCollaboratorsResponse.items;
             setCollaborators(loadedCollaborators);
             setHasCollaborators?.(loadedCollaborators.length > 1);
             if (canManage) {
-                const loadedInvitations = await fetchFromApi(
+                const loadedInvitationsResponse = await fetchFromApi(
                     `/projects/${project.id}/invitations`,
-                ) as ProjectInvitation[];
-                setInvitations(loadedInvitations);
+                ) as { items: ProjectInvitation[]; next_cursor: string | null };
+                setInvitations(loadedInvitationsResponse.items);
             } else {
                 setInvitations([]);
             }

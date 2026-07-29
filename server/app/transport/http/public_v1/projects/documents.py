@@ -1,74 +1,43 @@
+"""HTTP adapter for documents held by Projects."""
+
 from uuid import UUID
 
-from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.papers.infrastructure.upload_repository import (
-    upload_reservation_repository,
-)
-from app.modules.projects.infrastructure.document_repository import (
-    project_document_repository,
-)
+from app.bootstrap.container import build_projects
 from app.database.database import get_db
-from app.database.telemetry import track_event
-from app.shared.domain import AppError
-from app.helpers.s3 import s3_service
 from app.modules.projects.application.contracts import (
     AddPaperToProjectRequest,
     CollectPaperFromProjectRequest,
+    ProjectListResponse,
     ProjectPaperCollectedResponse,
     ProjectPaperFileUrlResponse,
     ProjectPaperListResponse,
-    ProjectPaperSummaryResponse,
     ProjectPapersAddedResponse,
-    ProjectPendingUploadResponse,
     ProjectPendingUploadsResponse,
-    ProjectResponse,
 )
 from app.shared.application import Actor
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
-from .responses import project_response
-
 project_papers_router = APIRouter()
+paper_projects_router = APIRouter()
+library_project_papers_router = APIRouter()
 
 
-@project_papers_router.post(
-    "/papers/collect",
+@library_project_papers_router.post(
+    "/papers",
     response_model=ProjectPaperCollectedResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def collect_paper_from_project(
+def collect_paper_from_project(
     request: CollectPaperFromProjectRequest,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperCollectedResponse:
-    """
-    Add a project document to the current user's personal library without
-    copying its S3 object or parsed content.
-    """
-    collected_document = project_document_repository.add_project_paper_to_library(
-        db,
-        document_id=request.document_id,
-        project_id=request.source_project_id,
-        current_user=current_user,
+    return build_projects(db=db).collect_document(
+        actor=current_user,
+        request=request,
     )
-    if collected_document is None:
-        raise AppError(
-            code="project_document_not_found",
-            message="Document not found in this Project",
-            status_code=404,
-        )
-
-    track_event(
-        "paper_collected_from_project",
-        user_id=str(current_user.id),
-        properties={
-            "source_project_id": str(request.source_project_id),
-            "document_id": str(request.document_id),
-        },
-        db=db,
-    )
-    return ProjectPaperCollectedResponse(document_id=collected_document.id)
 
 
 @project_papers_router.post(
@@ -76,31 +45,16 @@ async def collect_paper_from_project(
     response_model=ProjectPapersAddedResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def add_paper_to_project(
+def add_paper_to_project(
     project_id: UUID,
     request: AddPaperToProjectRequest,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPapersAddedResponse:
-    associations, existing_count = project_document_repository.attach_library_documents(
-        db,
-        document_ids=request.document_ids,
-        user=current_user,
+    return build_projects(db=db).add_documents(
+        actor=current_user,
         project_id=project_id,
-    )
-    track_event(
-        "papers_added_to_project",
-        user_id=str(current_user.id),
-        properties={
-            "project_id": str(project_id),
-            "added_count": len(associations),
-            "existing_count": existing_count,
-        },
-        db=db,
-    )
-    return ProjectPapersAddedResponse(
-        added_count=len(associations),
-        existing_count=existing_count,
+        request=request,
     )
 
 
@@ -108,57 +62,16 @@ async def add_paper_to_project(
     "/{project_id}/papers",
     response_model=ProjectPaperListResponse,
 )
-async def get_project_papers(
+def get_project_papers(
     project_id: UUID,
     load_urls: bool = False,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperListResponse:
-    """
-    Get all papers for a specific project.
-
-    Presigned file URLs are only generated when ``load_urls=true``. Most
-    callers (e.g. the project overview page) just need paper metadata, and
-    generating URLs for every paper is expensive on cache expiry. Callers
-    that need a URL for a single paper should use the
-    ``/{project_id}/papers/{document_id}/download-url`` endpoint instead.
-    """
-    papers = project_document_repository.get_papers_metadata_by_project_id(
-        db, project_id=project_id, user=current_user
-    )
-    library_document_ids = set(
-        project_document_repository.get_library_document_ids(
-            db,
-            document_ids=[paper.id for paper in papers],
-            user=current_user,
-        )
-    )
-
-    file_urls: dict[str, str] = {}
-    if load_urls:
-        file_urls = s3_service.generate_presigned_urls(
-            {str(paper.id): paper.s3_object_key for paper in papers}
-        )
-
-    return ProjectPaperListResponse(
-        items=[
-            ProjectPaperSummaryResponse(
-                document_id=paper.id,
-                title=paper.title,
-                created_at=paper.created_at,
-                abstract=paper.abstract,
-                authors=paper.authors,
-                institutions=paper.institutions,
-                status="reading",
-                journal=paper.journal,
-                publisher=paper.publisher,
-                doi=paper.doi,
-                publish_date=paper.publish_date,
-                file_url=file_urls.get(str(paper.id)),
-                in_library=paper.id in library_document_ids,
-            )
-            for paper in papers
-        ]
+    return build_projects(db=db).documents(
+        actor=current_user,
+        project_id=project_id,
+        load_urls=load_urls,
     )
 
 
@@ -166,31 +79,14 @@ async def get_project_papers(
     "/{project_id}/papers/pending-jobs",
     response_model=ProjectPendingUploadsResponse,
 )
-async def get_project_pending_jobs(
+def get_project_pending_jobs(
     project_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPendingUploadsResponse:
-    """
-    Get upload jobs still in progress for a project.
-
-    Lets the client rehydrate the upload tracker after a refresh, since the
-    in-flight jobs are otherwise only held in browser state.
-    """
-    jobs = upload_reservation_repository.get_in_progress_jobs_for_project(
-        db, project_id=project_id, user=current_user
-    )
-    return ProjectPendingUploadsResponse(
-        items=[
-            ProjectPendingUploadResponse(
-                job_id=job.id,
-                status=job.job.status,
-                document_id=paper.id,
-                title=paper.title,
-                started_at=job.job.started_at,
-            )
-            for job, paper in jobs
-        ]
+    return build_projects(db=db).pending_uploads(
+        actor=current_user,
+        project_id=project_id,
     )
 
 
@@ -198,73 +94,47 @@ async def get_project_pending_jobs(
     "/{project_id}/papers/{document_id}/download-url",
     response_model=ProjectPaperFileUrlResponse,
 )
-async def get_project_paper_file_url(
+def get_project_paper_file_url(
     project_id: UUID,
     document_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperFileUrlResponse:
-    """
-    Get a presigned file URL for a single paper within a project.
-
-    Access is granted via project membership rather than paper ownership, so
-    collaborators can open papers they don't own. This is the cheap path for
-    "my URL expired, give me a fresh one" — callers should use this instead
-    of refetching the whole project paper list.
-    """
-    paper = project_document_repository.get_paper_by_project(
-        db,
-        document_id=document_id,
+    return build_projects(db=db).document_download(
+        actor=current_user,
         project_id=project_id,
-        user=current_user,
+        document_id=document_id,
     )
-    if paper is None:
-        raise AppError(
-            code="project_document_not_found",
-            message="Document not found in this Project",
-            status_code=404,
-        )
-
-    file_url = s3_service.generate_presigned_url(paper.s3_object_key)
-
-    return ProjectPaperFileUrlResponse(file_url=file_url)
 
 
-@project_papers_router.get(
-    "/papers/from/{document_id}",
-    response_model=list[ProjectResponse],
+@paper_projects_router.get(
+    "/{document_id}/projects",
+    response_model=ProjectListResponse,
 )
-async def get_projects_from_document_id(
+def get_projects_from_document_id(
     document_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
-) -> list[ProjectResponse]:
-    """Get all projects associated with a specific paper"""
-    projects = project_document_repository.get_projects_by_document_id(
-        db, document_id=document_id, user=current_user
+) -> ProjectListResponse:
+    return build_projects(db=db).projects_for_document(
+        actor=current_user,
+        document_id=document_id,
     )
-    return [
-        project_response(db, project=project, current_user_id=current_user.id)
-        for project in projects
-    ]
 
 
 @project_papers_router.delete(
     "/{project_id}/papers/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def remove_paper_from_project(
+def remove_paper_from_project(
     project_id: UUID,
     document_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    """Remove a paper from a project"""
-    project_document_repository.remove_by_paper_and_project(
-        db,
-        document_id=document_id,
+    build_projects(db=db).remove_document(
+        actor=current_user,
         project_id=project_id,
-        user=current_user,
+        document_id=document_id,
     )
-    track_event("paper_removed_from_project", user_id=str(current_user.id), db=db)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

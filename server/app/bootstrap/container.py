@@ -64,6 +64,13 @@ from app.modules.papers.infrastructure.library_gateway import (
     BillingLibraryCapacity,
     SqlAlchemyPaperLibraryGateway,
 )
+from app.modules.projects.application.projects import Projects
+from app.modules.projects.infrastructure.gateway import (
+    BillingProjectCapacity,
+    EmailProjectInvitationNotifier,
+    PostHogProjectEvents,
+    SqlAlchemyProjectGateway,
+)
 from sqlalchemy.orm import Session
 
 
@@ -160,4 +167,14 @@ def build_paper_details(*, db: Session) -> GetPaperDetails:
     return GetPaperDetails(
         SqlAlchemyPaperDetails(db),
         build_project_document_visibility(db=db),
+    )
+
+
+def build_projects(*, db: Session) -> Projects:
+    return Projects(
+        gateway=SqlAlchemyProjectGateway(db),
+        capacity=BillingProjectCapacity(db),
+        events=PostHogProjectEvents(db),
+        invitations=EmailProjectInvitationNotifier(),
+        signer=S3PaperDownloadSigner(),
     )

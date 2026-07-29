@@ -526,6 +526,11 @@ export interface Project {
     capabilities: ProjectCapabilities;
 }
 
+export interface ProjectListResponse {
+    items: Project[];
+    next_cursor: string | null;
+}
+
 export interface PdfUploadResponse {
     message: string;
     job_id: string;

@@ -47,7 +47,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                 document_id: paper.id,
             };
 
-            const response = await fetchFromApi('/projects/papers/collect', {
+            const response = await fetchFromApi('/library/papers', {
                 method: 'POST',
                 body: JSON.stringify(requestBody),
             });

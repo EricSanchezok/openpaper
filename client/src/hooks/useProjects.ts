@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchFromApi } from "@/lib/api";
-import { Project, PaperItem, Conversation, ConversationListResponse } from "@/lib/schema";
+import { Project, PaperItem, Conversation, ConversationListResponse, ProjectListResponse } from "@/lib/schema";
 
 interface UseProjectsResult {
     projects: Project[];
@@ -20,8 +20,8 @@ export function useProjects(): UseProjectsResult {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetchFromApi("/projects");
-            setProjects(response || []);
+            const response = await fetchFromApi("/projects") as ProjectListResponse;
+            setProjects(response.items);
         } catch (err) {
             setError(err instanceof Error ? err : new Error("Failed to fetch projects"));
             console.error("Error fetching projects:", err);

@@ -26,7 +26,11 @@ from app.transport.http.internal_v1.jobs_callbacks import (
 from app.transport.http.public_v1.library_tags import library_tags_router
 from app.transport.http.public_v1.messages import message_router
 from app.transport.http.public_v1.discovery import paper_search_router
-from app.transport.http.public_v1.projects.documents import project_papers_router
+from app.transport.http.public_v1.projects.documents import (
+    library_project_papers_router,
+    paper_projects_router,
+    project_papers_router,
+)
 from app.transport.http.public_v1.projects.projects import projects_router
 from app.transport.http.public_v1.projects.invitations import (
     router as projects_invitation_router,
@@ -90,8 +94,10 @@ def _public_router() -> APIRouter:
     )
     router.include_router(conversation_router, prefix="/conversations")
     router.include_router(library_router, prefix="/library")
+    router.include_router(library_project_papers_router, prefix="/library")
     router.include_router(library_tags_router, prefix="/library")
     router.include_router(document_router, prefix="/papers")
+    router.include_router(paper_projects_router, prefix="/papers")
     router.include_router(public_document_router, prefix="/shares")
     router.include_router(message_router, prefix="/assistant")
     router.include_router(projects_router, prefix="/projects")

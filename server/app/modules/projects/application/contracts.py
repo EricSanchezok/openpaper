@@ -100,6 +100,11 @@ class ProjectResponse(BaseModel):
     updated_at: datetime
 
 
+class ProjectListResponse(BaseModel):
+    items: list[ProjectResponse]
+    next_cursor: str | None = None
+
+
 class ProjectCollaboratorResponse(BaseModel):
     user_id: int
     display_name: str
@@ -107,6 +112,11 @@ class ProjectCollaboratorResponse(BaseModel):
     is_owner: bool
     permissions: ProjectPermissionSet
     joined_at: datetime | None
+
+
+class ProjectCollaboratorListResponse(BaseModel):
+    items: list[ProjectCollaboratorResponse]
+    next_cursor: str | None = None
 
 
 class ProjectInvitationResponse(BaseModel):
@@ -118,6 +128,11 @@ class ProjectInvitationResponse(BaseModel):
     permissions: ProjectPermissionSet
     expires_at: datetime
     created_at: datetime
+
+
+class ProjectInvitationListResponse(BaseModel):
+    items: list[ProjectInvitationResponse]
+    next_cursor: str | None = None
 
 
 class ProjectPaperSummaryResponse(BaseModel):

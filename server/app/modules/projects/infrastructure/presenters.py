@@ -1,4 +1,4 @@
-"""Typed Project response assembly shared by Project endpoints."""
+"""Typed Project response assembly for SQLAlchemy adapters."""
 
 from __future__ import annotations
 
