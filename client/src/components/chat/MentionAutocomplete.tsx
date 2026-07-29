@@ -57,7 +57,7 @@ export interface MentionEntity {
 	label: string;
 	sublabel?: string;
 	// For highlight mentions: the parent paper (for scoping + linking).
-	paperId?: string;
+	documentId?: string;
 	// For highlight mentions: the annotations written on the highlight.
 	annotations?: string[];
 	// Why this suggestion matched, when it's not obvious from the label — e.g. a
@@ -66,7 +66,7 @@ export interface MentionEntity {
 }
 
 export interface MentionSelection {
-	paperIds: string[];
+	documentIds: string[];
 	projectIds: string[];
 	// Highlights aren't a client-side list, so we keep the resolved entities
 	// (label + parent paper) rather than just ids.
@@ -74,14 +74,14 @@ export interface MentionSelection {
 }
 
 export const EMPTY_MENTION_SELECTION: MentionSelection = {
-	paperIds: [],
+	documentIds: [],
 	projectIds: [],
 	highlights: [],
 };
 
 export function mentionSelectionIsEmpty(selection: MentionSelection): boolean {
 	return (
-		selection.paperIds.length === 0 &&
+		selection.documentIds.length === 0 &&
 		selection.projectIds.length === 0 &&
 		selection.highlights.length === 0
 	);
@@ -106,7 +106,7 @@ export function selectionToScopeItems(
 	const paperById = new Map(papers.map((p) => [p.id, p]));
 	const projectById = new Map(projects.map((p) => [p.id, p]));
 	return [
-		...selection.paperIds.map((id) => ({
+		...selection.documentIds.map((id) => ({
 			kind: "paper" as const,
 			id,
 			title: paperById.get(id)?.title || "Untitled paper",
@@ -120,7 +120,7 @@ export function selectionToScopeItems(
 			kind: "highlight" as const,
 			id: h.id,
 			title: h.label,
-			paper_id: h.paperId,
+			document_id: h.documentId,
 			paper_title: h.sublabel,
 			annotations: h.annotations,
 		})),
@@ -135,7 +135,7 @@ export function scopeItemsToEntities(
 		kind: item.kind,
 		id: item.id,
 		label: item.title,
-		paperId: item.paper_id,
+		documentId: item.document_id,
 		// Surfaced in the hover card (e.g. a highlight's source paper title).
 		sublabel: item.paper_title,
 		annotations: item.annotations,
@@ -217,9 +217,9 @@ export function useMentionAutocomplete({
 	const [activeIndex, setActiveIndex] = useState(0);
 	const query = token?.query ?? "";
 
-	const selectedPaperIds = useMemo(
-		() => new Set(selection.paperIds),
-		[selection.paperIds],
+	const selectedDocumentIds = useMemo(
+		() => new Set(selection.documentIds),
+		[selection.documentIds],
 	);
 	const selectedProjectIds = useMemo(
 		() => new Set(selection.projectIds),
@@ -269,7 +269,7 @@ export function useMentionAutocomplete({
 							id: h.id,
 							label: h.raw_text,
 							sublabel: paper.title || undefined,
-							paperId: paper.id,
+							documentId: paper.id,
 							annotations: notesByHighlight.get(h.id),
 							matchContext,
 						});
@@ -301,7 +301,7 @@ export function useMentionAutocomplete({
 		const matches = (text: string) => !q || text.toLowerCase().includes(q);
 
 		const paperItems = papers
-			.filter((p) => !selectedPaperIds.has(p.id) && matches(p.title || ""))
+			.filter((p) => !selectedDocumentIds.has(p.id) && matches(p.title || ""))
 			.slice(0, MAX_PER_SECTION)
 			.map(paperToEntity);
 
@@ -320,7 +320,7 @@ export function useMentionAutocomplete({
 		papers,
 		projects,
 		highlightItems,
-		selectedPaperIds,
+		selectedDocumentIds,
 		selectedProjectIds,
 		selectedHighlightIds,
 	]);
@@ -384,10 +384,10 @@ export function useMentionAutocomplete({
 				});
 			}
 
-			if (entity.kind === "paper" && !selectedPaperIds.has(entity.id)) {
+			if (entity.kind === "paper" && !selectedDocumentIds.has(entity.id)) {
 				onSelectionChange({
 					...selection,
-					paperIds: [...selection.paperIds, entity.id],
+					documentIds: [...selection.documentIds, entity.id],
 				});
 			} else if (entity.kind === "project" && !selectedProjectIds.has(entity.id)) {
 				onSelectionChange({
@@ -409,7 +409,7 @@ export function useMentionAutocomplete({
 			onValueChange,
 			selection,
 			onSelectionChange,
-			selectedPaperIds,
+			selectedDocumentIds,
 			selectedProjectIds,
 			selectedHighlightIds,
 			textareaRef,
@@ -452,7 +452,7 @@ export function useMentionAutocomplete({
 			if (kind === "paper") {
 				onSelectionChange({
 					...selection,
-					paperIds: selection.paperIds.filter((p) => p !== id),
+					documentIds: selection.documentIds.filter((p) => p !== id),
 				});
 			} else if (kind === "project") {
 				onSelectionChange({
@@ -475,7 +475,7 @@ export function useMentionAutocomplete({
 		const paperById = new Map(papers.map((p) => [p.id, p]));
 		const projectById = new Map(projects.map((p) => [p.id, p]));
 		return [
-			...selection.paperIds.map((id) => {
+			...selection.documentIds.map((id) => {
 				const p = paperById.get(id);
 				return p
 					? paperToEntity(p)
@@ -612,7 +612,7 @@ export function MentionDropdown({
 /** The route a mention links to, or null if it isn't directly navigable. */
 function entityHref(entity: MentionEntity): string | null {
 	if (entity.kind === "highlight") {
-		return entity.paperId ? `/paper/${entity.paperId}?rsf=annotations` : null;
+		return entity.documentId ? `/paper/${entity.documentId}?rsf=annotations` : null;
 	}
 	if (entity.kind === "paper") return `/paper/${entity.id}`;
 	if (entity.kind === "project") return `/projects/${entity.id}`;

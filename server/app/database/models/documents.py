@@ -294,16 +294,16 @@ class LibraryPaper(Base):
     )
 
 
-class PaperPassage(Base):
-    __tablename__ = "paper_passages"
+class DocumentPassage(Base):
+    __tablename__ = "document_passages"
 
     __table_args__ = (
-        UniqueConstraint("paper_id", "start_line"),
-        Index("ix_paper_passages_ts_vector", "ts_vector", postgresql_using="gin"),
+        UniqueConstraint("document_id", "start_line"),
+        Index("ix_document_passages_ts_vector", "ts_vector", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
-    paper_id: Mapped[uuid.UUID] = mapped_column(
+    document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
@@ -314,4 +314,4 @@ class PaperPassage(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     ts_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
-    paper: Mapped["Document"] = relationship("Document")
+    document: Mapped["Document"] = relationship("Document")

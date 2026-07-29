@@ -302,7 +302,7 @@ jobs:
                  AND EXISTS (
                    SELECT 1
                    FROM pg_trigger
-                   WHERE tgname = 'paper_passages_tsvectorupdate' AND NOT tgisinternal
+                   WHERE tgname = 'document_passages_tsvectorupdate' AND NOT tgisinternal
                  )
                  AND NOT EXISTS (
                    SELECT 1 FROM pg_tables WHERE schemaname = 'public'
@@ -347,8 +347,8 @@ jobs:
                   WHERE email = 'ci-owner@example.invalid'),
                  '00000000-0000-0000-0000-000000000001'
                );
-             INSERT INTO scholens.paper_passages
-               (paper_id, start_line, end_line, content)
+             INSERT INTO scholens.document_passages
+               (document_id, start_line, end_line, content)
                VALUES (
                  '00000000-0000-0000-0000-000000000001',
                  1,
@@ -431,8 +431,8 @@ jobs:
                (SELECT ts_vector IS NOT NULL FROM scholens.documents
                 WHERE id = '00000000-0000-0000-0000-000000000001')::int
                *
-               (SELECT ts_vector IS NOT NULL FROM scholens.paper_passages
-                WHERE paper_id = '00000000-0000-0000-0000-000000000001')::int
+               (SELECT ts_vector IS NOT NULL FROM scholens.document_passages
+                WHERE document_id = '00000000-0000-0000-0000-000000000001')::int
                *
                (SELECT count(*) = 1 FROM scholens.library_papers
                 WHERE document_id = '00000000-0000-0000-0000-000000000001')::int

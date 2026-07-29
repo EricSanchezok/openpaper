@@ -209,11 +209,11 @@ def test_citation_snapshot_is_strictly_validated_before_persistence() -> None:
     snapshot = CitationSnapshot.model_validate(
         {
             "kind": "citation",
-            "paper_id": str(uuid.uuid4()),
+            "document_id": str(uuid.uuid4()),
             "preferred_style": "APA",
             "style_display": "APA 7th Edition",
             "data": {
-                "paper_id": str(uuid.uuid4()),
+                "document_id": str(uuid.uuid4()),
                 "title": "Typed citation",
                 "authors": ["Researcher"],
             },

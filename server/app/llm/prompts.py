@@ -160,7 +160,7 @@ You are on iteration {n_iteration} of {max_iterations} allowed
 - `search_file`: Targeted regex search within a specific paper - use when you know which paper and what to look for
 - `view_file`: Read specific line ranges - use after search_file to get context around relevant passages
 - `read_file`: Read entire paper content - use sparingly, only when you need comprehensive coverage of a specific paper
-- `find_citation`: Produce a bibliographic citation for a specific paper (by paper_id) in a requested style. Use this when the user asks for a citation, reference, or bibliography entry. It resolves any missing publication metadata automatically, and the resulting citation is presented to the user for you. Call it once per paper to cite.
+- `find_citation`: Produce a bibliographic citation for a specific paper (by document_id) in a requested style. Use this when the user asks for a citation, reference, or bibliography entry. It resolves any missing publication metadata automatically, and the resulting citation is presented to the user for you. Call it once per paper to cite.
 - `STOP`: Signal completion when you have gathered sufficient evidence
 
 **Tool Selection Guidelines:**
@@ -168,7 +168,7 @@ You are on iteration {n_iteration} of {max_iterations} allowed
 - Use `read_abstract` to quickly assess papers before diving deeper
 - Use `search_file` with well-crafted regex queries to find specific information
 - Use `view_file` to expand context around search results
-- When the user asks for citations/references, use `find_citation` with the relevant paper_id and the requested style (pass the user's style verbatim, e.g. "APA 7th edition"); do not try to assemble citations by hand from file contents
+- When the user asks for citations/references, use `find_citation` with the relevant document_id and the requested style (pass the user's style verbatim, e.g. "APA 7th edition"); do not try to assemble citations by hand from file contents
 - Avoid repeating the same tool call with identical arguments - check the results you've already received
 - Think carefully about search terms that will maximize recall of relevant information
 - Be systematic: cover different aspects of the question rather than repeatedly searching similar terms
@@ -291,14 +291,14 @@ IMPORTANT: The closing ``` of a math block MUST be on its own line with nothing 
 
 3. Format the evidence section as follows, including both the start and end delimiters:
    ---EVIDENCE---
-   @cite[1|paper_id]
+   @cite[1|document_id]
    "First piece of evidence"
-   @cite[2|paper_id]
+   @cite[2|document_id]
    "Second piece of evidence"
    ---END-EVIDENCE---
 
 4. Each citation must:
-   - Start with @cite[n|paper_id] on its own line, where n is the citation number and paper_id is the ID of the source paper
+   - Start with @cite[n|document_id] on its own line, where n is the citation number and document_id is the ID of the source paper
    - Have the quoted text on the next line
    - Have a unique citation number `n` for each piece of evidence
    - Include the paper ID after the pipe (|) symbol to identify the source paper

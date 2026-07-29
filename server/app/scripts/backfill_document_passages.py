@@ -1,8 +1,8 @@
 """
-Backfill paper_passages table from existing papers.
+Backfill document_passages table from existing papers.
 
 Usage:
-    python -m app.scripts.backfill_paper_passages [--batch-size 100] [--dry-run]
+    python -m app.scripts.backfill_document_passages [--batch-size 100] [--dry-run]
 """
 
 import argparse
@@ -32,8 +32,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                     SELECT COUNT(*) FROM scholens.documents p
                     WHERE p.raw_content IS NOT NULL
                       AND NOT EXISTS (
-                        SELECT 1 FROM scholens.paper_passages pp
-                        WHERE pp.paper_id = p.id
+                        SELECT 1 FROM scholens.document_passages pp
+                        WHERE pp.document_id = p.id
                       )
                     """
                 )
@@ -53,8 +53,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         logger.info("Disabling tsvector trigger for bulk insert...")
         db.execute(
             text(
-                "ALTER TABLE scholens.paper_passages "
-                "DISABLE TRIGGER paper_passages_tsvectorupdate"
+                "ALTER TABLE scholens.document_passages "
+                "DISABLE TRIGGER document_passages_tsvectorupdate"
             )
         )
         db.commit()
@@ -72,8 +72,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                     FROM scholens.documents p
                     WHERE p.raw_content IS NOT NULL
                       AND NOT EXISTS (
-                        SELECT 1 FROM scholens.paper_passages pp
-                        WHERE pp.paper_id = p.id
+                        SELECT 1 FROM scholens.document_passages pp
+                        WHERE pp.document_id = p.id
                       )
                     ORDER BY p.id
                     LIMIT :limit
@@ -88,10 +88,10 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             batch_start = time.time()
 
             if dry_run:
-                for paper_id, raw_content in rows:
+                for document_id, raw_content in rows:
                     passages = document_search_repository.build_passages(raw_content)
                     logger.info(
-                        f"[DRY RUN] Document {paper_id}: would index {len(passages)} passages"
+                        f"[DRY RUN] Document {document_id}: would index {len(passages)} passages"
                     )
                     skipped += 1
             else:
@@ -99,22 +99,22 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 # No DELETE needed — the NOT EXISTS filter guarantees these
                 # papers have no existing passages.
                 all_passages = []
-                for paper_id, raw_content in rows:
+                for document_id, raw_content in rows:
                     try:
                         for p in document_search_repository.build_passages(raw_content):
-                            all_passages.append({"paper_id": paper_id, **p})
+                            all_passages.append({"document_id": document_id, **p})
                     except Exception as e:
                         errors += 1
-                        logger.error(f"Failed to build passages for {paper_id}: {e}")
+                        logger.error(f"Failed to build passages for {document_id}: {e}")
 
                 if all_passages:
                     db.execute(
                         text(
                             """
-                            INSERT INTO scholens.paper_passages
-                                (paper_id, start_line, end_line, content)
-                            VALUES (:paper_id, :start_line, :end_line, :content)
-                            ON CONFLICT (paper_id, start_line) DO NOTHING
+                            INSERT INTO scholens.document_passages
+                                (document_id, start_line, end_line, content)
+                            VALUES (:document_id, :start_line, :end_line, :content)
+                            ON CONFLICT (document_id, start_line) DO NOTHING
                         """
                         ),
                         all_passages,
@@ -145,10 +145,10 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             result = db.execute(
                 text(
                     """
-                    UPDATE scholens.paper_passages
+                    UPDATE scholens.document_passages
                     SET ts_vector = to_tsvector('pg_catalog.english', coalesce(content, ''))
                     WHERE id IN (
-                        SELECT id FROM scholens.paper_passages
+                        SELECT id FROM scholens.document_passages
                         WHERE ts_vector IS NULL
                         LIMIT :batch_size
                     )
@@ -177,8 +177,8 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         logger.info("Re-enabling tsvector trigger...")
         db.execute(
             text(
-                "ALTER TABLE scholens.paper_passages "
-                "ENABLE TRIGGER paper_passages_tsvectorupdate"
+                "ALTER TABLE scholens.document_passages "
+                "ENABLE TRIGGER document_passages_tsvectorupdate"
             )
         )
         db.commit()
@@ -193,7 +193,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Backfill paper_passages table")
+    parser = argparse.ArgumentParser(description="Backfill document_passages table")
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

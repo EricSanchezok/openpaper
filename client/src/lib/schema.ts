@@ -6,7 +6,7 @@ export type HighlightType = 'topic' | 'motivation' | 'method' | 'evidence' | 're
 export interface ReferenceCitation {
     index: number;
     text: string;
-    paper_id?: string;
+    document_id?: string;
 }
 
 export interface PaperData {
@@ -39,7 +39,7 @@ export interface SharedPaper {
 }
 
 export interface CitationArtifactData {
-    paper_id: string;
+    document_id: string;
     title?: string;
     authors?: string[];
     publish_date?: string;
@@ -50,7 +50,7 @@ export interface CitationArtifactData {
 
 export interface CitationArtifact {
     kind: 'citation';
-    paper_id: string;
+    document_id: string;
     preferred_style: string; // canonical key, e.g. "APA"
     style_display: string;
     data: CitationArtifactData;
@@ -71,7 +71,7 @@ export interface MessageTraceStep {
 }
 
 export interface MessageTraceCitation {
-    paper_id: string;
+    document_id: string;
     method: string;
     preferred_style: string;
     steps: MessageTraceStep[];
@@ -93,7 +93,7 @@ export interface MessageScopeItem {
     title: string;
     // For highlight mentions: the parent paper, so the pill can link to it
     // and show the paper title on hover.
-    paper_id?: string;
+    document_id?: string;
     paper_title?: string;
     // For highlight mentions: the annotations written on the highlight.
     annotations?: string[];
@@ -227,7 +227,7 @@ export interface PaperHighlight {
 export interface PaperHighlightAnnotation {
     id: string;
     highlight_id: string;
-    paper_id: string;
+    document_id: string;
     content: string;
     role: 'user' | 'assistant';
     created_at: string;
@@ -240,7 +240,7 @@ export interface Reference {
 
 export interface Citation {
     key: string;
-    paper_id?: string;
+    document_id?: string;
     reference: string;
 }
 
@@ -439,7 +439,7 @@ export interface JobStatusResponse {
 }
 
 export interface PaperUploadJobStatusResponse extends JobStatusResponse {
-    paper_id: string | null;
+    document_id: string | null;
     has_file_url: boolean;
     has_metadata: boolean;
     celery_progress_message: string | null;

@@ -27,7 +27,7 @@ from .documents import (
     LibraryPaper,
     LibraryPaperTag,
     Document,
-    PaperPassage,
+    DocumentPassage,
     PaperTag,
     UploadReservation,
 )
@@ -67,7 +67,7 @@ __all__ = [
     "Message",
     "Onboarding",
     "Document",
-    "PaperPassage",
+    "DocumentPassage",
     "PaperStatus",
     "PaperTag",
     "UploadReservation",

@@ -140,7 +140,7 @@ class DeepSeekExtractionClient:
         *,
         columns: list[str],
         paper_content: str,
-        paper_id: str,
+        document_id: str,
     ) -> DataTableRow:
         aliases = {f"col_{index}": column for index, column in enumerate(columns)}
         field_definitions: dict[str, Any] = {
@@ -167,10 +167,10 @@ class DeepSeekExtractionClient:
             prompt=prompt,
             schema=values_model,
             feature="data_table",
-            idempotency_suffix=f"data_table:{paper_id}",
+            idempotency_suffix=f"data_table:{document_id}",
         )
         return DataTableRow(
-            paper_id=paper_id,
+            document_id=document_id,
             values={
                 column: getattr(values, alias) for alias, column in aliases.items()
             },
@@ -193,7 +193,7 @@ class DeepSeekExtractionClient:
             "documents. The transcript should be natural prose without Markdown "
             "headings. Include inline citations such as [^1]. Each citation object "
             "must contain the supporting source text, its sequential index, and the "
-            "document ID in paper_id. Do not cite a paper's bibliography as evidence. "
+            "document ID in document_id. Do not cite a paper's bibliography as evidence. "
             f"Target approximately {word_targets[request.length]} words.\n"
             f"Additional instructions: {request.additional_instructions or 'None'}\n\n"
             f"{sources}"

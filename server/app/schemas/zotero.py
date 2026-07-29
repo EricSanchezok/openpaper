@@ -24,7 +24,7 @@ class ZoteroImportRequest(BaseModel):
 
 class ZoteroImportItemResult(BaseModel):
     zotero_item_key: str
-    paper_id: str | None = None
+    document_id: str | None = None
     upload_job_id: str | None = None
     import_source: str | None = None
     title: str | None = None
@@ -45,7 +45,7 @@ class ZoteroImportResponse(BaseModel):
 
 class ZoteroImportStatusItem(BaseModel):
     zotero_item_key: str
-    paper_id: str | None = None
+    document_id: str | None = None
     upload_job_id: str | None = None
     import_source: str
     status: str

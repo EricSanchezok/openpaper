@@ -79,7 +79,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
         try {
             await fetchFromApi(`/api/projects/${projectId}/papers`, {
                 method: 'POST',
-                body: JSON.stringify({ paper_ids: [id] })
+                body: JSON.stringify({ document_ids: [id] })
             });
             toast.success("Paper added to project successfully!");
 
@@ -106,7 +106,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
             await fetchFromApi(`/api/projects/${project.id}/papers`,
                 {
                     method: 'POST',
-                    body: JSON.stringify({ paper_ids: [id] })
+                    body: JSON.stringify({ document_ids: [id] })
                 });
             toast.success("Paper added to project successfully!");
 

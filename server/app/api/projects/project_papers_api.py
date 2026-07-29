@@ -44,7 +44,7 @@ async def collect_paper_from_project(
     """
     collected_document = project_document_repository.add_project_paper_to_library(
         db,
-        document_id=request.paper_id,
+        document_id=request.document_id,
         project_id=request.source_project_id,
         current_user=current_user,
     )
@@ -60,11 +60,11 @@ async def collect_paper_from_project(
         user_id=str(current_user.id),
         properties={
             "source_project_id": str(request.source_project_id),
-            "paper_id": str(request.paper_id),
+            "document_id": str(request.document_id),
         },
         db=db,
     )
-    return ProjectPaperCollectedResponse(paper_id=collected_document.id)
+    return ProjectPaperCollectedResponse(document_id=collected_document.id)
 
 
 @project_papers_router.post(
@@ -80,7 +80,7 @@ async def add_paper_to_project(
 ) -> ProjectPapersAddedResponse:
     associations, existing_count = project_document_repository.attach_library_documents(
         db,
-        document_ids=request.paper_ids,
+        document_ids=request.document_ids,
         user=current_user,
         project_id=project_id,
     )
@@ -117,13 +117,13 @@ async def get_project_papers(
     callers (e.g. the project overview page) just need paper metadata, and
     generating URLs for every paper is expensive on cache expiry. Callers
     that need a URL for a single paper should use the
-    ``/{project_id}/{paper_id}/file-url`` endpoint instead.
+    ``/{project_id}/{document_id}/file-url`` endpoint instead.
     """
     papers = project_document_repository.get_papers_metadata_by_project_id(
         db, project_id=project_id, user=current_user
     )
-    library_document_ids = set(
-        project_document_repository.get_library_document_ids(
+    library_paper_ids = set(
+        project_document_repository.get_library_paper_ids(
             db,
             document_ids=[paper.id for paper in papers],
             user=current_user,
@@ -151,7 +151,7 @@ async def get_project_papers(
                 doi=paper.doi,
                 publish_date=paper.publish_date,
                 file_url=file_urls.get(str(paper.id)),
-                in_library=paper.id in library_document_ids,
+                in_library=paper.id in library_paper_ids,
             )
             for paper in papers
         ]
@@ -181,7 +181,7 @@ async def get_project_pending_jobs(
             ProjectPendingUploadResponse(
                 job_id=job.id,
                 status=job.job.status,
-                paper_id=paper.id,
+                document_id=paper.id,
                 title=paper.title,
                 started_at=job.job.started_at,
             )
@@ -191,12 +191,12 @@ async def get_project_pending_jobs(
 
 
 @project_papers_router.get(
-    "/{project_id}/papers/{paper_id}/file-url",
+    "/{project_id}/papers/{document_id}/file-url",
     response_model=ProjectPaperFileUrlResponse,
 )
 async def get_project_paper_file_url(
     project_id: UUID,
-    paper_id: UUID,
+    document_id: UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> ProjectPaperFileUrlResponse:
@@ -210,7 +210,7 @@ async def get_project_paper_file_url(
     """
     paper = project_document_repository.get_paper_by_project(
         db,
-        paper_id=paper_id,
+        document_id=document_id,
         project_id=project_id,
         user=current_user,
     )
@@ -227,17 +227,17 @@ async def get_project_paper_file_url(
 
 
 @project_papers_router.get(
-    "/papers/from/{paper_id}",
+    "/papers/from/{document_id}",
     response_model=list[ProjectResponse],
 )
-async def get_projects_from_paper_id(
-    paper_id: UUID,
+async def get_projects_from_document_id(
+    document_id: UUID,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> list[ProjectResponse]:
     """Get all projects associated with a specific paper"""
-    projects = project_document_repository.get_projects_by_paper_id(
-        db, paper_id=paper_id, user=current_user
+    projects = project_document_repository.get_projects_by_document_id(
+        db, document_id=document_id, user=current_user
     )
     return [
         project_response(db, project=project, current_user_id=current_user.id)
@@ -258,7 +258,7 @@ async def remove_paper_from_project(
     """Remove a paper from a project"""
     project_document_repository.remove_by_paper_and_project(
         db,
-        paper_id=document_id,
+        document_id=document_id,
         project_id=project_id,
         user=current_user,
     )

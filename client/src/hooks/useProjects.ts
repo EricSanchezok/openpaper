@@ -100,7 +100,7 @@ interface UseProjectPapersResult {
     refetch: () => Promise<void>;
     // Locally patch a single paper (e.g. to inject a refreshed file_url)
     // without refetching the whole list.
-    updatePaper: (paperId: string, patch: Partial<PaperItem>) => void;
+    updatePaper: (documentId: string, patch: Partial<PaperItem>) => void;
 }
 
 export function useProjectPapers(
@@ -136,8 +136,8 @@ export function useProjectPapers(
         fetchPapers();
     }, [fetchPapers]);
 
-    const updatePaper = useCallback((paperId: string, patch: Partial<PaperItem>) => {
-        setPapers(prev => prev.map(p => (p.id === paperId ? { ...p, ...patch } : p)));
+    const updatePaper = useCallback((documentId: string, patch: Partial<PaperItem>) => {
+        setPapers(prev => prev.map(p => (p.id === documentId ? { ...p, ...patch } : p)));
     }, []);
 
     return {

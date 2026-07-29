@@ -157,7 +157,7 @@ export function SidePanelContent({
         scrollToLatestMessage,
         setMessages,
     } = useConversationHistory({
-        paperId: id,
+        documentId: id,
         enabled: Boolean(user && paperData),
         initialConversationId,
     });
@@ -808,7 +808,7 @@ export function SidePanelContent({
                             rightSideFunction === 'Audio' && (
                                 <div className={`flex flex-col ${heightClass} md:px-2 overflow-y-auto`}>
                                     <AudioOverviewPanel
-                                        paper_id={id} />
+                                        document_id={id} />
                                 </div>
                             )
                         }

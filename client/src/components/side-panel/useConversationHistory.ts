@@ -12,13 +12,13 @@ interface MessagePageResponse {
 }
 
 interface UseConversationHistoryOptions {
-	paperId: string;
+	documentId: string;
 	enabled: boolean;
 	initialConversationId?: string | null;
 }
 
 export function useConversationHistory({
-	paperId,
+	documentId,
 	enabled,
 	initialConversationId,
 }: UseConversationHistoryOptions) {
@@ -78,7 +78,7 @@ export function useConversationHistory({
 	]);
 
 	useEffect(() => {
-		if (!enabled || !paperId) return;
+		if (!enabled || !documentId) return;
 
 		let cancelled = false;
 		async function loadConversation() {
@@ -101,7 +101,7 @@ export function useConversationHistory({
 				id = existing.items.find(
 					(conversation) =>
 						conversation.scope_type === "paper"
-						&& conversation.scope_id === paperId,
+						&& conversation.scope_id === documentId,
 				)?.id ?? null;
 				if (id) {
 					const detail = await fetchFromApi(
@@ -120,7 +120,7 @@ export function useConversationHistory({
 							method: "POST",
 							body: JSON.stringify({
 								scope_type: "paper",
-								scope_id: paperId,
+								scope_id: documentId,
 							}),
 						},
 					)) as Conversation;
@@ -140,7 +140,7 @@ export function useConversationHistory({
 		return () => {
 			cancelled = true;
 		};
-	}, [enabled, initialConversationId, paperId]);
+	}, [enabled, initialConversationId, documentId]);
 
 	useEffect(() => {
 		if (enabled) void fetchMoreMessages();

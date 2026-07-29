@@ -67,9 +67,9 @@ export default function ProjectPage() {
         if (added.length === 0 && removed.length === 0) return;
         setMentionSelection((sel) => ({
             ...sel,
-            paperIds: [
-                ...sel.paperIds.filter((id) => !removed.includes(id)),
-                ...added.filter((id) => !sel.paperIds.includes(id)),
+            documentIds: [
+                ...sel.documentIds.filter((id) => !removed.includes(id)),
+                ...added.filter((id) => !sel.documentIds.includes(id)),
             ],
         }));
     }, [openDocumentIds]);
@@ -90,10 +90,10 @@ export default function ProjectPage() {
             localStorage.setItem(`pending-query-${newConversation.id}`, newQuery);
             // Carry the @-mention scope (project chat is papers-only) to the new
             // conversation so it's applied to the first message.
-            if (mentionSelection.paperIds.length > 0) {
+            if (mentionSelection.documentIds.length > 0) {
                 localStorage.setItem(
                     `pending-mentions-${newConversation.id}`,
-                    JSON.stringify(mentionSelection.paperIds),
+                    JSON.stringify(mentionSelection.documentIds),
                 );
             }
             router.push(`/projects/${projectId}/conversations/${newConversation.id}`);

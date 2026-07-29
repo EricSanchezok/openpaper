@@ -125,8 +125,8 @@ export async function fetchStreamFromApi(
     return response.body;
 }
 
-export async function getProjectsForPaper(paperId: string) {
-    return fetchFromApi(`/api/projects/papers/from/${paperId}`);
+export async function getProjectsForPaper(documentId: string) {
+    return fetchFromApi(`/api/projects/papers/from/${documentId}`);
 }
 
 /**
@@ -137,10 +137,10 @@ export async function getProjectsForPaper(paperId: string) {
  */
 export async function getProjectPaperFileUrl(
     projectId: string,
-    paperId: string,
+    documentId: string,
 ): Promise<string | null> {
     const response = await fetchFromApi(
-        `/api/projects/${projectId}/papers/${paperId}/file-url`,
+        `/api/projects/${projectId}/papers/${documentId}/file-url`,
     );
     return response?.file_url ?? null;
 }
@@ -150,7 +150,7 @@ export async function getProjectPaperFileUrl(
  * for refreshing an expired URL — avoids the metadata enrichment and full
  * canonical document payload.
  */
-export async function getPaperFileUrl(paperId: string): Promise<string | null> {
-    const response = await fetchFromApi(`/api/documents/${paperId}/file-url`);
+export async function getPaperFileUrl(documentId: string): Promise<string | null> {
+    const response = await fetchFromApi(`/api/documents/${documentId}/file-url`);
     return response?.file_url ?? null;
 }

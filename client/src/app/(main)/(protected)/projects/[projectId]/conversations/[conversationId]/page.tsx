@@ -26,7 +26,7 @@ import {
 interface ChatRequestBody {
     user_query: string;
     conversation_id: string | null;
-    mentioned_paper_ids?: string[];
+    mentioned_document_ids?: string[];
     reasoning_level: "standard" | "deep";
 }
 
@@ -83,7 +83,7 @@ function ProjectConversationPageContent() {
     const [displayedText, setDisplayedText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
-    const [highlightedInfo, setHighlightedInfo] = useState<{ paperId: string; messageIndex: number } | null>(null);
+    const [highlightedInfo, setHighlightedInfo] = useState<{ documentId: string; messageIndex: number } | null>(null);
     const [isCentered, setIsCentered] = useState(false);
     const [isSessionLoading, setIsSessionLoading] = useState(true);
     const [reasoningLevel, setReasoningLevel] = useState<"standard" | "deep">("standard");
@@ -118,9 +118,9 @@ function ProjectConversationPageContent() {
         if (added.length === 0 && removed.length === 0) return;
         setMentionSelection((sel) => ({
             ...sel,
-            paperIds: [
-                ...sel.paperIds.filter((id) => !removed.includes(id)),
-                ...added.filter((id) => !sel.paperIds.includes(id)),
+            documentIds: [
+                ...sel.documentIds.filter((id) => !removed.includes(id)),
+                ...added.filter((id) => !sel.documentIds.includes(id)),
             ],
         }));
     }, [openDocumentIds]);
@@ -144,13 +144,13 @@ function ProjectConversationPageContent() {
             if (!message) return prevHighlight;
 
             const citation = message.references?.citations?.find(c => String(c.key) === key);
-            if (!citation || !citation.paper_id) return prevHighlight;
+            if (!citation || !citation.document_id) return prevHighlight;
 
-            const newHighlight = { paperId: citation.paper_id, messageIndex };
+            const newHighlight = { documentId: citation.document_id, messageIndex };
 
             // Scroll to element
             setTimeout(() => {
-                const elementId = message.id ? `${message.id}-reference-paper-card-${citation.paper_id}` : `${messageIndex}-reference-paper-card-${citation.paper_id}`;
+                const elementId = message.id ? `${message.id}-reference-paper-card-${citation.document_id}` : `${messageIndex}-reference-paper-card-${citation.document_id}`;
                 const element = document.getElementById(elementId);
 
                 if (element) {
@@ -211,9 +211,9 @@ function ProjectConversationPageContent() {
                 let pendingMentions: MentionSelection | undefined;
                 if (pendingMentionsRaw) {
                     try {
-                        const paperIds = JSON.parse(pendingMentionsRaw);
-                        if (Array.isArray(paperIds) && paperIds.length > 0) {
-                            pendingMentions = { paperIds, projectIds: [], highlights: [] };
+                        const documentIds = JSON.parse(pendingMentionsRaw);
+                        if (Array.isArray(documentIds) && documentIds.length > 0) {
+                            pendingMentions = { documentIds, projectIds: [], highlights: [] };
                         }
                     } catch {
                         // ignore malformed pending mentions
@@ -314,7 +314,7 @@ function ProjectConversationPageContent() {
         setMessages(prev => [...prev, userMessage]);
         // Reset to the reader-tab scope (not empty): papers open in the reader
         // stay in scope until their tabs close; hand-typed mentions are one-shot.
-        setMentionSelection({ ...EMPTY_MENTION_SELECTION, paperIds: [...openDocumentIds] });
+        setMentionSelection({ ...EMPTY_MENTION_SELECTION, documentIds: [...openDocumentIds] });
 
         if (!message) {
             setCurrentMessage('');
@@ -331,8 +331,8 @@ function ProjectConversationPageContent() {
             conversation_id: conversationId,
             reasoning_level: reasoningLevel,
         };
-        if (submittedMentions.paperIds.length > 0) {
-            requestBody.mentioned_paper_ids = submittedMentions.paperIds;
+        if (submittedMentions.documentIds.length > 0) {
+            requestBody.mentioned_document_ids = submittedMentions.documentIds;
         }
 
         try {

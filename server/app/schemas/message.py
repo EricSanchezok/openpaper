@@ -22,7 +22,7 @@ class MultiPaperChatRequest(BaseModel):
     user_query: str = Field(min_length=1, max_length=20_000)
     user_references: list[str] | None = Field(default=None, max_length=50)
     reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
-    mentioned_paper_ids: list[str] | None = Field(default=None, max_length=50)
+    mentioned_document_ids: list[str] | None = Field(default=None, max_length=50)
     mentioned_project_ids: list[str] | None = Field(default=None, max_length=20)
     mentioned_highlight_ids: list[str] | None = Field(default=None, max_length=50)
 
@@ -33,7 +33,7 @@ class MultiPaperChatRequest(BaseModel):
         return value
 
     @field_validator(
-        "mentioned_paper_ids",
+        "mentioned_document_ids",
         "mentioned_project_ids",
         "mentioned_highlight_ids",
     )
@@ -78,7 +78,7 @@ class ChatMessageRequest(BaseModel):
 class Evidence(BaseModel):
     """Model for managing evidence gathered from papers"""
 
-    paper_id: str = Field(
+    document_id: str = Field(
         ...,
         description="Unique identifier for the paper. Not to be used for user-facing responses. Only for internal tracking.",
     )
@@ -122,7 +122,7 @@ class Evidence(BaseModel):
 class OriginalSnippet(BaseModel):
     """An original evidence snippet with its source metadata."""
 
-    paper_id: str = Field(description="The paper ID this snippet came from")
+    document_id: str = Field(description="The paper ID this snippet came from")
     text: str = Field(description="The original snippet text")
     line_number: str | None = Field(
         default=None, description="Line number in source paper"
@@ -132,10 +132,10 @@ class OriginalSnippet(BaseModel):
 class CitationIndex(BaseModel):
     """Maps compaction citation markers to original evidence snippets."""
 
-    # Key: "{paper_id}:{snippet_index}" e.g., "abc123:0"
+    # Key: "{document_id}:{snippet_index}" e.g., "abc123:0"
     index: dict[str, OriginalSnippet] = Field(
         default_factory=dict,
-        description="Mapping of paper_id:index keys to original snippets",
+        description="Mapping of document_id:index keys to original snippets",
     )
 
 
@@ -181,7 +181,7 @@ class EvidenceCollection(BaseModel):
         ]
         citations = [
             {
-                "paper_id": a.paper_id,
+                "document_id": a.document_id,
                 "method": a.method,
                 "preferred_style": a.preferred_style,
                 "steps": [step.model_dump() for step in a.steps],
@@ -194,19 +194,21 @@ class EvidenceCollection(BaseModel):
 
     def load_from_dict(self, evidence_dict: dict[str, list[str]]) -> None:
         """Load evidence from a dictionary format"""
-        for paper_id, content in evidence_dict.items():
-            self.evidence[paper_id] = Evidence(paper_id=paper_id, content=content)
+        for document_id, content in evidence_dict.items():
+            self.evidence[document_id] = Evidence(
+                document_id=document_id, content=content
+            )
 
     def add_evidence(
         self,
-        paper_id: str,
+        document_id: str,
         content: str | list[str],
         preserve_line_numbers: bool = False,
     ) -> None:
         """Add evidence for a specific paper"""
-        if paper_id not in self.evidence:
-            self.evidence[paper_id] = Evidence(paper_id=paper_id, content=[])
-        self.evidence[paper_id].add_content(
+        if document_id not in self.evidence:
+            self.evidence[document_id] = Evidence(document_id=document_id, content=[])
+        self.evidence[document_id].add_content(
             content, with_line_numbers=preserve_line_numbers
         )
 
@@ -236,8 +238,8 @@ class EvidenceCollection(BaseModel):
     def get_evidence_dict(self) -> dict[str, list[str]]:
         """Return clean evidence content without line numbers."""
         return {
-            paper_id: evidence.get_clean_content()
-            for paper_id, evidence in self.evidence.items()
+            document_id: evidence.get_clean_content()
+            for document_id, evidence in self.evidence.items()
         }
 
     def get_evidence_dict_with_metadata(
@@ -245,8 +247,8 @@ class EvidenceCollection(BaseModel):
     ) -> dict[str, dict[str, list[str] | dict[str, list[str]]]]:
         """Get evidence with metadata for agent context"""
         return {
-            paper_id: {"content": evidence.content, "metadata": evidence.metadata}
-            for paper_id, evidence in self.evidence.items()
+            document_id: {"content": evidence.content, "metadata": evidence.metadata}
+            for document_id, evidence in self.evidence.items()
         }
 
     def has_evidence(self) -> bool:
@@ -326,8 +328,10 @@ class EvidenceCollection(BaseModel):
         """Replace evidence with compacted versions from LLM compaction"""
         # Clear existing evidence and load compacted version
         self.evidence.clear()
-        for paper_id, snippets in compacted_evidence.items():
-            self.evidence[paper_id] = Evidence(paper_id=paper_id, content=snippets)
+        for document_id, snippets in compacted_evidence.items():
+            self.evidence[document_id] = Evidence(
+                document_id=document_id, content=snippets
+            )
 
 
 class CompactedToolResult(BaseModel):
@@ -361,7 +365,7 @@ class SummaryCitationMarker(BaseModel):
 class PaperEvidenceSummary(BaseModel):
     """Summary of evidence from a single paper."""
 
-    paper_id: str = Field(description="The paper ID")
+    document_id: str = Field(description="The paper ID")
     summary: str = Field(
         description="Concise summary with [@n] markers referencing original snippets"
     )
@@ -384,7 +388,7 @@ class EvidenceCompactionResponse(BaseModel):
     """Response structure for evidence compaction before chat response.
 
     The format matches EvidenceCollection.get_evidence_dict() output:
-    Dict[str, List[str]] mapping paper_id to list of evidence strings.
+    Dict[str, List[str]] mapping document_id to list of evidence strings.
     """
 
     compacted_evidence: dict[str, list[str]] = Field(

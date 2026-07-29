@@ -216,7 +216,7 @@ async def complete_data_table_job(
                     for cell in row.values.values()
                     for citation in cell.citations
                 ],
-                row_failures=[str(paper_id) for paper_id in result.row_failures],
+                row_failures=[str(document_id) for document_id in result.row_failures],
             )
             db.add(item)
     db.commit()

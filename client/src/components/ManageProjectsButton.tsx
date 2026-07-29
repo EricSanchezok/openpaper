@@ -12,14 +12,14 @@ import { useIsMobile } from '@/hooks/use-mobile';
 export function ManageProjectsButton() {
     const params = useParams();
     const pathname = usePathname();
-    const paperId = (params.id && (Array.isArray(params.id) ? params.id[0] : params.id)) as string | null;
+    const documentId = (params.id && (Array.isArray(params.id) ? params.id[0] : params.id)) as string | null;
     const [isOpen, setIsOpen] = useState(false);
     const isMobile = useIsMobile();
 
     // Hide on shared paper pages
     const isSharePage = pathname?.includes('/paper/share/');
 
-    if (!paperId || isSharePage) {
+    if (!documentId || isSharePage) {
         return null;
     }
 
@@ -32,7 +32,7 @@ export function ManageProjectsButton() {
 
     const content = (
         <div className="flex flex-col gap-4 min-w-0">
-            {isOpen && paperId ? <PaperProjects id={paperId} /> : null}
+            {isOpen && documentId ? <PaperProjects id={documentId} /> : null}
         </div>
     );
 

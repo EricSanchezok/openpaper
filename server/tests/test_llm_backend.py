@@ -161,7 +161,7 @@ def test_chat_requests_reject_legacy_provider_fields() -> None:
         ChatMessageRequest.model_validate(
             {
                 **base,
-                "paper_id": "00000000-0000-0000-0000-000000000001",
+                "document_id": "00000000-0000-0000-0000-000000000001",
             }
         )
     with pytest.raises(ValidationError):

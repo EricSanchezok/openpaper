@@ -117,7 +117,7 @@ class MultiPaperOperations(EvidenceOperations):
             artifact_payloads = [
                 {
                     "kind": "citation",
-                    "paper_id": artifact.paper_id,
+                    "document_id": artifact.document_id,
                     "preferred_style": artifact.preferred_style,
                     "style_display": artifact.style_display,
                     "data": artifact.data.model_dump(),

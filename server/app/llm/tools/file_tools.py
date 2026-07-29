@@ -14,7 +14,7 @@ logger = getLogger(__name__)
 
 
 def _ensure_paper_in_scope(
-    paper_id: str, restrict_to_paper_ids: list[str] | None
+    document_id: str, restrict_to_document_ids: list[str] | None
 ) -> None:
     """Hard-fence a per-paper tool call to the @-mention scope when one is set.
 
@@ -22,7 +22,10 @@ def _ensure_paper_in_scope(
     available-papers list, but this is a defense-in-depth check so a tool can
     never operate on a paper outside the scoped set.
     """
-    if restrict_to_paper_ids is not None and paper_id not in restrict_to_paper_ids:
+    if (
+        restrict_to_document_ids is not None
+        and document_id not in restrict_to_document_ids
+    ):
         raise ValueError("Paper is not in the scoped set for this conversation")
 
 
@@ -38,12 +41,12 @@ read_file_function = {
     "parameters": {
         "type": "object",
         "properties": {
-            "paper_id": {
+            "document_id": {
                 "type": "string",
                 "description": "The ID of the paper whose file content to read.",
             },
         },
-        "required": ["paper_id"],
+        "required": ["document_id"],
     },
 }
 
@@ -53,7 +56,7 @@ search_file_function = {
     "parameters": {
         "type": "object",
         "properties": {
-            "paper_id": {
+            "document_id": {
                 "type": "string",
                 "description": "The ID of the paper to search in.",
             },
@@ -62,7 +65,7 @@ search_file_function = {
                 "description": "The regex pattern to search for in the file content.",
             },
         },
-        "required": ["paper_id", "query"],
+        "required": ["document_id", "query"],
     },
 }
 
@@ -72,7 +75,7 @@ view_file_function = {
     "parameters": {
         "type": "object",
         "properties": {
-            "paper_id": {
+            "document_id": {
                 "type": "string",
                 "description": "The ID of the paper whose file content to view.",
             },
@@ -85,7 +88,7 @@ view_file_function = {
                 "description": "The ending line number (exclusive, 0-based index).",
             },
         },
-        "required": ["paper_id", "range_start", "range_end"],
+        "required": ["document_id", "range_start", "range_end"],
     },
 }
 
@@ -95,12 +98,12 @@ read_abstract_function = {
     "parameters": {
         "type": "object",
         "properties": {
-            "paper_id": {
+            "document_id": {
                 "type": "string",
                 "description": "The ID of the paper whose abstract to read.",
             },
         },
-        "required": ["paper_id"],
+        "required": ["document_id"],
     },
 }
 
@@ -121,27 +124,27 @@ search_all_files_function = {
 
 
 def read_file(
-    paper_id: str,
+    document_id: str,
     current_user: CurrentUser,
     db: Session,
     project_id: str | None = None,
-    restrict_to_paper_ids: list[str] | None = None,
+    restrict_to_document_ids: list[str] | None = None,
 ) -> str:
     """
     Read the content of a file associated with a paper.
     """
-    _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
+    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
     paper: Document | None = None
     if project_id:
         paper = project_document_repository.get_paper_by_project(
             db,
-            paper_id=uuid.UUID(paper_id),
+            document_id=uuid.UUID(document_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
         paper = document_repository.find_accessible(
-            db, document_id=paper_id, user=current_user
+            db, document_id=document_id, user=current_user
         )
 
     if not paper:
@@ -155,29 +158,29 @@ def read_file(
 
 
 def search_file(
-    paper_id: str,
+    document_id: str,
     query: str,
     current_user: CurrentUser,
     db: Session,
     project_id: str | None = None,
-    restrict_to_paper_ids: list[str] | None = None,
+    restrict_to_document_ids: list[str] | None = None,
 ) -> list[str]:
     """
     Search for a specific query (as regex) in the file content of a paper.
     Returns matching lines with line numbers.
     """
-    _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
+    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
     paper: Document | None = None
     if project_id:
         paper = project_document_repository.get_paper_by_project(
             db,
-            paper_id=uuid.UUID(paper_id),
+            document_id=uuid.UUID(document_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
         paper = document_repository.find_accessible(
-            db, document_id=paper_id, user=current_user
+            db, document_id=document_id, user=current_user
         )
 
     if not paper:
@@ -207,40 +210,42 @@ def search_all_files(
     current_user: CurrentUser,
     db: Session,
     project_id: str | None = None,
-    restrict_to_paper_ids: list[str] | None = None,
+    restrict_to_document_ids: list[str] | None = None,
 ) -> dict[str, list[str]]:
     """
     Search for a specific query in the file content of all papers using full-text search.
     Returns a list of matching lines with paper IDs and line numbers.
 
-    When restrict_to_paper_ids is provided (e.g. from @-mention scoping), the
+    When restrict_to_document_ids is provided (e.g. from @-mention scoping), the
     search space is hard-limited to those papers.
     """
     start_time = time()
 
-    paper_ids: list[uuid.UUID] | None = None
+    document_ids: list[uuid.UUID] | None = None
     if project_id:
-        paper_ids = project_document_repository.get_project_paper_ids_by_project_id(
-            db, project_id=uuid.UUID(project_id), user=current_user
+        document_ids = (
+            project_document_repository.get_project_document_ids_by_project_id(
+                db, project_id=uuid.UUID(project_id), user=current_user
+            )
         )
-        if not paper_ids:
+        if not document_ids:
             return {}
 
-    if restrict_to_paper_ids is not None:
-        restrict_uuids = [uuid.UUID(pid) for pid in restrict_to_paper_ids]
-        if paper_ids is None:
-            paper_ids = restrict_uuids
+    if restrict_to_document_ids is not None:
+        restrict_uuids = [uuid.UUID(pid) for pid in restrict_to_document_ids]
+        if document_ids is None:
+            document_ids = restrict_uuids
         else:
             allowed = set(restrict_uuids)
-            paper_ids = [pid for pid in paper_ids if pid in allowed]
-        if not paper_ids:
+            document_ids = [pid for pid in document_ids if pid in allowed]
+        if not document_ids:
             return {}
 
     matching_lines_tuples = document_search_repository.matching_lines(
         db,
         user_id=current_user.id,
         query=query,
-        document_ids=paper_ids,
+        document_ids=document_ids,
     )
 
     end_time = time()
@@ -251,39 +256,39 @@ def search_all_files(
 
     results: dict[str, list[str]] = {}
 
-    for paper_id, line_num, line in matching_lines_tuples:
-        if paper_id not in results:
-            results[paper_id] = []
+    for document_id, line_num, line in matching_lines_tuples:
+        if document_id not in results:
+            results[document_id] = []
 
-        results[paper_id].append(f"{line_num}: {line}")
+        results[document_id].append(f"{line_num}: {line}")
 
     return results
 
 
 def view_file(
-    paper_id: str,
+    document_id: str,
     range_start: int,
     range_end: int,
     current_user: CurrentUser,
     db: Session,
     project_id: str | None = None,
-    restrict_to_paper_ids: list[str] | None = None,
+    restrict_to_document_ids: list[str] | None = None,
 ) -> str:
     """
     View a specific range of lines from the file content of a paper.
     """
-    _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
+    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
     paper: Document | None = None
     if project_id:
         paper = project_document_repository.get_paper_by_project(
             db,
-            paper_id=uuid.UUID(paper_id),
+            document_id=uuid.UUID(document_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
         paper = document_repository.find_accessible(
-            db, document_id=paper_id, user=current_user
+            db, document_id=document_id, user=current_user
         )
 
     if not paper:
@@ -307,27 +312,27 @@ def view_file(
 
 
 def read_abstract(
-    paper_id: str,
+    document_id: str,
     current_user: CurrentUser,
     db: Session,
     project_id: str | None = None,
-    restrict_to_paper_ids: list[str] | None = None,
+    restrict_to_document_ids: list[str] | None = None,
 ) -> str:
     """
     Read the abstract of a paper.
     """
-    _ensure_paper_in_scope(paper_id, restrict_to_paper_ids)
+    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
     paper: Document | None = None
     if project_id:
         paper = project_document_repository.get_paper_by_project(
             db,
-            paper_id=uuid.UUID(paper_id),
+            document_id=uuid.UUID(document_id),
             project_id=uuid.UUID(project_id),
             user=current_user,
         )
     else:
         paper = document_repository.find_accessible(
-            db, document_id=paper_id, user=current_user
+            db, document_id=document_id, user=current_user
         )
 
     if not paper:

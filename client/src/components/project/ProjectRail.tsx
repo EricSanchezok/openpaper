@@ -48,9 +48,9 @@ function SectionHeading({ label, count, children }: { label: string; count?: num
 }
 
 function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => void }) {
-    const { project, projectId, openDocument, openDocumentIds, activePaperId, refetchPapers } = useProjectWorkspace();
+    const { project, projectId, openDocument, openDocumentIds, activeDocumentId, refetchPapers } = useProjectWorkspace();
     const isOpen = openDocumentIds.includes(paper.id);
-    const isActive = activePaperId === paper.id;
+    const isActive = activeDocumentId === paper.id;
     const canManagePapers = project?.capabilities.manage_papers === true;
 
     const handleUnlink = async () => {

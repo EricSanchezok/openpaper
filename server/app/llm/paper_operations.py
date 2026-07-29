@@ -31,7 +31,7 @@ class PaperOperations(BaseLLMClient):
 
     def create_narrative_summary(
         self,
-        paper_id: str,
+        document_id: str,
         user: CurrentUser,
         length: Literal["short", "medium", "long"] | None = "medium",
         additional_instructions: str | None = None,
@@ -40,10 +40,12 @@ class PaperOperations(BaseLLMClient):
         """
         Create a narrative summary of the paper using the specified model
         """
-        paper = document_repository.find_accessible(db, document_id=paper_id, user=user)
+        paper = document_repository.find_accessible(
+            db, document_id=document_id, user=user
+        )
 
         if not paper:
-            raise ValueError(f"Paper with ID {paper_id} not found.")
+            raise ValueError(f"Paper with ID {document_id} not found.")
 
         audio_overview_schema = AudioOverviewForLLM.model_json_schema()
 
@@ -79,7 +81,7 @@ class PaperOperations(BaseLLMClient):
 
     async def chat_with_paper(
         self,
-        paper_id: str,
+        document_id: str,
         conversation_id: str,
         question: str,
         current_user: CurrentUser,
@@ -99,11 +101,11 @@ class PaperOperations(BaseLLMClient):
         )
 
         paper: Document | None = document_repository.find_accessible(
-            db, document_id=paper_id, user=current_user
+            db, document_id=document_id, user=current_user
         )
 
         if not paper:
-            raise ValueError(f"Paper with ID {paper_id} not found.")
+            raise ValueError(f"Paper with ID {document_id} not found.")
 
         casted_conversation_id = uuid.UUID(conversation_id)
 

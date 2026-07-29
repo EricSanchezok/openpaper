@@ -130,13 +130,13 @@ def search_knowledge_base(
         or 0
     )
     papers = list(db.scalars(paper_statement.offset(offset).limit(limit)).all())
-    paper_ids = [paper.id for paper in papers]
+    document_ids = [paper.id for paper in papers]
     library_by_document = {
         entry.document_id: entry
         for entry in db.scalars(
             select(LibraryPaper).where(
                 LibraryPaper.user_id == user.id,
-                LibraryPaper.document_id.in_(paper_ids),
+                LibraryPaper.document_id.in_(document_ids),
             )
         ).all()
     }
@@ -149,13 +149,13 @@ def search_knowledge_base(
                 HighlightThread.research_item_id == ResearchItem.id,
             )
             .where(
-                ResearchItem.document_id.in_(paper_ids),
+                ResearchItem.document_id.in_(document_ids),
                 _visible_research(user.id),
                 func.lower(HighlightThread.quote_text).like(search_pattern),
             )
             .order_by(ResearchItem.created_at.desc())
         ).all()
-        if paper_ids
+        if document_ids
         else []
     )
     comment_rows = (
@@ -170,13 +170,13 @@ def search_knowledge_base(
                 AnnotationComment.thread_id == ResearchItem.id,
             )
             .where(
-                ResearchItem.document_id.in_(paper_ids),
+                ResearchItem.document_id.in_(document_ids),
                 _visible_research(user.id),
                 func.lower(AnnotationComment.content).like(search_pattern),
             )
             .order_by(AnnotationComment.created_at.desc())
         ).all()
-        if paper_ids
+        if document_ids
         else []
     )
 

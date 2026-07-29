@@ -26,7 +26,7 @@ function autoResize(el: HTMLTextAreaElement) {
 interface PaperPreviewProps {
     paper: PaperItem;
     onClose: () => void;
-    setPaper: (paperId: string, updatedPaper: PaperItem) => void;
+    setPaper: (documentId: string, updatedPaper: PaperItem) => void;
 }
 
 function EditableField({
@@ -502,7 +502,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-80" align="start">
                                 <TagSelector
-                                    paperIds={[paper.id]}
+                                    documentIds={[paper.id]}
                                     onTagsApplied={onTagsApplied}
                                 />
                             </DropdownMenuContent>

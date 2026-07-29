@@ -68,7 +68,7 @@ class ZoteroImportedItem(Base):
     zotero_attachment_key: Mapped[str | None] = mapped_column(String, nullable=True)
     import_source: Mapped[str] = mapped_column(String, nullable=False)
     source_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    paper_id: Mapped[uuid.UUID | None] = mapped_column(
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="SET NULL"),
         nullable=True,

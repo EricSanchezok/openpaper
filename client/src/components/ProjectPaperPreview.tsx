@@ -44,7 +44,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
         try {
             const requestBody = {
                 source_project_id: projectId,
-                paper_id: paper.id,
+                document_id: paper.id,
             };
 
             const response = await fetchFromApi('/api/projects/papers/collect', {
@@ -52,7 +52,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                 body: JSON.stringify(requestBody),
             });
 
-            if (response.paper_id) {
+            if (response.document_id) {
                 toast.success("Paper added!", {
                     id: toastId,
                     description: "The paper is now in your personal library.",

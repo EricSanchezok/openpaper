@@ -41,7 +41,7 @@ export function HomeSearch() {
     const [hasSearched, setHasSearched] = useState(false);
     const [papers, setPapers] = useState<PaperResult[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
-    const [expandedPaperId, setExpandedPaperId] = useState<string | null>(null);
+    const [expandedDocumentId, setExpandedDocumentId] = useState<string | null>(null);
     const { projects: allProjects } = useProjects();
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -154,7 +154,7 @@ export function HomeSearch() {
 
                 // Keep full PaperResult to access highlights and annotations
                 setPapers(searchResponse?.papers || []);
-                setExpandedPaperId(null);
+                setExpandedDocumentId(null);
                 setHasSearched(true);
                 setIsLoading(false);
             } catch (error) {
@@ -296,7 +296,7 @@ export function HomeSearch() {
                                             textMatchesSearch(a.content, query)
                                         ) || [];
                                         const hasMatches = matchingHighlights.length > 0 || matchingAnnotations.length > 0;
-                                        const isExpanded = expandedPaperId === paper.id;
+                                        const isExpanded = expandedDocumentId === paper.id;
 
                                         return (
                                             <div key={paper.id} className="mb-1">
@@ -338,7 +338,7 @@ export function HomeSearch() {
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setExpandedPaperId(isExpanded ? null : paper.id);
+                                                                setExpandedDocumentId(isExpanded ? null : paper.id);
                                                             }}
                                                             className="p-1 hover:bg-accent rounded"
                                                         >

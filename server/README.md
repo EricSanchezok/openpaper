@@ -114,7 +114,7 @@ Multi-paper chat workflow:
         |             |  1. gather_evidence(question)                   |              |
         |             |     - Iteratively calls LLM with tools:         |              |
         |             |       - search_all_files(query)                 |--------------+
-        |             |       - read_file(paper_id, query)              |
+        |             |       - read_file(document_id, query)           |
         |             |       - ...                                     |
         |             |     - Compacts evidence if it gets too large    |
         |             |                                                 |

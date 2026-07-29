@@ -9,13 +9,13 @@ import { LibraryTable } from "./LibraryTable";
 interface AddFromLibraryProps {
     projectId: string;
     onPapersAdded: () => void;
-    projectPaperIds?: string[];
+    projectDocumentIds?: string[];
     onUploadClick?: () => void;
     remainingPaperSlots?: number;
     paperHardLimit?: number;
 }
 
-export default function AddFromLibrary({ projectId, onPapersAdded, projectPaperIds, onUploadClick, remainingPaperSlots, paperHardLimit }: AddFromLibraryProps) {
+export default function AddFromLibrary({ projectId, onPapersAdded, projectDocumentIds, onUploadClick, remainingPaperSlots, paperHardLimit }: AddFromLibraryProps) {
 
     const handleAddPapers = (papers: PaperItem[], action: string) => {
         if (action !== "Add") return;
@@ -30,11 +30,11 @@ export default function AddFromLibrary({ projectId, onPapersAdded, projectPaperI
             return;
         }
 
-        const paperIds = papers.map(p => p.id);
+        const documentIds = papers.map(p => p.id);
 
         fetchFromApi(`/api/projects/${projectId}/papers`, {
             method: 'POST',
-            body: JSON.stringify({ paper_ids: paperIds })
+            body: JSON.stringify({ document_ids: documentIds })
         })
             .then(() => {
                 toast.success("Papers added to project successfully!");
@@ -51,7 +51,7 @@ export default function AddFromLibrary({ projectId, onPapersAdded, projectPaperI
             selectable={true}
             actionOptions={["Add"]}
             onSelectFiles={handleAddPapers}
-            projectPaperIds={projectPaperIds}
+            projectDocumentIds={projectDocumentIds}
             onUploadClick={onUploadClick}
         />
     );

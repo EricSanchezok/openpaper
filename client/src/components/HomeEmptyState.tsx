@@ -19,8 +19,8 @@ export function HomeEmptyState({ onUploadComplete, onUploadStart, onUrlImportSta
     const [isUploadModalOpen, setUploadModalOpen] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
 
-    const handleUploadComplete = (paperId: string) => {
-        router.push(`/paper/${paperId}`);
+    const handleUploadComplete = (documentId: string) => {
+        router.push(`/paper/${documentId}`);
         onUploadComplete?.();
     };
 

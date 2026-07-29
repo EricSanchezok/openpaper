@@ -73,8 +73,8 @@ export function QuickActions({ onUploadComplete, onProjectCreated, onUploadStart
         }
     };
 
-    const handleUploadComplete = (paperId: string) => {
-        router.push(`/paper/${paperId}`);
+    const handleUploadComplete = (documentId: string) => {
+        router.push(`/paper/${documentId}`);
         onUploadComplete?.();
     };
 

@@ -28,7 +28,7 @@ import { useAuth } from '@/lib/auth';
 interface ChatRequestBody {
     user_query: string;
     conversation_id: string | null;
-    mentioned_paper_ids?: string[];
+    mentioned_document_ids?: string[];
     mentioned_project_ids?: string[];
     mentioned_highlight_ids?: string[];
     reasoning_level: "standard" | "deep";
@@ -109,18 +109,18 @@ function UnderstandPageContent() {
         }
     }, [tokenCreditLimitReached]);
 
-    const [highlightedInfo, setHighlightedInfo] = useState<{ paperId: string; messageIndex: number } | null>(null);
+    const [highlightedInfo, setHighlightedInfo] = useState<{ documentId: string; messageIndex: number } | null>(null);
 
     const handleCitationClick = useCallback((key: string, messageIndex: number) => {
         const message = messages[messageIndex];
         if (!message) return;
 
         const citation = message.references?.citations?.find(c => String(c.key) === key);
-        if (!citation || !citation.paper_id) return;
+        if (!citation || !citation.document_id) return;
 
-        setHighlightedInfo({ paperId: citation.paper_id, messageIndex });
+        setHighlightedInfo({ documentId: citation.document_id, messageIndex });
 
-        const elementId = message.id ? `${message.id}-reference-paper-card-${citation.paper_id}` : `${messageIndex}-reference-paper-card-${citation.paper_id}`;
+        const elementId = message.id ? `${message.id}-reference-paper-card-${citation.document_id}` : `${messageIndex}-reference-paper-card-${citation.document_id}`;
         const element = document.getElementById(elementId);
 
         if (element) {
@@ -295,8 +295,8 @@ function UnderstandPageContent() {
             reasoning_level: reasoningLevel,
         };
         if (!mentionSelectionIsEmpty(submittedMentions)) {
-            if (submittedMentions.paperIds.length > 0) {
-                requestBody.mentioned_paper_ids = submittedMentions.paperIds;
+            if (submittedMentions.documentIds.length > 0) {
+                requestBody.mentioned_document_ids = submittedMentions.documentIds;
             }
             if (submittedMentions.projectIds.length > 0) {
                 requestBody.mentioned_project_ids = submittedMentions.projectIds;
@@ -437,9 +437,9 @@ function UnderstandPageContent() {
 
     const [isCentered, setIsCentered] = useState(true);
 
-    const refreshPaperUrl = useCallback(async (paperId: string): Promise<string | null> => {
+    const refreshPaperUrl = useCallback(async (documentId: string): Promise<string | null> => {
         try {
-            return await getPaperFileUrl(paperId);
+            return await getPaperFileUrl(documentId);
         } catch (error) {
             console.error('Error refreshing paper URL:', error);
             return null;

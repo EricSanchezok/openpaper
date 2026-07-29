@@ -6,7 +6,7 @@ export type ZoteroStatus = {
 
 export type ZoteroImportStatusItem = {
 	zotero_item_key: string;
-	paper_id?: string;
+	document_id?: string;
 	status: string;
 	import_source: string;
 	title?: string;

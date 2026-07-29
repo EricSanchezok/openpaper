@@ -45,7 +45,7 @@ class CitationSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["citation"]
-    paper_id: str = Field(min_length=1, max_length=100)
+    document_id: str = Field(min_length=1, max_length=100)
     preferred_style: str = Field(min_length=1, max_length=100)
     style_display: str = Field(min_length=1, max_length=200)
     data: CitationData

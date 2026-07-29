@@ -8,18 +8,18 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 interface Job extends MinimalJob {
 	status: JobStatus;
 	details?: PaperUploadJobStatusResponse;
-	paperId?: string;
+	documentId?: string;
 }
 
 interface PdfUploadTrackerProps {
 	initialJobs: MinimalJob[];
-	onComplete: (paperId: string) => void;
+	onComplete: (documentId: string) => void;
 }
 
 // Track jobs that have already triggered onComplete - persists across component remounts
 // This prevents the infinite loop: complete -> refetch -> unmount -> remount -> complete again
-// Also stores paperId so we can restore full job state on remount
-const completedJobs = new Map<string, string>(); // jobId -> paperId
+// Also stores documentId so we can restore full job state on remount
+const completedJobs = new Map<string, string>(); // jobId -> documentId
 
 const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComplete }) => {
 	const [jobs, setJobs] = useState<Job[]>([]);
@@ -45,12 +45,12 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 				addedNewPending = true;
 			}
 			return [...prevJobs, ...newJobs.map(j => {
-				// If this job already completed, restore its completed status and paperId
-				const completedPaperId = completedJobs.get(j.jobId);
+				// If this job already completed, restore its completed status and documentId
+				const completedDocumentId = completedJobs.get(j.jobId);
 				return {
 					...j,
-					status: completedPaperId ? 'completed' as JobStatus : 'pending' as JobStatus,
-					paperId: completedPaperId
+					status: completedDocumentId ? 'completed' as JobStatus : 'pending' as JobStatus,
+					documentId: completedDocumentId
 				};
 			})];
 		});
@@ -79,13 +79,13 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 							...j,
 							status: statusResponse.status,
 							details: statusResponse,
-							paperId: statusResponse.paper_id || j.paperId
+							documentId: statusResponse.document_id || j.documentId
 						} : j));
 
-						if (statusResponse.status === "completed" && statusResponse.paper_id) {
+						if (statusResponse.status === "completed" && statusResponse.document_id) {
 							// Mark as completed before calling onComplete to prevent duplicate calls
-							completedJobs.set(job.jobId, statusResponse.paper_id);
-							onCompleteRef.current(statusResponse.paper_id);
+							completedJobs.set(job.jobId, statusResponse.document_id);
+							onCompleteRef.current(statusResponse.document_id);
 						}
 					} catch (err) {
 						console.error(`Failed to get upload status for ${job.fileName}.`, err);
@@ -163,9 +163,9 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 					{jobs.map(job => (
 						<div key={job.jobId} className="flex items-center justify-between p-3 gap-4 min-w-0">
 							<div className="flex-1 min-w-0 overflow-hidden">
-								{job.status === 'completed' && job.paperId ? (
+								{job.status === 'completed' && job.documentId ? (
 									<Link
-										href={`/paper/${job.paperId}`}
+										href={`/paper/${job.documentId}`}
 										className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 hover:underline cursor-pointer block truncate"
 										title={job.fileName}
 									>

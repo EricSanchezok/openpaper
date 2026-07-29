@@ -53,7 +53,7 @@ class CRUDZoteroImport:
     ) -> list[tuple[ZoteroImportedItem, str | None]]:
         statement = (
             select(ZoteroImportedItem, Document.title)
-            .outerjoin(Document, ZoteroImportedItem.paper_id == Document.id)
+            .outerjoin(Document, ZoteroImportedItem.document_id == Document.id)
             .where(ZoteroImportedItem.user_id == user_id)
             .order_by(ZoteroImportedItem.created_at.desc())
             .limit(limit)
@@ -67,7 +67,7 @@ class CRUDZoteroImport:
             return []
         statement = (
             select(ZoteroImportedItem, Document.title)
-            .outerjoin(Document, ZoteroImportedItem.paper_id == Document.id)
+            .outerjoin(Document, ZoteroImportedItem.document_id == Document.id)
             .where(
                 ZoteroImportedItem.user_id == user_id,
                 ZoteroImportedItem.zotero_item_key.in_(item_keys),
@@ -85,7 +85,7 @@ class CRUDZoteroImport:
         import_source: str,
         zotero_attachment_key: str | None = None,
         source_url: str | None = None,
-        paper_id: UUID | None = None,
+        document_id: UUID | None = None,
         upload_job_id: UUID | None = None,
         annotations_payload: list[dict[str, JsonValue]] | None = None,
         status: str = ZoteroImportStatus.PROCESSING,
@@ -96,7 +96,7 @@ class CRUDZoteroImport:
             zotero_attachment_key=zotero_attachment_key,
             import_source=import_source,
             source_url=source_url,
-            paper_id=paper_id,
+            document_id=document_id,
             upload_job_id=upload_job_id,
             annotations_payload=annotations_payload,
             status=status,
@@ -113,13 +113,13 @@ class CRUDZoteroImport:
         item: ZoteroImportedItem,
         status: str,
         error_message: str | None = None,
-        paper_id: UUID | None = None,
+        document_id: UUID | None = None,
     ) -> ZoteroImportedItem:
         setattr(item, "status", status)
         if error_message is not None:
             setattr(item, "error_message", error_message)
-        if paper_id is not None:
-            setattr(item, "paper_id", paper_id)
+        if document_id is not None:
+            setattr(item, "document_id", document_id)
         db.add(item)
         db.commit()
         db.refresh(item)
@@ -131,11 +131,11 @@ class CRUDZoteroImport:
         return list(
             db.scalars(
                 select(ZoteroImportedItem)
-                .join(Document, ZoteroImportedItem.paper_id == Document.id)
+                .join(Document, ZoteroImportedItem.document_id == Document.id)
                 .where(
                     ZoteroImportedItem.user_id == user_id,
                     ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
-                    ZoteroImportedItem.paper_id.isnot(None),
+                    ZoteroImportedItem.document_id.isnot(None),
                     ZoteroImportedItem.import_source
                     == ZoteroImportSource.PDF_ATTACHMENT,
                     ZoteroImportedItem.zotero_attachment_key.isnot(None),
@@ -185,7 +185,7 @@ class CRUDZoteroImport:
         import_source: str,
         zotero_attachment_key: str | None,
         source_url: str | None,
-        paper_id: UUID,
+        document_id: UUID,
         upload_job_id: UUID,
         annotations_payload: list[dict[str, JsonValue]] | None,
         last_synced_at: datetime | None = None,
@@ -193,7 +193,7 @@ class CRUDZoteroImport:
         setattr(item, "import_source", import_source)
         setattr(item, "zotero_attachment_key", zotero_attachment_key)
         setattr(item, "source_url", source_url)
-        setattr(item, "paper_id", paper_id)
+        setattr(item, "document_id", document_id)
         setattr(item, "upload_job_id", upload_job_id)
         setattr(item, "annotations_payload", annotations_payload)
         setattr(item, "error_message", None)

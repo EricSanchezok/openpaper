@@ -180,13 +180,13 @@ def _finalize_zotero_import(
                 item=zotero_import,
                 status=ZoteroImportStatus.PROCESSING,
                 error_message=f"Imported without full processing: {error_message}",
-                paper_id=uuid.UUID(str(paper.id)),
+                document_id=uuid.UUID(str(paper.id)),
             )
 
     apply_zotero_annotations(
         db=db,
         upload_job_id=job_id,
-        paper_id=str(paper.id),
+        document_id=str(paper.id),
         user=job_user,
     )
 
@@ -215,7 +215,7 @@ def handle_failed_upload(
     # Refuse to tear down a job that already succeeded. A redelivered Celery
     # task (acks_late) can post a late "failed" webhook after another delivery
     # already built and committed the paper; deleting it here is what caused
-    # the highlights_paper_id_fkey violations (highlight inserts racing a paper
+    # the highlights_document_id_fkey violations (highlight inserts racing a paper
     # delete). A completed job means the paper is good — leave it alone.
     job = upload_reservation_repository.get(db=db, id=job_id, user=job_user)
     if job and job.job.status == JobStatus.COMPLETED:
@@ -278,7 +278,7 @@ def handle_failed_upload(
             item=zotero_import,
             status=ZoteroImportStatus.FAILED,
             error_message=reason,
-            paper_id=None,
+            document_id=None,
         )
 
 
@@ -577,7 +577,7 @@ async def handle_paper_processing_webhook(
                     )
                     return {
                         "status": "webhook processed - zotero import",
-                        "paper_id": finalized,
+                        "document_id": finalized,
                     }
                 handle_failed_upload(
                     db=db,
@@ -772,7 +772,7 @@ async def handle_paper_processing_webhook(
                     db.commit()
                     return {
                         "status": "webhook processed - zotero salvage",
-                        "paper_id": salvaged,
+                        "document_id": salvaged,
                     }
 
             handle_failed_upload(

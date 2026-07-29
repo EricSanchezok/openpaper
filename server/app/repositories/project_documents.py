@@ -173,7 +173,7 @@ class ProjectDocumentRepository:
         self,
         db: Session,
         *,
-        paper_id: uuid.UUID,
+        document_id: uuid.UUID,
         project_id: uuid.UUID,
         user: CurrentUser,
     ) -> Document | None:
@@ -182,7 +182,7 @@ class ProjectDocumentRepository:
         project_paper = db.scalars(
             select(ProjectPaper).where(
                 ProjectPaper.project_id == project_id,
-                ProjectPaper.document_id == paper_id,
+                ProjectPaper.document_id == document_id,
             )
         ).first()
 
@@ -196,12 +196,12 @@ class ProjectDocumentRepository:
     ) -> list[Document]:
         require_project_access(db, project_id=project_id, user_id=user.id)
 
-        paper_ids = db.scalars(
+        document_ids = db.scalars(
             select(ProjectPaper.document_id).where(
                 ProjectPaper.project_id == project_id
             )
         ).all()
-        papers = db.scalars(select(Document).where(Document.id.in_(paper_ids))).all()
+        papers = db.scalars(select(Document).where(Document.id.in_(document_ids))).all()
         return list(papers)
 
     def get_papers_metadata_by_project_id(
@@ -242,7 +242,7 @@ class ProjectDocumentRepository:
         ).all()
         return list(papers)
 
-    def get_library_document_ids(
+    def get_library_paper_ids(
         self,
         db: Session,
         *,
@@ -260,7 +260,7 @@ class ProjectDocumentRepository:
             ).all()
         )
 
-    def get_project_paper_ids_by_project_id(
+    def get_project_document_ids_by_project_id(
         self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
     ) -> list[uuid.UUID]:
         require_project_access(db, project_id=project_id, user_id=user.id)
@@ -297,7 +297,7 @@ class ProjectDocumentRepository:
         self,
         db: Session,
         *,
-        paper_id: uuid.UUID,
+        document_id: uuid.UUID,
         project_id: uuid.UUID,
         user: CurrentUser,
     ) -> ProjectPaper | None:
@@ -311,7 +311,7 @@ class ProjectDocumentRepository:
         project_paper = db.scalars(
             select(ProjectPaper).where(
                 ProjectPaper.project_id == project_id,
-                ProjectPaper.document_id == paper_id,
+                ProjectPaper.document_id == document_id,
             )
         ).first()
 
@@ -326,16 +326,18 @@ class ProjectDocumentRepository:
         db.flush()
         from app.services.document_gc import schedule_document_gc
 
-        schedule_document_gc(db, document_id=paper_id)
+        schedule_document_gc(db, document_id=document_id)
         db.commit()
         return project_paper
 
-    def get_projects_by_paper_id(
-        self, db: Session, *, paper_id: uuid.UUID, user: CurrentUser
+    def get_projects_by_document_id(
+        self, db: Session, *, document_id: uuid.UUID, user: CurrentUser
     ) -> list[Project]:
-        # First, find all project-paper associations for the given paper_id
+        # First, find all project-paper associations for the given document_id
         project_ids = db.scalars(
-            select(ProjectPaper.project_id).where(ProjectPaper.document_id == paper_id)
+            select(ProjectPaper.project_id).where(
+                ProjectPaper.document_id == document_id
+            )
         ).all()
 
         if not project_ids:
@@ -369,7 +371,7 @@ class ProjectDocumentRepository:
     ) -> Document | None:
         document = self.get_paper_by_project(
             db,
-            paper_id=document_id,
+            document_id=document_id,
             project_id=project_id,
             user=current_user,
         )

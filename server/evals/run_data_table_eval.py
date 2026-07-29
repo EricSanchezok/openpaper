@@ -119,9 +119,9 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
         key = paper_cfg["key"]
         state = seed_state.get(key, {})
 
-        if state.get("paper_id") and state.get("project_id"):
+        if state.get("document_id") and state.get("project_id"):
             existing = paper_crud.get(
-                db, id=uuid.UUID(state["paper_id"]), user=current_user
+                db, id=uuid.UUID(state["document_id"]), user=current_user
             )
             if existing:
                 logger.info(f"[seed] {key}: already seeded, skipping")
@@ -168,7 +168,7 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
         )
 
         seed_state[key] = {
-            "paper_id": str(paper.id),
+            "document_id": str(paper.id),
             "project_id": str(project.id),
             "s3_object_key": object_key,
         }

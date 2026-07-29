@@ -25,7 +25,7 @@ function toHighlight(item: ResearchItem): PaperHighlight | null {
 }
 
 export function useHighlighterHighlights(
-	paperId: string,
+	documentId: string,
 	_projectId?: string | null,
 	readOnlyHighlights: Array<PaperHighlight> = []
 ) {
@@ -44,7 +44,7 @@ export function useHighlighterHighlights(
 	const fetchHighlights = useCallback(async () => {
 		try {
 			const response = await fetchFromApi(
-				`/api/documents/${paperId}/highlight-threads`,
+				`/api/documents/${documentId}/highlight-threads`,
 				{
 					method: "GET",
 					headers: {
@@ -82,7 +82,7 @@ export function useHighlighterHighlights(
 		} catch (error) {
 			console.error("Error loading highlights from server:", error);
 		}
-	}, [paperId]);
+	}, [documentId]);
 
 	// Send highlight to server
 	const sendHighlightToServer = async (
@@ -111,7 +111,7 @@ export function useHighlighterHighlights(
 
 		try {
 			const item = await fetchFromApi(
-				`/api/documents/${paperId}/highlight-threads`,
+				`/api/documents/${documentId}/highlight-threads`,
 				{
 				method: "POST",
 				headers: {
@@ -225,7 +225,7 @@ export function useHighlighterHighlights(
 		} else {
 			fetchHighlights();
 		}
-	}, [paperId, readOnlyHighlights.length, fetchHighlights]);
+	}, [documentId, readOnlyHighlights.length, fetchHighlights]);
 
 	// Reset interaction state when selectedText is cleared
 	useEffect(() => {

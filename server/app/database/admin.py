@@ -228,7 +228,7 @@ class ZoteroImportedItemAdmin(ModelView, model=ZoteroImportedItem):
         ZoteroImportedItem.user_id,
         ZoteroImportedItem.zotero_item_key,
         ZoteroImportedItem.status,
-        ZoteroImportedItem.paper_id,
+        ZoteroImportedItem.document_id,
         ZoteroImportedItem.error_message,
         ZoteroImportedItem.last_synced_at,
     ]
@@ -236,7 +236,7 @@ class ZoteroImportedItemAdmin(ModelView, model=ZoteroImportedItem):
         ZoteroImportedItem.user_id,
         ZoteroImportedItem.zotero_item_key,
         ZoteroImportedItem.status,
-        ZoteroImportedItem.paper_id,
+        ZoteroImportedItem.document_id,
     ]
     column_sortable_list = [
         ZoteroImportedItem.status,
@@ -250,7 +250,7 @@ class ZoteroImportedItemAdmin(ModelView, model=ZoteroImportedItem):
         ZoteroImportedItem.zotero_attachment_key,
         ZoteroImportedItem.import_source,
         ZoteroImportedItem.source_url,
-        ZoteroImportedItem.paper_id,
+        ZoteroImportedItem.document_id,
         ZoteroImportedItem.upload_job_id,
         ZoteroImportedItem.status,
         ZoteroImportedItem.annotations_payload,

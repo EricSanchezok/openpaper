@@ -9,26 +9,26 @@ import Link from 'next/link';
 
 export function CitationGraphButton() {
     const pathname = usePathname();
-    const [paperId, setPaperId] = useState<string | null>(null);
+    const [documentId, setDocumentId] = useState<string | null>(null);
     const [paperDoi, setPaperDoi] = useState<string | null>(null);
 
     useEffect(() => {
         if (pathname) {
             const segments = pathname.split('/');
             if (segments[1] === 'paper' && segments.length === 3 && segments[2]) {
-                setPaperId(segments[2]);
+                setDocumentId(segments[2]);
             } else {
-                setPaperId(null);
+                setDocumentId(null);
             }
         }
     }, [pathname]);
 
     useEffect(() => {
-        if (!paperId) return;
+        if (!documentId) return;
 
         const fetchPaperData = async () => {
             try {
-                const data = await fetchDocumentPaperData(paperId);
+                const data = await fetchDocumentPaperData(documentId);
                 setPaperDoi(data.doi || null);
             } catch {
                 setPaperDoi(null);
@@ -36,10 +36,10 @@ export function CitationGraphButton() {
         };
 
         fetchPaperData();
-    }, [paperId]);
+    }, [documentId]);
 
     // Only show button if paper has a DOI
-    if (!paperId || !paperDoi) {
+    if (!documentId || !paperDoi) {
         return null;
     }
 

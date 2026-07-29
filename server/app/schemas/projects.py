@@ -46,18 +46,18 @@ class CollectPaperFromProjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_project_id: UUID
-    paper_id: UUID
+    document_id: UUID
 
 
 class AddPaperToProjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    paper_ids: list[UUID] = Field(min_length=1, max_length=120)
+    document_ids: list[UUID] = Field(min_length=1, max_length=120)
 
     @model_validator(mode="after")
     def reject_duplicates(self) -> "AddPaperToProjectRequest":
-        if len(set(self.paper_ids)) != len(self.paper_ids):
-            raise ValueError("paper_ids must be unique")
+        if len(set(self.document_ids)) != len(self.document_ids):
+            raise ValueError("document_ids must be unique")
         return self
 
 
@@ -146,7 +146,7 @@ class ProjectPapersAddedResponse(BaseModel):
 
 
 class ProjectPaperCollectedResponse(BaseModel):
-    paper_id: UUID
+    document_id: UUID
 
 
 class ProjectPaperFileUrlResponse(BaseModel):
@@ -156,7 +156,7 @@ class ProjectPaperFileUrlResponse(BaseModel):
 class ProjectPendingUploadResponse(BaseModel):
     job_id: UUID
     status: str
-    paper_id: UUID
+    document_id: UUID
     title: str | None
     started_at: datetime | None
 

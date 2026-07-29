@@ -122,13 +122,13 @@ def test_project_requests_reject_legacy_roles_and_unknown_fields() -> None:
             }
         )
 
-    paper_id = uuid.uuid4()
+    document_id = uuid.uuid4()
     with pytest.raises(ValidationError):
         AddPaperToProjectRequest.model_validate(
-            {"paper_ids": [str(paper_id), str(paper_id)]}
+            {"document_ids": [str(document_id), str(document_id)]}
         )
     with pytest.raises(ValidationError):
-        AddPaperToProjectRequest.model_validate({"paper_ids": []})
+        AddPaperToProjectRequest.model_validate({"document_ids": []})
 
 
 def test_project_papers_are_attached_in_one_transaction(

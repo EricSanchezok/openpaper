@@ -11,11 +11,11 @@ import { toast } from "sonner";
 import { PlusCircle } from "lucide-react";
 
 interface TagSelectorProps {
-    paperIds: string[];
+    documentIds: string[];
     onTagsApplied: () => void;
 }
 
-export function TagSelector({ paperIds, onTagsApplied }: TagSelectorProps) {
+export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
     const [tags, setTags] = useState<PaperTag[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -71,7 +71,7 @@ export function TagSelector({ paperIds, onTagsApplied }: TagSelectorProps) {
             await fetchFromApi("/api/library/tags/assignments", {
                 method: "POST",
                 body: JSON.stringify({
-                    document_ids: paperIds,
+                    document_ids: documentIds,
                     tag_ids: Array.from(selectedTags),
                 }),
             });

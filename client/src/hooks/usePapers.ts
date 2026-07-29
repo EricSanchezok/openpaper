@@ -10,9 +10,9 @@ export function usePapers() {
 		fetchLibraryPapers,
 	);
 
-	const setPapers = (paperId: string, updatedPaper: PaperItem) => {
+	const setPapers = (documentId: string, updatedPaper: PaperItem) => {
 		if (data) {
-			const updatedPapers = data.map(p => (p.id === paperId ? updatedPaper : p));
+			const updatedPapers = data.map(p => (p.id === documentId ? updatedPaper : p));
 			mutate(updatedPapers, false); // Update local data without revalidating
 		}
 	};

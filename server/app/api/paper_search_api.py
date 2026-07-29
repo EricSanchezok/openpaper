@@ -27,14 +27,14 @@ paper_search_router = APIRouter()
 async def get_paper_graph(
     request: Request,
     doi: str | None = None,
-    paper_id: str | None = None,
+    document_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_required_user),
 ) -> OpenAlexCitationGraph:
     """
     Get the citation graph for a paper.
 
-    Either doi or paper_id must be provided. If paper_id is provided,
+    Either doi or document_id must be provided. If document_id is provided,
     the paper's DOI will be used to look up the OpenAlex ID.
     """
     try:
@@ -49,17 +49,17 @@ async def get_paper_graph(
             message="External search rate limit exceeded",
             status_code=429,
         ) from None
-    if not doi and not paper_id:
+    if not doi and not document_id:
         raise AppError(
             code="citation_graph_source_required",
-            message="Either doi or paper_id must be provided",
+            message="Either doi or document_id must be provided",
             status_code=400,
         )
 
     paper = None
-    if paper_id:
+    if document_id:
         paper = document_repository.find_accessible(
-            db, document_id=paper_id, user=current_user
+            db, document_id=document_id, user=current_user
         )
         if not paper:
             raise AppError(

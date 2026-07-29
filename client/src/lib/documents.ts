@@ -228,7 +228,7 @@ export async function fetchUploadJobStatus(
         started_at: job.started_at ?? job.created_at,
         created_at: job.created_at,
         completed_at: job.completed_at,
-        paper_id: job.document_id,
+        document_id: job.document_id,
         has_file_url: job.status === "completed",
         has_metadata: job.status === "completed",
         celery_progress_message: job.progress_message,

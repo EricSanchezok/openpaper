@@ -6,14 +6,14 @@ import {
 import { fetchFromApi } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
-export function useAnnotations(paperId: string, projectId?: string | null) {
+export function useAnnotations(documentId: string, projectId?: string | null) {
     const [annotations, setAnnotations] = useState<PaperHighlightAnnotation[]>([]);
     const toAnnotation = (
         comment: ResearchComment,
     ): PaperHighlightAnnotation => ({
         id: comment.id,
         highlight_id: comment.thread_id,
-        paper_id: paperId,
+        document_id: documentId,
         content: comment.content,
         role: comment.role,
         created_at: comment.created_at,
@@ -82,7 +82,7 @@ export function useAnnotations(paperId: string, projectId?: string | null) {
 
     const fetchAnnotations = async () => {
         try {
-            const response = await fetchFromApi(`/api/documents/${paperId}/highlight-threads`, {
+            const response = await fetchFromApi(`/api/documents/${documentId}/highlight-threads`, {
                 method: 'GET',
             }) as { items: ResearchItem[] };
             const loadedAnnotations = response.items.flatMap((item) =>
@@ -130,7 +130,7 @@ export function useAnnotations(paperId: string, projectId?: string | null) {
 
     useEffect(() => {
         fetchAnnotations();
-    }, [paperId, projectId]);
+    }, [documentId, projectId]);
 
     return {
         annotations,

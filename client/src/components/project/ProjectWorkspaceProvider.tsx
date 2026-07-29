@@ -35,20 +35,20 @@ interface ProjectWorkspaceValue {
     papers: PaperItem[];
     isPapersLoading: boolean;
     refetchPapers: () => Promise<void>;
-    updatePaper: (paperId: string, patch: Partial<PaperItem>) => void;
+    updatePaper: (documentId: string, patch: Partial<PaperItem>) => void;
     conversations: Conversation[];
     isConversationsLoading: boolean;
     refetchConversations: () => Promise<void>;
     // In-page reader panel (open papers as tabs).
     openDocumentIds: string[];
-    activePaperId: string | null;
+    activeDocumentId: string | null;
     readerSearchTerm: string | null;
     openDocument: (paper: PaperItem, searchTerm?: string | null) => void;
-    activatePaper: (paperId: string) => void;
-    closePaper: (paperId: string) => void;
+    activatePaper: (documentId: string) => void;
+    closePaper: (documentId: string) => void;
     closeReader: () => void;
     // Fetch a fresh presigned file URL and patch it into the papers list.
-    refreshPaperUrl: (paperId: string) => Promise<string | null>;
+    refreshPaperUrl: (documentId: string) => Promise<string | null>;
     // Workspace chrome state.
     crumb: string | null;
     setCrumb: (crumb: string | null) => void;
@@ -95,7 +95,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
     const { conversations, isLoading: isConversationsLoading, refetch: refetchConversations } = useProjectConversations(projectId);
 
     const [openDocumentIds, setOpenDocumentIds] = useState<string[]>([]);
-    const [activePaperId, setActivePaperId] = useState<string | null>(null);
+    const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
     const [readerSearchTerm, setReaderSearchTerm] = useState<string | null>(null);
     const [crumb, setCrumb] = useState<string | null>(null);
     // Artifacts pane is open by default on desktop; like the rail, an explicit
@@ -118,22 +118,22 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
 
     const openDocument = useCallback((paper: PaperItem, searchTerm: string | null = null) => {
         setOpenDocumentIds((prev) => (prev.includes(paper.id) ? prev : [...prev, paper.id]));
-        setActivePaperId(paper.id);
+        setActiveDocumentId(paper.id);
         setReaderSearchTerm(searchTerm);
         setRightPanel("reader");
     }, []);
 
-    const activatePaper = useCallback((paperId: string) => {
-        setActivePaperId(paperId);
+    const activatePaper = useCallback((documentId: string) => {
+        setActiveDocumentId(documentId);
         // A manual tab switch shouldn't replay a stale citation search.
         setReaderSearchTerm(null);
         setRightPanel("reader");
     }, []);
 
-    const closePaper = useCallback((paperId: string) => {
+    const closePaper = useCallback((documentId: string) => {
         setOpenDocumentIds((prev) => {
-            const next = prev.filter((id) => id !== paperId);
-            setActivePaperId((active) => (active === paperId ? (next[next.length - 1] ?? null) : active));
+            const next = prev.filter((id) => id !== documentId);
+            setActiveDocumentId((active) => (active === documentId ? (next[next.length - 1] ?? null) : active));
             if (next.length === 0) {
                 setRightPanel((mode) => (mode === "reader" ? null : mode));
             }
@@ -143,7 +143,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
 
     const closeReader = useCallback(() => {
         setOpenDocumentIds([]);
-        setActivePaperId(null);
+        setActiveDocumentId(null);
         setReaderSearchTerm(null);
         setRightPanel((mode) => (mode === "reader" ? null : mode));
     }, []);
@@ -190,11 +190,11 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
         });
     }, []);
 
-    const refreshPaperUrl = useCallback(async (paperId: string): Promise<string | null> => {
+    const refreshPaperUrl = useCallback(async (documentId: string): Promise<string | null> => {
         try {
-            const fileUrl = await getProjectPaperFileUrl(projectId, paperId);
+            const fileUrl = await getProjectPaperFileUrl(projectId, documentId);
             if (fileUrl) {
-                updatePaper(paperId, { file_url: fileUrl });
+                updatePaper(documentId, { file_url: fileUrl });
                 return fileUrl;
             }
             return null;
@@ -249,7 +249,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
         isConversationsLoading,
         refetchConversations,
         openDocumentIds,
-        activePaperId,
+        activeDocumentId,
         readerSearchTerm,
         openDocument,
         activatePaper,
@@ -276,7 +276,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
         projectId, project, isProjectLoading, projectError, refetchProject,
         papers, isPapersLoading, refetchPapers, updatePaper,
         conversations, isConversationsLoading, refetchConversations,
-        openDocumentIds, activePaperId, readerSearchTerm,
+        openDocumentIds, activeDocumentId, readerSearchTerm,
         openDocument, activatePaper, closePaper, closeReader, refreshPaperUrl,
         crumb, rightPanel, toggleArtifacts, closeArtifacts, collapseArtifacts, railCollapsed, toggleRail,
         addPapersOpen, addPapersInitialView, openAddPapers, hasCollaborators,

@@ -51,14 +51,14 @@ class TestZoteroAnnotationPayload(unittest.TestCase):
 
 class TestZoteroSyncItem(unittest.TestCase):
     def setUp(self) -> None:
-        self.paper_id = uuid4()
+        self.document_id = uuid4()
         self.import_row = MagicMock()
-        self.import_row.paper_id = self.paper_id
+        self.import_row.document_id = self.document_id
         self.import_row.zotero_item_key = "ITEM1"
         self.import_row.zotero_attachment_key = "ATT1"
 
         self.paper = MagicMock()
-        self.paper.id = self.paper_id
+        self.paper.id = self.document_id
         self.paper.s3_object_key = "uploads/test.pdf"
 
         self.user = MagicMock()
@@ -161,7 +161,7 @@ class TestZoteroSyncItem(unittest.TestCase):
 
         applied = zotero_import_module._try_backfill_or_apply_annotation(
             db,
-            paper_id=self.paper_id,
+            document_id=self.document_id,
             user=self.user,
             zotero_annotation_key="ANN1",
             ann_data={"annotationType": "highlight", "annotationText": "hello"},
@@ -215,7 +215,7 @@ class TestSyncBatch(unittest.IsolatedAsyncioTestCase):
         mock_import_crud.list_syncable_by_user.return_value = [import_row]
         mock_sync_item.return_value = {
             "zotero_item_key": "ITEM1",
-            "paper_id": str(uuid4()),
+            "document_id": str(uuid4()),
             "new_annotations_count": 2,
         }
 

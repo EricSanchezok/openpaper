@@ -37,28 +37,30 @@ async def _process_single_paper(
         Tuple of (DataTableRow, failure_id or None)
     """
     async with semaphore:
-        paper_id = paper.id
+        document_id = paper.id
         try:
             paper_col_values = await llm_client.extract_data_table(
                 paper_content=paper.raw_content,
                 columns=columns,
-                paper_id=paper_id,
+                document_id=document_id,
             )
             status_callback(f"extract for {paper.title} completed")
             return paper_col_values, None
 
         except Exception:
-            logger.exception("Failed to extract paper %s (%s)", paper_id, paper.title)
+            logger.exception(
+                "Failed to extract paper %s (%s)", document_id, paper.title
+            )
             status_callback(f"extract for {paper.title} failed")
 
             # Return row with empty values to maintain paper ordering
             empty_row = DataTableRow(
-                paper_id=paper_id,
+                document_id=document_id,
                 values={
                     col: DataTableCellValue(value="", citations=[]) for col in columns
                 },
             )
-            return empty_row, str(paper_id)
+            return empty_row, str(document_id)
 
 
 async def construct_data_table(

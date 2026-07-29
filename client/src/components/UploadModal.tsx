@@ -23,7 +23,7 @@ interface UploadModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     uploadLimit?: number;
-    onUploadComplete?: (paperId: string) => void;
+    onUploadComplete?: (documentId: string) => void;
     /** Called when files are selected, allowing parent to handle upload with custom loading experience */
     onUploadStart?: (files: File[]) => void;
     /** Called when URL import is initiated, allowing parent to handle with custom loading experience */
@@ -124,8 +124,8 @@ export function UploadModal({ open, onOpenChange, uploadLimit = DEFAULT_UPLOAD_L
         }
     }
 
-    const onComplete = (paperId: string) => {
-        onUploadComplete?.(paperId);
+    const onComplete = (documentId: string) => {
+        onUploadComplete?.(documentId);
     }
 
     const onUrlClick = () => {

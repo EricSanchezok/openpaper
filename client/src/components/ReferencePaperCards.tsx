@@ -25,24 +25,24 @@ export default function ReferencePaperCards({ citations, papers, messageId, mess
         }
     }, [highlightedPaper, onHighlightClear]);
 
-    const toggleExpanded = (paperId: string) => {
-        setExpandedPaper(expandedPaper === paperId ? null : paperId);
+    const toggleExpanded = (documentId: string) => {
+        setExpandedPaper(expandedPaper === documentId ? null : documentId);
     };
 
     const paperCitationGroups = citations.reduce((acc, c) => {
-        if (c.paper_id) {
-            if (!acc[c.paper_id]) {
-                acc[c.paper_id] = [];
+        if (c.document_id) {
+            if (!acc[c.document_id]) {
+                acc[c.document_id] = [];
             }
-            acc[c.paper_id].push(c);
+            acc[c.document_id].push(c);
         }
         return acc;
     }, {} as Record<string, Citation[]>);
 
     return (
         <div className="mt-3 space-y-3">
-            {Object.entries(paperCitationGroups).map(([paperId, paperCitations]) => {
-                const paper = papers.find(p => p.id === paperId);
+            {Object.entries(paperCitationGroups).map(([documentId, paperCitations]) => {
+                const paper = papers.find(p => p.id === documentId);
                 if (!paper) return null;
                 const citationNumbers = paperCitations.map(c => parseInt(c.key));
                 const cardId = messageId ? `${messageId}-reference-paper-card-${paper.id}` : `${messageIndex}-reference-paper-card-${paper.id}`;

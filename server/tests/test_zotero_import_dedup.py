@@ -73,7 +73,7 @@ class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
         mock_import_crud.create.assert_called_once()
         create_kwargs = mock_import_crud.create.call_args.kwargs
         self.assertEqual(create_kwargs["zotero_item_key"], "ITEM2")
-        self.assertEqual(create_kwargs["paper_id"], paper.id)
+        self.assertEqual(create_kwargs["document_id"], paper.id)
         self.assertEqual(create_kwargs["status"], ZoteroImportStatus.COMPLETED)
         mock_sync_item.assert_called_once()
 
@@ -418,7 +418,7 @@ class TestImportBatchParallel(unittest.IsolatedAsyncioTestCase):
             return {
                 "status": "processing",
                 "zotero_item_key": key,
-                "paper_id": f"paper-{key}",
+                "document_id": f"paper-{key}",
                 "upload_job_id": f"job-{key}",
                 "import_source": ZoteroImportSource.PDF_ATTACHMENT,
                 "title": item["data"]["title"],

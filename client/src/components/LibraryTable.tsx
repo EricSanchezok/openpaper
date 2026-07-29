@@ -34,8 +34,8 @@ interface LibraryTableProps extends React.HTMLAttributes<HTMLDivElement> {
 	selectable?: boolean;
 	onSelectFiles?: (papers: PaperItem[], action: string) => void;
 	actionOptions?: string[];
-	projectPaperIds?: string[];
-	handleDelete?: (paperId: string) => Promise<void>;
+	projectDocumentIds?: string[];
+	handleDelete?: (documentId: string) => Promise<void>;
 	setPapers?: (papers: PaperItem[]) => void;
 	onUploadClick?: () => void;
 }
@@ -44,7 +44,7 @@ export function LibraryTable({
 	selectable: selectableProp,
 	onSelectFiles,
 	actionOptions = [],
-	projectPaperIds = [],
+	projectDocumentIds = [],
 	handleDelete,
 	onUploadClick,
 	...props
@@ -67,16 +67,16 @@ export function LibraryTable({
 
 	const sort: Sort = { type: "publish_date", order: "desc" };
 
-	const setPaper = (paperId: string, updatedPaper: PaperItem) => {
+	const setPaper = (documentId: string, updatedPaper: PaperItem) => {
 		mutate(
 			(currentPapers: PaperItem[] | undefined) => {
 				if (!currentPapers) return [];
-				return currentPapers.map(p => (p.id === paperId ? updatedPaper : p));
+				return currentPapers.map(p => (p.id === documentId ? updatedPaper : p));
 			},
 			{ revalidate: false }
 		);
 
-		if (selectedPaperForPreview && selectedPaperForPreview.id === paperId) {
+		if (selectedPaperForPreview && selectedPaperForPreview.id === documentId) {
 			setSelectedPaperForPreview(updatedPaper);
 		}
 	};
@@ -149,8 +149,8 @@ export function LibraryTable({
 	}, [papers, searchTerm, filters, sortConfig]);
 
 	const availablePapers = useMemo(() => {
-		return processedPapers.filter(p => !projectPaperIds.includes(p.id));
-	}, [processedPapers, projectPaperIds]);
+		return processedPapers.filter(p => !projectDocumentIds.includes(p.id));
+	}, [processedPapers, projectDocumentIds]);
 
 	const requestSort = (key: SortKey) => {
 		let direction: 'ascending' | 'descending' = 'ascending';
@@ -168,16 +168,16 @@ export function LibraryTable({
 		}
 	};
 
-	const handleSelect = (paperId: string, checked?: boolean) => {
+	const handleSelect = (documentId: string, checked?: boolean) => {
 		const newSelectedPapers = new Set(selectedPapers);
-		const isCurrentlySelected = newSelectedPapers.has(paperId);
+		const isCurrentlySelected = newSelectedPapers.has(documentId);
 
 		const shouldBeSelected = checked !== undefined ? checked : !isCurrentlySelected;
 
 		if (shouldBeSelected) {
-			newSelectedPapers.add(paperId);
+			newSelectedPapers.add(documentId);
 		} else {
-			newSelectedPapers.delete(paperId);
+			newSelectedPapers.delete(documentId);
 		}
 		setSelectedPapers(newSelectedPapers);
 	};
@@ -193,11 +193,11 @@ export function LibraryTable({
 	const handleDeletePapers = async () => {
 		if (!handleDelete) return;
 
-		const paperIdsToDelete = Array.from(selectedPapers);
+		const documentIdsToDelete = Array.from(selectedPapers);
 		// allSettled, not all: one failure must not short-circuit the rest, and
 		// the revalidate below must run regardless of partial failures.
 		const results = await Promise.allSettled(
-			paperIdsToDelete.map(id => handleDelete(id))
+			documentIdsToDelete.map(id => handleDelete(id))
 		);
 
 		const succeeded = results.filter(r => r.status === "fulfilled").length;
@@ -223,13 +223,13 @@ export function LibraryTable({
 		setSelectedPapers(new Set());
 	};
 
-	const toggleExpandedTags = (paperId: string) => {
+	const toggleExpandedTags = (documentId: string) => {
 		setExpandedTags(prev => {
 			const newSet = new Set(prev);
-			if (newSet.has(paperId)) {
-				newSet.delete(paperId);
+			if (newSet.has(documentId)) {
+				newSet.delete(documentId);
 			} else {
-				newSet.add(paperId);
+				newSet.add(documentId);
 			}
 			return newSet;
 		});
@@ -242,9 +242,9 @@ export function LibraryTable({
 		}
 	};
 
-	const handleRemoveTag = async (paperId: string, tagId: string) => {
+	const handleRemoveTag = async (documentId: string, tagId: string) => {
 		try {
-			await fetchFromApi(`/api/library/papers/by-document/${paperId}/tags/${tagId}`, {
+			await fetchFromApi(`/api/library/papers/by-document/${documentId}/tags/${tagId}`, {
 				method: "DELETE",
 			});
 			// Don't need to send a toast for success - can be noisy.
@@ -354,7 +354,7 @@ export function LibraryTable({
 											</DropdownMenuTrigger>
 											<DropdownMenuContent className="w-80">
 												<TagSelector
-													paperIds={Array.from(selectedPapers)}
+													documentIds={Array.from(selectedPapers)}
 													onTagsApplied={() => {
 														setTaggingPopoverOpen(false);
 														mutate();
@@ -490,7 +490,7 @@ export function LibraryTable({
 							<TableBody>
 							{processedPapers.length > 0 ? (
 								processedPapers.map((paper, index) => {
-									const isAlreadyInProject = projectPaperIds.includes(paper.id);
+									const isAlreadyInProject = projectDocumentIds.includes(paper.id);
 									return (
 										<TableRow
 											key={paper.id}

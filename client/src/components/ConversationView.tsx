@@ -61,10 +61,10 @@ interface ConversationViewProps {
 	displayedText: string;
 	isTyping: boolean;
 	handleCitationClick: (key: string, messageIndex: number) => void;
-	highlightedInfo: { paperId: string; messageIndex: number } | null;
-	setHighlightedInfo: (info: { paperId: string; messageIndex: number } | null) => void;
+	highlightedInfo: { documentId: string; messageIndex: number } | null;
+	setHighlightedInfo: (info: { documentId: string; messageIndex: number } | null) => void;
 	authLoading: boolean;
-	onRefreshPaperUrl?: (paperId: string) => Promise<string | null>;
+	onRefreshPaperUrl?: (documentId: string) => Promise<string | null>;
 	// When provided, papers open in the caller's reader (e.g. the project
 	// workspace panel) instead of this view's private side-by-side PDF split.
 	onOpenDocumentExternal?: (paper: PaperItem, searchText: string | null) => void;
@@ -120,7 +120,7 @@ export const ConversationView = ({
 
 	const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 	const [pdfTitle, setPdfTitle] = useState<string | null>(null);
-	const [activePaperId, setActivePaperId] = useState<string | null>(null);
+	const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
 	const [searchTerm, setSearchTerm] = useState<string | null>(null);
 	const [isPdfVisible, setIsPdfVisible] = useState(false);
 	const [collapsedReferences, setCollapsedReferences] = useState<Set<number>>(new Set());
@@ -169,7 +169,7 @@ export const ConversationView = ({
 			onOpenDocumentExternal(paper, searchText);
 			return;
 		}
-		setActivePaperId(paper.id);
+		setActiveDocumentId(paper.id);
 		setPdfTitle(paper.title);
 		setSearchTerm(searchText);
 		setIsPdfVisible(true);
@@ -197,7 +197,7 @@ export const ConversationView = ({
 		const citation = message.references.citations.find(c => String(c.key) === key);
 		if (!citation) return;
 
-		const paper = papers.find(p => p.id === citation.paper_id);
+		const paper = papers.find(p => p.id === citation.document_id);
 		if (!paper) return;
 
 		// Strip quotes from the reference if wrapped in them
@@ -210,13 +210,13 @@ export const ConversationView = ({
 	};
 
 	const refreshPdfUrl = useCallback(async (): Promise<string | null> => {
-		if (!activePaperId || !onRefreshPaperUrl) return null;
-		const freshUrl = await onRefreshPaperUrl(activePaperId);
+		if (!activeDocumentId || !onRefreshPaperUrl) return null;
+		const freshUrl = await onRefreshPaperUrl(activeDocumentId);
 		if (freshUrl) {
 			setPdfUrl(freshUrl);
 		}
 		return freshUrl;
-	}, [activePaperId, onRefreshPaperUrl]);
+	}, [activeDocumentId, onRefreshPaperUrl]);
 
 	const toggleReferences = useCallback((messageIndex: number) => {
 		setCollapsedReferences((prev: Set<number>) => {
@@ -337,7 +337,7 @@ export const ConversationView = ({
 								messageIndex={index}
 								highlightedPaper={
 									highlightedInfo && highlightedInfo.messageIndex === index
-										? highlightedInfo.paperId
+										? highlightedInfo.documentId
 										: null
 								}
 								onHighlightClear={() => setHighlightedInfo(null)}

@@ -33,7 +33,7 @@ class ResponseCitation(BaseModel):
     index: int = Field(
         description="The index of the citation in the paper's reference list. This is used to identify the citation in discussions or findings."
     )
-    paper_id: str | None = Field(
+    document_id: str | None = Field(
         default=None,
         description="The unique identifier of the paper from which this citation is drawn. This helps to contextualize the citation within the broader multi-paper analysis. This is required when there are multiple papers being analyzed.",
     )
@@ -134,7 +134,7 @@ class DataTableCellValue(BaseModel):
 class DataTableRow(BaseModel):
     """A row in the data table representing extracted values for a single paper."""
 
-    paper_id: str = Field(description="The ID of the paper this row corresponds to")
+    document_id: str = Field(description="The ID of the paper this row corresponds to")
     values: dict[str, DataTableCellValue] = Field(
         description="Mapping of column name to cell value with citations"
     )

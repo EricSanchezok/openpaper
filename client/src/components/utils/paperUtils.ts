@@ -245,7 +245,7 @@ export const copyToClipboard = (text: string, styleName: string) => {
 export const handleStatusChange = async <T extends PaperBase>(
     paper: T & { library_paper_id?: string },
     status: PaperStatus,
-    setPaper: (paperId: string, paper: T) => void
+    setPaper: (documentId: string, paper: T) => void
 ): Promise<void> => {
     try {
         if (!paper.library_paper_id) {

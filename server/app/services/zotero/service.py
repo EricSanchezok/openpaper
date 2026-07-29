@@ -58,14 +58,14 @@ class ImportErrorResult(TypedDict):
 class ImportProcessingResult(TypedDict):
     status: Literal["processing"]
     zotero_item_key: str
-    paper_id: str
+    document_id: str
     upload_job_id: str
     import_source: str
     title: str | None
     imported_via_url: bool
 
 
-# Discriminated on `status` so success-only keys (paper_id, etc.) narrow safely.
+# Discriminated on `status` so success-only keys (document_id, etc.) narrow safely.
 ImportOneResult = ImportErrorResult | ImportProcessingResult
 
 
@@ -340,7 +340,7 @@ def _get_page_dims_for_paper(paper: Document) -> dict[int, tuple[float, float]]:
 def _apply_single_zotero_annotation(
     db: Session,
     *,
-    paper_id: UUID,
+    document_id: UUID,
     user: CurrentUser,
     zotero_annotation_key: str,
     ann_data: dict[str, Any],
@@ -384,7 +384,7 @@ def _apply_single_zotero_annotation(
 
     item = research_repository.create_highlight_thread(
         db,
-        document_id=paper_id,
+        document_id=document_id,
         user_id=user.id,
         create=HighlightThreadCreate(
             quote_text=raw_text,
@@ -413,7 +413,7 @@ def _apply_single_zotero_annotation(
 def _try_backfill_or_apply_annotation(
     db: Session,
     *,
-    paper_id: UUID,
+    document_id: UUID,
     user: CurrentUser,
     zotero_annotation_key: str,
     ann_data: dict[str, Any],
@@ -442,7 +442,7 @@ def _try_backfill_or_apply_annotation(
     page_number = _page_from_annotation(ann_data)
     candidate = research_repository.find_zotero_backfill_candidate(
         db,
-        document_id=paper_id,
+        document_id=document_id,
         user_id=user.id,
         quote_text=raw_text,
         page_number=page_number,
@@ -457,7 +457,7 @@ def _try_backfill_or_apply_annotation(
 
     return _apply_single_zotero_annotation(
         db,
-        paper_id=paper_id,
+        document_id=document_id,
         user=user,
         zotero_annotation_key=zotero_annotation_key,
         ann_data=ann_data,
@@ -609,7 +609,7 @@ async def _link_zotero_item_to_existing_paper(
         import_source=import_source,
         zotero_attachment_key=attachment_key,
         source_url=source_url,
-        paper_id=UUID(str(paper.id)),
+        document_id=UUID(str(paper.id)),
         annotations_payload=annotation_payload,
         status=ZoteroImportStatus.COMPLETED,
     )
@@ -625,7 +625,7 @@ async def _link_zotero_item_to_existing_paper(
 def _apply_zotero_tags(
     db: Session,
     *,
-    paper_id: UUID,
+    document_id: UUID,
     tags_data: list[dict[str, Any]],
     user: "CurrentUser",
 ) -> None:
@@ -643,7 +643,7 @@ def _apply_zotero_tags(
         library_tag_repository.assign_to_document(
             db,
             user_id=user.id,
-            document_id=paper_id,
+            document_id=document_id,
             tag_id=tag.id,
         )
 
@@ -713,10 +713,10 @@ async def _discover_import_candidates(
             )
             if existing_import:
                 paper_still_exists = False
-                if existing_import.paper_id:
+                if existing_import.document_id:
                     linked_paper = document_repository.find_accessible(
                         db,
-                        document_id=str(existing_import.paper_id),
+                        document_id=str(existing_import.document_id),
                         user=user,
                     )
                     paper_still_exists = bool(linked_paper)
@@ -835,7 +835,7 @@ async def _import_one_paper(
     client = ZoteroApiClient(zotero_user_id=zotero_user_id, api_key=api_key)
     upload_job_id: str | None = None
     import_row: ZoteroImportedItem | None = None
-    created_paper_id: str | None = None
+    created_document_id: str | None = None
 
     try:
         import_row = zotero_import_crud.create(
@@ -896,13 +896,13 @@ async def _import_one_paper(
         if paper is None:
             raise RuntimeError("zotero_canonical_document_missing")
 
-        paper_id = UUID(str(paper.id))
-        created_paper_id = str(paper.id)
+        document_id = UUID(str(paper.id))
+        created_document_id = str(paper.id)
 
         _apply_metadata_from_zotero(db, paper=paper, item_data=data, user=user)
         _apply_zotero_tags(
             db,
-            paper_id=paper_id,
+            document_id=document_id,
             tags_data=data.get("tags") or [],
             user=user,
         )
@@ -921,7 +921,7 @@ async def _import_one_paper(
                 import_source=import_source,
                 zotero_attachment_key=attachment_key,
                 source_url=source_url,
-                paper_id=paper_id,
+                document_id=document_id,
                 upload_job_id=UUID(upload_job_id),
                 annotations_payload=annotation_payload,
             )
@@ -930,14 +930,14 @@ async def _import_one_paper(
             apply_zotero_annotations(
                 db=db,
                 upload_job_id=upload_job_id,
-                paper_id=str(paper.id),
+                document_id=str(paper.id),
                 user=user,
             )
 
         return {
             "status": "processing",
             "zotero_item_key": item_key,
-            "paper_id": str(paper_id),
+            "document_id": str(document_id),
             "upload_job_id": upload_job_id,
             "import_source": import_source,
             "title": data.get("title"),
@@ -959,11 +959,11 @@ async def _import_one_paper(
             )
         # Remove the paper created before the failed hand-off so we don't leave
         # an orphan with no content (the import row's FK is ON DELETE SET NULL).
-        if created_paper_id:
+        if created_document_id:
             try:
                 entry = document_repository.require_library_paper_by_document(
                     db,
-                    document_id=UUID(str(created_paper_id)),
+                    document_id=UUID(str(created_document_id)),
                     user_id=user.id,
                 )
                 document_repository.delete_library_paper(
@@ -974,7 +974,7 @@ async def _import_one_paper(
             except Exception as cleanup_err:
                 logger.warning(
                     "Failed to clean up paper %s after Zotero import error: %s",
-                    created_paper_id,
+                    created_document_id,
                     cleanup_err,
                 )
         if upload_job_id:
@@ -1026,11 +1026,11 @@ def list_library(
     imported_keys = set(
         db.scalars(
             select(ZoteroImportedItem.zotero_item_key)
-            .join(Document, ZoteroImportedItem.paper_id == Document.id)
+            .join(Document, ZoteroImportedItem.document_id == Document.id)
             .where(
                 ZoteroImportedItem.user_id == user.id,
                 ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
-                ZoteroImportedItem.paper_id.isnot(None),
+                ZoteroImportedItem.document_id.isnot(None),
             )
         ).all()
     )
@@ -1153,10 +1153,10 @@ async def _discover_candidates_by_keys(
         )
         if existing_import:
             paper_still_exists = False
-            if existing_import.paper_id:
+            if existing_import.document_id:
                 linked_paper = document_repository.find_accessible(
                     db,
-                    document_id=str(existing_import.paper_id),
+                    document_id=str(existing_import.document_id),
                     user=user,
                 )
                 paper_still_exists = bool(linked_paper)
@@ -1256,7 +1256,7 @@ async def import_batch(
             return_exceptions=True,
         )
 
-        item_key_to_paper_id: dict[str, str] = {}
+        item_key_to_document_id: dict[str, str] = {}
         for i, raw in enumerate(raw_results):
             if isinstance(raw, BaseException):
                 item_key = candidates[i].get("key", "")
@@ -1286,7 +1286,7 @@ async def import_batch(
             imported.append(
                 {
                     "zotero_item_key": raw["zotero_item_key"],
-                    "paper_id": raw["paper_id"],
+                    "document_id": raw["document_id"],
                     "upload_job_id": raw["upload_job_id"],
                     "import_source": raw["import_source"],
                     "title": raw["title"],
@@ -1294,14 +1294,14 @@ async def import_batch(
             )
             if raw["imported_via_url"]:
                 imported_via_url += 1
-            item_key_to_paper_id[raw["zotero_item_key"]] = raw["paper_id"]
+            item_key_to_document_id[raw["zotero_item_key"]] = raw["document_id"]
 
         for item, item_key, first_item_key in deferred_links:
-            first_paper_id = item_key_to_paper_id.get(first_item_key)
-            if not first_paper_id:
+            first_document_id = item_key_to_document_id.get(first_item_key)
+            if not first_document_id:
                 continue
             paper = document_repository.find_accessible(
-                db, document_id=first_paper_id, user=user
+                db, document_id=first_document_id, user=user
             )
             if not paper:
                 continue
@@ -1327,7 +1327,7 @@ def apply_zotero_annotations(
     db: Session,
     *,
     upload_job_id: str,
-    paper_id: str,
+    document_id: str,
     user: CurrentUser,
 ) -> None:
     import_row = zotero_import_crud.get_by_upload_job_id(
@@ -1344,14 +1344,14 @@ def apply_zotero_annotations(
             db,
             item=import_row,
             status=ZoteroImportStatus.COMPLETED,
-            paper_id=UUID(paper_id),
+            document_id=UUID(document_id),
         )
         return
 
     try:
         raw_file = require_parsed_content(
             db,
-            document_id=UUID(paper_id),
+            document_id=UUID(document_id),
             user=user,
         )
         raw_content = raw_file.raw_content or ""
@@ -1360,7 +1360,9 @@ def apply_zotero_annotations(
         # Page dimensions are needed to convert Zotero annotation positions. The
         # stored payload no longer carries them (the worker, not the server,
         # processes the PDF), so derive them from the PDF here.
-        paper = document_repository.find_accessible(db, document_id=paper_id, user=user)
+        paper = document_repository.find_accessible(
+            db, document_id=document_id, user=user
+        )
         page_dims = _get_page_dims_for_paper(paper) if paper else {}
 
         annotations_payload = cast(
@@ -1374,7 +1376,7 @@ def apply_zotero_annotations(
             _embed_page_dims_in_annotation_data(ann_data, page_dims)
             _apply_single_zotero_annotation(
                 db,
-                paper_id=UUID(paper_id),
+                document_id=UUID(document_id),
                 user=user,
                 zotero_annotation_key=zotero_key,
                 ann_data=ann_data,
@@ -1386,7 +1388,7 @@ def apply_zotero_annotations(
             db,
             item=import_row,
             status=ZoteroImportStatus.COMPLETED,
-            paper_id=UUID(paper_id),
+            document_id=UUID(document_id),
         )
     except Exception as e:
         logger.error(
@@ -1400,7 +1402,7 @@ def apply_zotero_annotations(
             item=import_row,
             status=ZoteroImportStatus.FAILED,
             error_message=str(e),
-            paper_id=UUID(paper_id),
+            document_id=UUID(document_id),
         )
 
 
@@ -1411,12 +1413,12 @@ def _sync_item(
     import_row: ZoteroImportedItem,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    paper_id = import_row.paper_id
-    if not paper_id or not import_row.zotero_attachment_key:
+    document_id = import_row.document_id
+    if not document_id or not import_row.zotero_attachment_key:
         raise ValueError("Import row is missing paper or attachment key")
 
     paper = document_repository.find_accessible(
-        db, document_id=str(paper_id), user=user
+        db, document_id=str(document_id), user=user
     )
     if not paper:
         raise ValueError("Linked paper no longer exists")
@@ -1425,7 +1427,7 @@ def _sync_item(
     remote_annotations = client.get_annotations_for_attachment(attachment_children)
     existing_keys = research_repository.get_zotero_annotation_keys(
         db,
-        document_id=UUID(str(paper_id)),
+        document_id=UUID(str(document_id)),
         user_id=user.id,
     )
 
@@ -1440,7 +1442,7 @@ def _sync_item(
         page_dims = _get_page_dims_for_paper(paper)
         raw_file = require_parsed_content(
             db,
-            document_id=UUID(str(paper_id)),
+            document_id=UUID(str(document_id)),
             user=user,
         )
         raw_content = raw_file.raw_content or ""
@@ -1452,7 +1454,7 @@ def _sync_item(
             _embed_page_dims_in_annotation_data(ann_data, page_dims)
             if _try_backfill_or_apply_annotation(
                 db,
-                paper_id=UUID(str(paper_id)),
+                document_id=UUID(str(document_id)),
                 user=user,
                 zotero_annotation_key=zotero_key,
                 ann_data=ann_data,
@@ -1470,7 +1472,7 @@ def _sync_item(
 
     return {
         "zotero_item_key": import_row.zotero_item_key,
-        "paper_id": str(paper_id),
+        "document_id": str(document_id),
         "new_annotations_count": new_annotations_count,
     }
 
@@ -1518,11 +1520,11 @@ async def sync_batch(
                 }
             )
 
-    unique_paper_ids = {r["paper_id"] for r in synced if r.get("paper_id")}
+    unique_document_ids = {r["document_id"] for r in synced if r.get("document_id")}
 
     return {
         "synced": synced,
-        "synced_papers_count": len(unique_paper_ids),
+        "synced_papers_count": len(unique_document_ids),
         "synced_zotero_items_count": len(synced),
         "new_annotations_count": new_annotations_count,
         "errors": errors,

@@ -275,7 +275,7 @@ class DataTableCellValue(BaseModel):
 
 
 class DataTableRow(BaseModel):
-    paper_id: str
+    document_id: str
     values: dict[str, DataTableCellValue]  # column_name -> cell value with citations
 
 
@@ -286,7 +286,7 @@ class DataTableResult(BaseModel):
         default_factory=list, description="Row data per paper"
     )
     row_failures: list[str] = Field(
-        default_factory=list, description="List of paper_ids that failed to process"
+        default_factory=list, description="List of document_ids that failed to process"
     )
 
 

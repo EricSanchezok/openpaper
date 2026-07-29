@@ -15,7 +15,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 export function SharePaperButton() {
     const pathname = usePathname();
-    const [paperId, setPaperId] = useState<string | null>(null);
+    const [documentId, setDocumentId] = useState<string | null>(null);
     const [paperData, setPaperData] = useState<PaperData | null>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
@@ -25,19 +25,19 @@ export function SharePaperButton() {
         if (pathname) {
             const segments = pathname.split('/');
             if (segments[1] === 'paper' && segments.length === 3 && segments[2]) {
-                setPaperId(segments[2]);
+                setDocumentId(segments[2]);
             } else {
-                setPaperId(null);
+                setDocumentId(null);
             }
         }
     }, [pathname]);
 
     useEffect(() => {
-        if (!paperId || !isOpen) return;
+        if (!documentId || !isOpen) return;
 
         const loadPaperData = async () => {
             try {
-                const data = await fetchDocumentPaperData(paperId);
+                const data = await fetchDocumentPaperData(documentId);
                 setPaperData(data);
             } catch {
                 toast.error("Failed to fetch paper details.");
@@ -45,13 +45,13 @@ export function SharePaperButton() {
         };
 
         loadPaperData();
-    }, [paperId, isOpen]);
+    }, [documentId, isOpen]);
 
     const handleShare = useCallback(async () => {
-        if (!paperId) return;
+        if (!documentId) return;
         setIsSharing(true);
         try {
-            const current = paperData ?? await fetchDocumentPaperData(paperId);
+            const current = paperData ?? await fetchDocumentPaperData(documentId);
             if (!current.library_paper_id) {
                 throw new Error("Library paper is unavailable");
             }
@@ -70,10 +70,10 @@ export function SharePaperButton() {
         } finally {
             setIsSharing(false);
         }
-    }, [paperId, paperData]);
+    }, [documentId, paperData]);
 
     const handleUnshare = useCallback(async () => {
-        if (!paperId || !paperData || !paperData.is_public || isSharing) return;
+        if (!documentId || !paperData || !paperData.is_public || isSharing) return;
         setIsSharing(true);
         try {
             if (!paperData.library_paper_id) {
@@ -90,9 +90,9 @@ export function SharePaperButton() {
         } finally {
             setIsSharing(false);
         }
-    }, [paperId, paperData, isSharing]);
+    }, [documentId, paperData, isSharing]);
 
-    if (!paperId) {
+    if (!documentId) {
         return null;
     }
 

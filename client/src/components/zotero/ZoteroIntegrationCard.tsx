@@ -112,7 +112,7 @@ export function ZoteroIntegrationCard() {
 			recentImports.some(
 				(i) =>
 					i.status === "completed" &&
-					i.paper_id &&
+					i.document_id &&
 					i.import_source === "pdf_attachment"
 			),
 		[recentImports]

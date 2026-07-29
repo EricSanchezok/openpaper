@@ -21,15 +21,15 @@ import { toast } from 'sonner';
 
 interface CitePaperButtonProps {
     paper?: (PaperData | PaperItem)[];
-    paperId?: string;
+    documentId?: string;
     minimalist?: boolean;
     variant?: "ghost" | "outline";
     iconOnly?: boolean;
 }
 
-export function CitePaperButton({ paper, paperId: providedPaperId, minimalist = false, variant = "ghost", iconOnly = false }: CitePaperButtonProps) {
+export function CitePaperButton({ paper, documentId: providedDocumentId, minimalist = false, variant = "ghost", iconOnly = false }: CitePaperButtonProps) {
     const pathname = usePathname();
-    const [derivedPaperId, setDerivedPaperId] = useState<string | null>(null);
+    const [derivedDocumentId, setDerivedDocumentId] = useState<string | null>(null);
     const [paperData, setPaperData] = useState<(PaperData | PaperItem)[] | null>(paper || null);
     const [isOpen, setIsOpen] = useState(false);
     const [selectedStyle, setSelectedStyle] = useState<string>(() => {
@@ -48,7 +48,7 @@ export function CitePaperButton({ paper, paperId: providedPaperId, minimalist = 
     const isBibliography = paperData && paperData.length > 1;
 
     // Determine the paper ID to use (only for single paper mode)
-    const effectivePaperId = providedPaperId || derivedPaperId;
+    const effectiveDocumentId = providedDocumentId || derivedDocumentId;
 
     // Save selected style to localStorage whenever it changes
     useEffect(() => {
@@ -65,25 +65,25 @@ export function CitePaperButton({ paper, paperId: providedPaperId, minimalist = 
         }
 
         // Otherwise, try to derive paper ID from pathname (single paper mode only)
-        if (pathname && !providedPaperId) {
+        if (pathname && !providedDocumentId) {
             const segments = pathname.split('/');
             if (segments[1] === 'paper' && segments.length === 3 && segments[2]) {
-                setDerivedPaperId(segments[2]);
+                setDerivedDocumentId(segments[2]);
             } else {
-                setDerivedPaperId(null);
+                setDerivedDocumentId(null);
             }
         }
-    }, [pathname, paper, providedPaperId]);
+    }, [pathname, paper, providedDocumentId]);
 
     useEffect(() => {
         // Skip fetch if we already have paper data from props
         if (paper && paper.length > 0) return;
 
-        if (!effectivePaperId || !isOpen) return;
+        if (!effectiveDocumentId || !isOpen) return;
 
         const fetchPaperData = async () => {
             try {
-                const data = await fetchDocumentPaperData(effectivePaperId);
+                const data = await fetchDocumentPaperData(effectiveDocumentId);
                 // Wrap single paper in array
                 setPaperData([data]);
             } catch {
@@ -92,9 +92,9 @@ export function CitePaperButton({ paper, paperId: providedPaperId, minimalist = 
         };
 
         fetchPaperData();
-    }, [effectivePaperId, isOpen, paper]);
+    }, [effectiveDocumentId, isOpen, paper]);
 
-    if (!effectivePaperId && !paper) {
+    if (!effectiveDocumentId && !paper) {
         return null;
     }
 
@@ -155,7 +155,7 @@ export function CitePaperButton({ paper, paperId: providedPaperId, minimalist = 
                         if (paperData.length === 1) {
                             // Single paper citation
                             const singlePaper = paperData[0];
-                            const paperBase = paperAsPaperBase(singlePaper, effectivePaperId || undefined);
+                            const paperBase = paperAsPaperBase(singlePaper, effectiveDocumentId || undefined);
                             citation = selectedStyleObj.generator(paperBase);
                         } else {
                             // Generate bibliography from multiple papers

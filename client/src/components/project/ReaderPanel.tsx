@@ -13,7 +13,7 @@ export function ReaderPanel() {
     const {
         papers,
         openDocumentIds,
-        activePaperId,
+        activeDocumentId,
         readerSearchTerm,
         rightPanel,
         activatePaper,
@@ -25,7 +25,7 @@ export function ReaderPanel() {
     const openDocuments = openDocumentIds
         .map((id) => papers.find((p) => p.id === id))
         .filter((p) => p !== undefined);
-    const activePaper = openDocuments.find((p) => p.id === activePaperId) ?? null;
+    const activePaper = openDocuments.find((p) => p.id === activeDocumentId) ?? null;
 
     // file URLs are loaded lazily; fetch one for the active paper when missing.
     useEffect(() => {
@@ -52,7 +52,7 @@ export function ReaderPanel() {
             <div className="flex shrink-0 items-center gap-1 border-b bg-muted/30 px-2 py-1.5">
                 <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
                     {openDocuments.map((paper) => {
-                        const isActive = paper.id === activePaperId;
+                        const isActive = paper.id === activeDocumentId;
                         return (
                             <div
                                 key={paper.id}
@@ -99,7 +99,7 @@ export function ReaderPanel() {
                     activePaper.file_url ? (
                         <ProjectPaperPreviewPane
                             key={activePaper.id}
-                            paperId={activePaper.id}
+                            documentId={activePaper.id}
                             searchTerm={readerSearchTerm}
                         />
                     ) : (
@@ -115,9 +115,9 @@ export function ReaderPanel() {
 
 // Thin wrapper so the viewer re-reads the (lazily patched) paper from context
 // without remounting when only file_url changes.
-function ProjectPaperPreviewPane({ paperId, searchTerm }: { paperId: string; searchTerm: string | null }) {
+function ProjectPaperPreviewPane({ documentId, searchTerm }: { documentId: string; searchTerm: string | null }) {
     const { projectId, papers } = useProjectWorkspace();
-    const paper = papers.find((p) => p.id === paperId);
+    const paper = papers.find((p) => p.id === documentId);
     if (!paper) return null;
     return <ProjectPaperPreview paper={paper} projectId={projectId} searchTerm={searchTerm} />;
 }

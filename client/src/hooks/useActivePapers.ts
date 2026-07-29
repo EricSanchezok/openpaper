@@ -33,10 +33,10 @@ export function refreshActivePapers() {
 	return globalMutate(ACTIVE_PAPERS_KEY);
 }
 
-export function removeActivePaper(paperId: string) {
+export function removeActivePaper(documentId: string) {
 	return globalMutate<PaperItem[]>(
 		ACTIVE_PAPERS_KEY,
-		(current) => current?.filter((paper) => paper.id !== paperId) ?? [],
+		(current) => current?.filter((paper) => paper.id !== documentId) ?? [],
 		{ revalidate: false },
 	);
 }

@@ -55,8 +55,10 @@ class DocumentSearchRepository:
                 extra={"document_id": str(document_id)},
             )
         db.execute(
-            text("DELETE FROM scholens.paper_passages WHERE paper_id = :paper_id"),
-            {"paper_id": document_id},
+            text(
+                "DELETE FROM scholens.document_passages WHERE document_id = :document_id"
+            ),
+            {"document_id": document_id},
         )
         passages = self.build_passages(
             sanitized,
@@ -67,12 +69,12 @@ class DocumentSearchRepository:
             db.execute(
                 text(
                     """
-                    INSERT INTO scholens.paper_passages
-                        (paper_id, start_line, end_line, content)
-                    VALUES (:paper_id, :start_line, :end_line, :content)
+                    INSERT INTO scholens.document_passages
+                        (document_id, start_line, end_line, content)
+                    VALUES (:document_id, :start_line, :end_line, :content)
                     """
                 ),
-                [{"paper_id": document_id, **passage} for passage in passages],
+                [{"document_id": document_id, **passage} for passage in passages],
             )
         db.flush()
 
@@ -96,9 +98,9 @@ class DocumentSearchRepository:
             for index in range(len(search_terms))
         )
         sql = f"""
-            SELECT pp.paper_id::text, pp.start_line, pp.content
-            FROM scholens.paper_passages pp
-            JOIN scholens.documents d ON d.id = pp.paper_id
+            SELECT pp.document_id::text, pp.start_line, pp.content
+            FROM scholens.document_passages pp
+            JOIN scholens.documents d ON d.id = pp.document_id
             JOIN scholens.library_papers lp ON lp.document_id = d.id
             WHERE pp.ts_vector @@ ({fts_query})
               AND lp.user_id = :user_id
@@ -107,9 +109,9 @@ class DocumentSearchRepository:
         for index, term in enumerate(search_terms):
             params[f"term_{index}"] = term
         if document_ids:
-            sql += " AND pp.paper_id = ANY(:paper_ids)"
-            params["paper_ids"] = document_ids
-        sql += " ORDER BY pp.paper_id, pp.start_line"
+            sql += " AND pp.document_id = ANY(:document_ids)"
+            params["document_ids"] = document_ids
+        sql += " ORDER BY pp.document_id, pp.start_line"
 
         rows = db.execute(text(sql), params).fetchall()
         matches: dict[tuple[str, int], tuple[str, int, str]] = {}

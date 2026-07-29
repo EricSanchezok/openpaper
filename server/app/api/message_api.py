@@ -64,7 +64,7 @@ class EvidenceState(TypedDict):
 
 
 class HighlightGroup(TypedDict):
-    paper_id: str
+    document_id: str
     paper_title: str | None
     paper_abstract: str | None
     highlights: list[dict[str, object]]
@@ -183,16 +183,16 @@ def _resolve_mention_scope(
     list[dict[str, object]] | None,
     list[dict[str, object]] | None,
 ]:
-    """Resolve @-mentions into (scoped_paper_ids, scope_snapshot, highlights).
+    """Resolve @-mentions into (scoped_document_ids, scope_snapshot, highlights).
 
-    - scoped_paper_ids: the flat, user-scoped set of paper ids the search is
+    - scoped_document_ids: the flat, user-scoped set of paper ids the search is
       hard-limited to — a paper mention contributes itself, a project mention
       contributes all of its papers, a highlight mention contributes its parent
       paper. Used for retrieval scoping.
     - scope_snapshot: a denormalized [{kind, id, title, ...}] of the mentioned
       entities themselves (a project stays a single entry, not its papers),
       persisted on the user message so it renders faithfully later.
-    - highlights: [{paper_id, highlighted_text, notes}] for the mentioned
+    - highlights: [{document_id, highlighted_text, notes}] for the mentioned
       highlights, injected into the answer prompt so the model sees the exact
       attached passages.
 
@@ -201,7 +201,7 @@ def _resolve_mention_scope(
     mentions at all (i.e. no scoping should be applied).
     """
     if (
-        not request.mentioned_paper_ids
+        not request.mentioned_document_ids
         and not request.mentioned_project_ids
         and not request.mentioned_highlight_ids
     ):
@@ -210,19 +210,19 @@ def _resolve_mention_scope(
     scoped: set[str] = set()
     snapshot: list[dict[str, object]] = []
 
-    for paper_id in request.mentioned_paper_ids or []:
+    for document_id in request.mentioned_document_ids or []:
         # In a project chat, resolve via project access (papers may be shared,
         # i.e. not owned by the current user); otherwise resolve by ownership.
         if project_id is not None:
             paper = project_document_repository.get_paper_by_project(
                 db,
-                paper_id=uuid.UUID(paper_id),
+                document_id=uuid.UUID(document_id),
                 project_id=project_id,
                 user=current_user,
             )
         else:
             paper = document_repository.find_accessible(
-                db, document_id=paper_id, user=current_user
+                db, document_id=document_id, user=current_user
             )
         if paper:
             scoped.add(str(paper.id))
@@ -239,10 +239,12 @@ def _resolve_mention_scope(
         if project_access is None:
             continue
         project = project_access.project
-        paper_ids = project_document_repository.get_project_paper_ids_by_project_id(
-            db, project_id=uuid.UUID(mentioned_project_id), user=current_user
+        document_ids = (
+            project_document_repository.get_project_document_ids_by_project_id(
+                db, project_id=uuid.UUID(mentioned_project_id), user=current_user
+            )
         )
-        scoped.update(str(pid) for pid in paper_ids)
+        scoped.update(str(pid) for pid in document_ids)
         snapshot.append(
             {"kind": "project", "id": str(project.id), "title": project.title}
         )
@@ -263,22 +265,22 @@ def _resolve_mention_scope(
         highlight = item.highlight_thread
         if highlight is None or item.document_id is None:
             continue
-        paper_id_str = str(item.document_id)
+        document_id_str = str(item.document_id)
         # The parent paper joins the search scope so it stays searchable.
-        scoped.add(paper_id_str)
+        scoped.add(document_id_str)
 
-        group = highlights_by_paper.get(paper_id_str)
+        group = highlights_by_paper.get(document_id_str)
         if group is None:
             paper = document_repository.find_accessible(
-                db, document_id=paper_id_str, user=current_user
+                db, document_id=document_id_str, user=current_user
             )
             group = {
-                "paper_id": paper_id_str,
+                "document_id": document_id_str,
                 "paper_title": paper.title if paper else None,
                 "paper_abstract": paper.abstract if paper else None,
                 "highlights": [],
             }
-            highlights_by_paper[paper_id_str] = group
+            highlights_by_paper[document_id_str] = group
 
         annotation_contents = [
             annotation.content
@@ -291,7 +293,7 @@ def _resolve_mention_scope(
                 "kind": "highlight",
                 "id": str(item.id),
                 "title": highlight.quote_text,
-                "paper_id": paper_id_str,
+                "document_id": document_id_str,
                 "paper_title": group["paper_title"],
                 "annotations": annotation_contents,
             }
@@ -381,7 +383,7 @@ async def chat_message_multipaper(
         # denormalized snapshot to persist on the user message, and the
         # highlight passages to inject into the answer.
         (
-            scoped_paper_ids,
+            scoped_document_ids,
             scope_snapshot,
             mentioned_highlights,
         ) = _resolve_mention_scope(
@@ -397,7 +399,7 @@ async def chat_message_multipaper(
             current_user=current_user,
             db=db,
             project_id=str(project_id) if project_id is not None else None,
-            restrict_to_paper_ids=scoped_paper_ids,
+            restrict_to_document_ids=scoped_document_ids,
         ):
             # Parse the chunk as a dictionary
             if isinstance(chunk, dict):
@@ -445,8 +447,8 @@ async def chat_message_multipaper(
 
         # Keep the answer-generation paper set aligned with the scoped
         # evidence space so citations can't reference out-of-scope papers.
-        if scoped_paper_ids is not None:
-            allowed_ids = set(scoped_paper_ids)
+        if scoped_document_ids is not None:
+            allowed_ids = set(scoped_document_ids)
             all_papers = [paper for paper in all_papers if str(paper.id) in allowed_ids]
 
         chat_generator = multi_paper_operations.chat_with_papers(
@@ -559,7 +561,7 @@ async def chat_message_multipaper(
         scope_items = scope_snapshot or []
         mention_scope_props = {
             "requested_mention_scope": bool(
-                request.mentioned_paper_ids
+                request.mentioned_document_ids
                 or request.mentioned_project_ids
                 or request.mentioned_highlight_ids
             ),
@@ -574,7 +576,7 @@ async def chat_message_multipaper(
                 1 for i in scope_items if i.get("kind") == "highlight"
             ),
             "num_scoped_papers": (
-                len(scoped_paper_ids) if scoped_paper_ids is not None else 0
+                len(scoped_document_ids) if scoped_document_ids is not None else 0
             ),
         }
 
@@ -657,7 +659,7 @@ async def chat_message_stream(
             message="This conversation cannot be used for a paper chat",
             status_code=409,
         )
-    paper_id = str(conversation.document_id)
+    document_id = str(conversation.document_id)
     try:
         await enforce_rate_limit(
             user_id=int(current_user.id),
@@ -681,7 +683,7 @@ async def chat_message_stream(
         start_time = datetime.now(timezone.utc)
         evidence_container: EvidenceState = {"evidence": None}
         chat_generator = paper_operations.chat_with_paper(
-            paper_id=paper_id,
+            document_id=document_id,
             conversation_id=request.conversation_id,
             question=request.user_query,
             current_user=current_user,
@@ -761,7 +763,7 @@ async def chat_message_stream(
                 "has_evidence": bool(evidence),
                 "reasoning_level": request.reasoning_level.value,
                 "time_taken": (datetime.now(timezone.utc) - start_time).total_seconds(),
-                "paper_id": paper_id,
+                "document_id": document_id,
                 "type": "paper",
             },
             user_id=str(current_user.id),
@@ -781,7 +783,7 @@ async def chat_message_stream(
                     user_id=current_user.id,
                     db=db,
                     properties={
-                        "paper_id": paper_id,
+                        "document_id": document_id,
                         "conversation_id": request.conversation_id,
                     },
                 ):

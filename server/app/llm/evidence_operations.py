@@ -93,7 +93,7 @@ def _summarize_citation(result: CitationResult) -> str:
     """
     d = result.data
     return (
-        f"Resolved citation metadata for paper {result.paper_id} "
+        f"Resolved citation metadata for paper {result.document_id} "
         f"(preferred style: {result.style_display}; method: {result.method}). "
         f"Title: {d.title}; Journal: {d.journal}; Publisher: {d.publisher}; "
         f"DOI: {d.doi}; Date: {d.publish_date}. "
@@ -112,7 +112,7 @@ class EvidenceOperations(BaseLLMClient):
         current_user: CurrentUser,
         conversation_id: str | None = None,
         project_id: str | None = None,
-        restrict_to_paper_ids: list[str] | None = None,
+        restrict_to_document_ids: list[str] | None = None,
         db: Session = Depends(get_db),
     ) -> AsyncGenerator[
         Mapping[str, str | dict[str, list[str]] | EvidenceCollection], None
@@ -159,8 +159,8 @@ class EvidenceOperations(BaseLLMClient):
         # set. Withholding out-of-scope papers from formatted_paper_options
         # means the model is never offered them, and the per-paper tools reject
         # any id that isn't listed here (see the guard in the tool-call loop).
-        if restrict_to_paper_ids is not None:
-            allowed_ids = set(restrict_to_paper_ids)
+        if restrict_to_document_ids is not None:
+            allowed_ids = set(restrict_to_document_ids)
             all_papers = [paper for paper in all_papers if str(paper.id) in allowed_ids]
 
         formatted_paper_options = {
@@ -283,23 +283,26 @@ class EvidenceOperations(BaseLLMClient):
 
                 if fn_name in function_maps:
                     try:
-                        paper_id_arg = fn_args.get("paper_id")
+                        document_id_arg = fn_args.get("document_id")
                         query_arg = fn_args.get("query")
                         paper_name = (
-                            formatted_paper_options.get(str(paper_id_arg), {}).get(
+                            formatted_paper_options.get(str(document_id_arg), {}).get(
                                 "title", "knowledge base"
                             )
-                            if paper_id_arg
+                            if document_id_arg
                             else "knowledge base"
                         )
 
-                        if paper_id_arg and paper_id_arg not in formatted_paper_options:
+                        if (
+                            document_id_arg
+                            and document_id_arg not in formatted_paper_options
+                        ):
                             logger.warning(
-                                f"Paper ID {paper_id_arg} not found in available papers."
+                                f"Paper ID {document_id_arg} not found in available papers."
                             )
                             evidence_collection.add_tool_call_result(
                                 fn_selected,
-                                f"Error: Paper ID {paper_id_arg} not found",
+                                f"Error: Paper ID {document_id_arg} not found",
                             )
                             continue
 
@@ -325,7 +328,7 @@ class EvidenceOperations(BaseLLMClient):
                                 **selected_args,
                                 current_user=current_user,
                                 project_id=project_id,
-                                restrict_to_paper_ids=restrict_to_paper_ids,
+                                restrict_to_document_ids=restrict_to_document_ids,
                                 db=db,
                             )
 
@@ -375,17 +378,17 @@ class EvidenceOperations(BaseLLMClient):
                             if fn_name == "search_all_files" and isinstance(
                                 result, dict
                             ):
-                                for paper_id, lines in result.items():
+                                for document_id, lines in result.items():
                                     evidence_collection.add_evidence(
-                                        paper_id, lines, preserve_line_numbers=True
+                                        document_id, lines, preserve_line_numbers=True
                                     )
 
-                            paper_id = fn_args.get("paper_id")
-                            if paper_id and (
+                            document_id = fn_args.get("document_id")
+                            if document_id and (
                                 isinstance(result, str) or isinstance(result, list)
                             ):
                                 evidence_collection.add_evidence(
-                                    paper_id,
+                                    document_id,
                                     result,
                                     preserve_line_numbers=preserve_line_numbers,
                                 )
@@ -446,13 +449,13 @@ class EvidenceOperations(BaseLLMClient):
                             current_user=current_user,
                             db=db,
                             project_id=project_id,
-                            restrict_to_paper_ids=restrict_to_paper_ids,
+                            restrict_to_document_ids=restrict_to_document_ids,
                         )
 
                         if search_results:
-                            for paper_id, lines in search_results.items():
+                            for document_id, lines in search_results.items():
                                 evidence_collection.add_evidence(
-                                    paper_id, lines, preserve_line_numbers=True
+                                    document_id, lines, preserve_line_numbers=True
                                 )
 
                     if evidence_collection.has_evidence():
@@ -615,14 +618,14 @@ class EvidenceOperations(BaseLLMClient):
         )
 
         # Store original snippets in citation_index sidecar BEFORE compaction
-        for paper_id, snippets in papers_by_evidence:
-            evidence_obj = evidence_collection.evidence.get(paper_id)
+        for document_id, snippets in papers_by_evidence:
+            evidence_obj = evidence_collection.evidence.get(document_id)
             line_numbers = evidence_obj.get_line_numbers() if evidence_obj else []
 
             for i, snippet in enumerate(snippets):
-                key = f"{paper_id}:{i}"
+                key = f"{document_id}:{i}"
                 evidence_collection.citation_index.index[key] = OriginalSnippet(
-                    paper_id=paper_id,
+                    document_id=document_id,
                     text=snippet,  # Full original text preserved
                     line_number=line_numbers[i] if i < len(line_numbers) else None,
                 )
@@ -630,7 +633,7 @@ class EvidenceOperations(BaseLLMClient):
         # Format evidence with indexed snippets for LLM
         evidence_for_compaction: list[dict[str, Any]] = []
         total_chars = 0
-        for paper_id, snippets in papers_by_evidence:
+        for document_id, snippets in papers_by_evidence:
             # Build indexed snippets for this paper
             indexed_snippets = []
             paper_chars = 0
@@ -646,7 +649,7 @@ class EvidenceOperations(BaseLLMClient):
 
             evidence_for_compaction.append(
                 {
-                    "paper_id": paper_id,
+                    "document_id": document_id,
                     "snippets": indexed_snippets,
                 }
             )
@@ -680,22 +683,24 @@ class EvidenceOperations(BaseLLMClient):
 
                 for paper_summary in compaction_response.papers:
                     if paper_summary.summary:
-                        all_compacted[paper_summary.paper_id] = [paper_summary.summary]
+                        all_compacted[paper_summary.document_id] = [
+                            paper_summary.summary
+                        ]
             else:
                 logger.warning("Empty response from LLM during evidence compaction.")
 
             # Add truncated fallback for papers not sent to LLM (due to size limits)
-            for paper_id, snippets in evidence_dict.items():
-                if paper_id not in all_compacted:
-                    all_compacted[paper_id] = [
+            for document_id, snippets in evidence_dict.items():
+                if document_id not in all_compacted:
+                    all_compacted[document_id] = [
                         f"(summarized) {' '.join(snippets)[:500]}..."
                     ]
         except Exception as e:
             logger.warning(
                 f"Evidence compaction failed: {e}. Using truncated fallback."
             )
-            for paper_id, snippets in evidence_dict.items():
-                all_compacted[paper_id] = [
+            for document_id, snippets in evidence_dict.items():
+                all_compacted[document_id] = [
                     f"(summarized) {' '.join(snippets)[:500]}..."
                 ]
 

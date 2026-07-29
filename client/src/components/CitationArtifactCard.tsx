@@ -41,7 +41,7 @@ function artifactToPaperBase(a: CitationArtifact): PaperBase {
     const d = a.data;
     // The client generators key the year off `created_at`; feed publish_date there.
     return {
-        id: d.paper_id,
+        id: d.document_id,
         title: d.title || '',
         authors: d.authors || [],
         created_at: d.publish_date,

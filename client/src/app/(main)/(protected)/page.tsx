@@ -254,8 +254,8 @@ export default function Home() {
 				setCeleryMessage(response.celery_progress_message);
 			}
 
-			if (response.paper_id) {
-				const redirectUrl = new URL(`/paper/${response.paper_id}`, window.location.origin);
+			if (response.document_id) {
+				const redirectUrl = new URL(`/paper/${response.document_id}`, window.location.origin);
 				redirectUrl.searchParams.append('job_id', jobId);
 				setTimeout(() => {
 					window.location.href = redirectUrl.toString();

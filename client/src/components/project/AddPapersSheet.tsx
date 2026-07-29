@@ -275,7 +275,7 @@ export function AddPapersSheet() {
                         )}
 
                         {view === "library" && (
-                            <AddFromLibrary projectId={projectId} onPapersAdded={refetchPapers} projectPaperIds={papers.map(p => p.id)} onUploadClick={() => setView("upload")} remainingPaperSlots={remainingPaperSlots ?? undefined} paperHardLimit={paperHardLimit ?? undefined} />
+                            <AddFromLibrary projectId={projectId} onPapersAdded={refetchPapers} projectDocumentIds={papers.map(p => p.id)} onUploadClick={() => setView("upload")} remainingPaperSlots={remainingPaperSlots ?? undefined} paperHardLimit={paperHardLimit ?? undefined} />
                         )}
                     </div>
                 </SheetContent>

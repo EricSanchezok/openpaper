@@ -134,7 +134,7 @@ def _zotero_import_status_items(
     return [
         ZoteroImportStatusItem(
             zotero_item_key=row.zotero_item_key,
-            paper_id=str(row.paper_id) if row.paper_id else None,
+            document_id=str(row.document_id) if row.document_id else None,
             upload_job_id=str(row.upload_job_id) if row.upload_job_id else None,
             import_source=row.import_source,
             status=row.status,

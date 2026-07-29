@@ -19,10 +19,10 @@ import { fetchFromApi } from "@/lib/api";
 import type { DurableJob, ResearchItem } from "@/lib/schema";
 
 interface AudioOverviewProps {
-    paper_id: string;
+    document_id: string;
 }
 
-export function AudioOverviewPanel({ paper_id }: AudioOverviewProps) {
+export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
     const [items, setItems] = useState<ResearchItem[]>([]);
     const [jobs, setJobs] = useState<DurableJob[]>([]);
     const [instructions, setInstructions] = useState("");
@@ -32,9 +32,9 @@ export function AudioOverviewPanel({ paper_id }: AudioOverviewProps) {
     const refresh = useCallback(async () => {
         try {
             const [researchResponse, jobResponse] = await Promise.all([
-                fetchFromApi(`/api/documents/${paper_id}/research-items`),
+                fetchFromApi(`/api/documents/${document_id}/research-items`),
                 fetchFromApi(
-                    `/api/jobs?document_id=${paper_id}&operation=audio_generate&active=true`,
+                    `/api/jobs?document_id=${document_id}&operation=audio_generate&active=true`,
                 ),
             ]);
             setItems(
@@ -46,7 +46,7 @@ export function AudioOverviewPanel({ paper_id }: AudioOverviewProps) {
         } catch (error) {
             console.error("Failed to load audio overviews", error);
         }
-    }, [paper_id]);
+    }, [document_id]);
 
     useEffect(() => {
         void refresh();
@@ -61,7 +61,7 @@ export function AudioOverviewPanel({ paper_id }: AudioOverviewProps) {
     const create = async () => {
         setSubmitting(true);
         try {
-            await fetchFromApi(`/api/documents/${paper_id}/audio-overviews`, {
+            await fetchFromApi(`/api/documents/${document_id}/audio-overviews`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

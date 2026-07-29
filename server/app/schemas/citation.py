@@ -34,7 +34,7 @@ class CitationData(BaseModel):
     """Structured, populated citation metadata. The client renders this into a
     citation string in the user's chosen style — the server does not format it."""
 
-    paper_id: str
+    document_id: str
     title: str | None = None
     authors: list[str] = Field(default_factory=list)
     publish_date: str | None = None
@@ -44,7 +44,7 @@ class CitationData(BaseModel):
 
 
 class CitationResult(BaseModel):
-    paper_id: str
+    document_id: str
     preferred_style: str  # canonical key (e.g. "APA")
     style_display: str  # human-readable (e.g. "APA 7th Edition")
     data: CitationData
