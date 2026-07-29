@@ -26,10 +26,10 @@ export function TopicBubbles({ isVisible }: { isVisible: boolean }) {
     useEffect(() => {
         const fetchTopics = async () => {
             try {
-                const response = await fetchFromApi('/discovery/topics') as {
+                const response = await fetchFromApi<{
                     items: string[];
                     next_cursor: string | null;
-                };
+                }>('/discovery/topics');
                 setTopics(response.items);
             } catch (error) {
                 console.error("Error fetching topics:", error);

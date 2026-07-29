@@ -166,7 +166,7 @@ function ProjectConversationPageContent() {
     const fetchMessages = useCallback(async (id: string) => {
         try {
             const [detail, response] = await Promise.all([
-                fetchFromApi(`/conversations/${id}`) as Promise<Conversation>,
+                fetchFromApi<Conversation>(`/conversations/${id}`),
                 fetchFromApi<ConversationMessagesResponse>(
                     `/conversations/${id}/messages?limit=100`,
                 ),

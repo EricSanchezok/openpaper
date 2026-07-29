@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
 
     const loadUser = useCallback(async (): Promise<User> => {
-        const currentUser = (await fetchFromApi("/me")) as User;
+        const currentUser = await fetchFromApi<User>("/me");
         setUser(currentUser);
         setError(null);
         return currentUser;

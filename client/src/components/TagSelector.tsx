@@ -24,10 +24,10 @@ export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
     useEffect(() => {
         const getTags = async () => {
             try {
-                const response = await fetchFromApi("/library/tags") as {
+                const response = await fetchFromApi<{
                     items: PaperTag[];
                     next_cursor: string | null;
-                };
+                }>("/library/tags");
                 setTags(response.items);
             } catch (error) {
                 console.error("Failed to fetch tags", error);

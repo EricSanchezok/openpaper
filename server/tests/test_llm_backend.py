@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from app.transport.http.public_v1.messages import (
+from app.modules.conversations.application.contracts.messages import (
     ChatMessageRequest,
     MultiPaperChatRequest,
 )

@@ -7,7 +7,8 @@ import hmac
 import os
 import time
 from app.bootstrap.container import build_job_callback_protection
-from fastapi import HTTPException, Request
+from app.shared.domain import AppError
+from fastapi import Request
 
 
 async def verify_jobs_webhook(
@@ -15,7 +16,11 @@ async def verify_jobs_webhook(
 ) -> None:
     secret = os.getenv("JOBS_WEBHOOK_SIGNING_SECRET")
     if not secret or len(secret.encode()) < 32:
-        raise HTTPException(status_code=503, detail="jobs_webhook_not_configured")
+        raise AppError(
+            code="jobs_webhook_not_configured",
+            message="Jobs callback authentication is unavailable",
+            status_code=503,
+        )
 
     timestamp = request.headers.get("X-Jobs-Timestamp", "")
     nonce = request.headers.get("X-Jobs-Nonce", "")
@@ -23,10 +28,18 @@ async def verify_jobs_webhook(
     try:
         timestamp_value = int(timestamp)
     except ValueError as exc:
-        raise HTTPException(status_code=401, detail="invalid_jobs_signature") from exc
+        raise AppError(
+            code="invalid_jobs_signature",
+            message="Jobs callback signature is invalid",
+            status_code=401,
+        ) from exc
 
     if abs(int(time.time()) - timestamp_value) > 300 or not nonce or len(nonce) > 64:
-        raise HTTPException(status_code=401, detail="expired_jobs_signature")
+        raise AppError(
+            code="expired_jobs_signature",
+            message="Jobs callback signature has expired",
+            status_code=401,
+        )
 
     body = await request.body()
     query = request.url.query
@@ -42,7 +55,15 @@ async def verify_jobs_webhook(
     ).encode()
     expected = hmac.new(secret.encode(), canonical, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401, detail="invalid_jobs_signature")
+        raise AppError(
+            code="invalid_jobs_signature",
+            message="Jobs callback signature is invalid",
+            status_code=401,
+        )
 
     if not build_job_callback_protection().reserve_nonce(nonce):
-        raise HTTPException(status_code=409, detail="jobs_webhook_replayed")
+        raise AppError(
+            code="jobs_webhook_replayed",
+            message="Jobs callback nonce has already been used",
+            status_code=409,
+        )

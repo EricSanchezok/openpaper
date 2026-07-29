@@ -221,7 +221,7 @@ export async function fetchRelevantPapers(limit = 3): Promise<PaperItem[]> {
 export async function fetchUploadJobStatus(
     jobId: string,
 ): Promise<PaperUploadJobStatusResponse> {
-    const job = await fetchFromApi(`/jobs/${jobId}`) as DurableJob;
+    const job = await fetchFromApi<DurableJob>(`/jobs/${jobId}`);
     return {
         job_id: job.id,
         status: job.status,
