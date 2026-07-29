@@ -93,7 +93,22 @@ from app.modules.conversations.infrastructure.application_gateway import (
     SqlAlchemyConversationGateway,
 )
 from app.shared.application import SignedCursorCodec
+from app.modules.identity.application.identity import Identity
+from app.modules.identity.infrastructure.application_gateway import (
+    SqlAlchemyIdentityGateway,
+)
+from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
+from app.modules.papers.application.topics import PaperTopics
+from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
+from app.modules.integrations.zotero.application.zotero import Zotero
+from app.modules.integrations.zotero.infrastructure.application_gateway import (
+    BillingZoteroImportCapacity,
+    DefaultZoteroGateway,
+    PostHogZoteroEvents,
+)
 from sqlalchemy.orm import Session
+
+optional_cloud_user_dependency = cloud_auth_adapter.get_optional_cloud_user
 
 
 def build_paper_search(
@@ -232,4 +247,21 @@ def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:
             revision="conversation-messages-v1",
             error_code="conversation_message_cursor_expired",
         ),
+    )
+
+
+def build_identity(*, db: Session) -> Identity:
+    return Identity(SqlAlchemyIdentityGateway(db))
+
+
+def build_paper_topics(*, db: Session) -> PaperTopics:
+    return PaperTopics(SqlAlchemyPaperTopics(db))
+
+
+def build_zotero(*, db: Session) -> Zotero:
+    return Zotero(
+        gateway=DefaultZoteroGateway(db),
+        capacity=BillingZoteroImportCapacity(db),
+        events=PostHogZoteroEvents(db),
+        idempotency=SqlAlchemyJobsGateway(db),
     )

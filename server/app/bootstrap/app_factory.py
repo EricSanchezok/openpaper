@@ -11,7 +11,6 @@ import logging
 from app.transport.http.public_v1.auth import (
     admin_router,
     auth_router,
-    zotero_oauth_router,
 )
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
@@ -49,7 +48,7 @@ from app.transport.http.public_v1.paper_search import search_router
 from app.transport.http.public_v1.research_search import research_search_router
 from app.transport.http.public_v1.billing import subscription_router
 from app.transport.http.webhooks_v1.stripe import router as stripe_webhook_router
-from app.transport.http.public_v1.zotero import zotero_router
+from app.transport.http.public_v1.zotero import zotero_oauth_router, zotero_router
 from app.modules.identity.infrastructure.cloud_auth import (
     cloud_auth_router,
     cloud_user_router,

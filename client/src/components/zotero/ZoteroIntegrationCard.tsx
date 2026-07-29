@@ -62,7 +62,7 @@ export function ZoteroIntegrationCard() {
 	const fetchZoteroStatus = useCallback(async () => {
 		setZoteroLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/oauth/status");
+			const data = await fetchFromApi("/integrations/zotero/connection");
 			setZoteroStatus(data);
 		} catch (error) {
 			console.error("Failed to fetch Zotero status:", error);
@@ -231,6 +231,7 @@ export function ZoteroIntegrationCard() {
 		try {
 			const data: ZoteroImportResponse = await fetchFromApi("/integrations/zotero/imports", {
 				method: "POST",
+				headers: { "Idempotency-Key": crypto.randomUUID() },
 				body: JSON.stringify({ item_keys: keysToImport }),
 			});
 			const parts: string[] = [];
@@ -289,7 +290,7 @@ export function ZoteroIntegrationCard() {
 	const handleZoteroDisconnect = async () => {
 		setZoteroActionLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/oauth/disconnect", {
+			const data = await fetchFromApi("/integrations/zotero/connection", {
 				method: "DELETE",
 			});
 			if (data.success) {

@@ -28,7 +28,7 @@ export function ZoteroUploadCta({ className }: ZoteroUploadCtaProps) {
 
 	useEffect(() => {
 		let cancelled = false;
-		fetchFromApi("/integrations/zotero/oauth/status")
+		fetchFromApi("/integrations/zotero/connection")
 			.then((data: ZoteroStatus) => {
 				if (!cancelled) setStatus(data);
 			})

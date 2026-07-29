@@ -28,10 +28,37 @@ class EnqueueJobCommand:
     document_id: UUID | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ReserveOperationCommand:
+    operation_id: UUID
+    operation: JobOperation
+    requested_by_id: int
+    idempotency_key: str
+    payload: dict[str, JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
+class ReservedOperation:
+    job: JobResponse
+    payload: dict[str, JsonValue]
+    created: bool
+
+
 class JobCommandPort(Protocol):
     def find_by_idempotency_key(self, *, key: str) -> JobResponse | None: ...
 
     def enqueue(self, *, command: EnqueueJobCommand) -> JobResponse: ...
+
+
+class IdempotentOperationPort(Protocol):
+    def reserve(self, *, command: ReserveOperationCommand) -> ReservedOperation: ...
+
+    def complete(
+        self,
+        *,
+        operation_id: UUID,
+        result: dict[str, JsonValue],
+    ) -> JobResponse: ...
 
 
 class JobQueryPort(Protocol):

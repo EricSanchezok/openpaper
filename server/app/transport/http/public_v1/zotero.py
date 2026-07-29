@@ -1,36 +1,72 @@
-from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.integrations.zotero.infrastructure.connection_repository import (
-    zotero_connection_repository,
-)
-from app.modules.integrations.zotero.infrastructure.import_repository import (
-    zotero_import_repository,
-)
+"""HTTP adapters for the Zotero integration."""
+
+from app.bootstrap.container import build_zotero
+from app.bootstrap.settings import AppSettings
 from app.database.database import get_db
-from app.database.models import ZoteroImportedItem
-from app.database.telemetry import track_event
-from app.shared.domain import AppError
-from app.modules.billing.infrastructure.quotas import can_user_upload_paper
-from app.shared.application import Actor
 from app.modules.integrations.zotero.application.contracts import (
-    ZoteroImportError,
-    ZoteroImportItemResult,
+    ZoteroConnectResponse,
+    ZoteroDisconnectResponse,
     ZoteroImportRequest,
     ZoteroImportResponse,
-    ZoteroImportStatusItem,
     ZoteroImportStatusListResponse,
-    ZoteroLibraryItem,
     ZoteroLibraryResponse,
+    ZoteroStatusResponse,
     ZoteroSyncResponse,
 )
-from app.modules.integrations.zotero.infrastructure.service import (
-    import_batch,
-    list_library,
-    sync_batch,
-)
-from fastapi import APIRouter, Depends, Query, status
+from app.shared.application import Actor
+from app.transport.http.public_v1.auth_dependencies import get_required_user
+from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 zotero_router = APIRouter()
+zotero_oauth_router = APIRouter()
+
+
+@zotero_oauth_router.get("/connect", response_model=ZoteroConnectResponse)
+def zotero_connect(
+    current_user: Actor = Depends(get_required_user),
+    db: Session = Depends(get_db),
+) -> ZoteroConnectResponse:
+    return build_zotero(db=db).connect(actor=current_user)
+
+
+@zotero_oauth_router.get("/callback", response_class=RedirectResponse)
+def zotero_callback(
+    request: Request,
+    oauth_token: str = Query(...),
+    oauth_verifier: str = Query(...),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    settings: AppSettings = request.app.state.settings
+    success = build_zotero(db=db).callback(
+        oauth_token=oauth_token,
+        oauth_verifier=oauth_verifier,
+    )
+    state = "connected" if success else "error"
+    return RedirectResponse(
+        url=f"{settings.client_domain.rstrip('/')}/settings?zotero={state}",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@zotero_router.get("/connection", response_model=ZoteroStatusResponse)
+def zotero_status(
+    current_user: Actor = Depends(get_required_user),
+    db: Session = Depends(get_db),
+) -> ZoteroStatusResponse:
+    return build_zotero(db=db).status(actor=current_user)
+
+
+@zotero_router.delete(
+    "/connection",
+    response_model=ZoteroDisconnectResponse,
+)
+def zotero_disconnect(
+    current_user: Actor = Depends(get_required_user),
+    db: Session = Depends(get_db),
+) -> ZoteroDisconnectResponse:
+    return build_zotero(db=db).disconnect(actor=current_user)
 
 
 @zotero_router.get("/library-items", response_model=ZoteroLibraryResponse)
@@ -38,22 +74,7 @@ def zotero_library(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroLibraryResponse:
-    """List importable journal articles, conference papers, and preprints from the user's Zotero library."""
-    connection = zotero_connection_repository.get_by_user_id(
-        db, user_id=current_user.id
-    )
-    if not connection:
-        raise AppError(
-            code="zotero_not_connected",
-            message="Connect a Zotero account before using this feature",
-            status_code=400,
-        )
-    result = list_library(db, user=current_user)
-
-    return ZoteroLibraryResponse(
-        items=[ZoteroLibraryItem(**item) for item in result["items"]],
-        remaining_slots=result["remaining_slots"],
-    )
+    return build_zotero(db=db).library(actor=current_user)
 
 
 @zotero_router.post(
@@ -63,51 +84,14 @@ def zotero_library(
 )
 async def zotero_import(
     request: ZoteroImportRequest,
+    idempotency_key: str | None = Header(default=None, max_length=128),
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroImportResponse:
-    """Import selected journal articles, conference papers, and preprints from Zotero (PDF or URL fallback)."""
-    connection = zotero_connection_repository.get_by_user_id(
-        db, user_id=current_user.id
-    )
-    if not connection:
-        raise AppError(
-            code="zotero_not_connected",
-            message="Connect a Zotero account before importing",
-            status_code=400,
-        )
-
-    can_upload, upload_err = can_user_upload_paper(db, current_user)
-    if not can_upload:
-        raise AppError(
-            code="paper_quota_exceeded",
-            message=upload_err or "Upload limit reached",
-            status_code=403,
-        )
-
-    try:
-        result = await import_batch(db, user=current_user, item_keys=request.item_keys)
-    except ValueError as exc:
-        raise AppError(
-            code="zotero_import_invalid",
-            message="The selected Zotero items could not be imported",
-            status_code=400,
-        ) from exc
-
-    if result["imported_count"] > 0:
-        track_event(
-            "zotero_import_batch",
-            user_id=str(current_user.id),
-            properties={"count": result["imported_count"]},
-            db=db,
-        )
-
-    return ZoteroImportResponse(
-        imported=[ZoteroImportItemResult(**item) for item in result["imported"]],
-        imported_count=result["imported_count"],
-        imported_via_url=result["imported_via_url"],
-        skipped_already_imported=result["skipped_already_imported"],
-        errors=[ZoteroImportError(**err) for err in result["errors"]],
+    return await build_zotero(db=db).import_items(
+        actor=current_user,
+        request=request,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -120,67 +104,16 @@ async def zotero_sync(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroSyncResponse:
-    """Manually trigger annotation sync for all already-imported Zotero PDF papers. Available to all plan tiers."""
-    connection = zotero_connection_repository.get_by_user_id(
-        db, user_id=current_user.id
-    )
-    if not connection:
-        raise AppError(
-            code="zotero_not_connected",
-            message="Connect a Zotero account before synchronizing",
-            status_code=400,
-        )
-
-    result = await sync_batch(db, user=current_user, limit=50)
-
-    if result.get("new_annotations_count", 0) > 0:
-        track_event(
-            "zotero_manual_sync",
-            user_id=str(current_user.id),
-            properties={
-                "papers": result.get("synced_papers_count", 0),
-                "annotations": result.get("new_annotations_count", 0),
-            },
-            db=db,
-        )
-
-    return ZoteroSyncResponse(
-        synced_papers_count=result["synced_papers_count"],
-        new_annotations_count=result["new_annotations_count"],
-    )
-
-
-def _zotero_import_status_items(
-    rows: list[tuple[ZoteroImportedItem, str | None]],
-) -> list[ZoteroImportStatusItem]:
-    return [
-        ZoteroImportStatusItem(
-            zotero_item_key=row.zotero_item_key,
-            document_id=str(row.document_id) if row.document_id else None,
-            upload_job_id=str(row.upload_job_id) if row.upload_job_id else None,
-            import_source=row.import_source,
-            status=row.status,
-            title=title,
-            error_message=row.error_message,
-            created_at=row.created_at,
-            last_synced_at=row.last_synced_at,
-        )
-        for row, title in rows
-    ]
+    return await build_zotero(db=db).sync(actor=current_user)
 
 
 @zotero_router.get("/imports", response_model=ZoteroImportStatusListResponse)
-async def zotero_import_status_list(
+def zotero_import_status_list(
     item_keys: list[str] | None = Query(None),
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroImportStatusListResponse:
-    """List recent Zotero import records for the current user."""
-    if item_keys:
-        rows = zotero_import_repository.list_by_item_keys(
-            db, user_id=current_user.id, item_keys=item_keys
-        )
-    else:
-        rows = zotero_import_repository.list_recent_by_user(db, user_id=current_user.id)
-    items = _zotero_import_status_items(rows)
-    return ZoteroImportStatusListResponse(items=items)
+    return build_zotero(db=db).imports(
+        actor=current_user,
+        item_keys=item_keys,
+    )

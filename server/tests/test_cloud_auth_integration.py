@@ -5,7 +5,9 @@ import pytest
 from app.database import admin_auth
 from app.database.models import AuthUser, Base
 from app.modules.identity.infrastructure import cloud_auth as runtime
+from app.modules.identity.infrastructure import application_gateway
 from app.transport.http.public_v1 import auth_dependencies as dependencies
+from app.shared.domain import AppError
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -59,7 +61,7 @@ async def test_cloud_identity_is_enriched_with_scholens_profile() -> None:
     )
     db = MagicMock()
     with patch.object(
-        dependencies.user_repository,
+        application_gateway.user_repository,
         "get_or_create_profile",
         return_value=profile,
     ) as get_profile:
@@ -79,15 +81,15 @@ async def test_cloud_identity_is_enriched_with_scholens_profile() -> None:
 async def test_product_block_does_not_modify_shared_account() -> None:
     profile = SimpleNamespace(locale=None, is_admin=False, is_blocked=True)
     with patch.object(
-        dependencies.user_repository,
+        application_gateway.user_repository,
         "get_or_create_profile",
         return_value=profile,
     ):
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AppError) as exc_info:
             await dependencies.get_current_user(_cloud_user(), MagicMock())
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "Scholens access is suspended"
+    assert exc_info.value.message == "Scholens access is suspended"
 
 
 def test_refresh_cookie_is_scoped_to_scholens_auth_routes() -> None:
