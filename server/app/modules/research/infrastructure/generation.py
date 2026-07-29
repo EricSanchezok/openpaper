@@ -17,7 +17,7 @@ from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 
-class DefaultGenerationCapacity:
+class SqlGenerationEntitlements:
     def __init__(self, db: Session) -> None:
         self._db = db
 
@@ -29,6 +29,8 @@ class DefaultGenerationCapacity:
                 kind=FailureKind.RATE_LIMITED,
             )
 
+
+class RedisGenerationCapacity:
     async def enforce_rate(
         self,
         *,

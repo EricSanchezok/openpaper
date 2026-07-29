@@ -5,7 +5,6 @@ from collections.abc import Sequence
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
-from app.database.database import get_db
 from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
     NAME_DATA_TABLE_SYSTEM_PROMPT,
@@ -20,7 +19,6 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationUpdateRequest,
 )
 from app.shared.application import Actor
-from fastapi import Depends
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -33,7 +31,7 @@ class ConversationOperations(BaseLLMClient):
         self,
         conversation_id: str,
         user: Actor,
-        db: Session = Depends(get_db),
+        db: Session,
     ) -> str | None:
         """
         Rename a conversation based on its chat history

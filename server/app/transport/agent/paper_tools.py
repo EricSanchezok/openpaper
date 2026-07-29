@@ -3,6 +3,7 @@ from logging import getLogger
 from time import time
 
 from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.execution import create_paper_ingestion_workflow
 from app.modules.papers.application.contracts.search import (
     PaperSearchFilters,
     PaperSearchRequest,
@@ -316,14 +317,11 @@ async def ingest_paper_from_url(
     idempotency_key: str | None = None,
 ) -> dict[str, object]:
     """Agent adapter over the same idempotent ingestion use case as HTTP."""
-    result = await executor.command_async(
-        lambda capabilities: capabilities.paper_ingestion.from_url(
-            actor=current_user,
-            url=url,
-            source=capabilities.pdf_url_source,
-            project_id=uuid.UUID(project_id) if project_id else None,
-            idempotency_key=idempotency_key,
-            ip_address="agent",
-        )
+    result = await create_paper_ingestion_workflow(executor).from_url(
+        actor=current_user,
+        url=url,
+        project_id=uuid.UUID(project_id) if project_id else None,
+        idempotency_key=idempotency_key,
+        ip_address="agent",
     )
     return result.model_dump()

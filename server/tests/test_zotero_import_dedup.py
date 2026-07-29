@@ -88,9 +88,13 @@ def _patch_import_pipeline(fn):
     decorators = [
         patch.object(
             zotero_import_module,
-            "submit_reserved_document",
-            new_callable=AsyncMock,
+            "finalize_reserved_document",
             return_value="task-123",
+        ),
+        patch.object(
+            zotero_import_module.s3_service,
+            "upload_document_source",
+            new=MagicMock(),
         ),
         patch.object(
             zotero_import_module,

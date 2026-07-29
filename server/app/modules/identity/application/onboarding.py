@@ -35,32 +35,23 @@ class OnboardingEventRecorder(Protocol):
     ) -> None: ...
 
 
-class CompleteOnboarding:
+class SaveOnboarding:
     def __init__(
         self,
         *,
         writer: OnboardingWriter,
-        display_names: DisplayNameWriter,
-        notifier: OnboardingNotifier,
         events: OnboardingEventRecorder,
     ) -> None:
         self._writer = writer
-        self._display_names = display_names
-        self._notifier = notifier
         self._events = events
 
-    async def execute(
+    def execute(
         self,
         *,
         actor: Actor,
         request: CreateOnboardingRequest,
     ) -> OnboardingResponse:
         onboarding = self._writer.upsert(actor=actor, request=request)
-        if not actor.display_name:
-            await self._display_names.set_display_name(
-                user_id=actor.id,
-                display_name=request.name,
-            )
         properties: dict[str, object] = {
             "name": request.name,
             "email": str(request.email),
@@ -72,8 +63,32 @@ class CompleteOnboarding:
             "research_fields": _split_values(request.research_fields),
         }
         self._events.completed(user_id=actor.id, properties=properties)
-        self._notifier.notify(onboarding)
         return onboarding
+
+
+class FinishOnboarding:
+    def __init__(
+        self,
+        *,
+        display_names: DisplayNameWriter,
+        notifier: OnboardingNotifier,
+    ) -> None:
+        self._display_names = display_names
+        self._notifier = notifier
+
+    async def execute(
+        self,
+        *,
+        actor: Actor,
+        request: CreateOnboardingRequest,
+        onboarding: OnboardingResponse,
+    ) -> None:
+        if not actor.display_name:
+            await self._display_names.set_display_name(
+                user_id=actor.id,
+                display_name=request.name,
+            )
+        self._notifier.notify(onboarding)
 
 
 def _split_values(value: str | None) -> list[str]:

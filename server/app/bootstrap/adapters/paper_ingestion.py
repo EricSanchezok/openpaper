@@ -13,13 +13,14 @@ from app.helpers.ai_limits import (
     enforce_rate_limit,
 )
 from app.helpers.parser import validate_pdf_content, validate_url_and_fetch_pdf
+from app.helpers.ai_limits import release_concurrency_by_id
 from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.papers.application.ingestion import (
     FetchedPdf,
     IngestionReservation,
 )
 from app.modules.papers.domain import content_sha256, durable_ingestion_key
-from app.bootstrap.adapters.document_submission import dispatch_reserved_document
+from app.bootstrap.adapters.document_submission import finalize_reserved_document
 from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
 )
@@ -92,6 +93,13 @@ class DefaultPaperIngestionLimits:
                 kind=FailureKind.RATE_LIMITED,
             ) from None
 
+    async def release(self, *, actor: Actor, job_id: UUID) -> None:
+        await release_concurrency_by_id(
+            user_id=actor.id,
+            category="background",
+            operation_id=str(job_id),
+        )
+
 
 class SqlPaperIngestionGateway:
     def __init__(self, db: Session) -> None:
@@ -143,13 +151,13 @@ class SqlPaperIngestionGateway:
             error_code=error_code,
         )
 
-    async def dispatch(
+    def finalize(
         self,
         *,
         actor: Actor,
         job_id: UUID,
         content: bytes,
-    ) -> None:
+    ) -> str:
         reservation = upload_reservation_repository.get(
             self._db,
             id=job_id,
@@ -157,7 +165,7 @@ class SqlPaperIngestionGateway:
         )
         if reservation is None:
             raise RuntimeError("reserved_ingestion_not_found")
-        await dispatch_reserved_document(
+        return finalize_reserved_document(
             pdf_bytes=content,
             upload_job=reservation,
             user=actor,

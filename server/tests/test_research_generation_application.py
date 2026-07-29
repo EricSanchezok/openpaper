@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.modules.jobs.application.contracts import (
     CreateAudioOverviewRequest,
+    CreateJobResponse,
     JobResponse,
 )
 from app.modules.jobs.application.jobs import EnqueueJobCommand
 from app.modules.papers.application.content import AccessiblePaperContent
 from app.modules.research.application.generation import ResearchGeneration
+from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.shared.application import Actor
 
 
@@ -81,14 +85,18 @@ class FakeJobs:
         return _job(command.job_id)
 
 
-class FakeCapacity:
+class FakeEntitlements:
     def __init__(self) -> None:
         self.required_tokens = 0
-        self.acquired_audio: list[UUID] = []
-        self.released_audio: list[UUID] = []
 
     def require_tokens(self, **_kwargs: object) -> None:
         self.required_tokens += 1
+
+
+class FakeCapacity:
+    def __init__(self) -> None:
+        self.acquired_audio: list[UUID] = []
+        self.released_audio: list[UUID] = []
 
     async def enforce_rate(self, **_kwargs: object) -> None:
         return None
@@ -116,29 +124,41 @@ class FakeCapacity:
         return None
 
 
-@pytest.mark.asyncio
-async def test_audio_idempotency_replays_without_reserving_capacity() -> None:
+class FakeExecutor:
+    def __init__(self, generation: ResearchGeneration) -> None:
+        self.capabilities = SimpleNamespace(research_generation=generation)
+        self.phases: list[str] = []
+
+    def query(self, operation: Any) -> Any:
+        self.phases.append("query")
+        return operation(self.capabilities)
+
+    def command(self, operation: Any) -> Any:
+        self.phases.append("command")
+        return operation(self.capabilities)
+
+
+def test_audio_idempotency_replays_without_reserving_capacity() -> None:
     jobs = FakeJobs()
     existing = _job(uuid4())
     jobs.existing = existing
-    capacity = FakeCapacity()
+    entitlements = FakeEntitlements()
     generation = ResearchGeneration(
         documents=FakeDocuments(_document()),  # type: ignore[arg-type]
         jobs=jobs,
-        capacity=capacity,
+        entitlements=entitlements,
     )
 
-    result = await generation.document_audio(
+    result = generation.prepare_document_audio(
         actor=_actor(),
-        client_ip="127.0.0.1",
         document_id=uuid4(),
         request=CreateAudioOverviewRequest(),
         idempotency_key="same-request",
     )
 
+    assert isinstance(result, CreateJobResponse)
     assert result.job.id == existing.id
-    assert capacity.required_tokens == 0
-    assert capacity.acquired_audio == []
+    assert entitlements.required_tokens == 0
     assert jobs.commands == []
 
 
@@ -146,21 +166,31 @@ async def test_audio_idempotency_replays_without_reserving_capacity() -> None:
 async def test_audio_releases_external_capacity_when_outbox_enqueue_fails() -> None:
     jobs = FakeJobs()
     jobs.fail_enqueue = True
+    entitlements = FakeEntitlements()
     capacity = FakeCapacity()
     generation = ResearchGeneration(
         documents=FakeDocuments(_document()),  # type: ignore[arg-type]
         jobs=jobs,
+        entitlements=entitlements,
+    )
+    executor = FakeExecutor(generation)
+    workflow = ResearchGenerationWorkflow(
+        executor=executor,  # type: ignore[arg-type]
         capacity=capacity,
     )
 
     with pytest.raises(RuntimeError, match="outbox_unavailable"):
-        await generation.document_audio(
+        await workflow.run(
             actor=_actor(),
             client_ip="127.0.0.1",
-            document_id=uuid4(),
-            request=CreateAudioOverviewRequest(),
-            idempotency_key="new-request",
+            prepare=lambda capability: capability.prepare_document_audio(
+                actor=_actor(),
+                document_id=uuid4(),
+                request=CreateAudioOverviewRequest(),
+                idempotency_key="new-request",
+            ),
         )
 
-    assert capacity.required_tokens == 1
+    assert entitlements.required_tokens == 1
     assert capacity.released_audio == capacity.acquired_audio
+    assert executor.phases == ["query", "command"]

@@ -60,6 +60,10 @@ from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.execution import (
     create_application_executor,
     create_conversation_chat,
+    create_onboarding_finisher,
+    create_paper_ingestion_workflow,
+    create_research_generation_workflow,
+    create_stripe_webhook_processor,
 )
 from app.bootstrap.settings import (
     INTERNAL_API_PREFIX,
@@ -68,7 +72,7 @@ from app.bootstrap.settings import (
     AppSettings,
 )
 from app.database.admin import setup_admin
-from app.database.database import get_db
+from app.database.database import SessionLocal
 from app.shared.domain import AppError
 from app.transport.http.errors import (
     app_error_handler,
@@ -77,10 +81,9 @@ from app.transport.http.errors import (
 )
 from app.transport.http.public_v1.identity import router as identity_router
 from app.transport.http.public_v1.onboarding import onboarding_router
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
@@ -144,6 +147,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     executor = create_application_executor(runtime_settings)
     application.state.application_executor = executor
     application.state.conversation_chat = create_conversation_chat(executor)
+    application.state.onboarding_finisher = create_onboarding_finisher()
+    application.state.stripe_webhook_processor = create_stripe_webhook_processor()
+    application.state.paper_ingestion_workflow = create_paper_ingestion_workflow(
+        executor
+    )
+    application.state.research_generation_workflow = (
+        create_research_generation_workflow(executor)
+    )
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[runtime_settings.client_domain],
@@ -173,8 +184,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @application.get("/readyz", include_in_schema=False)
-    def readyz(db: Session = Depends(get_db)) -> dict[str, str]:
-        db.execute(text("SELECT 1"))
+    def readyz() -> dict[str, str]:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
         return {"status": "ready"}
 
     setup_admin(application)

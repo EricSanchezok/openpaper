@@ -3,12 +3,12 @@
 from app.bootstrap.adapters.stripe_webhook import (
     process_stripe_webhook,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 
 class StripeWebhookAdapter:
-    def __init__(self, db: Session) -> None:
-        self._db = db
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
 
     async def process(
         self,
@@ -16,8 +16,9 @@ class StripeWebhookAdapter:
         payload: bytes,
         signature: str,
     ) -> dict[str, object]:
-        return await process_stripe_webhook(
-            payload=payload,
-            stripe_signature=signature,
-            db=self._db,
-        )
+        with self._session_factory() as session:
+            return await process_stripe_webhook(
+                payload=payload,
+                stripe_signature=signature,
+                db=session,
+            )

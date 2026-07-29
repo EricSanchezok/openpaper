@@ -5,7 +5,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import (
+    get_application_executor,
+    get_research_generation_workflow,
+)
+from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.modules.jobs.application.contracts import (
     CreateAudioOverviewRequest,
     CreateDataTableRequest,
@@ -37,19 +41,18 @@ async def create_document_audio_overview(
     request: CreateAudioOverviewRequest,
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ResearchGenerationWorkflow = Depends(get_research_generation_workflow),
     current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
-    return await executor.command_async(
-        lambda capabilities: capabilities.research_generation.document_audio(
+    return await workflow.run(
+        actor=current_user,
+        client_ip=_client_ip(http_request),
+        prepare=lambda generation: generation.prepare_document_audio(
             actor=current_user,
-            client_ip=_client_ip(http_request),
             document_id=document_id,
             request=request,
             idempotency_key=idempotency_key,
-        )
+        ),
     )
 
 
@@ -63,19 +66,18 @@ async def create_project_audio_overview(
     request: CreateAudioOverviewRequest,
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ResearchGenerationWorkflow = Depends(get_research_generation_workflow),
     current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
-    return await executor.command_async(
-        lambda capabilities: capabilities.research_generation.project_audio(
+    return await workflow.run(
+        actor=current_user,
+        client_ip=_client_ip(http_request),
+        prepare=lambda generation: generation.prepare_project_audio(
             actor=current_user,
-            client_ip=_client_ip(http_request),
             project_id=project_id,
             request=request,
             idempotency_key=idempotency_key,
-        )
+        ),
     )
 
 
@@ -127,17 +129,16 @@ async def create_project_data_table(
     request: CreateDataTableRequest,
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ResearchGenerationWorkflow = Depends(get_research_generation_workflow),
     current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
-    return await executor.command_async(
-        lambda capabilities: capabilities.research_generation.project_data_table(
+    return await workflow.run(
+        actor=current_user,
+        client_ip=_client_ip(http_request),
+        prepare=lambda generation: generation.prepare_project_data_table(
             actor=current_user,
-            client_ip=_client_ip(http_request),
             project_id=project_id,
             request=request,
             idempotency_key=idempotency_key,
-        )
+        ),
     )

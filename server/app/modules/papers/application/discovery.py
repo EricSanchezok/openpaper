@@ -23,6 +23,18 @@ class AccessibleDiscoveryDocument:
     doi: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveryMatchPreparation:
+    document: AccessibleDiscoveryDocument | None
+    doi: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryMatchResult:
+    graph: OpenAlexCitationGraph
+    resolved_doi: str
+
+
 class ExternalPaperCatalog(Protocol):
     async def search(self, *, query: str, page: int) -> OpenAlexResponse: ...
 
@@ -171,15 +183,13 @@ class DiscoverPapers:
             ),
         )
 
-    async def match(
+    def prepare_match(
         self,
         *,
         actor: Actor,
-        client_ip: str,
         doi: str | None,
         document_id: UUID | None,
-    ) -> OpenAlexCitationGraph:
-        await self._rate_limiter.check(actor=actor, client_ip=client_ip)
+    ) -> DiscoveryMatchPreparation:
         if doi is None and document_id is None:
             raise AppError(
                 code="citation_graph_source_required",
@@ -201,8 +211,20 @@ class DiscoverPapers:
                 )
             if doi is None:
                 doi = document.doi
-                if doi is None and document.title:
-                    doi = await self._catalog.resolve_doi(title=document.title)
+        return DiscoveryMatchPreparation(document=document, doi=doi)
+
+    async def fetch_match(
+        self,
+        *,
+        actor: Actor,
+        client_ip: str,
+        preparation: DiscoveryMatchPreparation,
+    ) -> DiscoveryMatchResult:
+        await self._rate_limiter.check(actor=actor, client_ip=client_ip)
+        document = preparation.document
+        doi = preparation.doi
+        if doi is None and document is not None and document.title:
+            doi = await self._catalog.resolve_doi(title=document.title)
 
         if doi is None:
             raise AppError(
@@ -217,14 +239,25 @@ class DiscoverPapers:
                 message="OpenAlex could not find a paper for this DOI",
                 kind=FailureKind.NOT_FOUND,
             )
-        if document is not None and document.doi != doi:
+        graph = await self._catalog.citation_graph(work_id=work.id)
+        return DiscoveryMatchResult(graph=graph, resolved_doi=doi)
+
+    def complete_match(
+        self,
+        *,
+        actor: Actor,
+        preparation: DiscoveryMatchPreparation,
+        result: DiscoveryMatchResult,
+    ) -> OpenAlexCitationGraph:
+        document = preparation.document
+        if document is not None and document.doi != result.resolved_doi:
             self._documents.set_doi(
                 actor=actor,
                 document_id=document.document_id,
-                doi=doi,
+                doi=result.resolved_doi,
             )
 
-        graph = await self._catalog.citation_graph(work_id=work.id)
+        graph = result.graph
         self._events.record(
             actor=actor,
             name="citation_graph_view",

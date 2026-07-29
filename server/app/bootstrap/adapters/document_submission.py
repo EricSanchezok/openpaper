@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
-import time
 
 from app.bootstrap.adapters.project_documents import (
     project_document_repository,
@@ -14,21 +12,18 @@ from app.database.models import (
     DocumentProcessingStatus,
     UploadReservation,
 )
-from app.database.telemetry import track_event
-from app.helpers.s3 import document_source_key, s3_service
+from app.helpers.s3 import document_source_key
 from app.modules.papers.domain import can_begin_processing
 from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.jobs.infrastructure.repository import job_repository
 from app.shared.application import Actor
 from app.helpers.celery_config import get_webhook_base_url
-from app.helpers.ai_limits import release_concurrency_by_id
-from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
-async def submit_reserved_document(
+def finalize_reserved_document(
     *,
     pdf_bytes: bytes,
     upload_job: UploadReservation,
@@ -43,27 +38,6 @@ async def submit_reserved_document(
     digest = hashlib.sha256(pdf_bytes).hexdigest()
     source_key = document_source_key(digest)
     filename = upload_job.original_filename or "document.pdf"
-    existing = document_repository.get_by_sha256(db, sha256=digest)
-
-    if existing is None:
-        upload_started_at = time.monotonic()
-        await asyncio.to_thread(
-            s3_service.upload_document_source,
-            sha256=digest,
-            pdf_bytes=pdf_bytes,
-        )
-        track_event(
-            "timer:canonical_pdf_upload",
-            user_id=str(user.id),
-            properties={
-                "duration": time.monotonic() - upload_started_at,
-                "job_id": str(upload_job.id),
-                "sha256": digest,
-            },
-            sync=True,
-            db=db,
-        )
-
     canonical = document_repository.get_or_create(
         db,
         sha256=digest,
@@ -162,55 +136,3 @@ async def submit_reserved_document(
     )
     db.flush()
     return str(upload_job.id)
-
-
-async def dispatch_reserved_document(
-    *,
-    pdf_bytes: bytes,
-    upload_job: UploadReservation,
-    db: Session,
-    user: Actor,
-) -> str:
-    """Submit a reserved upload and close its concurrency lease on terminal paths."""
-    try:
-        task_id = await submit_reserved_document(
-            pdf_bytes=pdf_bytes,
-            upload_job=upload_job,
-            db=db,
-            user=user,
-        )
-        if task_id.startswith("reused:") or task_id != str(upload_job.id):
-            await release_concurrency_by_id(
-                user_id=int(user.id),
-                category="background",
-                operation_id=str(upload_job.id),
-            )
-        track_event(
-            "paper_upload_submitted_to_microservice",
-            properties={"task_id": task_id},
-            user_id=str(user.id),
-            db=db,
-        )
-        return task_id
-    except Exception as exc:
-        logger.error("Document processing job submission failed", exc_info=True)
-        from app.bootstrap.adapters.upload_repository import (
-            upload_reservation_repository,
-        )
-
-        upload_reservation_repository.mark_as_failed(
-            db=db,
-            job_id=str(upload_job.id),
-            user=user,
-            error_code="jobs_submission_failed",
-        )
-        await release_concurrency_by_id(
-            user_id=int(user.id),
-            category="background",
-            operation_id=str(upload_job.id),
-        )
-        raise AppError(
-            code="jobs_submission_failed",
-            message="The document processing job could not be started",
-            kind=FailureKind.UNAVAILABLE,
-        ) from exc

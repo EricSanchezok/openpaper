@@ -37,14 +37,16 @@ from app.modules.research.application.search import (
     build_research_search_cursor,
 )
 from app.bootstrap.adapters.research_search import SqlResearchSearch
-from app.modules.identity.application.onboarding import CompleteOnboarding
+from app.modules.identity.application.onboarding import (
+    FinishOnboarding,
+    SaveOnboarding,
+)
 from app.modules.identity.infrastructure.onboarding_adapters import (
     CloudAuthDisplayNameWriter,
     EmailOnboardingNotifier,
     PostHogOnboardingEventRecorder,
     SqlAlchemyOnboardingWriter,
 )
-from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.modules.billing.application.billing import Billing
 from app.modules.billing.infrastructure.application_gateway import (
     EmailBillingNotifier,
@@ -57,7 +59,6 @@ from app.modules.billing.infrastructure.config import (
     MONTHLY_PRICE_ID,
     YEARLY_PRICE_ID,
 )
-from app.bootstrap.adapters.stripe_webhook_adapter import StripeWebhookAdapter
 from app.modules.papers.application.tags import LibraryTags
 from app.modules.papers.infrastructure.tag_gateway import (
     SqlAlchemyLibraryTagGateway,
@@ -98,7 +99,8 @@ from app.modules.research.application.generation import (
     ResearchGeneration,
 )
 from app.modules.research.infrastructure.generation import (
-    DefaultGenerationCapacity,
+    RedisGenerationCapacity,
+    SqlGenerationEntitlements,
 )
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.conversations.application.chat import ConversationChatData
@@ -185,17 +187,18 @@ def build_research_search(
     )
 
 
-def build_complete_onboarding(*, db: Session) -> CompleteOnboarding:
-    return CompleteOnboarding(
+def build_save_onboarding(*, db: Session) -> SaveOnboarding:
+    return SaveOnboarding(
         writer=SqlAlchemyOnboardingWriter(db),
-        display_names=CloudAuthDisplayNameWriter(),
-        notifier=EmailOnboardingNotifier(),
         events=PostHogOnboardingEventRecorder(db),
     )
 
 
-def build_stripe_webhook_processor(*, db: Session) -> ProcessStripeWebhook:
-    return ProcessStripeWebhook(StripeWebhookAdapter(db))
+def build_finish_onboarding() -> FinishOnboarding:
+    return FinishOnboarding(
+        display_names=CloudAuthDisplayNameWriter(),
+        notifier=EmailOnboardingNotifier(),
+    )
 
 
 def build_billing(*, db: Session) -> Billing:
@@ -346,8 +349,12 @@ def build_research_generation(*, db: Session) -> ResearchGeneration:
             project_documents=project_documents,
         ),
         jobs=SqlAlchemyJobsGateway(db),
-        capacity=DefaultGenerationCapacity(db),
+        entitlements=SqlGenerationEntitlements(db),
     )
+
+
+def build_generation_capacity() -> RedisGenerationCapacity:
+    return RedisGenerationCapacity()
 
 
 def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:

@@ -51,7 +51,7 @@ from app.bootstrap.adapters.research_annotations import (
     require_parsed_content,
 )
 from app.bootstrap.adapters.upload_reservations import reserve_upload
-from app.bootstrap.adapters.document_submission import submit_reserved_document
+from app.bootstrap.adapters.document_submission import finalize_reserved_document
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -890,7 +890,13 @@ async def _import_one_paper(
             content_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
         )
         upload_job_id = str(paper_upload_job.id)
-        task_id = await submit_reserved_document(
+        digest = hashlib.sha256(pdf_bytes).hexdigest()
+        await asyncio.to_thread(
+            s3_service.upload_document_source,
+            sha256=digest,
+            pdf_bytes=pdf_bytes,
+        )
+        task_id = finalize_reserved_document(
             pdf_bytes=pdf_bytes,
             upload_job=paper_upload_job,
             db=db,

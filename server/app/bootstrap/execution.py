@@ -8,6 +8,10 @@ from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
 from app.database.database import SessionLocal
 from app.modules.conversations.application.chat import ConversationChat
+from app.modules.identity.application.onboarding import FinishOnboarding
+from app.modules.billing.application.webhooks import ProcessStripeWebhook
+from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
+from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.shared.application import ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from fastapi import Request
@@ -32,6 +36,40 @@ def create_conversation_chat(
     return ConversationChat(DefaultConversationChatGateway(executor))
 
 
+def create_onboarding_finisher() -> FinishOnboarding:
+    from app.bootstrap.container import build_finish_onboarding
+
+    return build_finish_onboarding()
+
+
+def create_stripe_webhook_processor() -> ProcessStripeWebhook:
+    from app.bootstrap.adapters.stripe_webhook_adapter import StripeWebhookAdapter
+
+    return ProcessStripeWebhook(StripeWebhookAdapter(SessionLocal))
+
+
+def create_paper_ingestion_workflow(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+) -> PaperIngestionWorkflow:
+    from app.bootstrap.container import build_pdf_url_source
+
+    return PaperIngestionWorkflow(
+        executor=executor,
+        url_source=build_pdf_url_source(),
+    )
+
+
+def create_research_generation_workflow(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+) -> ResearchGenerationWorkflow:
+    from app.bootstrap.container import build_generation_capacity
+
+    return ResearchGenerationWorkflow(
+        executor=executor,
+        capacity=build_generation_capacity(),
+    )
+
+
 def get_application_executor(
     request: Request,
 ) -> ApplicationExecutor[ApplicationCapabilities]:
@@ -43,3 +81,24 @@ def get_application_executor(
 
 def get_conversation_chat(request: Request) -> ConversationChat:
     return cast(ConversationChat, request.app.state.conversation_chat)
+
+
+def get_onboarding_finisher(request: Request) -> FinishOnboarding:
+    return cast(FinishOnboarding, request.app.state.onboarding_finisher)
+
+
+def get_stripe_webhook_processor(request: Request) -> ProcessStripeWebhook:
+    return cast(ProcessStripeWebhook, request.app.state.stripe_webhook_processor)
+
+
+def get_paper_ingestion_workflow(request: Request) -> PaperIngestionWorkflow:
+    return cast(PaperIngestionWorkflow, request.app.state.paper_ingestion_workflow)
+
+
+def get_research_generation_workflow(
+    request: Request,
+) -> ResearchGenerationWorkflow:
+    return cast(
+        ResearchGenerationWorkflow,
+        request.app.state.research_generation_workflow,
+    )

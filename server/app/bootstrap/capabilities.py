@@ -7,7 +7,6 @@ from functools import cached_property
 from app.bootstrap.container import (
     build_billing,
     build_citation_resolver,
-    build_complete_onboarding,
     build_conversation_chat_data,
     build_conversations,
     build_identity,
@@ -22,22 +21,20 @@ from app.bootstrap.container import (
     build_paper_library,
     build_paper_search,
     build_paper_topics,
-    build_pdf_url_source,
     build_project_document_visibility,
     build_projects,
     build_research_generation,
     build_research_items,
     build_research_search,
-    build_stripe_webhook_processor,
+    build_save_onboarding,
     build_zotero,
 )
 from app.bootstrap.settings import AppSettings
 from app.modules.billing.application.billing import Billing
-from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.modules.conversations.application.chat import ConversationChatData
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.identity.application.identity import Identity
-from app.modules.identity.application.onboarding import CompleteOnboarding
+from app.modules.identity.application.onboarding import SaveOnboarding
 from app.modules.integrations.zotero.application.zotero import Zotero
 from app.modules.jobs.application.callbacks import JobCallbacks
 from app.modules.jobs.application.jobs import Jobs
@@ -46,7 +43,7 @@ from app.modules.papers.application.content import PaperContentCapabilities
 from app.modules.papers.application.details import GetPaperDetails
 from app.modules.papers.application.discovery import DiscoverPapers
 from app.modules.papers.application.downloads import GetPaperDownload
-from app.modules.papers.application.ingestion import IngestPaper, PdfUrlSource
+from app.modules.papers.application.ingestion import IngestPaper
 from app.modules.papers.application.library import PaperLibrary
 from app.modules.papers.application.search import (
     GetPaperSearchStats,
@@ -107,10 +104,6 @@ class ApplicationCapabilities:
         return build_paper_ingestion(db=self._session)
 
     @cached_property
-    def pdf_url_source(self) -> PdfUrlSource:
-        return build_pdf_url_source()
-
-    @cached_property
     def research_search(self) -> SearchResearch:
         return build_research_search(
             db=self._session,
@@ -118,12 +111,8 @@ class ApplicationCapabilities:
         )
 
     @cached_property
-    def onboarding(self) -> CompleteOnboarding:
-        return build_complete_onboarding(db=self._session)
-
-    @cached_property
-    def stripe_webhooks(self) -> ProcessStripeWebhook:
-        return build_stripe_webhook_processor(db=self._session)
+    def onboarding(self) -> SaveOnboarding:
+        return build_save_onboarding(db=self._session)
 
     @cached_property
     def billing(self) -> Billing:

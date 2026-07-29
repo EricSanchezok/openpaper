@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal, Protocol
 from uuid import UUID, uuid4
 
@@ -31,9 +32,11 @@ from pydantic import TypeAdapter
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 
 
-class GenerationCapacity(Protocol):
+class GenerationEntitlements(Protocol):
     def require_tokens(self, *, actor: Actor) -> None: ...
 
+
+class GenerationCapacity(Protocol):
     async def enforce_rate(
         self,
         *,
@@ -114,30 +117,34 @@ def _audio_source(document: AccessiblePaperContent) -> AudioSourceDocumentPayloa
     )
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedGeneration:
+    command: EnqueueJobCommand
+    feature: Literal["audio", "data_table"]
+
+
 class ResearchGeneration:
     def __init__(
         self,
         *,
         documents: GenerationDocuments,
         jobs: JobCommandPort,
-        capacity: GenerationCapacity,
+        entitlements: GenerationEntitlements,
     ) -> None:
         self._documents = documents
         self._jobs = jobs
-        self._capacity = capacity
+        self._entitlements = entitlements
 
-    async def document_audio(
+    def prepare_document_audio(
         self,
         *,
         actor: Actor,
-        client_ip: str,
         document_id: UUID,
         request: CreateAudioOverviewRequest,
         idempotency_key: str | None,
-    ) -> CreateJobResponse:
-        return await self._audio(
+    ) -> CreateJobResponse | PreparedGeneration:
+        return self._prepare_audio(
             actor=actor,
-            client_ip=client_ip,
             scope_type="document",
             scope_id=document_id,
             documents=[self._documents.document(actor=actor, document_id=document_id)],
@@ -145,15 +152,14 @@ class ResearchGeneration:
             idempotency_key=idempotency_key,
         )
 
-    async def project_audio(
+    def prepare_project_audio(
         self,
         *,
         actor: Actor,
-        client_ip: str,
         project_id: UUID,
         request: CreateAudioOverviewRequest,
         idempotency_key: str | None,
-    ) -> CreateJobResponse:
+    ) -> CreateJobResponse | PreparedGeneration:
         documents = self._documents.project(actor=actor, project_id=project_id)
         if not documents:
             raise AppError(
@@ -161,9 +167,8 @@ class ResearchGeneration:
                 message="Add at least one paper before generating audio",
                 kind=FailureKind.CONFLICT,
             )
-        return await self._audio(
+        return self._prepare_audio(
             actor=actor,
-            client_ip=client_ip,
             scope_type="project",
             scope_id=project_id,
             documents=documents,
@@ -171,17 +176,16 @@ class ResearchGeneration:
             idempotency_key=idempotency_key,
         )
 
-    async def _audio(
+    def _prepare_audio(
         self,
         *,
         actor: Actor,
-        client_ip: str,
         scope_type: Literal["document", "project"],
         scope_id: UUID,
         documents: list[AccessiblePaperContent],
         request: CreateAudioOverviewRequest,
         idempotency_key: str | None,
-    ) -> CreateJobResponse:
+    ) -> CreateJobResponse | PreparedGeneration:
         operation_id = uuid4()
         operation_key = (
             f"audio:{actor.id}:{scope_type}:{scope_id}:{idempotency_key}"
@@ -201,49 +205,30 @@ class ResearchGeneration:
             additional_instructions=request.additional_instructions,
         )
         payload = _JSON_OBJECT.validate_python(payload_model.model_dump(mode="json"))
-        self._capacity.require_tokens(actor=actor)
-        await self._capacity.enforce_rate(
-            actor=actor,
-            client_ip=client_ip,
+        self._entitlements.require_tokens(actor=actor)
+        return PreparedGeneration(
+            command=EnqueueJobCommand(
+                job_id=operation_id,
+                operation=JobOperation.AUDIO_GENERATE,
+                requested_by_id=actor.id,
+                project_id=scope_id if scope_type == "project" else None,
+                document_id=scope_id if scope_type == "document" else None,
+                idempotency_key=operation_key,
+                payload=payload,
+                task_name="generate_audio_overview",
+                queue="audio",
+            ),
             feature="audio",
         )
-        await self._capacity.acquire_audio(actor=actor, operation_id=operation_id)
-        try:
-            job = self._jobs.enqueue(
-                command=EnqueueJobCommand(
-                    job_id=operation_id,
-                    operation=JobOperation.AUDIO_GENERATE,
-                    requested_by_id=actor.id,
-                    project_id=scope_id if scope_type == "project" else None,
-                    document_id=scope_id if scope_type == "document" else None,
-                    idempotency_key=operation_key,
-                    payload=payload,
-                    task_name="generate_audio_overview",
-                    queue="audio",
-                )
-            )
-            if job.id != operation_id:
-                await self._capacity.release_audio(
-                    actor=actor,
-                    operation_id=operation_id,
-                )
-            return CreateJobResponse(job=job)
-        except Exception:
-            await self._capacity.release_audio(
-                actor=actor,
-                operation_id=operation_id,
-            )
-            raise
 
-    async def project_data_table(
+    def prepare_project_data_table(
         self,
         *,
         actor: Actor,
-        client_ip: str,
         project_id: UUID,
         request: CreateDataTableRequest,
         idempotency_key: str | None,
-    ) -> CreateJobResponse:
+    ) -> CreateJobResponse | PreparedGeneration:
         documents = self._documents.project(actor=actor, project_id=project_id)
         if not documents:
             raise AppError(
@@ -277,38 +262,20 @@ class ResearchGeneration:
             ),
         )
         payload = _JSON_OBJECT.validate_python(payload_model.model_dump(mode="json"))
-        self._capacity.require_tokens(actor=actor)
-        await self._capacity.enforce_rate(
-            actor=actor,
-            client_ip=client_ip,
+        self._entitlements.require_tokens(actor=actor)
+        return PreparedGeneration(
+            command=EnqueueJobCommand(
+                job_id=operation_id,
+                operation=JobOperation.DATA_TABLE_GENERATE,
+                requested_by_id=actor.id,
+                project_id=project_id,
+                idempotency_key=operation_key,
+                payload=payload,
+                task_name="process_data_table",
+                queue="data_table",
+            ),
             feature="data_table",
         )
-        await self._capacity.acquire_background(
-            actor=actor,
-            operation_id=operation_id,
-        )
-        try:
-            job = self._jobs.enqueue(
-                command=EnqueueJobCommand(
-                    job_id=operation_id,
-                    operation=JobOperation.DATA_TABLE_GENERATE,
-                    requested_by_id=actor.id,
-                    project_id=project_id,
-                    idempotency_key=operation_key,
-                    payload=payload,
-                    task_name="process_data_table",
-                    queue="data_table",
-                )
-            )
-            if job.id != operation_id:
-                await self._capacity.release_background(
-                    actor=actor,
-                    operation_id=operation_id,
-                )
-            return CreateJobResponse(job=job)
-        except Exception:
-            await self._capacity.release_background(
-                actor=actor,
-                operation_id=operation_id,
-            )
-            raise
+
+    def enqueue(self, *, prepared: PreparedGeneration) -> CreateJobResponse:
+        return CreateJobResponse(job=self._jobs.enqueue(command=prepared.command))

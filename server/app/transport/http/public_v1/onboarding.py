@@ -1,7 +1,11 @@
 """Identity onboarding HTTP adapter."""
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import (
+    get_application_executor,
+    get_onboarding_finisher,
+)
+from app.modules.identity.application.onboarding import FinishOnboarding
 from app.modules.identity.application.onboarding_contracts import (
     CreateOnboardingRequest,
     OnboardingResponse,
@@ -19,11 +23,18 @@ async def complete_onboarding(
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
+    finisher: FinishOnboarding = Depends(get_onboarding_finisher),
     actor: Actor = Depends(get_required_user),
 ) -> OnboardingResponse:
-    return await executor.command_async(
+    onboarding = executor.command(
         lambda capabilities: capabilities.onboarding.execute(
             actor=actor,
             request=request,
         )
     )
+    await finisher.execute(
+        actor=actor,
+        request=request,
+        onboarding=onboarding,
+    )
+    return onboarding

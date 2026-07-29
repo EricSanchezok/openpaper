@@ -52,12 +52,24 @@ async def get_paper_graph(
     ),
     current_user: Actor = Depends(get_required_user),
 ) -> OpenAlexCitationGraph:
-    return await executor.command_async(
-        lambda capabilities: capabilities.paper_discovery.match(
+    preparation = executor.query(
+        lambda capabilities: capabilities.paper_discovery.prepare_match(
             actor=current_user,
-            client_ip=_client_ip(request),
             doi=doi,
             document_id=document_id,
+        )
+    )
+    discovery = executor.query(lambda capabilities: capabilities.paper_discovery)
+    result = await discovery.fetch_match(
+        actor=current_user,
+        client_ip=_client_ip(request),
+        preparation=preparation,
+    )
+    return executor.command(
+        lambda capabilities: capabilities.paper_discovery.complete_match(
+            actor=current_user,
+            preparation=preparation,
+            result=result,
         )
     )
 

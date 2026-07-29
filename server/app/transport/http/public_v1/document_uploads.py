@@ -6,14 +6,14 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import get_paper_ingestion_workflow
+from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.modules.papers.domain import MAX_PDF_BYTES, MAX_PDF_SIZE_MB
 from app.modules.papers.application.contracts.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
 )
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
@@ -41,20 +41,15 @@ async def upload_pdf_from_url(
     request: Request,
     idempotency_key: IdempotencyHeader = None,
     current_user: Actor = Depends(get_required_user),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    ingestion: PaperIngestionWorkflow = Depends(get_paper_ingestion_workflow),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
-    return await executor.command_async(
-        lambda capabilities: capabilities.paper_ingestion.from_url(
-            actor=current_user,
-            url=str(payload.url),
-            source=capabilities.pdf_url_source,
-            project_id=project_id,
-            idempotency_key=idempotency_key,
-            ip_address=_client_ip(request),
-        )
+    return await ingestion.from_url(
+        actor=current_user,
+        url=str(payload.url),
+        project_id=project_id,
+        idempotency_key=idempotency_key,
+        ip_address=_client_ip(request),
     )
 
 
@@ -68,9 +63,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     idempotency_key: IdempotencyHeader = None,
     current_user: Actor = Depends(get_required_user),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    ingestion: PaperIngestionWorkflow = Depends(get_paper_ingestion_workflow),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
     max_bytes = MAX_PDF_BYTES
@@ -111,13 +104,11 @@ async def upload_pdf(
             kind=FailureKind.INVALID_ARGUMENT,
         ) from None
 
-    return await executor.command_async(
-        lambda capabilities: capabilities.paper_ingestion.from_bytes(
-            actor=current_user,
-            content=content,
-            filename=file.filename,
-            project_id=project_id,
-            idempotency_key=idempotency_key,
-            ip_address=_client_ip(request),
-        )
+    return await ingestion.from_bytes(
+        actor=current_user,
+        content=content,
+        filename=file.filename,
+        project_id=project_id,
+        idempotency_key=idempotency_key,
+        ip_address=_client_ip(request),
     )

@@ -6,10 +6,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from app.modules.papers.application.contracts.uploads import UploadAcceptedResponse
 from app.modules.papers.domain import normalize_idempotency_key
 from app.shared.application import Actor
-from app.shared.domain import AppError
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +20,12 @@ class FetchedPdf:
 class IngestionReservation:
     job_id: UUID
     replayed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedPaperInput:
+    content: bytes
+    filename: str | None
 
 
 class PdfInputValidator(Protocol):
@@ -42,6 +46,8 @@ class PaperIngestionLimits(Protocol):
 
     async def acquire(self, *, actor: Actor, job_id: UUID) -> None: ...
 
+    async def release(self, *, actor: Actor, job_id: UUID) -> None: ...
+
 
 class PaperIngestionGateway(Protocol):
     def reserve(
@@ -56,13 +62,13 @@ class PaperIngestionGateway(Protocol):
 
     def fail(self, *, actor: Actor, job_id: UUID, error_code: str) -> None: ...
 
-    async def dispatch(
+    def finalize(
         self,
         *,
         actor: Actor,
         job_id: UUID,
         content: bytes,
-    ) -> None: ...
+    ) -> str: ...
 
 
 class IngestPaper:
@@ -77,76 +83,68 @@ class IngestPaper:
         self._limits = limits
         self._gateway = gateway
 
-    async def from_bytes(
+    async def prepare_bytes(
         self,
         *,
         actor: Actor,
         content: bytes,
         filename: str | None,
-        project_id: UUID | None,
-        idempotency_key: str | None,
         ip_address: str,
-    ) -> UploadAcceptedResponse:
+    ) -> PreparedPaperInput:
         await self._limits.enforce_rate(actor=actor, ip_address=ip_address)
-        return await self._start(
-            actor=actor,
-            content=content,
-            filename=filename,
-            project_id=project_id,
-            idempotency_key=idempotency_key,
-        )
+        self._validator.validate(content=content, source=filename or "upload")
+        return PreparedPaperInput(content=content, filename=filename)
 
-    async def from_url(
+    async def prepare_url(
         self,
         *,
         actor: Actor,
         url: str,
         source: PdfUrlSource,
-        project_id: UUID | None,
-        idempotency_key: str | None,
         ip_address: str,
-    ) -> UploadAcceptedResponse:
+    ) -> PreparedPaperInput:
         await self._limits.enforce_rate(actor=actor, ip_address=ip_address)
         fetched = await source.fetch(url=url)
-        return await self._start(
-            actor=actor,
+        self._validator.validate(content=fetched.content, source=fetched.filename)
+        return PreparedPaperInput(
             content=fetched.content,
             filename=fetched.filename,
-            project_id=project_id,
-            idempotency_key=idempotency_key,
         )
 
-    async def _start(
+    def reserve(
         self,
         *,
         actor: Actor,
-        content: bytes,
-        filename: str | None,
+        prepared: PreparedPaperInput,
         project_id: UUID | None,
         idempotency_key: str | None,
-    ) -> UploadAcceptedResponse:
-        self._validator.validate(content=content, source=filename or "upload")
-        reservation = self._gateway.reserve(
+    ) -> IngestionReservation:
+        return self._gateway.reserve(
             actor=actor,
             project_id=project_id,
-            content=content,
-            filename=filename,
+            content=prepared.content,
+            filename=prepared.filename,
             idempotency_key=normalize_idempotency_key(idempotency_key),
         )
-        if reservation.replayed:
-            return UploadAcceptedResponse(job_id=reservation.job_id)
-        try:
-            await self._limits.acquire(actor=actor, job_id=reservation.job_id)
-        except AppError as exc:
-            self._gateway.fail(
-                actor=actor,
-                job_id=reservation.job_id,
-                error_code=exc.code,
-            )
-            raise
-        await self._gateway.dispatch(
+
+    async def acquire(self, *, actor: Actor, job_id: UUID) -> None:
+        await self._limits.acquire(actor=actor, job_id=job_id)
+
+    async def release(self, *, actor: Actor, job_id: UUID) -> None:
+        await self._limits.release(actor=actor, job_id=job_id)
+
+    def finalize(
+        self,
+        *,
+        actor: Actor,
+        job_id: UUID,
+        prepared: PreparedPaperInput,
+    ) -> str:
+        return self._gateway.finalize(
             actor=actor,
-            job_id=reservation.job_id,
-            content=content,
+            job_id=job_id,
+            content=prepared.content,
         )
-        return UploadAcceptedResponse(job_id=reservation.job_id)
+
+    def fail(self, *, actor: Actor, job_id: UUID, error_code: str) -> None:
+        self._gateway.fail(actor=actor, job_id=job_id, error_code=error_code)

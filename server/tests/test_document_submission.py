@@ -12,7 +12,7 @@ from app.database.models import (
     UploadReservation,
 )
 from app.shared.application import Actor
-from app.bootstrap.adapters.document_submission import submit_reserved_document
+from app.bootstrap.adapters.document_submission import finalize_reserved_document
 from sqlalchemy.orm import Session
 
 
@@ -62,24 +62,18 @@ def _document(*, processing_job_id=None) -> Document:
     )
 
 
-@pytest.mark.asyncio
-async def test_personal_submission_persists_identity_before_broker_publish(
+def test_personal_submission_persists_identity_before_broker_publish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = MagicMock(spec=Session)
     upload_job = _upload_job()
     document = _document(processing_job_id=upload_job.id)
-    upload_source = MagicMock()
     get_by_sha = MagicMock(return_value=None)
     get_or_create = MagicMock(
         return_value=SimpleNamespace(document=document, created=True)
     )
     attach_library = MagicMock(return_value=SimpleNamespace(created=True))
     add_dispatch = MagicMock()
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.document_submission.s3_service.upload_document_source",
-        upload_source,
-    )
     monkeypatch.setattr(
         "app.bootstrap.adapters.document_submission.document_repository.get_by_sha256",
         get_by_sha,
@@ -96,12 +90,8 @@ async def test_personal_submission_persists_identity_before_broker_publish(
         "app.bootstrap.adapters.document_submission.job_repository.add_dispatch",
         add_dispatch,
     )
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.document_submission.track_event",
-        MagicMock(),
-    )
 
-    task_id = await submit_reserved_document(
+    task_id = finalize_reserved_document(
         pdf_bytes=b"%PDF-1.7",
         upload_job=upload_job,
         db=db,
@@ -116,7 +106,6 @@ async def test_personal_submission_persists_identity_before_broker_publish(
         document_id=document.id,
         user_id=7,
     )
-    upload_source.assert_called_once()
     db.commit.assert_not_called()
     db.flush.assert_called()
     assert add_dispatch.call_args.kwargs["job"] is upload_job.job
@@ -126,8 +115,7 @@ async def test_personal_submission_persists_identity_before_broker_publish(
     assert task_kwargs["claim_url"].endswith(f"/jobs/{upload_job.id}/claim")
 
 
-@pytest.mark.asyncio
-async def test_project_submission_consumes_reserved_project_destination(
+def test_project_submission_consumes_reserved_project_destination(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_id = uuid4()
@@ -135,10 +123,6 @@ async def test_project_submission_consumes_reserved_project_destination(
     document = _document(processing_job_id=upload_job.id)
     db = MagicMock(spec=Session)
     attach = MagicMock(return_value=(SimpleNamespace(document_id=document.id), True))
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.document_submission.s3_service.upload_document_source",
-        MagicMock(),
-    )
     monkeypatch.setattr(
         "app.bootstrap.adapters.document_submission.document_repository.get_by_sha256",
         MagicMock(return_value=None),
@@ -155,12 +139,8 @@ async def test_project_submission_consumes_reserved_project_destination(
         "app.bootstrap.adapters.document_submission.job_repository.add_dispatch",
         MagicMock(),
     )
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.document_submission.track_event",
-        MagicMock(),
-    )
 
-    await submit_reserved_document(
+    finalize_reserved_document(
         pdf_bytes=b"%PDF-1.7",
         upload_job=upload_job,
         db=db,
