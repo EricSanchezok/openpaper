@@ -16,7 +16,7 @@ from app.database.telemetry import track_event
 from app.helpers.s3 import document_source_key, s3_service
 from app.repositories.documents import document_repository
 from app.repositories.jobs import job_repository
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.helpers.celery_config import get_webhook_base_url
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.errors import AppError
@@ -30,7 +30,7 @@ async def submit_reserved_document(
     pdf_bytes: bytes,
     upload_job: UploadReservation,
     db: Session,
-    user: CurrentUser,
+    user: Actor,
     skip_metadata_extraction: bool = False,
 ) -> str:
     """Attach one upload to a content-addressed Document and process it once."""
@@ -164,7 +164,7 @@ async def dispatch_reserved_document(
     pdf_bytes: bytes,
     upload_job: UploadReservation,
     db: Session,
-    user: CurrentUser,
+    user: Actor,
 ) -> str:
     """Submit a reserved upload and close its concurrency lease on terminal paths."""
     try:

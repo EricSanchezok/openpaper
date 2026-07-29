@@ -22,12 +22,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from .base import Base, JsonValue
+from app.shared.infrastructure.persistence import Base, JsonValue
 from .enums import JobDispatchStatus, JobStatus
 
 if TYPE_CHECKING:
     from .documents import Document
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
     from .projects import Project
 
 

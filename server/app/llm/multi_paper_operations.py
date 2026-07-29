@@ -27,7 +27,7 @@ from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
 from app.policies.projects import get_project_access
 from app.schemas.message import EvidenceCollection
 from app.schemas.responses import AudioOverviewForLLM
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -44,7 +44,7 @@ class MultiPaperOperations(EvidenceOperations):
         self,
         conversation_id: str,
         question: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         all_papers: list[Document],
         evidence_gathered: EvidenceCollection,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
@@ -318,7 +318,7 @@ class MultiPaperOperations(EvidenceOperations):
 
     async def create_multi_paper_narrative_summary(
         self,
-        current_user: CurrentUser,
+        current_user: Actor,
         additional_instructions: str | None = None,
         length: Literal["short", "medium", "long"] | None = "medium",
         project_id: str | None = None,

@@ -7,13 +7,13 @@ from app.api.subscription.config import (
     YOUR_DOMAIN,
     SubscriptionInterval,
 )
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import get_db
 from app.database.models import SubscriptionStatus
 from app.database.telemetry import track_event
 from app.errors import AppError
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ router = APIRouter()
 def create_checkout_session(
     interval: SubscriptionInterval,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, str | None]:
     try:
         # Get or initialize customer ID

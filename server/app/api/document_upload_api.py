@@ -22,7 +22,7 @@ from pathlib import PurePosixPath
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.database import get_db
 from app.errors import AppError
@@ -36,7 +36,7 @@ from app.helpers.parser import (
     validate_pdf_content,
     validate_url_and_fetch_pdf,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.schemas.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
@@ -69,7 +69,7 @@ document_upload_router = APIRouter()
 async def upload_pdf_from_url(
     request: UploadFromUrlRequest,
     http_request: Request,
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
@@ -147,7 +147,7 @@ async def upload_pdf_from_url(
 async def upload_pdf(
     request: Request,
     file: UploadFile = File(...),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:

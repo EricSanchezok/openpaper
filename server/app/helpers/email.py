@@ -4,8 +4,7 @@ from html import escape
 from pathlib import Path
 
 import resend
-from app.database.models import Onboarding
-from app.schemas.onboarding import serialize_onboarding
+from app.modules.identity.application.onboarding_contracts import OnboardingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -123,15 +122,13 @@ def send_subscription_welcome_email(
         logger.error(f"Failed to send subscription welcome email: {e}", exc_info=True)
 
 
-def send_profile_email(
-    profile: Onboarding,
-) -> None:
+def send_profile_email(profile: OnboardingResponse) -> None:
     """
     An internal email to send the developer with the user profile information
     """
     try:
         # Format profile data with alternating background colors
-        profile_dict = serialize_onboarding(profile)
+        profile_dict = profile.model_dump(mode="json")
         formatted_data = ""
 
         excluded_keys = ["id", "created_at", "updated_at"]

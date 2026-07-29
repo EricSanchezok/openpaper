@@ -7,7 +7,7 @@ from app.database.models import Document
 from app.repositories.document_search import document_search_repository
 from app.repositories.documents import document_repository
 from app.repositories.project_documents import project_document_repository
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
 logger = getLogger(__name__)
@@ -125,7 +125,7 @@ search_all_files_function = {
 
 def read_file(
     document_id: str,
-    current_user: CurrentUser,
+    current_user: Actor,
     db: Session,
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
@@ -160,7 +160,7 @@ def read_file(
 def search_file(
     document_id: str,
     query: str,
-    current_user: CurrentUser,
+    current_user: Actor,
     db: Session,
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
@@ -207,7 +207,7 @@ def search_file(
 
 def search_all_files(
     query: str,
-    current_user: CurrentUser,
+    current_user: Actor,
     db: Session,
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
@@ -269,7 +269,7 @@ def view_file(
     document_id: str,
     range_start: int,
     range_end: int,
-    current_user: CurrentUser,
+    current_user: Actor,
     db: Session,
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
@@ -313,7 +313,7 @@ def view_file(
 
 def read_abstract(
     document_id: str,
-    current_user: CurrentUser,
+    current_user: Actor,
     db: Session,
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,

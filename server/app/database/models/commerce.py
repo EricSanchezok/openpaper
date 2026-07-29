@@ -17,7 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base
+from app.shared.infrastructure.persistence import Base
 from .enums import (
     SubscriptionPlan,
     SubscriptionStatus,
@@ -25,7 +25,7 @@ from .enums import (
 )
 
 if TYPE_CHECKING:
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
 
 
 class Subscription(Base):

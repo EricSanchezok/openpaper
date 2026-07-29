@@ -1,5 +1,5 @@
 from app.database.models import Onboarding
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,13 +25,13 @@ class OnboardingUpdate(OnboardingBase):
 
 
 class OnboardingCrud:
-    def get_by(self, db: Session, *, user: CurrentUser) -> Onboarding | None:
+    def get_by(self, db: Session, *, user: Actor) -> Onboarding | None:
         return db.scalar(select(Onboarding).where(Onboarding.user_id == user.id))
 
     def create(self, db: Session, *, obj_in: OnboardingCreate) -> Onboarding:
         onboarding = Onboarding(**obj_in.model_dump())
         db.add(onboarding)
-        db.commit()
+        db.flush()
         db.refresh(onboarding)
         return onboarding
 
@@ -49,7 +49,7 @@ class OnboardingCrud:
         )
         for field, value in changes.items():
             setattr(db_obj, field, value)
-        db.commit()
+        db.flush()
         db.refresh(db_obj)
         return db_obj
 

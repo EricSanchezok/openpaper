@@ -11,7 +11,7 @@ from app.database.models import (
     ResearchScopeType,
 )
 from app.helpers.s3 import s3_service
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
@@ -78,7 +78,7 @@ def _visible_research(user_id: int) -> ColumnElement[bool]:
 
 def search_knowledge_base(
     db: Session,
-    user: CurrentUser,
+    user: Actor,
     query: str,
     limit: int = 50,
     offset: int = 0,

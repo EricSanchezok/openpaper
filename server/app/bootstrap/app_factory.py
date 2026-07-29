@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 
-from app.api.api import router as identity_router
 from app.api.auth_api import auth_router
 from app.api.conversation_api import conversation_router
 from app.api.document_upload_api import document_upload_router
@@ -16,7 +15,6 @@ from app.api.documents import document_router, library_router, public_document_r
 from app.api.jobs_webhooks import webhook_router as jobs_callback_router
 from app.api.library_tags_api import library_tags_router
 from app.api.message_api import message_router
-from app.api.onboarding_api import onboarding_router
 from app.api.paper_search_api import paper_search_router
 from app.api.projects.project_papers_api import project_papers_router
 from app.api.projects.projects_api import projects_router
@@ -37,7 +35,10 @@ from app.api.search_api import search_router
 from app.api.subscription import subscription_router
 from app.api.subscription.webhook import router as stripe_webhook_router
 from app.api.zotero_import_api import zotero_router
-from app.auth.runtime import cloud_auth_router, cloud_user_router
+from app.modules.identity.infrastructure.cloud_auth import (
+    cloud_auth_router,
+    cloud_user_router,
+)
 from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.settings import (
     INTERNAL_API_PREFIX,
@@ -53,6 +54,8 @@ from app.transport.http.errors import (
     http_error_handler,
     unhandled_error_handler,
 )
+from app.transport.http.public_v1.identity import router as identity_router
+from app.transport.http.public_v1.onboarding import onboarding_router
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -66,7 +69,7 @@ def _public_router() -> APIRouter:
     router = APIRouter()
     router.include_router(identity_router)
     router.include_router(cloud_auth_router, prefix="/auth", tags=["auth"])
-    router.include_router(cloud_user_router, prefix="/user", tags=["user"])
+    router.include_router(cloud_user_router, prefix="/me", tags=["user"])
     router.include_router(auth_router, prefix="/auth")
     router.include_router(conversation_router, prefix="/conversations")
     router.include_router(library_router, prefix="/library")
@@ -87,7 +90,7 @@ def _public_router() -> APIRouter:
     router.include_router(project_generation_router, prefix="/projects")
     router.include_router(jobs_router, prefix="/jobs")
     router.include_router(subscription_router, prefix="/subscription")
-    router.include_router(onboarding_router, prefix="/onboarding")
+    router.include_router(onboarding_router, prefix="/me/onboarding")
     router.include_router(zotero_router, prefix="/zotero")
     return router
 

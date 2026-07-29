@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from app.repositories.messages import MessageCreate, message_repository
 from app.repositories.upload_reservations import upload_reservation_repository
-from app.database.crud.user_repository import user_repository
+from app.modules.identity.infrastructure.users import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import engine
@@ -20,7 +20,7 @@ from app.database.models import (
     ProjectPaper,
     ZoteroImportStatus,
 )
-from app.database.models.base import JsonValue
+from app.shared.infrastructure.persistence import JsonValue
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
@@ -43,7 +43,8 @@ from app.schemas.jobs import (
     PdfProcessingWebhookData,
     StorageDeleteCallback,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
+from app.modules.identity.infrastructure.users import actor_from_auth_user
 from app.services.zotero.service import (
     apply_zotero_annotations,
     auto_import_new_papers,
@@ -117,7 +118,7 @@ def _enqueue_pdf_postprocess(
 def _finalize_zotero_import(
     db: Session,
     job_id: str,
-    job_user: CurrentUser,
+    job_user: Actor,
     result: "PDFProcessingResult",
     error_message: str | None = None,
 ) -> str | None:
@@ -198,7 +199,7 @@ def _finalize_zotero_import(
 
 
 def handle_failed_upload(
-    db: Session, job_id: str, job_user: CurrentUser, reason: str = "Unknown error"
+    db: Session, job_id: str, job_user: Actor, reason: str = "Unknown error"
 ) -> None:
     """
     Handle cleanup for a failed paper upload job.
@@ -286,7 +287,7 @@ def post_process_paper(
     *,
     db: Session,
     paper: Document,
-    job_user: CurrentUser,
+    job_user: Actor,
 ) -> None:
     """Build search passages and hydrate metadata under a durable job lease."""
     if not paper.raw_content:
@@ -351,7 +352,7 @@ def complete_pdf_postprocess_job(
         post_process_paper(
             db=db,
             paper=paper,
-            job_user=CurrentUser.from_auth_user(user),
+            job_user=actor_from_auth_user(user),
         )
         job_repository.complete(
             db,
@@ -472,7 +473,7 @@ async def handle_paper_processing_webhook(
             status_code=409,
         )
 
-    job_user: CurrentUser = CurrentUser(
+    job_user: Actor = Actor(
         id=user.id,
         email=user.email,
         display_name=user.display_name,
@@ -807,7 +808,7 @@ def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
             skipped += 1
             continue
 
-        current_user = CurrentUser.from_auth_user(user)
+        current_user = actor_from_auth_user(user)
         if not can_user_auto_sync_zotero(db, current_user):
             skipped += 1
             continue
@@ -876,7 +877,7 @@ async def complete_zotero_postprocess_job(
         )
         db.commit()
         return JobClaimResponse(claimed=True)
-    current_user = CurrentUser.from_auth_user(user)
+    current_user = actor_from_auth_user(user)
     if (
         not can_user_auto_sync_zotero(db, current_user)
         or zotero_crud.get_by_user_id(db, user_id=user.id) is None

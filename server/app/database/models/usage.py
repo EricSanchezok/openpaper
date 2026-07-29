@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base
+from app.shared.infrastructure.persistence import Base
 
 
 class TokenUsageEvent(Base):

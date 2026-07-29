@@ -28,7 +28,7 @@ from app.services.resource_quotas import (
     lock_account_resource_quota,
 )
 from app.policies.projects import require_project_permission
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.repositories.jobs import CreateJob, job_repository
 from app.services.upload_lifecycle import (
     delete_upload_storage,
@@ -233,7 +233,7 @@ def reassign_project_quota_owner(
 def reserve_upload(
     db: Session,
     *,
-    requester: CurrentUser,
+    requester: Actor,
     project_id: UUID | None,
     input_size_bytes: int,
     original_filename: str | None,

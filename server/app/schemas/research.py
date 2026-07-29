@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.database.models import ResearchItemKind, ResearchScopeType
-from app.database.models.base import JsonValue
+from app.shared.infrastructure.persistence import JsonValue
 from app.schemas.citation import CitationData, CitationMethod
 from app.schemas.responses import ResponseCitation
 from pydantic import BaseModel, ConfigDict, Field, model_validator

@@ -10,7 +10,7 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.policies.projects import get_project_access
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.services.upload_lifecycle import active_upload_freshness_clause
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ class UploadReservationRepository:
         db: Session,
         *,
         id: object,
-        user: CurrentUser,
+        user: Actor,
     ) -> UploadReservation | None:
         try:
             job_id = uuid.UUID(str(id))
@@ -75,7 +75,7 @@ class UploadReservationRepository:
         return job
 
     def mark_as_running(
-        self, db: Session, *, job_id: str, user: CurrentUser
+        self, db: Session, *, job_id: str, user: Actor
     ) -> UploadReservation | None:
         """Mark a job as running and set started_at timestamp"""
         job = self.get(db, id=job_id, user=user)
@@ -84,7 +84,7 @@ class UploadReservationRepository:
         return None
 
     def mark_as_completed(
-        self, db: Session, *, job_id: str, user: CurrentUser
+        self, db: Session, *, job_id: str, user: Actor
     ) -> UploadReservation | None:
         """Mark a job as completed and set completed_at timestamp"""
         job = self.get(db, id=job_id, user=user)
@@ -97,7 +97,7 @@ class UploadReservationRepository:
         db: Session,
         *,
         job_id: str,
-        user: CurrentUser,
+        user: Actor,
         error_code: str = "upload_failed",
     ) -> UploadReservation | None:
         """Mark a job as failed and set completed_at timestamp"""
@@ -112,7 +112,7 @@ class UploadReservationRepository:
         return None
 
     def mark_as_cancelled(
-        self, db: Session, *, job_id: str, user: CurrentUser
+        self, db: Session, *, job_id: str, user: Actor
     ) -> UploadReservation | None:
         """Mark a job as cancelled and set completed_at timestamp"""
         job = self.get(db, id=job_id, user=user)
@@ -121,7 +121,7 @@ class UploadReservationRepository:
         return None
 
     def get_user_jobs(
-        self, db: Session, *, user: CurrentUser, skip: int = 0, limit: int = 100
+        self, db: Session, *, user: Actor, skip: int = 0, limit: int = 100
     ) -> list[UploadReservation]:
         """Get all paper upload jobs for a specific user"""
         return list(
@@ -136,7 +136,7 @@ class UploadReservationRepository:
         )
 
     def get_in_progress_jobs_for_user(
-        self, db: Session, *, user: CurrentUser
+        self, db: Session, *, user: Actor
     ) -> list[tuple[UploadReservation, Document]]:
         """
         Get in-progress jobs for documents in the user's personal library.
@@ -167,7 +167,7 @@ class UploadReservationRepository:
         return list(db.execute(statement).tuples().all())
 
     def get_in_progress_jobs_for_project(
-        self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
+        self, db: Session, *, project_id: uuid.UUID, user: Actor
     ) -> list[tuple[UploadReservation, Document]]:
         """
         Get upload jobs that are still in progress for a project, paired with

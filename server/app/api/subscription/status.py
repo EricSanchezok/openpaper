@@ -7,11 +7,11 @@ from app.api.subscription.config import (
     YEARLY_PRICE_ID,
     SubscriptionInterval,
 )
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import get_db
 from app.services.resource_quotas import get_user_usage_info
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,7 @@ router = APIRouter()
 @router.get("/user-subscription")
 async def get_user_subscription(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, object]:
     """Get the current user's subscription status"""
     subscription = subscription_crud.get_by_user_id(db, current_user.id)
@@ -145,7 +145,7 @@ async def get_user_subscription(
 @router.get("/usage")
 async def get_user_usage(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, object]:
     """Get the current user's subscription usage and limits"""
     return get_user_usage_info(db, current_user)

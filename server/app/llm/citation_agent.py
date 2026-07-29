@@ -34,7 +34,7 @@ from app.schemas.citation import (
     CitationResult,
     CitationStep,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class CitationFinder(MetadataRecoveryAgent):
         db: Session,
         document_id: str,
         style: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         project_id: str | None = None,
     ) -> CitationResult:
         canonical = normalize_style(style)
@@ -175,7 +175,7 @@ class CitationFinder(MetadataRecoveryAgent):
         self,
         db: Session,
         document_id: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         project_id: str | None,
     ) -> Document | None:
         try:
@@ -246,7 +246,7 @@ def _get_finder() -> CitationFinder:
 
 def run_find_citation(
     document_id: str,
-    current_user: CurrentUser,
+    current_user: Actor,
     db: Session,
     style: str = "APA",
     project_id: str | None = None,

@@ -1,6 +1,6 @@
 """Typed SQLAlchemy model registry for the Scholens product schema."""
 
-from .base import Base, JsonScalar, JsonValue
+from app.shared.infrastructure.persistence import Base, JsonScalar, JsonValue
 from .enums import (
     ConversationScopeType,
     DocumentProcessingStatus,
@@ -19,7 +19,7 @@ from .enums import (
     ZoteroImportSource,
     ZoteroImportStatus,
 )
-from .identity import AuthUser, UserProfile
+from app.modules.identity.infrastructure.models import AuthUser, UserProfile
 from .jobs import DurableJob, JobDispatch, JobsWebhookNonce
 from .integrations import ZoteroConnection, ZoteroImportedItem, ZoteroOAuthPending
 from .conversations import Conversation, Message

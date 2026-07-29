@@ -1,7 +1,6 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.database.models import JsonValue, Onboarding
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -32,7 +31,3 @@ class OnboardingResponse(BaseModel):
     reading_frequency: str | None
     created_at: datetime
     updated_at: datetime
-
-
-def serialize_onboarding(onboarding: Onboarding) -> dict[str, JsonValue]:
-    return OnboardingResponse.model_validate(onboarding).model_dump(mode="json")

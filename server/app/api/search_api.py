@@ -1,4 +1,4 @@
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import (
     AnnotationComment,
@@ -13,7 +13,7 @@ from app.database.queries.search import (
 )
 from app.database.telemetry import track_event
 from app.errors import AppError
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ async def search_knowledge_base_endpoint(
     ),
     offset: int = Query(0, ge=0, description="Number of papers to skip for pagination"),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> SearchResults:
     """
     Search across papers, annotations, and highlights in the user's knowledge base.
@@ -83,7 +83,7 @@ async def search_knowledge_base_endpoint(
 @search_router.get("/stats", response_model=SearchStats)
 async def get_search_stats(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> SearchStats:
     """
     Get statistics about the user's knowledge base for search context.

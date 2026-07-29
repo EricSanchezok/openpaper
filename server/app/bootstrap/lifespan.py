@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from app.auth.runtime import auth_lifespan
+from app.modules.identity.infrastructure.cloud_auth import auth_lifespan
 from app.services.job_dispatcher import run_job_dispatcher
 from fastapi import FastAPI
 

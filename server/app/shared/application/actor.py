@@ -1,25 +1,23 @@
 """Authenticated caller context passed to application use cases."""
 
-from __future__ import annotations
-
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-@dataclass(frozen=True, slots=True)
-class Actor:
+class Actor(BaseModel):
     """The product identity required to authorize a business operation.
 
     Transport-specific credentials and cloud-auth records are deliberately not
     exposed beyond the identity adapter.
     """
 
-    user_id: int
-    email: str
-    display_name: str | None
-    locale: str | None
-    is_admin: bool
-    is_blocked: bool
+    model_config = ConfigDict(frozen=True)
 
-    @property
-    def is_active(self) -> bool:
-        return not self.is_blocked
+    id: int
+    email: EmailStr
+    display_name: str | None = None
+    status: str
+    email_verified: bool
+    locale: str | None = None
+    is_admin: bool = False
+    is_blocked: bool = False
+    is_active: bool = True

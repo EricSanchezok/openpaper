@@ -29,7 +29,7 @@ from app.repositories.documents import document_repository
 from app.schemas.citation import CitationStep
 from app.schemas.documents import DocumentUpdate
 from app.schemas.responses import TextContent, ToolCallResult
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         *,
         db: Session,
         paper: Document,
-        user: CurrentUser | None = None,
+        user: Actor | None = None,
         missing_hint: list[str] | None = None,
         steps: list[CitationStep] | None = None,
     ) -> tuple[Document, dict[str, Any], float | None]:
@@ -354,7 +354,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         paper: Document,
         findings: dict[str, Any],
         confidence: float,
-        current_user: CurrentUser | None,
+        current_user: Actor | None,
         steps: list[CitationStep],
     ) -> dict[str, Any]:
         source_url = findings.get("source_url")

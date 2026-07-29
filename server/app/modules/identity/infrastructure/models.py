@@ -7,19 +7,23 @@ from cloud_auth.models.user import AccountStatus
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base
+from app.shared.infrastructure.persistence import Base
 
 if TYPE_CHECKING:
-    from .commerce import Onboarding, Subscription
-    from .conversations import Conversation
-    from .documents import (
+    from app.database.models.commerce import Onboarding, Subscription
+    from app.database.models.conversations import Conversation
+    from app.database.models.documents import (
         LibraryPaper,
         Document,
         PaperTag,
     )
-    from .projects import Project, ProjectCollaborator, ProjectInvitation
-    from .research import AnnotationComment, ResearchItem
-    from .integrations import (
+    from app.database.models.projects import (
+        Project,
+        ProjectCollaborator,
+        ProjectInvitation,
+    )
+    from app.database.models.research import AnnotationComment, ResearchItem
+    from app.database.models.integrations import (
         ZoteroConnection,
         ZoteroImportedItem,
         ZoteroOAuthPending,

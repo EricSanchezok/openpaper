@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import ResearchItemKind
 from app.repositories.research import HighlightThreadCreate, research_repository
@@ -20,7 +20,7 @@ from app.schemas.research import (
     UpdateAnnotationCommentRequest,
     UpdateHighlightThreadRequest,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
@@ -49,7 +49,7 @@ def _serialize(
 def list_document_research_items(
     document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
     items = research_repository.list_for_document(
         db,
@@ -68,7 +68,7 @@ def list_document_research_items(
 def list_project_research_items(
     project_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
     items = research_repository.list_for_project(
         db,
@@ -87,7 +87,7 @@ def list_project_research_items(
 def list_highlight_threads(
     document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
     items = research_repository.list_for_document(
         db,
@@ -109,7 +109,7 @@ def create_highlight_thread(
     document_id: UUID,
     request: CreateHighlightThreadRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
     item = research_repository.create_highlight_thread(
         db,
@@ -136,7 +136,7 @@ def update_highlight_thread(
     thread_id: UUID,
     request: UpdateHighlightThreadRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
     values = request.model_dump(exclude_unset=True)
     item = research_repository.update_highlight_thread(
@@ -156,7 +156,7 @@ def delete_highlight_thread(
     thread_id: UUID,
     request: DeleteHighlightThreadRequest = Depends(),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> DeleteResearchItemResponse:
     research_repository.delete_item(
         db,
@@ -176,7 +176,7 @@ def create_annotation_comment(
     thread_id: UUID,
     request: CreateAnnotationCommentRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> AnnotationCommentResponse:
     comment = research_repository.add_comment(
         db,
@@ -199,7 +199,7 @@ def update_annotation_comment(
     comment_id: UUID,
     request: UpdateAnnotationCommentRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> AnnotationCommentResponse:
     comment = research_repository.update_comment(
         db,
@@ -221,7 +221,7 @@ def update_annotation_comment(
 def delete_annotation_comment(
     comment_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     research_repository.delete_comment(
         db,
@@ -239,7 +239,7 @@ def update_research_item(
     item_id: UUID,
     request: ResearchVisibilityRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
     item = research_repository.set_visibility(
         db,
@@ -257,7 +257,7 @@ def update_research_item(
 def delete_research_item(
     item_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> DeleteResearchItemResponse:
     research_repository.delete_item(
         db,

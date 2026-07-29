@@ -21,7 +21,7 @@ from app.policies.projects import (
     require_project_access,
     require_project_permission,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, load_only
 
@@ -33,7 +33,7 @@ class ProjectDocumentRepository:
         *,
         document_ids: list[uuid.UUID],
         project_id: uuid.UUID,
-        user: CurrentUser,
+        user: Actor,
     ) -> tuple[list[ProjectPaper], int]:
         """Atomically attach new Library documents and report duplicate count."""
         require_project_permission(
@@ -122,7 +122,7 @@ class ProjectDocumentRepository:
         document: Document,
         upload_job: UploadReservation,
         project_id: uuid.UUID,
-        user: CurrentUser,
+        user: Actor,
         auto_commit: bool = True,
     ) -> tuple[ProjectPaper, bool]:
         """Attach a fresh upload covered by its durable Project reservation."""
@@ -175,7 +175,7 @@ class ProjectDocumentRepository:
         *,
         document_id: uuid.UUID,
         project_id: uuid.UUID,
-        user: CurrentUser,
+        user: Actor,
     ) -> Document | None:
         require_project_access(db, project_id=project_id, user_id=user.id)
 
@@ -192,7 +192,7 @@ class ProjectDocumentRepository:
         return db.get(Document, project_paper.document_id)
 
     def get_all_papers_by_project_id(
-        self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
+        self, db: Session, *, project_id: uuid.UUID, user: Actor
     ) -> list[Document]:
         require_project_access(db, project_id=project_id, user_id=user.id)
 
@@ -205,7 +205,7 @@ class ProjectDocumentRepository:
         return list(papers)
 
     def get_papers_metadata_by_project_id(
-        self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
+        self, db: Session, *, project_id: uuid.UUID, user: Actor
     ) -> list[Document]:
         """
         Lightweight variant of get_all_papers_by_project_id for the project
@@ -247,7 +247,7 @@ class ProjectDocumentRepository:
         db: Session,
         *,
         document_ids: list[uuid.UUID],
-        user: CurrentUser,
+        user: Actor,
     ) -> list[uuid.UUID]:
         if not document_ids:
             return []
@@ -261,7 +261,7 @@ class ProjectDocumentRepository:
         )
 
     def get_project_document_ids_by_project_id(
-        self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
+        self, db: Session, *, project_id: uuid.UUID, user: Actor
     ) -> list[uuid.UUID]:
         require_project_access(db, project_id=project_id, user_id=user.id)
 
@@ -274,7 +274,7 @@ class ProjectDocumentRepository:
         )
 
     def get_paper_count_by_project_id(
-        self, db: Session, *, project_id: uuid.UUID, user: CurrentUser
+        self, db: Session, *, project_id: uuid.UUID, user: Actor
     ) -> int:
         """Number of papers in a project. Returns 0 if the user has no access."""
         require_project_permission(
@@ -299,7 +299,7 @@ class ProjectDocumentRepository:
         *,
         document_id: uuid.UUID,
         project_id: uuid.UUID,
-        user: CurrentUser,
+        user: Actor,
     ) -> ProjectPaper | None:
         require_project_permission(
             db,
@@ -331,7 +331,7 @@ class ProjectDocumentRepository:
         return project_paper
 
     def get_projects_by_document_id(
-        self, db: Session, *, document_id: uuid.UUID, user: CurrentUser
+        self, db: Session, *, document_id: uuid.UUID, user: Actor
     ) -> list[Project]:
         # First, find all project-paper associations for the given document_id
         project_ids = db.scalars(
@@ -367,7 +367,7 @@ class ProjectDocumentRepository:
         *,
         document_id: uuid.UUID,
         project_id: uuid.UUID,
-        current_user: CurrentUser,
+        current_user: Actor,
     ) -> Document | None:
         document = self.get_paper_by_project(
             db,

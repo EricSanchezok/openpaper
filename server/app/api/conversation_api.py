@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.repositories.messages import message_repository
 from app.database.database import get_db
 from app.database.models import ConversationScopeType
@@ -21,7 +21,7 @@ from app.schemas.conversations import (
     ConversationUpdateRequest,
     serialize_messages,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -34,7 +34,7 @@ def list_conversations(
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationListResponse:
     conversations, next_cursor = conversation_repository.list(
         db,
@@ -60,7 +60,7 @@ def list_conversations(
 def create_conversation(
     request: ConversationCreateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationDetailResponse:
     conversation = conversation_repository.create(
         db, request=request, user_id=current_user.id
@@ -81,7 +81,7 @@ def create_conversation(
 def get_conversation(
     conversation_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationDetailResponse:
     conversation = conversation_repository.require_owned(
         db, conversation_id=conversation_id, user_id=current_user.id
@@ -99,7 +99,7 @@ def get_conversation_messages(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationMessagesResponse:
     conversation_repository.require_owned(
         db,
@@ -127,7 +127,7 @@ def update_conversation(
     conversation_id: uuid.UUID,
     request: ConversationUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationSummaryResponse:
     conversation = conversation_repository.update(
         db,
@@ -145,7 +145,7 @@ def move_conversation(
     conversation_id: uuid.UUID,
     request: ConversationMoveRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationSummaryResponse:
     conversation = conversation_repository.move(
         db,
@@ -163,7 +163,7 @@ def move_conversation(
 def auto_title_conversation(
     conversation_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ConversationAutoTitleResponse:
     conversation_repository.require_owned(
         db, conversation_id=conversation_id, user_id=current_user.id
@@ -188,7 +188,7 @@ def auto_title_conversation(
 def delete_conversation(
     conversation_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     conversation_repository.delete(
         db, conversation_id=conversation_id, user_id=current_user.id

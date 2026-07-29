@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.database.models.base import JsonValue
+from app.shared.infrastructure.persistence import JsonValue
 from app.schemas.responses import ResponseCitation
 from app.schemas.responses import PaperMetadataExtraction
 from app.schemas.responses import DataTableRow

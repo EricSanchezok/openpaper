@@ -1,4 +1,4 @@
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.ai_limits import AILimitExceeded, enforce_rate_limit
@@ -14,7 +14,7 @@ from app.helpers.paper_search import (
 from app.repositories.documents import document_repository
 from app.errors import AppError
 from app.schemas.documents import DocumentUpdate
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,7 @@ async def get_paper_graph(
     doi: str | None = None,
     document_id: str | None = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> OpenAlexCitationGraph:
     """
     Get the citation graph for a paper.
@@ -120,7 +120,7 @@ async def get_author_works(
     author_id: str = Query(min_length=2, max_length=100),
     page: int = Query(default=1, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> OpenAlexResponse:
     """
     Get works by a specific author from OpenAlex.

@@ -2,9 +2,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.auth import dependencies, runtime
 from app.database import admin_auth
 from app.database.models import AuthUser, Base
+from app.modules.identity.infrastructure import cloud_auth as runtime
+from app.transport.http.public_v1 import auth_dependencies as dependencies
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials

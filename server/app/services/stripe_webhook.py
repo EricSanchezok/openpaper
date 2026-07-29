@@ -14,7 +14,7 @@ from app.services.stripe_webhook_ledger import (
     fail_webhook,
 )
 from app.database.crud.subscription_crud import subscription_crud
-from app.database.crud.user_repository import user_repository
+from app.modules.identity.infrastructure.users import user_repository
 from app.database.database import engine
 from app.database.models import (
     StripeWebhookEventStatus,

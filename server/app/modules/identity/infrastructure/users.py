@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.database.models import AuthUser, UserProfile
+from app.modules.identity.infrastructure.models import AuthUser, UserProfile
+from app.shared.application import Actor
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload
@@ -35,7 +36,7 @@ class UserRepository:
             .values(user_id=user_id)
             .on_conflict_do_nothing(index_elements=[UserProfile.user_id])
         )
-        db.commit()
+        db.flush()
         return db.scalars(
             select(UserProfile).where(UserProfile.user_id == user_id)
         ).one()
@@ -43,9 +44,25 @@ class UserRepository:
     def set_blocked(self, db: Session, *, user_id: int, blocked: bool) -> UserProfile:
         profile = self.get_or_create_profile(db, user_id=user_id)
         profile.is_blocked = blocked
-        db.commit()
+        db.flush()
         db.refresh(profile)
         return profile
 
 
 user_repository = UserRepository()
+
+
+def actor_from_auth_user(user: AuthUser) -> Actor:
+    """Map the shared auth projection into a transport-neutral caller."""
+    profile = user.profile
+    return Actor(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        status=str(user.status),
+        email_verified=user.email_verified_at is not None,
+        locale=profile.locale if profile else None,
+        is_admin=profile.is_admin if profile else False,
+        is_blocked=profile.is_blocked if profile else False,
+        is_active=str(user.status) == "active",
+    )

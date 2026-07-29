@@ -9,7 +9,7 @@ from typing import Iterator
 
 from app.database.database import SessionLocal
 from app.database.models import TokenUsageEvent, TokenWeeklyUsage
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -145,7 +145,7 @@ def get_token_usage(db: Session, *, user_id: int) -> int:
     return int(value or 0)
 
 
-def token_quota_status(db: Session, *, user: CurrentUser) -> tuple[int, int, int, int]:
+def token_quota_status(db: Session, *, user: Actor) -> tuple[int, int, int, int]:
     """Return (limit, used, remaining, overage) for the user's current plan."""
     from app.services.resource_quotas import (
         TOKEN_CREDITS_KEY,
@@ -159,7 +159,7 @@ def token_quota_status(db: Session, *, user: CurrentUser) -> tuple[int, int, int
     return limit, used, max(0, limit - used), max(0, used - limit)
 
 
-def has_token_credits(db: Session, *, user: CurrentUser) -> bool:
+def has_token_credits(db: Session, *, user: Actor) -> bool:
     limit, used, _, _ = token_quota_status(db, user=user)
     return used < limit
 

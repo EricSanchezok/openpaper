@@ -13,7 +13,7 @@ from app.llm.prompts import (
 from app.llm.backend import TextContent
 from app.repositories.conversations import conversation_repository
 from app.schemas.conversations import ConversationUpdateRequest
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ class ConversationOperations(BaseLLMClient):
     def rename_conversation(
         self,
         conversation_id: str,
-        user: CurrentUser,
+        user: Actor,
         db: Session = Depends(get_db),
     ) -> str | None:
         """

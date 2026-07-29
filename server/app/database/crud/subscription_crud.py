@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.database.models import Subscription, SubscriptionPlan, SubscriptionStatus
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -38,7 +38,7 @@ class SubscriptionUpdate(BaseModel):
 class CRUDSubscription:
     """CRUD operations for subscription management"""
 
-    def is_user_active(self, db: Session, user: CurrentUser) -> bool:
+    def is_user_active(self, db: Session, user: Actor) -> bool:
         """Check if the user has an active subscription"""
         return self.is_user_id_active(db, user.id)
 

@@ -48,7 +48,7 @@ from app.schemas.message import (
     OriginalSnippet,
     ToolResultCompactionResponse,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -109,7 +109,7 @@ class EvidenceOperations(BaseLLMClient):
     async def gather_evidence(
         self,
         question: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         conversation_id: str | None = None,
         project_id: str | None = None,
         restrict_to_document_ids: list[str] | None = None,
@@ -517,7 +517,7 @@ class EvidenceOperations(BaseLLMClient):
         self,
         evidence_collection: EvidenceCollection,
         original_question: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         db: Session | None = None,
     ) -> None:
         """
@@ -587,7 +587,7 @@ class EvidenceOperations(BaseLLMClient):
         self,
         evidence_collection: EvidenceCollection,
         original_question: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         db: Session | None = None,
     ) -> AsyncGenerator[dict[str, str | dict[str, list[str]]], None]:
         """

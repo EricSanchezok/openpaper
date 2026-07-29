@@ -8,11 +8,11 @@ from sqlalchemy import BigInteger, DateTime, ForeignKey, String, UniqueConstrain
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, JsonValue
+from app.shared.infrastructure.persistence import Base, JsonValue
 from .enums import ZoteroImportStatus
 
 if TYPE_CHECKING:
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
 
 
 class ZoteroOAuthPending(Base):

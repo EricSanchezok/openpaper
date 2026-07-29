@@ -2,12 +2,12 @@ import logging
 
 import stripe
 from app.api.subscription.config import MONTHLY_PRICE_ID, YEARLY_PRICE_ID, YOUR_DOMAIN
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.post("/create-portal-session")
 def create_customer_portal_session(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, str | None]:
     """Create a Stripe customer portal session for the current user"""
     try:
@@ -51,7 +51,7 @@ def create_customer_portal_session(
 @router.post("/resubscribe")
 def resubscribe(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, str | bool]:
     """
     Reactivate a canceled subscription or reverse a scheduled cancellation.

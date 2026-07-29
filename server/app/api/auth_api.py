@@ -5,16 +5,20 @@ import os
 import random
 from datetime import UTC, datetime
 
-from app.auth.dependencies import get_admin_user, get_required_user
+from app.transport.http.public_v1.auth_dependencies import (
+    get_admin_user,
+    get_required_user,
+)
 from app.auth.zotero import zotero_auth_client
 from app.repositories.document_search import document_search_repository
-from app.database.crud.user_repository import user_repository
+from app.modules.identity.infrastructure.users import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError
-from app.schemas.user import BlockUserRequest, CurrentUser
+from app.modules.identity.application import BlockUserRequest
+from app.shared.application import Actor
 from app.schemas.zotero import (
     ZoteroConnectResponse,
     ZoteroDisconnectResponse,
@@ -31,7 +35,7 @@ client_domain = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
 
 @auth_router.get("/topics")
 async def get_topics(
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> list[str]:
     topics = document_search_repository.list_topics(db, user_id=current_user.id)
@@ -42,7 +46,7 @@ async def get_topics(
 @auth_router.post("/admin/block")
 async def block_user(
     request: BlockUserRequest,
-    admin_user: CurrentUser = Depends(get_admin_user),
+    admin_user: Actor = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     target_user = user_repository.get(db, id=request.user_id)
@@ -63,7 +67,7 @@ async def block_user(
 
 @auth_router.get("/zotero/connect", response_model=ZoteroConnectResponse)
 async def zotero_connect(
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroConnectResponse:
     request_token = zotero_auth_client.get_request_token()
@@ -128,7 +132,7 @@ async def zotero_callback(
 
 @auth_router.get("/zotero/status", response_model=ZoteroStatusResponse)
 async def zotero_status(
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroStatusResponse:
     connection = zotero_crud.get_by_user_id(db=db, user_id=current_user.id)
@@ -146,7 +150,7 @@ async def zotero_status(
 
 @auth_router.delete("/zotero/disconnect", response_model=ZoteroDisconnectResponse)
 async def zotero_disconnect(
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroDisconnectResponse:
     deleted = zotero_crud.delete_by_user_id(db=db, user_id=current_user.id)

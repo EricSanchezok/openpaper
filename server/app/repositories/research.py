@@ -16,7 +16,7 @@ from app.database.models import (
     Conversation,
     ConversationScopeType,
 )
-from app.database.models.base import JsonValue
+from app.shared.infrastructure.persistence import JsonValue
 from app.errors import AppError
 from app.helpers.s3 import s3_service
 from app.policies.documents import require_document_access

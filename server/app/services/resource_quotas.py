@@ -16,7 +16,8 @@ from app.database.models import (
 )
 from app.database.telemetry import track_event
 from app.errors import AppError
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
+from app.modules.identity.infrastructure.users import actor_from_auth_user
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -51,7 +52,7 @@ PLAN_LABELS = {
 }
 
 
-def get_user_subscription_plan(db: Session, user: CurrentUser) -> SubscriptionPlan:
+def get_user_subscription_plan(db: Session, user: Actor) -> SubscriptionPlan:
     """
     Get the user's current subscription plan.
     Returns BASIC if no active subscription is found.
@@ -86,7 +87,7 @@ def lock_account_resource_quota(db: Session, *, user_id: int) -> None:
     db.execute(select(func.pg_advisory_xact_lock(user_id)))
 
 
-def get_quota_user(db: Session, *, user_id: int) -> CurrentUser:
+def get_quota_user(db: Session, *, user_id: int) -> Actor:
     user = db.get(AuthUser, user_id)
     if user is None:
         raise AppError(
@@ -94,7 +95,7 @@ def get_quota_user(db: Session, *, user_id: int) -> CurrentUser:
             message="The account that owns this resource no longer exists",
             status_code=409,
         )
-    return CurrentUser.from_auth_user(user)
+    return actor_from_auth_user(user)
 
 
 def _require_incremental_account_capacity(
@@ -180,7 +181,7 @@ def require_project_document_capacity(
 def require_library_document_capacity(
     db: Session,
     *,
-    user: CurrentUser,
+    user: Actor,
     document: Document,
 ) -> None:
     """Validate the incremental cost of collecting one shared document."""
@@ -192,7 +193,7 @@ def require_library_document_capacity(
     )
 
 
-def get_remaining_paper_upload_slots(db: Session, user: CurrentUser) -> int:
+def get_remaining_paper_upload_slots(db: Session, user: Actor) -> int:
     """
     Return the number of papers the user can still upload under their plan.
 
@@ -208,7 +209,7 @@ def get_remaining_paper_upload_slots(db: Session, user: CurrentUser) -> int:
     return max(0, int(paper_limit) - current_paper_count)
 
 
-def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, str | None]:
+def can_user_upload_paper(db: Session, user: Actor) -> tuple[bool, str | None]:
     """
     Check if a user can upload a new paper based on their subscription limits.
 
@@ -244,7 +245,7 @@ def can_user_upload_paper(db: Session, user: CurrentUser) -> tuple[bool, str | N
     return True, None
 
 
-def can_user_create_project(db: Session, user: CurrentUser) -> tuple[bool, str | None]:
+def can_user_create_project(db: Session, user: Actor) -> tuple[bool, str | None]:
     """
     Check if a user can create a new project based on their subscription limits.
 
@@ -281,12 +282,12 @@ def can_user_create_project(db: Session, user: CurrentUser) -> tuple[bool, str |
     return True, None
 
 
-def can_user_auto_sync_zotero(db: Session, user: CurrentUser) -> bool:
+def can_user_auto_sync_zotero(db: Session, user: Actor) -> bool:
     """Return True if the user's plan allows automatic Zotero sync (Researcher only)."""
     return get_user_subscription_plan(db, user) == SubscriptionPlan.RESEARCHER
 
 
-def get_user_usage_info(db: Session, user: CurrentUser) -> dict[str, object]:
+def get_user_usage_info(db: Session, user: Actor) -> dict[str, object]:
     """Return resource limits plus the current Monday-based Token Credit window."""
     from app.llm.token_credits import token_quota_status
 

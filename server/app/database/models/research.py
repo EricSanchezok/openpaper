@@ -20,13 +20,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, JsonValue
+from app.shared.infrastructure.persistence import Base, JsonValue
 from .enums import ResearchItemKind, ResearchScopeType
 
 if TYPE_CHECKING:
     from .conversations import Message
     from .documents import Document
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
     from .jobs import DurableJob
     from .projects import Project
 

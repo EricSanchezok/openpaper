@@ -19,12 +19,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, JsonValue
+from app.shared.infrastructure.persistence import Base, JsonValue
 from .enums import ConversationScopeType
 
 if TYPE_CHECKING:
     from .documents import Document
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
     from .projects import Project
     from .research import ResearchItem
 

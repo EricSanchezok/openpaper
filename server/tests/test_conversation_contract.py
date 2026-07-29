@@ -18,14 +18,14 @@ from app.schemas.conversations import (
 )
 from app.schemas.message import MultiPaperChatRequest
 from app.repositories.messages import MessageCreate
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 from starlette.requests import Request
 
 
-def _current_user() -> CurrentUser:
-    return CurrentUser(
+def _current_user() -> Actor:
+    return Actor(
         id=1,
         email="reader@example.com",
         status="active",

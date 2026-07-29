@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import JobOperation, JobStatus
 from app.errors import AppError
@@ -18,7 +18,7 @@ from app.schemas.jobs import (
     JobListResponse,
     JobResponse,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.services.research_generation import (
     enqueue_audio_generation,
     enqueue_data_table_generation,
@@ -51,7 +51,7 @@ async def create_document_audio_overview(
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
     access = require_document_access(
         db,
@@ -81,7 +81,7 @@ async def create_project_audio_overview(
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
     require_project_access(db, project_id=project_id, user_id=current_user.id)
     documents = list_project_generation_documents(db, project_id=project_id)
@@ -110,7 +110,7 @@ def list_jobs(
     operation: JobOperation | None = None,
     active: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> JobListResponse:
     jobs = job_repository.list_for_requester(
         db,
@@ -127,7 +127,7 @@ def list_jobs(
 def get_job(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> JobResponse:
     job = job_repository.require_for_requester(
         db,
@@ -148,7 +148,7 @@ async def create_project_data_table(
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
     require_project_access(db, project_id=project_id, user_id=current_user.id)
     documents = list_project_generation_documents(db, project_id=project_id)

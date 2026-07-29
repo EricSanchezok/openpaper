@@ -28,17 +28,27 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
 
 # Dependency for FastAPI
 def get_db() -> Iterator[Session]:
+    """Provide one transaction for one inbound application operation."""
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 @asynccontextmanager
 async def aget_db() -> AsyncIterator[Session]:
+    """Async-context variant with the same transaction ownership."""
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
     finally:
         db.close()

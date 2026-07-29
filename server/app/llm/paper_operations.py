@@ -19,7 +19,7 @@ from app.llm.prompts import (
 from app.llm.backend import SupplementaryContent, TextContent
 from app.schemas.message import ResponseStyle
 from app.schemas.responses import AudioOverviewForLLM
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -32,7 +32,7 @@ class PaperOperations(BaseLLMClient):
     def create_narrative_summary(
         self,
         document_id: str,
-        user: CurrentUser,
+        user: Actor,
         length: Literal["short", "medium", "long"] | None = "medium",
         additional_instructions: str | None = None,
         db: Session = Depends(get_db),
@@ -84,7 +84,7 @@ class PaperOperations(BaseLLMClient):
         document_id: str,
         conversation_id: str,
         question: str,
-        current_user: CurrentUser,
+        current_user: Actor,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,
         response_style: str | None = "normal",

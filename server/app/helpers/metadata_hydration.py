@@ -22,7 +22,7 @@ from app.helpers.parser import parse_publication_date
 from app.llm.citation_recovery import get_recovery_agent
 from app.repositories.documents import document_repository
 from app.schemas.documents import DocumentUpdate
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def hydrate_paper_metadata(
     *,
     db: Session,
     paper: Document,
-    user: CurrentUser | None = None,
+    user: Actor | None = None,
     force: bool = False,
     agentic: bool = False,
     agentic_steps: list[Any] | None = None,

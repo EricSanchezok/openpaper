@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.repositories.messages import MessageCreate, message_repository
 from app.repositories.documents import document_repository
 from app.repositories.project_documents import project_document_repository
@@ -13,7 +13,7 @@ from app.database.models import (
     ConversationScopeType,
     ReasoningLevel,
 )
-from app.database.models.base import JsonValue
+from app.shared.infrastructure.persistence import JsonValue
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.ai_limits import (
@@ -36,7 +36,7 @@ from app.schemas.message import (
     EvidenceCollection,
     MultiPaperChatRequest,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.services.chat_streaming import stream_with_stable_error
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Request
@@ -174,7 +174,7 @@ async def get_chat_capabilities() -> dict[str, object]:
 
 def _resolve_mention_scope(
     db: Session,
-    current_user: CurrentUser,
+    current_user: Actor,
     request: "MultiPaperChatRequest",
     *,
     project_id: uuid.UUID | None,
@@ -319,7 +319,7 @@ async def chat_message_multipaper(
     request: MultiPaperChatRequest,
     http_request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> StreamingResponse:
     """
     Send a chat message and stream the response from the LLM.
@@ -625,7 +625,7 @@ async def chat_message_stream(
     request: ChatMessageRequest,
     http_request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> StreamingResponse:
     """
     Send a chat message and stream the response from the LLM

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import LibraryPaper
 from app.errors import AppError
@@ -20,7 +20,7 @@ from app.schemas.documents import (
     PublicPaperOwnerResponse,
     PublicPaperResponse,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.services.resource_quotas import require_library_document_capacity
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
@@ -95,7 +95,7 @@ def _library_response(library_paper: object) -> LibraryPaperResponse:
 @library_router.get("/papers", response_model=LibraryPaperListResponse)
 def list_library_papers(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperListResponse:
     entries = document_repository.list_library(db, user_id=current_user.id)
     return LibraryPaperListResponse(
@@ -111,7 +111,7 @@ def update_library_paper(
     library_paper_id: uuid.UUID,
     request: LibraryPaperUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperResponse:
     entry = document_repository.update_library_paper(
         db,
@@ -129,7 +129,7 @@ def update_library_paper(
 def get_library_paper_by_document(
     document_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperResponse:
     entry = document_repository.require_library_paper_by_document(
         db,
@@ -146,7 +146,7 @@ def get_library_paper_by_document(
 def share_library_paper(
     library_paper_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperShareResponse:
     token = document_repository.rotate_public_share(
         db,
@@ -163,7 +163,7 @@ def share_library_paper(
 def unshare_library_paper(
     library_paper_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     document_repository.revoke_public_share(
         db,
@@ -180,7 +180,7 @@ def unshare_library_paper(
 def delete_library_paper(
     library_paper_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     document_repository.delete_library_paper(
         db,
@@ -195,7 +195,7 @@ def get_document(
     document_id: uuid.UUID,
     project_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> DocumentResponse:
     access = require_document_access(
         db,
@@ -214,7 +214,7 @@ def get_document_file_url(
     document_id: uuid.UUID,
     project_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> DocumentFileUrlResponse:
     access = require_document_access(
         db,
@@ -270,7 +270,7 @@ def get_public_paper(
 def collect_public_paper(
     share_token: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> CollectPublicPaperResponse:
     shared = document_repository.require_public_share(db, token=share_token)
     existing = db.scalar(

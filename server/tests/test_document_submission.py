@@ -11,13 +11,13 @@ from app.database.models import (
     JobStatus,
     UploadReservation,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.services.document_submission import submit_reserved_document
 from sqlalchemy.orm import Session
 
 
-def _user() -> CurrentUser:
-    return CurrentUser(
+def _user() -> Actor:
+    return Actor(
         id=7,
         email="researcher@example.com",
         status="active",

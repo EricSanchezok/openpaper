@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.repositories.library_tags import library_tag_repository
 from app.schemas.tags import (
@@ -13,7 +13,7 @@ from app.schemas.tags import (
     LibraryTagCreateRequest,
     LibraryTagResponse,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ def _tag_response(tag: object) -> LibraryTagResponse:
 @library_tags_router.get("/tags", response_model=list[LibraryTagResponse])
 def list_library_tags(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> list[LibraryTagResponse]:
     return [
         _tag_response(tag)
@@ -47,7 +47,7 @@ def list_library_tags(
 def create_library_tag(
     request: LibraryTagCreateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> LibraryTagResponse:
     tag = library_tag_repository.create(
         db,
@@ -65,7 +65,7 @@ def create_library_tag(
 def assign_library_tags(
     request: LibraryTagAssignmentRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> LibraryTagAssignmentResponse:
     assigned_count = library_tag_repository.assign_many(
         db,
@@ -84,7 +84,7 @@ def remove_library_tag_assignment(
     document_id: UUID,
     tag_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     library_tag_repository.remove_from_document(
         db,

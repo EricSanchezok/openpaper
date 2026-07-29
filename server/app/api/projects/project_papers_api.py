@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.repositories.project_documents import project_document_repository
 from app.database.database import get_db
@@ -19,7 +19,7 @@ from app.schemas.projects import (
     ProjectPendingUploadsResponse,
     ProjectResponse,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,7 @@ project_papers_router = APIRouter()
 async def collect_paper_from_project(
     request: CollectPaperFromProjectRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperCollectedResponse:
     """
     Add a project document to the current user's personal library without
@@ -76,7 +76,7 @@ async def add_paper_to_project(
     project_id: UUID,
     request: AddPaperToProjectRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectPapersAddedResponse:
     associations, existing_count = project_document_repository.attach_library_documents(
         db,
@@ -108,7 +108,7 @@ async def get_project_papers(
     project_id: UUID,
     load_urls: bool = False,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperListResponse:
     """
     Get all papers for a specific project.
@@ -165,7 +165,7 @@ async def get_project_papers(
 async def get_project_pending_jobs(
     project_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectPendingUploadsResponse:
     """
     Get upload jobs still in progress for a project.
@@ -198,7 +198,7 @@ async def get_project_paper_file_url(
     project_id: UUID,
     document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectPaperFileUrlResponse:
     """
     Get a presigned file URL for a single paper within a project.
@@ -233,7 +233,7 @@ async def get_project_paper_file_url(
 async def get_projects_from_document_id(
     document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> list[ProjectResponse]:
     """Get all projects associated with a specific paper"""
     projects = project_document_repository.get_projects_by_document_id(
@@ -253,7 +253,7 @@ async def remove_paper_from_project(
     project_id: UUID,
     document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     """Remove a paper from a project"""
     project_document_repository.remove_by_paper_and_project(

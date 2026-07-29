@@ -6,7 +6,7 @@ import uuid
 from typing import Literal
 
 from app.database.models import Document, JobOperation, ProjectPaper
-from app.database.models.base import JsonValue
+from app.shared.infrastructure.persistence import JsonValue
 from app.errors import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -28,7 +28,7 @@ from app.schemas.jobs import (
     DataTableTaskTablePayload,
     JobResponse,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -73,7 +73,7 @@ def list_project_generation_documents(
     )
 
 
-def _require_token_credits(db: Session, *, user: CurrentUser) -> None:
+def _require_token_credits(db: Session, *, user: Actor) -> None:
     if not has_token_credits(db, user=user):
         raise AppError(
             code="token_quota_exceeded",
@@ -133,7 +133,7 @@ async def _acquire_audio_capacity(*, user_id: int, job_id: uuid.UUID) -> None:
 async def enqueue_audio_generation(
     *,
     db: Session,
-    user: CurrentUser,
+    user: Actor,
     ip_address: str,
     scope_type: Literal["document", "project"],
     scope_id: uuid.UUID,
@@ -218,7 +218,7 @@ async def enqueue_audio_generation(
 async def enqueue_data_table_generation(
     *,
     db: Session,
-    user: CurrentUser,
+    user: Actor,
     ip_address: str,
     project_id: uuid.UUID,
     documents: list[Document],

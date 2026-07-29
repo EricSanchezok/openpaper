@@ -23,11 +23,11 @@ from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from .base import Base, JsonValue
+from app.shared.infrastructure.persistence import Base, JsonValue
 from .enums import DocumentProcessingStatus, PaperStatus
 
 if TYPE_CHECKING:
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
     from .jobs import DurableJob
     from .conversations import Conversation
     from .projects import ProjectPaper

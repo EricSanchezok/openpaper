@@ -7,13 +7,13 @@ from app.api.subscription.config import (
     YEARLY_PRICE_ID,
     SubscriptionInterval,
 )
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.crud.subscription_crud import subscription_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.email import notify_converted_billing_interval
 from app.errors import AppError
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ router = APIRouter()
 def change_subscription_interval(
     new_interval: SubscriptionInterval,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, object]:
     """
     Schedule a billing interval change at the end of the current billing period
@@ -162,7 +162,7 @@ def change_subscription_interval(
 @router.post("/cancel-scheduled-change")
 def cancel_scheduled_change(
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> dict[str, object]:
     """
     Cancel a previously scheduled billing interval change.

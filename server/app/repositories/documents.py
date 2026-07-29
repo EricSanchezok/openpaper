@@ -23,7 +23,7 @@ from app.errors import AppError
 from app.helpers.paper_search import normalize_doi
 from app.policies.documents import get_document_access, require_document_access
 from app.schemas.documents import DocumentUpdate, LibraryPaperUpdateRequest
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy import select, update
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
@@ -54,7 +54,7 @@ class DocumentRepository:
         db: Session,
         *,
         document_id: object,
-        user: CurrentUser,
+        user: Actor,
         update_last_accessed: bool = False,
     ) -> Document | None:
         """Return a Document only through an explicit user access check."""
@@ -80,7 +80,7 @@ class DocumentRepository:
         *,
         document: Document,
         update: DocumentUpdate,
-        user: CurrentUser | None = None,
+        user: Actor | None = None,
         auto_commit: bool = True,
     ) -> Document:
         """Update canonical metadata after optional explicit access validation."""
@@ -106,7 +106,7 @@ class DocumentRepository:
         db: Session,
         *,
         upload_job_id: str,
-        user: CurrentUser,
+        user: Actor,
     ) -> Document | None:
         """Return the Document produced by one of the user's durable jobs."""
         return db.scalar(
@@ -123,7 +123,7 @@ class DocumentRepository:
         self,
         db: Session,
         *,
-        user: CurrentUser,
+        user: Actor,
         query: str | None = None,
         document_ids: list[str] | None = None,
     ) -> list[Document]:

@@ -12,7 +12,7 @@ from app.llm.utils import find_offsets
 from app.repositories.documents import document_repository
 from app.repositories.research import HighlightThreadCreate, research_repository
 from app.schemas.responses import PaperMetadataExtraction
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def require_parsed_content(
     db: Session,
     *,
     document_id: uuid.UUID,
-    user: CurrentUser,
+    user: Actor,
 ) -> ParsedDocumentContent:
     document = document_repository.find_accessible(
         db,
@@ -59,7 +59,7 @@ def create_ai_highlights(
     *,
     document_id: uuid.UUID,
     metadata: PaperMetadataExtraction,
-    user: CurrentUser,
+    user: Actor,
     auto_commit: bool = True,
 ) -> None:
     if research_repository.has_assistant_highlight(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import AuthUser, Project, ProjectInvitation
 from app.helpers.email import send_project_invite_email
@@ -12,7 +12,7 @@ from app.schemas.projects import (
     ProjectInvitationResponse,
     ProjectPermissionSet,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
@@ -46,7 +46,7 @@ def _invitation_response(
 
 
 def _send_invitation(
-    db: Session, *, created: CreatedInvitation, inviter: CurrentUser
+    db: Session, *, created: CreatedInvitation, inviter: Actor
 ) -> None:
     project = db.get(Project, created.invitation.project_id)
     if project is None:
@@ -66,7 +66,7 @@ def _send_invitation(
 def accept_invitation_token(
     token: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     project_repository.accept_invitation_token(
         db,
@@ -84,7 +84,7 @@ def accept_invitation_token(
 def get_project_invitations(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> list[ProjectInvitationResponse]:
     invitations = project_repository.list_project_invitations(
         db, project_id=project_id, actor_id=current_user.id
@@ -104,7 +104,7 @@ def create_project_invitation(
     project_id: uuid.UUID,
     request: ProjectInvitationCreateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectInvitationResponse:
     created = project_repository.create_invitation(
         db,
@@ -125,7 +125,7 @@ def resend_project_invitation(
     project_id: uuid.UUID,
     invitation_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectInvitationResponse:
     created = project_repository.resend_invitation(
         db,
@@ -145,7 +145,7 @@ def revoke_project_invitation(
     project_id: uuid.UUID,
     invitation_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     project_repository.revoke_invitation(
         db,

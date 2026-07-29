@@ -19,12 +19,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from .base import Base
+from app.shared.infrastructure.persistence import Base
 
 if TYPE_CHECKING:
     from .conversations import Conversation
     from .documents import Document
-    from .identity import AuthUser
+    from app.modules.identity.infrastructure.models import AuthUser
 
 
 class Project(Base):

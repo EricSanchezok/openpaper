@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.auth.dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import (
     AuthUser,
@@ -19,7 +19,7 @@ from app.schemas.projects import (
     ProjectTransferRequest,
     ProjectUpdateRequest,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.errors import AppError
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ projects_router = APIRouter()
 def create_project(
     request: ProjectCreateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectResponse:
     can_create, _reason = can_user_create_project(db, current_user)
     if not can_create:
@@ -58,7 +58,7 @@ def create_project(
 def get_projects(
     limit: int | None = Query(default=None, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> list[ProjectResponse]:
     projects = project_repository.list_accessible(
         db, user_id=current_user.id, limit=limit
@@ -73,7 +73,7 @@ def get_projects(
 def get_project(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectResponse:
     access = project_repository.get_access(
         db, project_id=project_id, user_id=current_user.id
@@ -86,7 +86,7 @@ def update_project(
     project_id: uuid.UUID,
     request: ProjectUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectResponse:
     project = project_repository.update(
         db,
@@ -102,7 +102,7 @@ def update_project(
 def delete_project(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     project_repository.delete(db, project_id=project_id, user_id=current_user.id)
     track_event("project_deleted", user_id=str(current_user.id), db=db)
@@ -116,7 +116,7 @@ def delete_project(
 def get_project_collaborators(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> list[ProjectCollaboratorResponse]:
     project, collaborators = project_repository.list_collaborators(
         db, project_id=project_id, user_id=current_user.id
@@ -165,7 +165,7 @@ def update_project_collaborator(
     user_id: int,
     request: ProjectCollaboratorUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectCollaboratorResponse:
     collaborator = project_repository.update_collaborator(
         db,
@@ -196,7 +196,7 @@ def remove_project_collaborator(
     project_id: uuid.UUID,
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     project_repository.remove_collaborator(
         db,
@@ -211,7 +211,7 @@ def remove_project_collaborator(
 def leave_project(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> Response:
     project_repository.leave(db, project_id=project_id, user_id=current_user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -222,7 +222,7 @@ def transfer_project(
     project_id: uuid.UUID,
     request: ProjectTransferRequest,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_required_user),
+    current_user: Actor = Depends(get_required_user),
 ) -> ProjectResponse:
     project = project_repository.transfer(
         db,

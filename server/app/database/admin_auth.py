@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import os
 
-from app.auth.runtime import auth_db, auth_manager
-from app.database.crud.user_repository import user_repository
+from app.modules.identity.infrastructure.cloud_auth import auth_db, auth_manager
+from app.modules.identity.infrastructure.users import user_repository
 from app.database.database import SessionLocal
 from cloud_auth.exceptions import AuthError
 from fastapi import Request

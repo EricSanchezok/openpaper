@@ -28,7 +28,7 @@ from app.schemas.projects import (
     ProjectInvitationCreateRequest,
     ProjectPermissionSet,
 )
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -161,7 +161,7 @@ def test_project_papers_are_attached_in_one_transaction(
         db,
         document_ids=[document.id for document in documents],
         project_id=project.id,
-        user=CurrentUser(
+        user=Actor(
             id=2,
             email="collaborator@example.com",
             status="active",
@@ -205,7 +205,7 @@ def test_project_paper_batch_rejects_partial_library_matches(
             db,
             document_ids=requested_ids,
             project_id=project.id,
-            user=CurrentUser(
+            user=Actor(
                 id=2,
                 email="collaborator@example.com",
                 status="active",
@@ -255,7 +255,7 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
             document=document,
             upload_job=upload_job,
             project_id=project_id,
-            user=CurrentUser(
+            user=Actor(
                 id=2,
                 email="collaborator@example.com",
                 status="active",

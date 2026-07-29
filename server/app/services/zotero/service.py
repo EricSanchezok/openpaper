@@ -37,7 +37,7 @@ from app.repositories.documents import document_repository
 from app.repositories.library_tags import library_tag_repository
 from app.repositories.research import HighlightThreadCreate, research_repository
 from app.schemas.documents import DocumentUpdate
-from app.schemas.user import CurrentUser
+from app.shared.application import Actor
 from app.services.document_annotations import require_parsed_content
 from app.services.upload_reservations import reserve_upload
 from app.services.document_submission import submit_reserved_document
@@ -341,7 +341,7 @@ def _apply_single_zotero_annotation(
     db: Session,
     *,
     document_id: UUID,
-    user: CurrentUser,
+    user: Actor,
     zotero_annotation_key: str,
     ann_data: dict[str, Any],
     raw_content: str,
@@ -414,7 +414,7 @@ def _try_backfill_or_apply_annotation(
     db: Session,
     *,
     document_id: UUID,
-    user: CurrentUser,
+    user: Actor,
     zotero_annotation_key: str,
     ann_data: dict[str, Any],
     raw_content: str,
@@ -592,7 +592,7 @@ async def _link_zotero_item_to_existing_paper(
     item: dict[str, Any],
     item_key: str,
     paper: Document,
-    user: CurrentUser,
+    user: Actor,
 ) -> None:
     """Link a Zotero item to an existing paper and merge any new annotations."""
     import_source, attachment_key, source_url, annotations = (
@@ -627,7 +627,7 @@ def _apply_zotero_tags(
     *,
     document_id: UUID,
     tags_data: list[dict[str, Any]],
-    user: "CurrentUser",
+    user: "Actor",
 ) -> None:
     for tag_entry in tags_data:
         if not isinstance(tag_entry, dict):
@@ -649,7 +649,7 @@ def _apply_zotero_tags(
 
 
 def _compute_max_new_imports(
-    db: Session, user: CurrentUser, limit: int
+    db: Session, user: Actor, limit: int
 ) -> tuple[int, str | None]:
     """Return how many new papers can be imported and an error if at upload limit."""
     can_upload, upload_err = can_user_upload_paper(db, user)
@@ -664,7 +664,7 @@ async def _discover_import_candidates(
     db: Session,
     *,
     client: ZoteroApiClient,
-    user: CurrentUser,
+    user: Actor,
     limit: int,
 ) -> tuple[
     list[dict[str, Any]],
@@ -790,7 +790,7 @@ def _apply_metadata_from_zotero(
     *,
     paper: Document,
     item_data: dict[str, Any],
-    user: CurrentUser,
+    user: Actor,
 ) -> None:
     """
     Apply Zotero's authoritative metadata (title, authors, abstract, publish
@@ -816,7 +816,7 @@ def _apply_metadata_from_zotero(
 async def _import_one_paper(
     item: dict[str, Any],
     *,
-    user: CurrentUser,
+    user: Actor,
     zotero_user_id: str,
     api_key: str,
 ) -> ImportOneResult:
@@ -993,7 +993,7 @@ async def _import_one_paper(
 def list_library(
     db: Session,
     *,
-    user: CurrentUser,
+    user: Actor,
     limit: int = 100,
 ) -> dict[str, Any]:
     """
@@ -1105,7 +1105,7 @@ async def _discover_candidates_by_keys(
     db: Session,
     *,
     client: ZoteroApiClient,
-    user: CurrentUser,
+    user: Actor,
     item_keys: list[str],
 ) -> tuple[
     list[dict[str, Any]],
@@ -1204,7 +1204,7 @@ async def _discover_candidates_by_keys(
 async def import_batch(
     db: Session,
     *,
-    user: CurrentUser,
+    user: Actor,
     item_keys: list[str],
 ) -> dict[str, Any]:
     """
@@ -1328,7 +1328,7 @@ def apply_zotero_annotations(
     *,
     upload_job_id: str,
     document_id: str,
-    user: CurrentUser,
+    user: Actor,
 ) -> None:
     import_row = zotero_import_crud.get_by_upload_job_id(
         db, upload_job_id=UUID(upload_job_id)
@@ -1411,7 +1411,7 @@ def _sync_item(
     *,
     client: ZoteroApiClient,
     import_row: ZoteroImportedItem,
-    user: CurrentUser,
+    user: Actor,
 ) -> dict[str, Any]:
     document_id = import_row.document_id
     if not document_id or not import_row.zotero_attachment_key:
@@ -1480,7 +1480,7 @@ def _sync_item(
 async def sync_batch(
     db: Session,
     *,
-    user: CurrentUser,
+    user: Actor,
     limit: int = 50,
 ) -> dict[str, Any]:
     """Append-only sync of new Zotero annotations for already-imported PDF papers."""
@@ -1534,7 +1534,7 @@ async def sync_batch(
 async def auto_import_new_papers(
     db: Session,
     *,
-    user: CurrentUser,
+    user: Actor,
 ) -> dict[str, Any]:
     """
     For Researcher-plan users: detect Zotero library items not yet tracked in
