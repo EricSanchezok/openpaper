@@ -13,11 +13,6 @@ class ZoteroStatusResponse(BaseModel):
     last_synced_at: datetime | None = None
 
 
-class ZoteroDisconnectResponse(BaseModel):
-    success: bool
-    message: str
-
-
 class ZoteroImportRequest(BaseModel):
     item_keys: list[str] = Field(..., min_length=1, max_length=50)
 

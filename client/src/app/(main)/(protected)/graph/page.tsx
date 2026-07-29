@@ -114,7 +114,7 @@ function CitationGraphContent() {
 
         try {
             const response: DiscoveryPaperListResponse = await fetchFromApi(
-                `/discovery/papers/authors?author_id=${encodeURIComponent(authorId)}`
+                `/discovery/authors?author_id=${encodeURIComponent(authorId)}`
             );
 
             setAuthorData(response);

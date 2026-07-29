@@ -243,7 +243,10 @@ export function ArtifactsPanel() {
         try {
             await fetchFromApi(`/projects/${projectId}/audio-overviews`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": crypto.randomUUID(),
+                },
                 body: JSON.stringify({
                     additional_instructions: audioInstructions.trim() || null,
                     length: audioLength,
@@ -267,7 +270,10 @@ export function ArtifactsPanel() {
         try {
             await fetchFromApi(`/projects/${projectId}/data-tables`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": crypto.randomUUID(),
+                },
                 body: JSON.stringify({
                     columns: columns.map((column) => column.label),
                 }),

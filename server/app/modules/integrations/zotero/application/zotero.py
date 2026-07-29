@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
-    ZoteroDisconnectResponse,
     ZoteroImportRequest,
     ZoteroImportResponse,
     ZoteroImportStatusListResponse,
@@ -104,16 +103,8 @@ class Zotero:
     def status(self, *, actor: Actor) -> ZoteroStatusResponse:
         return self._gateway.status(user_id=actor.id)
 
-    def disconnect(self, *, actor: Actor) -> ZoteroDisconnectResponse:
-        deleted = self._gateway.disconnect(user_id=actor.id)
-        return ZoteroDisconnectResponse(
-            success=deleted,
-            message=(
-                "Zotero account disconnected"
-                if deleted
-                else "No Zotero account connected"
-            ),
-        )
+    def disconnect(self, *, actor: Actor) -> None:
+        self._gateway.disconnect(user_id=actor.id)
 
     def library(self, *, actor: Actor) -> ZoteroLibraryResponse:
         self._require_connected(actor)

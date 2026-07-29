@@ -77,6 +77,7 @@ def get_library_paper_by_document(
 @library_router.post(
     "/papers/{document_id}/share",
     response_model=LibraryPaperShareResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 def share_library_paper(
     document_id: UUID,
@@ -208,6 +209,7 @@ def get_public_paper(
 @public_document_router.post(
     "/{share_token}/collect",
     response_model=CollectPublicPaperResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 def collect_public_paper(
     share_token: str,

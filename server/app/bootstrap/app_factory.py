@@ -10,7 +10,7 @@ import logging
 
 from app.transport.http.public_v1.auth import (
     admin_router,
-    auth_router,
+    topics_router,
 )
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
@@ -24,7 +24,10 @@ from app.transport.http.internal_v1.jobs_callbacks import (
 )
 from app.transport.http.public_v1.library_tags import library_tags_router
 from app.transport.http.public_v1.messages import message_router
-from app.transport.http.public_v1.discovery import paper_search_router
+from app.transport.http.public_v1.discovery import (
+    author_discovery_router,
+    paper_search_router,
+)
 from app.transport.http.public_v1.projects.documents import (
     library_project_papers_router,
     paper_projects_router,
@@ -84,7 +87,7 @@ def _public_router() -> APIRouter:
     router.include_router(identity_router)
     router.include_router(cloud_auth_router, prefix="/auth", tags=["auth"])
     router.include_router(cloud_user_router, prefix="/me", tags=["user"])
-    router.include_router(auth_router, prefix="/auth")
+    router.include_router(topics_router, prefix="/discovery")
     router.include_router(admin_router, prefix="/admin")
     router.include_router(
         zotero_oauth_router,
@@ -104,6 +107,7 @@ def _public_router() -> APIRouter:
     router.include_router(project_papers_router, prefix="/projects")
     router.include_router(projects_invitation_router)
     router.include_router(paper_search_router, prefix="/discovery/papers")
+    router.include_router(author_discovery_router, prefix="/discovery")
     router.include_router(search_router, prefix="/search/papers")
     router.include_router(research_search_router, prefix="/search/research")
     router.include_router(document_upload_router, prefix="/paper-ingestions")

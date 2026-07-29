@@ -117,6 +117,9 @@ export function AddPapersSheet() {
                 const response = await fetchFromApi<PdfUploadResponse>(`/paper-ingestions/uploads?project_id=${projectId}`, {
                     method: "POST",
                     body: formData,
+                    headers: {
+                        "Idempotency-Key": crypto.randomUUID(),
+                    },
                 });
                 newJobs.push({ jobId: response.job_id, fileName: file.name });
             } catch (err) {

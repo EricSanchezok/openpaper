@@ -22,7 +22,6 @@ import {
 	ZoteroLibraryResponse,
 	ZoteroStatus,
 	ZoteroConnectResponse,
-	ZoteroDisconnectResponse,
 	ZoteroSyncResponse,
 } from "./types";
 import {
@@ -294,17 +293,13 @@ export function ZoteroIntegrationCard() {
 	const handleZoteroDisconnect = async () => {
 		setZoteroActionLoading(true);
 		try {
-			const data = await fetchFromApi<ZoteroDisconnectResponse>("/integrations/zotero/connection", {
+			await fetchFromApi<void>("/integrations/zotero/connection", {
 				method: "DELETE",
 			});
-			if (data.success) {
-				toast.success("Zotero disconnected.");
-				setRecentImports([]);
-				setRecentImportsLoaded(false);
-				await fetchZoteroStatus();
-			} else {
-				toast.error(data.message || "Failed to disconnect Zotero.");
-			}
+			toast.success("Zotero disconnected.");
+			setRecentImports([]);
+			setRecentImportsLoaded(false);
+			await fetchZoteroStatus();
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Failed to disconnect Zotero."

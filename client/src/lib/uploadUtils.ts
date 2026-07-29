@@ -49,6 +49,9 @@ const uploadFile = async (file: File, projectId?: string): Promise<MinimalJob> =
     const res: PdfUploadResponse = await fetchFromApi(endpoint, {
         method: "POST",
         body: formData,
+        headers: {
+            "Idempotency-Key": crypto.randomUUID(),
+        },
     })
     return { jobId: res.job_id, fileName: file.name }
 }
@@ -82,6 +85,7 @@ export const uploadFromUrl = async (url: string, projectId?: string): Promise<Mi
         body: JSON.stringify(body),
         headers: {
             "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
         },
     })
     const fileName = res.file_name || url

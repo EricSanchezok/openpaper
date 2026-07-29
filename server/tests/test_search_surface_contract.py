@@ -8,7 +8,7 @@ def test_discovery_and_private_search_have_distinct_stable_namespaces() -> None:
 
     assert "/api/v1/discovery/papers/match" in paths
     assert "/api/v1/discovery/papers/search" in paths
-    assert "/api/v1/discovery/papers/authors" in paths
+    assert "/api/v1/discovery/authors" in paths
     assert "/api/v1/search/papers" in paths
     assert "/api/v1/search/research" in paths
     assert not any(path.startswith("/api/v1/search/global") for path in paths)

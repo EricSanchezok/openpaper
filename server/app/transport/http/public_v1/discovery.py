@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 paper_search_router = APIRouter()
+author_discovery_router = APIRouter()
 
 
 def _client_ip(request: Request) -> str:
@@ -62,7 +63,9 @@ async def get_paper_graph(
     )
 
 
-@paper_search_router.get("/authors", response_model=DiscoveryPaperListResponse)
+@author_discovery_router.get(
+    "/authors", response_model=DiscoveryPaperListResponse
+)
 async def get_author_works(
     request: Request,
     author_id: str = Query(min_length=2, max_length=100),

@@ -5,7 +5,6 @@ from app.bootstrap.settings import AppSettings
 from app.database.database import get_db
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
-    ZoteroDisconnectResponse,
     ZoteroImportRequest,
     ZoteroImportResponse,
     ZoteroImportStatusListResponse,
@@ -15,7 +14,7 @@ from app.modules.integrations.zotero.application.contracts import (
 )
 from app.shared.application import Actor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -60,13 +59,14 @@ def zotero_status(
 
 @zotero_router.delete(
     "/connection",
-    response_model=ZoteroDisconnectResponse,
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 def zotero_disconnect(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
-) -> ZoteroDisconnectResponse:
-    return build_zotero(db=db).disconnect(actor=current_user)
+) -> Response:
+    build_zotero(db=db).disconnect(actor=current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @zotero_router.get("/library-items", response_model=ZoteroLibraryResponse)

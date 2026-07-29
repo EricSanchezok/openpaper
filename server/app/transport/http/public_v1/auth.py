@@ -15,11 +15,11 @@ from app.transport.http.public_v1.auth_dependencies import (
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-auth_router = APIRouter()
+topics_router = APIRouter()
 admin_router = APIRouter()
 
 
-@auth_router.get("/topics", response_model=TopicListResponse)
+@topics_router.get("/topics", response_model=TopicListResponse)
 def get_topics(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),

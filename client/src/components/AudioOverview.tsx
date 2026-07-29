@@ -68,7 +68,10 @@ export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
         try {
             await fetchFromApi(`/papers/${document_id}/audio-overviews`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": crypto.randomUUID(),
+                },
                 body: JSON.stringify({
                     additional_instructions: instructions.trim() || null,
                     length,
