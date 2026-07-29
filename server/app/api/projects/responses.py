@@ -14,8 +14,8 @@ from app.database.models import (
     ResearchItemKind,
     ResearchScopeType,
 )
-from app.policies.projects import ProjectAccess
-from app.repositories.projects import project_repository
+from app.modules.projects.infrastructure.access import ProjectAccess
+from app.modules.projects.infrastructure.repository import project_repository
 from app.modules.projects.application.contracts import (
     ProjectCapabilitiesResponse,
     ProjectMembershipResponse,

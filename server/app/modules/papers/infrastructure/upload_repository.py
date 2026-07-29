@@ -9,7 +9,7 @@ from app.database.models import (
     UploadReservation,
     ProjectPaper,
 )
-from app.policies.projects import get_project_access
+from app.modules.projects.infrastructure.access import get_project_access
 from app.shared.application import Actor
 from app.services.upload_lifecycle import active_upload_freshness_clause
 from sqlalchemy import select
@@ -70,7 +70,7 @@ class UploadReservationRepository:
             job.job.started_at = now
         if status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
             job.job.completed_at = now
-        db.commit()
+        db.flush()
         db.refresh(job)
         return job
 

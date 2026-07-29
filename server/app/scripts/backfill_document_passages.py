@@ -14,7 +14,9 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from app.database.database import SessionLocal
-from app.repositories.document_search import document_search_repository
+from app.modules.papers.infrastructure.search_repository import (
+    document_search_repository,
+)
 from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

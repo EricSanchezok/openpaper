@@ -23,7 +23,9 @@ from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.repositories.upload_reservations import upload_reservation_repository
+from app.modules.papers.infrastructure.upload_repository import (
+    upload_reservation_repository,
+)
 from app.database.database import get_db
 from app.errors import AppError
 from app.helpers.ai_limits import (

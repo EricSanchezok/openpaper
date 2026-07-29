@@ -6,7 +6,10 @@ from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import AuthUser, Project, ProjectInvitation
 from app.helpers.email import send_project_invite_email
-from app.repositories.projects import CreatedInvitation, project_repository
+from app.modules.projects.infrastructure.repository import (
+    CreatedInvitation,
+    project_repository,
+)
 from app.modules.projects.application.contracts import (
     ProjectInvitationCreateRequest,
     ProjectInvitationResponse,

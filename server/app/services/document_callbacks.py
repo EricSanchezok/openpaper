@@ -4,8 +4,13 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from app.repositories.messages import MessageCreate, message_repository
-from app.repositories.upload_reservations import upload_reservation_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    MessageCreate,
+    message_repository,
+)
+from app.modules.papers.infrastructure.upload_repository import (
+    upload_reservation_repository,
+)
 from app.modules.identity.infrastructure.users import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
@@ -30,10 +35,12 @@ from app.helpers.celery_config import get_webhook_base_url
 from app.services.resource_quotas import can_user_auto_sync_zotero
 from app.services.document_gc import collect_document_if_due
 from app.llm.citation_handler import CitationHandler
-from app.repositories.conversations import conversation_repository
-from app.repositories.document_search import document_search_repository
-from app.repositories.documents import document_repository
-from app.repositories.jobs import EnqueueJob, job_repository
+from app.modules.conversations.infrastructure.repository import conversation_repository
+from app.modules.papers.infrastructure.search_repository import (
+    document_search_repository,
+)
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.jobs.infrastructure.repository import EnqueueJob, job_repository
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
 )
@@ -162,7 +169,7 @@ def _finalize_zotero_import(
         ),
         document=existing_paper,
         user=job_user,
-        auto_commit=False,
+        refresh_result=False,
     )
 
     upload_reservation_repository.mark_as_completed(db=db, job_id=job_id, user=job_user)
@@ -649,7 +656,7 @@ async def handle_paper_processing_webhook(
                 ),
                 document=existing_paper,
                 user=job_user,
-                auto_commit=False,
+                refresh_result=False,
             )
 
             # Create highlights/annotations if any
@@ -664,7 +671,6 @@ async def handle_paper_processing_webhook(
                         document_id=paper.id,
                         metadata=metadata,
                         user=job_user,
-                        auto_commit=False,
                     )
 
             if metadata.summary and paper:
@@ -682,7 +688,7 @@ async def handle_paper_processing_webhook(
                         db,
                         request=conversation_data,
                         user_id=job_user.id,
-                        auto_commit=False,
+                        refresh_result=False,
                     )
 
                     if conversation:
@@ -703,7 +709,7 @@ async def handle_paper_processing_webhook(
                                 references=_JSON_OBJECT.validate_python(citations_dict),
                             ),
                             user_id=job_user.id,
-                            auto_commit=False,
+                            refresh_result=False,
                         )
 
             # Track metadata extraction event

@@ -83,7 +83,7 @@ class LibraryTagRepository:
         tag = db.get(PaperTag, created_id)
         if tag is None:
             raise RuntimeError("created_library_tag_not_found")
-        db.commit()
+        db.flush()
         db.refresh(tag)
         return tag
 
@@ -133,7 +133,6 @@ class LibraryTagRepository:
         user_id: int,
         document_id: uuid.UUID,
         tag_id: uuid.UUID,
-        auto_commit: bool = True,
     ) -> bool:
         library_paper_id = db.scalar(
             select(LibraryPaper.id).where(
@@ -170,10 +169,7 @@ class LibraryTagRepository:
             )
             .returning(LibraryPaperTag.tag_id)
         )
-        if auto_commit:
-            db.commit()
-        else:
-            db.flush()
+        db.flush()
         return created_id is not None
 
     @staticmethod
@@ -235,7 +231,7 @@ class LibraryTagRepository:
                 .returning(LibraryPaperTag.tag_id)
             ).all()
         )
-        db.commit()
+        db.flush()
         return len(created_ids)
 
     @staticmethod
@@ -267,7 +263,7 @@ class LibraryTagRepository:
                 status_code=404,
             )
         db.delete(association)
-        db.commit()
+        db.flush()
 
 
 library_tag_repository = LibraryTagRepository()

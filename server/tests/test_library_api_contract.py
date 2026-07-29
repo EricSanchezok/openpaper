@@ -12,7 +12,7 @@ from app.api.documents.router import (
 from app.database.models import Document, LibraryPaper, PaperStatus
 from app.main import app
 from app.helpers.s3 import s3_service
-from app.repositories.documents import document_repository
+from app.modules.papers.infrastructure.repository import document_repository
 from app.shared.application import Actor
 from app.modules.papers.application.contracts.tags import LibraryTagAssignmentRequest
 from pydantic import ValidationError

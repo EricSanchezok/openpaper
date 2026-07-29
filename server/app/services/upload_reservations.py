@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 from uuid import UUID, uuid4
 
-from app.repositories.resource_usage import resource_usage_repository
+from app.modules.billing.infrastructure.usage_repository import (
+    resource_usage_repository,
+)
 from app.database.models import (
     Document,
     DurableJob,
@@ -27,9 +29,9 @@ from app.services.resource_quotas import (
     get_user_subscription_plan,
     lock_account_resource_quota,
 )
-from app.policies.projects import require_project_permission
+from app.modules.projects.infrastructure.access import require_project_permission
 from app.shared.application import Actor
-from app.repositories.jobs import CreateJob, job_repository
+from app.modules.jobs.infrastructure.repository import CreateJob, job_repository
 from app.services.upload_lifecycle import (
     delete_upload_storage,
     reap_stale_uploads,

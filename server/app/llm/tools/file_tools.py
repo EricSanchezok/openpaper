@@ -4,9 +4,13 @@ from logging import getLogger
 from time import time
 
 from app.database.models import Document
-from app.repositories.document_search import document_search_repository
-from app.repositories.documents import document_repository
-from app.repositories.project_documents import project_document_repository
+from app.modules.papers.infrastructure.search_repository import (
+    document_search_repository,
+)
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 

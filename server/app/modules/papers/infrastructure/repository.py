@@ -21,7 +21,10 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.helpers.paper_search import normalize_doi
-from app.policies.documents import get_document_access, require_document_access
+from app.modules.papers.infrastructure.access import (
+    get_document_access,
+    require_document_access,
+)
 from app.modules.papers.application.contracts.documents import (
     DocumentUpdate,
     LibraryPaperUpdateRequest,
@@ -74,7 +77,7 @@ class DocumentRepository:
             return None
         if update_last_accessed and access.library_paper is not None:
             access.library_paper.last_accessed_at = datetime.now(timezone.utc)
-            db.commit()
+            db.flush()
         return access.document
 
     def update_canonical(
@@ -84,7 +87,7 @@ class DocumentRepository:
         document: Document,
         update: DocumentUpdate,
         user: Actor | None = None,
-        auto_commit: bool = True,
+        refresh_result: bool = True,
     ) -> Document:
         """Update canonical metadata after optional explicit access validation."""
         if user is not None:
@@ -97,8 +100,8 @@ class DocumentRepository:
         sanitized = sanitize_for_postgres(values)
         for field, value in sanitized.items():
             setattr(document, field, value)
-        if auto_commit:
-            db.commit()
+        if refresh_result:
+            db.flush()
             db.refresh(document)
         else:
             db.flush()
@@ -255,7 +258,7 @@ class DocumentRepository:
                 exclude_none=True,
             )
         entry.last_accessed_at = datetime.now(timezone.utc)
-        db.commit()
+        db.flush()
         db.refresh(entry)
         return entry
 
@@ -278,7 +281,7 @@ class DocumentRepository:
         from app.services.document_gc import schedule_document_gc
 
         schedule_document_gc(db, document_id=document_id)
-        db.commit()
+        db.flush()
 
     def rotate_public_share(
         self,
@@ -296,7 +299,7 @@ class DocumentRepository:
         token = secrets.token_urlsafe(32)
         entry.share_token_hash = hashlib.sha256(token.encode()).hexdigest()
         entry.is_public = True
-        db.commit()
+        db.flush()
         return token
 
     def revoke_public_share(
@@ -314,7 +317,7 @@ class DocumentRepository:
         )
         entry.share_token_hash = None
         entry.is_public = False
-        db.commit()
+        db.flush()
 
     def require_public_share(
         self,

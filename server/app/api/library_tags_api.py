@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
-from app.repositories.library_tags import library_tag_repository
+from app.modules.papers.infrastructure.tag_repository import library_tag_repository
 from app.modules.papers.application.contracts.tags import (
     LibraryTagAssignmentRequest,
     LibraryTagAssignmentResponse,

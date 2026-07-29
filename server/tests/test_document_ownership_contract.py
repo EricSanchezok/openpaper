@@ -5,7 +5,7 @@ import uuid
 from unittest.mock import MagicMock
 
 from app.database.models import Base, Document
-from app.repositories.documents import document_repository
+from app.modules.papers.infrastructure.repository import document_repository
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Session
 

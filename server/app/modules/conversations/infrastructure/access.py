@@ -7,8 +7,8 @@ from typing import Literal
 
 from app.database.models import Conversation, ConversationScopeType
 from app.errors import AppError
-from app.policies.documents import get_document_access
-from app.policies.projects import get_project_access
+from app.modules.papers.infrastructure.access import get_document_access
+from app.modules.projects.infrastructure.access import get_project_access
 from sqlalchemy.orm import Session
 
 ConversationReadOnlyReason = Literal[

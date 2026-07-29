@@ -10,7 +10,9 @@ from app.transport.http.public_v1.auth_dependencies import (
     get_required_user,
 )
 from app.auth.zotero import zotero_auth_client
-from app.repositories.document_search import document_search_repository
+from app.modules.papers.infrastructure.search_repository import (
+    document_search_repository,
+)
 from app.modules.identity.infrastructure.users import user_repository
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud

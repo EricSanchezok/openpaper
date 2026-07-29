@@ -1,7 +1,9 @@
 import logging
 import uuid
 
-from app.repositories.messages import message_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    message_repository,
+)
 from app.database.database import get_db
 from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
@@ -11,7 +13,7 @@ from app.llm.prompts import (
     RENAME_CONVERSATION_USER_MESSAGE,
 )
 from app.llm.backend import TextContent
-from app.repositories.conversations import conversation_repository
+from app.modules.conversations.infrastructure.repository import conversation_repository
 from app.modules.conversations.application.contracts.conversations import (
     ConversationUpdateRequest,
 )

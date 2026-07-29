@@ -16,7 +16,7 @@ from app.database.models import (
 from app.errors import AppError
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.llm.token_credits import llm_usage_context, settle_token_usage
-from app.repositories.jobs import job_repository
+from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.jobs.application.contracts import (
     AudioOverviewTaskPayload,
     AudioOverviewWebhookData,

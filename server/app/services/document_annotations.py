@@ -9,8 +9,11 @@ from dataclasses import dataclass
 from app.database.models import RoleType
 from app.helpers.parser import get_start_page_from_offset
 from app.llm.utils import find_offsets
-from app.repositories.documents import document_repository
-from app.repositories.research import HighlightThreadCreate, research_repository
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.research.infrastructure.repository import (
+    HighlightThreadCreate,
+    research_repository,
+)
 from app.modules.papers.application.contracts.extraction import PaperMetadataExtraction
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
@@ -60,7 +63,6 @@ def create_ai_highlights(
     document_id: uuid.UUID,
     metadata: PaperMetadataExtraction,
     user: Actor,
-    auto_commit: bool = True,
 ) -> None:
     if research_repository.has_assistant_highlight(
         db,
@@ -93,7 +95,7 @@ def create_ai_highlights(
                 is_shared=True,
                 role=RoleType.ASSISTANT.value,
             ),
-            auto_commit=False,
+            refresh_result=False,
         )
         research_repository.add_comment(
             db,
@@ -101,7 +103,6 @@ def create_ai_highlights(
             user_id=user.id,
             content=highlight.annotation,
             role=RoleType.ASSISTANT.value,
-            auto_commit=False,
+            refresh_result=False,
         )
-    if auto_commit:
-        db.commit()
+    db.flush()

@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 
 from app.database.models import Conversation, ConversationScopeType
 from app.errors import AppError
-from app.policies.conversations import conversation_policy
-from app.policies.documents import get_document_access
-from app.policies.projects import get_project_access
+from app.modules.conversations.infrastructure.access import conversation_policy
+from app.modules.papers.infrastructure.access import get_document_access
+from app.modules.projects.infrastructure.access import get_project_access
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCapabilitiesResponse,
     ConversationCreateRequest,
@@ -131,7 +131,7 @@ class ConversationRepository:
         *,
         request: ConversationCreateRequest,
         user_id: int,
-        auto_commit: bool = True,
+        refresh_result: bool = True,
     ) -> Conversation:
         project_id: uuid.UUID | None = None
         document_id: uuid.UUID | None = None
@@ -176,8 +176,8 @@ class ConversationRepository:
             scope_label_snapshot=scope_label,
         )
         db.add(conversation)
-        if auto_commit:
-            db.commit()
+        if refresh_result:
+            db.flush()
             db.refresh(conversation)
         else:
             db.flush()
@@ -271,7 +271,7 @@ class ConversationRepository:
             )
             if request.archived:
                 conversation.pinned_at = None
-        db.commit()
+        db.flush()
         db.refresh(conversation)
         return conversation
 
@@ -319,7 +319,7 @@ class ConversationRepository:
             conversation.project_id = None
             conversation.document_id = None
             conversation.scope_label_snapshot = None
-        db.commit()
+        db.flush()
         db.refresh(conversation)
         return conversation
 
@@ -337,7 +337,7 @@ class ConversationRepository:
             for_update=True,
         )
         db.delete(conversation)
-        db.commit()
+        db.flush()
 
 
 conversation_repository = ConversationRepository()

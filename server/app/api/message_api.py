@@ -5,9 +5,14 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.repositories.messages import MessageCreate, message_repository
-from app.repositories.documents import document_repository
-from app.repositories.project_documents import project_document_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    MessageCreate,
+    message_repository,
+)
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.database.database import get_db
 from app.database.models import (
     ConversationScopeType,
@@ -27,10 +32,10 @@ from app.llm.conversation_operations import conversation_operations
 from app.llm.multi_paper_operations import multi_paper_operations
 from app.llm.paper_operations import paper_operations
 from app.llm.token_credits import has_token_credits, llm_usage_context
-from app.policies.projects import get_project_access
-from app.policies.conversations import conversation_policy
-from app.repositories.conversations import conversation_repository
-from app.repositories.research import research_repository
+from app.modules.projects.infrastructure.access import get_project_access
+from app.modules.conversations.infrastructure.access import conversation_policy
+from app.modules.conversations.infrastructure.repository import conversation_repository
+from app.modules.research.infrastructure.repository import research_repository
 from app.modules.conversations.application.contracts.messages import (
     ChatMessageRequest,
     EvidenceCollection,

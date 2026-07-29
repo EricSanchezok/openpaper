@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.database.database import get_db
-from app.repositories.jobs import job_repository
+from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.jobs.application.contracts import JobClaimResponse
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session

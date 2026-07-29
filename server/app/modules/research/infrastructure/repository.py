@@ -19,8 +19,11 @@ from app.database.models import (
 from app.shared.domain import JsonValue
 from app.errors import AppError
 from app.helpers.s3 import s3_service
-from app.policies.documents import require_document_access
-from app.policies.research import research_item_policy, research_item_visible_to
+from app.modules.papers.infrastructure.access import require_document_access
+from app.modules.research.infrastructure.access import (
+    research_item_policy,
+    research_item_visible_to,
+)
 from app.modules.research.application.contracts import (
     AnnotationCommentResponse,
     AudioOverviewContent,
@@ -139,7 +142,7 @@ class ResearchRepository:
         project_id: uuid.UUID,
         user_id: int,
     ) -> list[ResearchItem]:
-        from app.policies.projects import require_project_access
+        from app.modules.projects.infrastructure.access import require_project_access
 
         require_project_access(db, project_id=project_id, user_id=user_id)
         return list(
@@ -172,7 +175,7 @@ class ResearchRepository:
         document_id: uuid.UUID,
         user_id: int,
         create: HighlightThreadCreate,
-        auto_commit: bool = True,
+        refresh_result: bool = True,
     ) -> ResearchItem:
         require_document_access(db, document_id=document_id, user_id=user_id)
         item = ResearchItem(
@@ -193,8 +196,8 @@ class ResearchRepository:
             zotero_annotation_key=create.zotero_annotation_key,
         )
         db.add(item)
-        if auto_commit:
-            db.commit()
+        if refresh_result:
+            db.flush()
             db.refresh(item)
         else:
             db.flush()
@@ -278,7 +281,7 @@ class ResearchRepository:
             )
             for snapshot in validated_snapshots
         ]
-        db.commit()
+        db.flush()
         return items
 
     def get_highlight_thread_visible(
@@ -369,7 +372,7 @@ class ResearchRepository:
         zotero_annotation_key: str,
     ) -> None:
         thread.zotero_annotation_key = zotero_annotation_key
-        db.commit()
+        db.flush()
 
     def add_comment(
         self,
@@ -379,7 +382,7 @@ class ResearchRepository:
         user_id: int,
         content: str,
         role: str = RoleType.USER.value,
-        auto_commit: bool = True,
+        refresh_result: bool = True,
     ) -> AnnotationComment:
         item = self.require_visible(db, item_id=thread_id, user_id=user_id)
         if item.kind != ResearchItemKind.HIGHLIGHT_THREAD.value:
@@ -402,8 +405,8 @@ class ResearchRepository:
             role=role,
         )
         db.add(comment)
-        if auto_commit:
-            db.commit()
+        if refresh_result:
+            db.flush()
             db.refresh(comment)
         else:
             db.flush()
@@ -470,7 +473,7 @@ class ResearchRepository:
                 status_code=409,
             )
         item.is_shared = shared
-        db.commit()
+        db.flush()
         db.refresh(item)
         return item
 
@@ -502,7 +505,7 @@ class ResearchRepository:
             item.is_shared = bool(shared)
         for field, value in values.items():
             setattr(item.highlight_thread, field, value)
-        db.commit()
+        db.flush()
         db.refresh(item)
         return item
 
@@ -521,7 +524,7 @@ class ResearchRepository:
             for_update=True,
         )
         comment.content = content
-        db.commit()
+        db.flush()
         db.refresh(comment)
         return comment
 
@@ -539,7 +542,7 @@ class ResearchRepository:
             for_update=True,
         )
         db.delete(comment)
-        db.commit()
+        db.flush()
 
     def delete_item(
         self,
@@ -587,7 +590,7 @@ class ResearchRepository:
                 object_keys=[object_key],
                 idempotency_key=f"research-item:{item.id}",
             )
-        db.commit()
+        db.flush()
 
     def serialize(
         self,

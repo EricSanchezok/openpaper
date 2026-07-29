@@ -7,8 +7,8 @@ from app.database.database import get_db
 from app.database.models import LibraryPaper
 from app.errors import AppError
 from app.helpers.s3 import DEFAULT_SIGNED_URL_TTL_SECONDS, s3_service
-from app.policies.documents import require_document_access
-from app.repositories.documents import document_repository
+from app.modules.papers.infrastructure.access import require_document_access
+from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.papers.application.contracts.documents import (
     DocumentFileUrlResponse,
     DocumentResponse,

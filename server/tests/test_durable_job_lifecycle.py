@@ -9,7 +9,7 @@ from app.database.models import (
     JobOperation,
     JobStatus,
 )
-from app.repositories.jobs import job_repository
+from app.modules.jobs.infrastructure.repository import job_repository
 from app.services.job_dispatcher import dispatch_pending_jobs_once
 from sqlalchemy.orm import Session
 

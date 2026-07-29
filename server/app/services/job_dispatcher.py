@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from app.database.database import SessionLocal
 from app.database.models import JobDispatchStatus
 from app.integrations.jobs_client import jobs_client
-from app.repositories.jobs import job_repository
+from app.modules.jobs.infrastructure.repository import job_repository
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,10 @@ import logging
 import uuid
 from typing import AsyncGenerator, Literal, Sequence
 
-from app.repositories.messages import message_repository
-from app.repositories.documents import document_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    message_repository,
+)
+from app.modules.papers.infrastructure.repository import document_repository
 from app.database.database import get_db
 from app.database.models import Document, ReasoningLevel
 from app.llm.base import BaseLLMClient

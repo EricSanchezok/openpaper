@@ -12,8 +12,8 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.errors import AppError
-from app.policies.documents import get_document_access
-from app.policies.projects import get_project_access
+from app.modules.papers.infrastructure.access import get_document_access
+from app.modules.projects.infrastructure.access import get_project_access
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.orm import Session

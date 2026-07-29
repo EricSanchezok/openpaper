@@ -16,7 +16,7 @@ from app.helpers.ai_limits import (
 )
 from app.helpers.celery_config import get_webhook_base_url
 from app.llm.token_credits import has_token_credits
-from app.repositories.jobs import EnqueueJob, job_repository
+from app.modules.jobs.infrastructure.repository import EnqueueJob, job_repository
 from app.modules.jobs.application.contracts import (
     AudioOverviewTaskPayload,
     AudioSourceDocumentPayload,

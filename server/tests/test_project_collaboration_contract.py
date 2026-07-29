@@ -7,7 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 from app.api.projects.project_papers_api import AddPaperToProjectRequest
-from app.repositories.project_documents import project_document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.database.models import (
     Base,
     Document,
@@ -22,8 +24,8 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.main import app
-from app.policies.projects import ProjectAccess, ProjectPermissions
-from app.repositories.projects import project_repository
+from app.modules.projects.infrastructure.access import ProjectAccess, ProjectPermissions
+from app.modules.projects.infrastructure.repository import project_repository
 from app.modules.projects.application.contracts import (
     ProjectInvitationCreateRequest,
     ProjectPermissionSet,
@@ -85,7 +87,7 @@ def test_collaborator_cannot_grant_or_manage_permissions_they_do_not_have(
     db = MagicMock(spec=Session)
     db.scalar.return_value = target
     monkeypatch.setattr(
-        "app.repositories.projects.require_project_permission",
+        "app.modules.projects.infrastructure.repository.require_project_permission",
         lambda *_args, **_kwargs: actor,
     )
 
@@ -148,12 +150,12 @@ def test_project_papers_are_attached_in_one_transaction(
     db.scalars.side_effect = [empty_result, document_result]
 
     monkeypatch.setattr(
-        "app.repositories.project_documents.require_project_permission",
+        "app.modules.projects.infrastructure.document_repository.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
     quota_check = MagicMock()
     monkeypatch.setattr(
-        "app.repositories.project_documents.require_project_document_capacity",
+        "app.modules.projects.infrastructure.document_repository.require_project_document_capacity",
         quota_check,
     )
 
@@ -178,7 +180,8 @@ def test_project_papers_are_attached_in_one_transaction(
     gc_update = str(db.execute.call_args.args[0])
     assert "gc_after" in gc_update
     assert "NULL" in gc_update
-    db.commit.assert_called_once()
+    db.commit.assert_not_called()
+    db.flush.assert_called()
 
 
 def test_project_paper_batch_rejects_partial_library_matches(
@@ -196,7 +199,7 @@ def test_project_paper_batch_rejects_partial_library_matches(
     db.scalar.return_value = project
     db.scalars.side_effect = [empty_result, partial_result]
     monkeypatch.setattr(
-        "app.repositories.project_documents.require_project_permission",
+        "app.modules.projects.infrastructure.document_repository.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
 
@@ -245,7 +248,7 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
     document = _document(uuid.uuid4(), size_kb=100, seed="a")
     db.scalar.return_value = None
     monkeypatch.setattr(
-        "app.repositories.project_documents.require_project_permission",
+        "app.modules.projects.infrastructure.document_repository.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
 
@@ -281,12 +284,12 @@ def test_transfer_validates_and_reassigns_owner_quota(
     db = MagicMock(spec=Session)
     db.scalar.side_effect = [project, new_owner_membership]
     monkeypatch.setattr(
-        "app.repositories.projects.require_project_permission",
+        "app.modules.projects.infrastructure.repository.require_project_permission",
         lambda *_args, **_kwargs: None,
     )
     quota_reassignment = MagicMock()
     monkeypatch.setattr(
-        "app.repositories.projects.reassign_project_quota_owner",
+        "app.modules.projects.infrastructure.repository.reassign_project_quota_owner",
         quota_reassignment,
     )
 
@@ -304,7 +307,8 @@ def test_transfer_validates_and_reassigns_owner_quota(
     )
     assert transferred.owner_id == 2
     db.delete.assert_called_once_with(new_owner_membership)
-    db.commit.assert_called_once()
+    db.commit.assert_not_called()
+    db.flush.assert_called()
 
 
 def _invitation(
@@ -332,7 +336,7 @@ def test_invitation_revalidates_inviter_before_accepting_existing_member(
     db = MagicMock(spec=Session)
     db.get.return_value = Project(id=project_id, owner_id=1, title="Project")
     monkeypatch.setattr(
-        "app.repositories.projects.get_project_access",
+        "app.modules.projects.infrastructure.repository.get_project_access",
         lambda *_args, **_kwargs: None,
     )
 

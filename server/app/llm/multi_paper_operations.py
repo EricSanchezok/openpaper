@@ -11,9 +11,13 @@ from typing import (
     Sequence,
 )
 
-from app.repositories.messages import message_repository
-from app.repositories.documents import document_repository
-from app.repositories.project_documents import project_document_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    message_repository,
+)
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.database.database import get_db
 from app.database.models import Document, ReasoningLevel
 from app.llm.citation_handler import CitationHandler
@@ -24,7 +28,7 @@ from app.llm.prompts import (
     GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
-from app.policies.projects import get_project_access
+from app.modules.projects.infrastructure.access import get_project_access
 from app.modules.conversations.application.contracts.messages import EvidenceCollection
 from app.modules.papers.application.contracts.extraction import AudioOverviewForLLM
 from app.shared.application import Actor

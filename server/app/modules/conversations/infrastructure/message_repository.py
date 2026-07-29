@@ -32,7 +32,7 @@ class MessageRepository:
         *,
         request: MessageCreate,
         user_id: int,
-        auto_commit: bool = True,
+        refresh_result: bool = True,
     ) -> Message:
         """Create a new message with auto-incrementing sequence number"""
         # Lock the owning conversation so concurrent streams cannot allocate the
@@ -68,8 +68,8 @@ class MessageRepository:
         conversation.updated_at = datetime.now(timezone.utc)
 
         db.add(db_obj)
-        if auto_commit:
-            db.commit()
+        if refresh_result:
+            db.flush()
             db.refresh(db_obj)
         else:
             db.flush()

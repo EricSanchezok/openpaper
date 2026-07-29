@@ -9,7 +9,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
-from app.repositories.upload_reservations import upload_reservation_repository
+from app.modules.papers.infrastructure.upload_repository import (
+    upload_reservation_repository,
+)
 from app.database.crud.zotero_crud import zotero_crud
 from app.database.crud.zotero_import_crud import zotero_import_crud
 from app.database.database import SessionLocal
@@ -33,9 +35,12 @@ from app.services.resource_quotas import (
 )
 from app.integrations.zotero_api import ZoteroApiClient
 from app.llm.utils import find_offsets
-from app.repositories.documents import document_repository
-from app.repositories.library_tags import library_tag_repository
-from app.repositories.research import HighlightThreadCreate, research_repository
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.papers.infrastructure.tag_repository import library_tag_repository
+from app.modules.research.infrastructure.repository import (
+    HighlightThreadCreate,
+    research_repository,
+)
 from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
 from app.services.document_annotations import require_parsed_content

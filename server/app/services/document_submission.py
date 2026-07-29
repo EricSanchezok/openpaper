@@ -7,15 +7,17 @@ import hashlib
 import logging
 import time
 
-from app.repositories.project_documents import project_document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.database.models import (
     DocumentProcessingStatus,
     UploadReservation,
 )
 from app.database.telemetry import track_event
 from app.helpers.s3 import document_source_key, s3_service
-from app.repositories.documents import document_repository
-from app.repositories.jobs import job_repository
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.jobs.infrastructure.repository import job_repository
 from app.shared.application import Actor
 from app.helpers.celery_config import get_webhook_base_url
 from app.helpers.ai_limits import release_concurrency_by_id
@@ -88,7 +90,6 @@ async def submit_reserved_document(
             upload_job=upload_job,
             user=user,
             project_id=durable_job.project_id,
-            auto_commit=False,
         )
         del association
         upload_job.reference_created = created
@@ -189,7 +190,9 @@ async def dispatch_reserved_document(
         return task_id
     except Exception as exc:
         logger.error("Document processing job submission failed", exc_info=True)
-        from app.repositories.upload_reservations import upload_reservation_repository
+        from app.modules.papers.infrastructure.upload_repository import (
+            upload_reservation_repository,
+        )
 
         upload_reservation_repository.mark_as_failed(
             db=db,

@@ -12,12 +12,12 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.errors import AppError
-from app.repositories.documents import document_repository
+from app.modules.papers.infrastructure.repository import document_repository
 from app.services.resource_quotas import (
     require_library_document_capacity,
     require_project_document_capacity,
 )
-from app.policies.projects import (
+from app.modules.projects.infrastructure.access import (
     require_project_access,
     require_project_permission,
 )
@@ -110,7 +110,7 @@ class ProjectDocumentRepository:
             .values(gc_after=None)
         )
         project.updated_at = datetime.now(timezone.utc)
-        db.commit()
+        db.flush()
         for association in associations:
             db.refresh(association)
         return associations, len(existing_ids)
@@ -123,7 +123,6 @@ class ProjectDocumentRepository:
         upload_job: UploadReservation,
         project_id: uuid.UUID,
         user: Actor,
-        auto_commit: bool = True,
     ) -> tuple[ProjectPaper, bool]:
         """Attach a fresh upload covered by its durable Project reservation."""
         access = require_project_permission(
@@ -155,10 +154,7 @@ class ProjectDocumentRepository:
             added_by_id=user.id,
         )
         access.project.updated_at = datetime.now(timezone.utc)
-        if auto_commit:
-            db.commit()
-        else:
-            db.flush()
+        db.flush()
         association = db.scalar(
             select(ProjectPaper).where(
                 ProjectPaper.project_id == project_id,
@@ -327,7 +323,7 @@ class ProjectDocumentRepository:
         from app.services.document_gc import schedule_document_gc
 
         schedule_document_gc(db, document_id=document_id)
-        db.commit()
+        db.flush()
         return project_paper
 
     def get_projects_by_document_id(
@@ -395,7 +391,7 @@ class ProjectDocumentRepository:
             document_id=document.id,
             user_id=current_user.id,
         )
-        db.commit()
+        db.flush()
         return document
 
 

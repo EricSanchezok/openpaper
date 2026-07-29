@@ -12,9 +12,13 @@ from typing import (
     cast,
 )
 
-from app.repositories.messages import message_repository
-from app.repositories.documents import document_repository
-from app.repositories.project_documents import project_document_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    message_repository,
+)
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
@@ -40,7 +44,7 @@ from app.llm.tools.file_tools import (
     view_file_function,
 )
 from app.llm.tools.meta_tools import stop_function
-from app.policies.projects import get_project_access
+from app.modules.projects.infrastructure.access import get_project_access
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.conversations.application.contracts.messages import (
     EvidenceCollection,

@@ -16,8 +16,10 @@ import logging
 import uuid
 from typing import Any
 
-from app.repositories.documents import document_repository
-from app.repositories.project_documents import project_document_repository
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.projects.infrastructure.document_repository import (
+    project_document_repository,
+)
 from app.database.models import Document
 from app.helpers.citations import (
     STYLE_DISPLAY_NAMES,

@@ -25,7 +25,7 @@ from app.integrations.mcp import (
     discover_function_declarations_sync,
 )
 from app.llm.base import BaseLLMClient
-from app.repositories.documents import document_repository
+from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.papers.application.contracts.citation import CitationStep
 from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.modules.papers.application.contracts.extraction import (

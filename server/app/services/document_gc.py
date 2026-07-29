@@ -18,7 +18,7 @@ from app.database.models import (
 )
 from app.helpers.celery_config import get_webhook_base_url
 from app.helpers.s3 import s3_service
-from app.repositories.jobs import EnqueueJob, job_repository
+from app.modules.jobs.infrastructure.repository import EnqueueJob, job_repository
 from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 

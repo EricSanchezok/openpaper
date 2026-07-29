@@ -200,7 +200,7 @@ class JobRepository:
             )
             .returning(DurableJob)
         )
-        db.commit()
+        db.flush()
         return claimed
 
     @staticmethod

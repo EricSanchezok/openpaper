@@ -5,11 +5,13 @@ from unittest.mock import MagicMock
 import pytest
 from app.api.conversation_api import get_conversation, get_conversation_messages
 from app.api.message_api import chat_message_multipaper
-from app.repositories.messages import message_repository
+from app.modules.conversations.infrastructure.message_repository import (
+    message_repository,
+)
 from app.database.models import Conversation, Message
 from app.errors import AppError
 from app.main import app
-from app.repositories.conversations import conversation_repository
+from app.modules.conversations.infrastructure.repository import conversation_repository
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationMoveRequest,
@@ -19,7 +21,7 @@ from app.modules.conversations.infrastructure.presenters import serialize_messag
 from app.modules.conversations.application.contracts.messages import (
     MultiPaperChatRequest,
 )
-from app.repositories.messages import MessageCreate
+from app.modules.conversations.infrastructure.message_repository import MessageCreate
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
@@ -111,7 +113,7 @@ def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
             content="Question",
         ),
         user_id=_current_user().id,
-        auto_commit=False,
+        refresh_result=False,
     )
 
     assert message is not None
@@ -168,7 +170,7 @@ def test_paper_conversation_scope_is_immutable(
     db = MagicMock(spec=Session)
     db.scalar.return_value = conversation
     monkeypatch.setattr(
-        "app.repositories.conversations.conversation_policy.require_can_continue",
+        "app.modules.conversations.infrastructure.repository.conversation_policy.require_can_continue",
         lambda *_args, **_kwargs: None,
     )
 
@@ -205,7 +207,8 @@ def test_archiving_a_conversation_also_unpins_it() -> None:
 
     assert updated.archived_at is not None
     assert updated.pinned_at is None
-    db.commit.assert_called_once()
+    db.commit.assert_not_called()
+    db.flush.assert_called()
 
 
 @pytest.mark.asyncio

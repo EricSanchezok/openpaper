@@ -13,7 +13,7 @@ from app.database.models import (
     ProjectInvitation,
 )
 from app.errors import AppError
-from app.policies.projects import (
+from app.modules.projects.infrastructure.access import (
     ProjectAccess,
     ProjectPermissions,
     collaborator_permissions,
@@ -81,7 +81,7 @@ class ProjectRepository:
     ) -> Project:
         project = Project(owner_id=owner_id, title=title, description=description)
         db.add(project)
-        db.commit()
+        db.flush()
         db.refresh(project)
         return project
 
@@ -102,7 +102,7 @@ class ProjectRepository:
             return
         project.updated_at = datetime.now(timezone.utc)
         if commit:
-            db.commit()
+            db.flush()
         else:
             db.flush()
 
@@ -145,7 +145,7 @@ class ProjectRepository:
         )
         for field, value in changes.items():
             setattr(access.project, field, value)
-        db.commit()
+        db.flush()
         db.refresh(access.project)
         return access.project
 
@@ -174,7 +174,7 @@ class ProjectRepository:
             project_id=project_id,
             plan=plan,
         )
-        db.commit()
+        db.flush()
 
     def list_collaborators(
         self, db: Session, *, project_id: uuid.UUID, user_id: int
@@ -237,7 +237,7 @@ class ProjectRepository:
         target.can_edit_project = requested.edit_project
         target.can_manage_papers = requested.manage_papers
         target.can_manage_collaborators = requested.manage_collaborators
-        db.commit()
+        db.flush()
         db.refresh(target)
         return target
 
@@ -282,7 +282,7 @@ class ProjectRepository:
                 status_code=403,
             )
         db.delete(target)
-        db.commit()
+        db.flush()
 
     def leave(self, db: Session, *, project_id: uuid.UUID, user_id: int) -> None:
         access = require_project_access(db, project_id=project_id, user_id=user_id)
@@ -295,7 +295,7 @@ class ProjectRepository:
         if access.collaborator is None:
             raise RuntimeError("Non-owner project access has no collaborator")
         db.delete(access.collaborator)
-        db.commit()
+        db.flush()
 
     def transfer(
         self,
@@ -349,7 +349,7 @@ class ProjectRepository:
             )
         )
         project.owner_id = new_owner_id
-        db.commit()
+        db.flush()
         db.refresh(project)
         return project
 
@@ -428,7 +428,7 @@ class ProjectRepository:
             expires_at=now + INVITATION_TTL,
         )
         db.add(invitation)
-        db.commit()
+        db.flush()
         db.refresh(invitation)
         return CreatedInvitation(invitation=invitation, raw_token=raw_token)
 
@@ -518,7 +518,7 @@ class ProjectRepository:
         )
         if existing is not None:
             invitation.accepted_at = now
-            db.commit()
+            db.flush()
             return existing
 
         collaborator = ProjectCollaborator(
@@ -530,7 +530,7 @@ class ProjectRepository:
         )
         invitation.accepted_at = now
         db.add(collaborator)
-        db.commit()
+        db.flush()
         db.refresh(collaborator)
         return collaborator
 
@@ -577,7 +577,7 @@ class ProjectRepository:
             )
         _require_grant_subset(actor, _invitation_permissions(invitation))
         invitation.revoked_at = datetime.now(timezone.utc)
-        db.commit()
+        db.flush()
 
     def resend_invitation(
         self,
@@ -624,7 +624,7 @@ class ProjectRepository:
             expires_at=datetime.now(timezone.utc) + INVITATION_TTL,
         )
         db.add(replacement)
-        db.commit()
+        db.flush()
         db.refresh(replacement)
         return CreatedInvitation(invitation=replacement, raw_token=raw_token)
 
