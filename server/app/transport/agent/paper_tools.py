@@ -2,23 +2,13 @@ import uuid
 from logging import getLogger
 from time import time
 
-from app.bootstrap.container import (
-    build_paper_content,
-    build_paper_download,
-    build_paper_ingestion,
-    build_paper_search,
-    build_pdf_url_source,
-    build_project_document_visibility,
-)
-from app.bootstrap.settings import AppSettings
+from app.bootstrap.capabilities import ApplicationCapabilities
 from app.modules.papers.application.contracts.search import (
     PaperSearchFilters,
     PaperSearchRequest,
     PaperSearchScope,
 )
-from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
-from app.shared.application import Actor
-from sqlalchemy.orm import Session
+from app.shared.application import Actor, ApplicationExecutor
 
 logger = getLogger(__name__)
 
@@ -136,7 +126,7 @@ search_all_files_function = {
 def read_file(
     document_id: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
 ) -> str:
@@ -144,10 +134,12 @@ def read_file(
     Read the content of a file associated with a paper.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper = build_paper_content(db=db).read(
-        actor=current_user,
-        document_id=uuid.UUID(document_id),
-        project_id=uuid.UUID(project_id) if project_id else None,
+    paper = executor.query(
+        lambda capabilities: capabilities.paper_content.read(
+            actor=current_user,
+            document_id=uuid.UUID(document_id),
+            project_id=uuid.UUID(project_id) if project_id else None,
+        )
     )
     file_content = paper.raw_content
     if not file_content:
@@ -160,7 +152,7 @@ def search_file(
     document_id: str,
     query: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
 ) -> list[str]:
@@ -169,18 +161,20 @@ def search_file(
     Returns matching lines with line numbers.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    return build_paper_content(db=db).search_document(
-        actor=current_user,
-        document_id=uuid.UUID(document_id),
-        query=query,
-        project_id=uuid.UUID(project_id) if project_id else None,
+    return executor.query(
+        lambda capabilities: capabilities.paper_content.search_document(
+            actor=current_user,
+            document_id=uuid.UUID(document_id),
+            query=query,
+            project_id=uuid.UUID(project_id) if project_id else None,
+        )
     )
 
 
 def search_all_files(
     query: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
 ) -> dict[str, list[str]]:
@@ -193,31 +187,27 @@ def search_all_files(
     """
     start_time = time()
 
-    settings = AppSettings()
-    search = SearchPapers(
-        build_paper_search(backend=settings.paper_search_backend, db=db),
-        SearchCursorCodec(settings.paper_search_cursor_secret),
-        build_project_document_visibility(db=db),
-    )
-    response = search(
-        actor=current_user,
-        request=PaperSearchRequest(
-            query=query.replace("|", " OR "),
-            scope=(
-                PaperSearchScope.PROJECTS
-                if project_id is not None
-                else PaperSearchScope.ALL
-            ),
-            filters=PaperSearchFilters(
-                project_id=uuid.UUID(project_id) if project_id else None,
-                document_ids=(
-                    [uuid.UUID(item) for item in restrict_to_document_ids]
-                    if restrict_to_document_ids is not None
-                    else None
+    response = executor.query(
+        lambda capabilities: capabilities.paper_search(
+            actor=current_user,
+            request=PaperSearchRequest(
+                query=query.replace("|", " OR "),
+                scope=(
+                    PaperSearchScope.PROJECTS
+                    if project_id is not None
+                    else PaperSearchScope.ALL
                 ),
+                filters=PaperSearchFilters(
+                    project_id=uuid.UUID(project_id) if project_id else None,
+                    document_ids=(
+                        [uuid.UUID(item) for item in restrict_to_document_ids]
+                        if restrict_to_document_ids is not None
+                        else None
+                    ),
+                ),
+                limit=100,
             ),
-            limit=100,
-        ),
+        )
     )
 
     end_time = time()
@@ -242,7 +232,7 @@ def view_file(
     range_start: int,
     range_end: int,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
 ) -> str:
@@ -250,10 +240,12 @@ def view_file(
     View a specific range of lines from the file content of a paper.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper = build_paper_content(db=db).read(
-        actor=current_user,
-        document_id=uuid.UUID(document_id),
-        project_id=uuid.UUID(project_id) if project_id else None,
+    paper = executor.query(
+        lambda capabilities: capabilities.paper_content.read(
+            actor=current_user,
+            document_id=uuid.UUID(document_id),
+            project_id=uuid.UUID(project_id) if project_id else None,
+        )
     )
     file_content = paper.raw_content
     if not file_content:
@@ -275,7 +267,7 @@ def view_file(
 def read_abstract(
     document_id: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
 ) -> str:
@@ -283,10 +275,12 @@ def read_abstract(
     Read the abstract of a paper.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper = build_paper_content(db=db).read(
-        actor=current_user,
-        document_id=uuid.UUID(document_id),
-        project_id=uuid.UUID(project_id) if project_id else None,
+    paper = executor.query(
+        lambda capabilities: capabilities.paper_content.read(
+            actor=current_user,
+            document_id=uuid.UUID(document_id),
+            project_id=uuid.UUID(project_id) if project_id else None,
+        )
     )
     abstract = paper.abstract
     if not abstract:
@@ -298,16 +292,18 @@ def read_abstract(
 def get_download_url(
     document_id: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
 ) -> dict[str, object]:
     """Agent adapter over the same authorized download use case as HTTP."""
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    result = build_paper_download(db=db)(
-        actor=current_user,
-        document_id=uuid.UUID(document_id),
-        project_id=uuid.UUID(project_id) if project_id else None,
+    result = executor.query(
+        lambda capabilities: capabilities.paper_download(
+            actor=current_user,
+            document_id=uuid.UUID(document_id),
+            project_id=uuid.UUID(project_id) if project_id else None,
+        )
     )
     return result.model_dump()
 
@@ -315,17 +311,19 @@ def get_download_url(
 async def ingest_paper_from_url(
     url: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     project_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, object]:
     """Agent adapter over the same idempotent ingestion use case as HTTP."""
-    result = await build_paper_ingestion(db=db).from_url(
-        actor=current_user,
-        url=url,
-        source=build_pdf_url_source(),
-        project_id=uuid.UUID(project_id) if project_id else None,
-        idempotency_key=idempotency_key,
-        ip_address="agent",
+    result = await executor.command_async(
+        lambda capabilities: capabilities.paper_ingestion.from_url(
+            actor=current_user,
+            url=url,
+            source=capabilities.pdf_url_source,
+            project_id=uuid.UUID(project_id) if project_id else None,
+            idempotency_key=idempotency_key,
+            ip_address="agent",
+        )
     )
     return result.model_dump()

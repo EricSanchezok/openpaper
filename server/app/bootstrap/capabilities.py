@@ -8,7 +8,7 @@ from app.bootstrap.container import (
     build_billing,
     build_citation_resolver,
     build_complete_onboarding,
-    build_conversation_chat,
+    build_conversation_chat_data,
     build_conversations,
     build_identity,
     build_job_callbacks,
@@ -34,7 +34,7 @@ from app.bootstrap.container import (
 from app.bootstrap.settings import AppSettings
 from app.modules.billing.application.billing import Billing
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
-from app.modules.conversations.application.chat import ConversationChat
+from app.modules.conversations.application.chat import ConversationChatData
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.identity.application.identity import Identity
 from app.modules.identity.application.onboarding import CompleteOnboarding
@@ -180,8 +180,8 @@ class ApplicationCapabilities:
         )
 
     @cached_property
-    def conversation_chat(self) -> ConversationChat:
-        return build_conversation_chat(db=self._session)
+    def conversation_chat_data(self) -> ConversationChatData:
+        return build_conversation_chat_data(db=self._session)
 
     @cached_property
     def paper_topics(self) -> PaperTopics:

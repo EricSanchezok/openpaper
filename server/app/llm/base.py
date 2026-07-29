@@ -3,12 +3,13 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
-from app.database.models import Message, ReasoningLevel
+from app.database.models import ReasoningLevel
 from app.database.telemetry import track_event
 from app.llm.backend import (
     FileContent,
+    HistoryMessage,
     LLMBackend,
     LLMResponse,
     MessageParam,
@@ -31,7 +32,7 @@ class BaseLLMClient:
         self,
         contents: MessageParam,
         system_prompt: str | None = None,
-        history: list[Message] | None = None,
+        history: Sequence[HistoryMessage] | None = None,
         function_declarations: list[dict[str, Any]] | None = None,
         tool_call_results: list[ToolCallResult] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
@@ -102,7 +103,7 @@ class BaseLLMClient:
     def send_message_stream(
         self,
         message: MessageParam,
-        history: list[Message],
+        history: Sequence[HistoryMessage],
         system_prompt: str,
         file: FileContent | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,

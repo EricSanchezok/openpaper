@@ -167,6 +167,26 @@ def test_transport_only_depends_on_application_and_protocol_layers() -> None:
     assert violations == []
 
 
+def test_transport_never_owns_database_sessions_or_builds_bound_capabilities() -> None:
+    violations: list[str] = []
+    for path in (APP_ROOT / "transport").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        imported = _imports(path)
+        if "sqlalchemy.orm" in imported:
+            violations.append(f"{path.relative_to(APP_ROOT)} imports sqlalchemy.orm")
+        if "app.database.database" in imported:
+            violations.append(
+                f"{path.relative_to(APP_ROOT)} imports database session factory"
+            )
+        if "Depends(get_db)" in source:
+            violations.append(f"{path.relative_to(APP_ROOT)} depends on get_db")
+        if "build_" in source and "(db=" in source:
+            violations.append(
+                f"{path.relative_to(APP_ROOT)} builds a session-bound capability"
+            )
+    assert violations == []
+
+
 def test_application_never_selects_infrastructure_adapters() -> None:
     violations: list[str] = []
     for path in (APP_ROOT / "modules").rglob("application/**/*.py"):
@@ -230,10 +250,8 @@ def test_paper_agent_and_mcp_adapters_share_application_capabilities() -> None:
     mcp = APP_ROOT / "transport" / "mcp" / "papers.py"
     combined_imports = _imports(agent) | _imports(mcp)
 
-    assert {
-        "app.modules.papers.application.content",
-        "app.modules.papers.application.search",
-    } <= combined_imports
+    assert "app.bootstrap.capabilities" in combined_imports
+    assert "app.shared.application" in combined_imports
     assert all(".infrastructure" not in imported for imported in _imports(agent))
     for imported in _imports(mcp):
         assert ".infrastructure" not in imported

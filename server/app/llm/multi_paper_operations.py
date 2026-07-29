@@ -11,15 +11,8 @@ from typing import (
     Sequence,
 )
 
-from app.modules.conversations.infrastructure.message_repository import (
-    message_repository,
-)
-from app.modules.papers.infrastructure.repository import document_repository
-from app.bootstrap.adapters.project_documents import (
-    project_document_repository,
-)
-from app.database.database import get_db
-from app.database.models import Document, ReasoningLevel
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.database.models import ReasoningLevel
 from app.llm.citation_handler import CitationHandler
 from app.llm.evidence_operations import EvidenceOperations
 from app.llm.prompts import (
@@ -28,12 +21,10 @@ from app.llm.prompts import (
     GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
-from app.modules.projects.infrastructure.access import get_project_access
+from app.modules.conversations.application.chat import ChatPaperSnapshot
 from app.modules.conversations.application.contracts.messages import EvidenceCollection
 from app.modules.papers.application.contracts.extraction import AudioOverviewForLLM
-from app.shared.application import Actor
-from fastapi import Depends
-from sqlalchemy.orm import Session
+from app.shared.application import Actor, ApplicationExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +40,12 @@ class MultiPaperOperations(EvidenceOperations):
         conversation_id: str,
         question: str,
         current_user: Actor,
-        all_papers: list[Document],
+        all_papers: list[ChatPaperSnapshot],
         evidence_gathered: EvidenceCollection,
+        executor: ApplicationExecutor[ApplicationCapabilities],
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,
         mentioned_highlights: list[dict[str, Any]] | None = None,
-        db: Session = Depends(get_db),
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """
         Chat with everything in the user's knowledge base using the specified model
@@ -67,12 +58,15 @@ class MultiPaperOperations(EvidenceOperations):
 
         casted_conversation_id = uuid.UUID(conversation_id)
 
-        conversation_history = message_repository.get_conversation_messages(
-            db, conversation_id=casted_conversation_id, user_id=current_user.id
+        conversation_history = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.history(
+                actor=current_user,
+                conversation_id=casted_conversation_id,
+            )
         )
 
         formatted_paper_options = {
-            str(paper.id): str(paper.title) for paper in all_papers
+            str(paper.document_id): str(paper.title) for paper in all_papers
         }
 
         logger.debug(f"Evidence gathered: {evidence_gathered.get_evidence_dict()}")
@@ -323,10 +317,10 @@ class MultiPaperOperations(EvidenceOperations):
     async def create_multi_paper_narrative_summary(
         self,
         current_user: Actor,
+        executor: ApplicationExecutor[ApplicationCapabilities],
         additional_instructions: str | None = None,
         length: Literal["short", "medium", "long"] | None = "medium",
         project_id: str | None = None,
-        db: Session = Depends(get_db),
     ) -> AudioOverviewForLLM:
         """
         Create a narrative summary across multiple papers using evidence gathering
@@ -351,7 +345,7 @@ class MultiPaperOperations(EvidenceOperations):
             question=f"{summary_request}",
             current_user=current_user,
             project_id=project_id,
-            db=db,
+            executor=executor,
         ):
             if result.get("type") == "evidence_gathered":
                 content = result.get("content")
@@ -363,24 +357,15 @@ class MultiPaperOperations(EvidenceOperations):
             evidence_collection = EvidenceCollection()
 
         # Get paper metadata for context
-        if project_id:
-            project_access = get_project_access(
-                db,
-                project_id=uuid.UUID(project_id),
-                user_id=current_user.id,
+        all_papers = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.papers(
+                actor=current_user,
+                project_id=uuid.UUID(project_id) if project_id else None,
             )
-            if project_access is None:
-                raise ValueError("Project not found.")
-            all_papers = project_document_repository.get_all_papers_by_project_id(
-                db, project_id=uuid.UUID(project_id), user=current_user
-            )
-        else:
-            all_papers = document_repository.list_available_library_documents(
-                db, user=current_user
-            )
+        )
 
         paper_metadata = {
-            str(paper.id): {
+            str(paper.document_id): {
                 "title": paper.title,
                 "authors": paper.authors,
                 "published": paper.publish_date,

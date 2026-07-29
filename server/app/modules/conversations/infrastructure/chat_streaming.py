@@ -7,7 +7,6 @@ import logging
 from collections.abc import AsyncIterator
 
 from app.database.telemetry import track_event
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,6 @@ async def stream_with_stable_error(
     delimiter: str,
     event_name: str,
     user_id: int,
-    db: Session,
     properties: dict[str, object],
 ) -> AsyncIterator[str]:
     """Convert post-header failures to one public stream error event."""
@@ -33,7 +31,6 @@ async def stream_with_stable_error(
                 "error_type": type(exc).__name__,
             },
             user_id=str(user_id),
-            db=db,
         )
         logger.exception("Chat stream failed after response headers were sent")
         yield f"{json.dumps({'type': 'error', 'content': 'chat_failed'})}{delimiter}"

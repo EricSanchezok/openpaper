@@ -2,12 +2,8 @@ import logging
 import uuid
 from typing import AsyncGenerator, Literal, Sequence
 
-from app.modules.conversations.infrastructure.message_repository import (
-    message_repository,
-)
-from app.modules.papers.infrastructure.repository import document_repository
-from app.database.database import get_db
-from app.database.models import Document, ReasoningLevel
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
 from app.llm.citation_handler import CitationHandler
 from app.llm.prompts import (
@@ -21,9 +17,7 @@ from app.llm.prompts import (
 from app.llm.backend import SupplementaryContent, TextContent
 from app.modules.conversations.application.contracts.messages import ResponseStyle
 from app.modules.papers.application.contracts.extraction import AudioOverviewForLLM
-from app.shared.application import Actor
-from fastapi import Depends
-from sqlalchemy.orm import Session
+from app.shared.application import Actor, ApplicationExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +29,19 @@ class PaperOperations(BaseLLMClient):
         self,
         document_id: str,
         user: Actor,
+        executor: ApplicationExecutor[ApplicationCapabilities],
         length: Literal["short", "medium", "long"] | None = "medium",
         additional_instructions: str | None = None,
-        db: Session = Depends(get_db),
     ) -> AudioOverviewForLLM:
         """
         Create a narrative summary of the paper using the specified model
         """
-        paper = document_repository.find_accessible(
-            db, document_id=document_id, user=user
+        paper = executor.query(
+            lambda capabilities: capabilities.paper_content.read(
+                actor=user,
+                document_id=uuid.UUID(document_id),
+            )
         )
-
-        if not paper:
-            raise ValueError(f"Paper with ID {document_id} not found.")
 
         audio_overview_schema = AudioOverviewForLLM.model_json_schema()
 
@@ -87,10 +81,10 @@ class PaperOperations(BaseLLMClient):
         conversation_id: str,
         question: str,
         current_user: Actor,
+        executor: ApplicationExecutor[ApplicationCapabilities],
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,
         response_style: str | None = "normal",
-        db: Session = Depends(get_db),
     ) -> AsyncGenerator[str | dict[str, object], None]:
         """
         Chat with the paper using the specified model
@@ -102,17 +96,20 @@ class PaperOperations(BaseLLMClient):
             else None
         )
 
-        paper: Document | None = document_repository.find_accessible(
-            db, document_id=document_id, user=current_user
+        paper = executor.query(
+            lambda capabilities: capabilities.paper_content.read(
+                actor=current_user,
+                document_id=uuid.UUID(document_id),
+            )
         )
-
-        if not paper:
-            raise ValueError(f"Paper with ID {document_id} not found.")
 
         casted_conversation_id = uuid.UUID(conversation_id)
 
-        conversation_history = message_repository.get_conversation_messages(
-            db, conversation_id=casted_conversation_id, user_id=current_user.id
+        conversation_history = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.history(
+                actor=current_user,
+                conversation_id=casted_conversation_id,
+            )
         )
 
         additional_instructions = ""

@@ -1,5 +1,6 @@
 import logging
 import uuid
+from collections.abc import Sequence
 
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
@@ -13,6 +14,7 @@ from app.llm.prompts import (
     RENAME_CONVERSATION_USER_MESSAGE,
 )
 from app.llm.backend import TextContent
+from app.llm.backend import HistoryMessage
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.modules.conversations.application.contracts.conversations import (
     ConversationUpdateRequest,
@@ -45,12 +47,26 @@ class ConversationOperations(BaseLLMClient):
             db, conversation_id=casted_uuid, user_id=user.id
         )
 
-        if not chat_history:
+        new_title = self.generate_title(chat_history)
+        if new_title is None:
             logger.warning(
                 f"Conversation with ID {conversation_id} has no messages. Cannot rename."
             )
             return None
+        conversation_repository.update(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+            request=ConversationUpdateRequest(title=new_title),
+        )
+        return new_title
 
+    def generate_title(
+        self,
+        chat_history: Sequence[HistoryMessage],
+    ) -> str | None:
+        if not chat_history:
+            return None
         # Format the chat history for the LLM, restrict to the last 4 messages
         formatted_chat_history = "\n".join(
             [f"{msg.role}: {msg.content}" for msg in chat_history[-4:]]
@@ -71,19 +87,9 @@ class ConversationOperations(BaseLLMClient):
         )
 
         if response and response.text:
-            new_title = response.text.strip()
-            conversation_repository.update(
-                db,
-                conversation_id=conversation.id,
-                user_id=user.id,
-                request=ConversationUpdateRequest(title=new_title),
-            )
             return response.text.strip()
-        else:
-            logger.error(
-                f"Failed to generate a new title for conversation {conversation_id}."
-            )
-            return None
+        logger.error("Failed to generate a new conversation title.")
+        return None
 
 
 class DataTableOperations(BaseLLMClient):

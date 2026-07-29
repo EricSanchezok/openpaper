@@ -12,14 +12,7 @@ from typing import (
     cast,
 )
 
-from app.modules.conversations.infrastructure.message_repository import (
-    message_repository,
-)
-from app.modules.papers.infrastructure.repository import document_repository
-from app.bootstrap.adapters.project_documents import (
-    project_document_repository,
-)
-from app.database.database import get_db
+from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
 from app.transport.agent.citation import find_citation_function, run_find_citation
@@ -44,7 +37,6 @@ from app.transport.agent.paper_tools import (
     view_file_function,
 )
 from app.transport.agent.meta_tools import stop_function
-from app.modules.projects.infrastructure.access import get_project_access
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.conversations.application.contracts.messages import (
     EvidenceCollection,
@@ -52,9 +44,7 @@ from app.modules.conversations.application.contracts.messages import (
     OriginalSnippet,
     ToolResultCompactionResponse,
 )
-from app.shared.application import Actor
-from fastapi import Depends
-from sqlalchemy.orm import Session
+from app.shared.application import Actor, ApplicationExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -114,10 +104,10 @@ class EvidenceOperations(BaseLLMClient):
         self,
         question: str,
         current_user: Actor,
+        executor: ApplicationExecutor[ApplicationCapabilities],
         conversation_id: str | None = None,
         project_id: str | None = None,
         restrict_to_document_ids: list[str] | None = None,
-        db: Session = Depends(get_db),
     ) -> AsyncGenerator[
         Mapping[str, str | dict[str, list[str]] | EvidenceCollection], None
     ]:
@@ -127,10 +117,11 @@ class EvidenceOperations(BaseLLMClient):
         and citations from the user's knowledge base.
         """
         conversation_history = (
-            message_repository.get_conversation_messages(
-                db,
-                conversation_id=uuid.UUID(conversation_id),
-                user_id=current_user.id,
+            executor.query(
+                lambda capabilities: capabilities.conversation_chat_data.history(
+                    actor=current_user,
+                    conversation_id=uuid.UUID(conversation_id),
+                )
             )
             if conversation_id
             else []
@@ -142,22 +133,12 @@ class EvidenceOperations(BaseLLMClient):
         n_iterations = 0
         max_iterations = 4
 
-        if project_id:
-            project_access = get_project_access(
-                db,
-                project_id=uuid.UUID(project_id),
-                user_id=current_user.id,
+        all_papers = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.papers(
+                actor=current_user,
+                project_id=uuid.UUID(project_id) if project_id else None,
             )
-            if project_access is None:
-                raise ValueError("Project not found.")
-            all_papers = project_document_repository.get_all_papers_by_project_id(
-                db, project_id=uuid.UUID(project_id), user=current_user
-            )
-        else:
-            all_papers = document_repository.list_available_library_documents(
-                db,
-                user=current_user,
-            )
+        )
 
         # @-mention scoping: hard-limit the available papers to the mentioned
         # set. Withholding out-of-scope papers from formatted_paper_options
@@ -165,10 +146,12 @@ class EvidenceOperations(BaseLLMClient):
         # any id that isn't listed here (see the guard in the tool-call loop).
         if restrict_to_document_ids is not None:
             allowed_ids = set(restrict_to_document_ids)
-            all_papers = [paper for paper in all_papers if str(paper.id) in allowed_ids]
+            all_papers = [
+                paper for paper in all_papers if str(paper.document_id) in allowed_ids
+            ]
 
         formatted_paper_options = {
-            str(paper.id): {
+            str(paper.document_id): {
                 "title": paper.title,
                 "length": len(str(paper.raw_content)),
                 "keywords": paper.keywords or [],
@@ -217,7 +200,9 @@ class EvidenceOperations(BaseLLMClient):
                     f"characters ({tool_results_size}), compacting."
                 )
                 await self.compact_tool_call_results(
-                    evidence_collection, question, current_user, db=db
+                    evidence_collection,
+                    question,
+                    current_user,
                 )
 
             evidence_gathering_prompt = EVIDENCE_GATHERING_SYSTEM_PROMPT.format(
@@ -333,7 +318,7 @@ class EvidenceOperations(BaseLLMClient):
                                 current_user=current_user,
                                 project_id=project_id,
                                 restrict_to_document_ids=restrict_to_document_ids,
-                                db=db,
+                                executor=executor,
                             )
 
                         loop = asyncio.get_event_loop()
@@ -422,7 +407,6 @@ class EvidenceOperations(BaseLLMClient):
                         "project_type": project_id is not None,
                     },
                     user_id=str(current_user.id),
-                    db=db,
                 )
 
         # Fallback: if no evidence was gathered AND no artifacts (e.g. a pure
@@ -451,7 +435,7 @@ class EvidenceOperations(BaseLLMClient):
                         search_results = search_all_files(
                             query=keyword,
                             current_user=current_user,
-                            db=db,
+                            executor=executor,
                             project_id=project_id,
                             restrict_to_document_ids=restrict_to_document_ids,
                         )
@@ -474,7 +458,6 @@ class EvidenceOperations(BaseLLMClient):
                                 "papers_found": len(evidence_collection.evidence),
                             },
                             user_id=str(current_user.id),
-                            db=db,
                         )
                     else:
                         logger.info("Fallback search found no relevant evidence")
@@ -482,7 +465,6 @@ class EvidenceOperations(BaseLLMClient):
                             "fallback_search_no_results",
                             {"keywords": keywords},
                             user_id=str(current_user.id),
-                            db=db,
                         )
             except Exception as e:
                 logger.exception("Fallback search failed")
@@ -490,7 +472,6 @@ class EvidenceOperations(BaseLLMClient):
                     "fallback_search_error",
                     {"error_type": type(e).__name__},
                     user_id=str(current_user.id),
-                    db=db,
                 )
 
         # Compact evidence if it exceeds the limit for chat response
@@ -508,7 +489,6 @@ class EvidenceOperations(BaseLLMClient):
                 evidence_collection,
                 question,
                 current_user,
-                db=db,
             ):
                 yield status
 
@@ -522,7 +502,6 @@ class EvidenceOperations(BaseLLMClient):
         evidence_collection: EvidenceCollection,
         original_question: str,
         current_user: Actor,
-        db: Session | None = None,
     ) -> None:
         """
         Compact tool call results by summarizing them to reduce context size.
@@ -577,7 +556,6 @@ class EvidenceOperations(BaseLLMClient):
                         "compacted_size": new_size,
                     },
                     user_id=str(current_user.id),
-                    db=db,
                 )
             else:
                 logger.warning("Empty response from LLM during tool result compaction.")
@@ -592,7 +570,6 @@ class EvidenceOperations(BaseLLMClient):
         evidence_collection: EvidenceCollection,
         original_question: str,
         current_user: Actor,
-        db: Session | None = None,
     ) -> AsyncGenerator[dict[str, str | dict[str, list[str]]], None]:
         """
         Compact evidence to reduce context size for chat response.
@@ -730,7 +707,6 @@ class EvidenceOperations(BaseLLMClient):
                 "compacted_size": new_size,
             },
             user_id=str(current_user.id),
-            db=db,
         )
 
     async def _extract_search_keywords(

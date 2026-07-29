@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.bootstrap.container import build_citation_resolver
+from app.bootstrap.capabilities import ApplicationCapabilities
 from app.modules.papers.application.contracts.citation import CitationResult
-from app.shared.application import Actor
-from sqlalchemy.orm import Session
+from app.shared.application import Actor, ApplicationExecutor
 
 find_citation_function = {
     "name": "find_citation",
@@ -38,7 +37,7 @@ find_citation_function = {
 def run_find_citation(
     document_id: str,
     current_user: Actor,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     style: str = "APA",
     project_id: str | None = None,
     restrict_to_document_ids: list[str] | None = None,
@@ -49,9 +48,11 @@ def run_find_citation(
         and document_id not in restrict_to_document_ids
     ):
         raise ValueError("Paper is not in the scoped set for this conversation")
-    return build_citation_resolver(db=db)(
-        actor=current_user,
-        document_id=UUID(document_id),
-        style=style,
-        project_id=UUID(project_id) if project_id else None,
+    return executor.query(
+        lambda capabilities: capabilities.citations(
+            actor=current_user,
+            document_id=UUID(document_id),
+            style=style,
+            project_id=UUID(project_id) if project_id else None,
+        )
     )

@@ -7,6 +7,7 @@ from typing import cast
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
 from app.database.database import SessionLocal
+from app.modules.conversations.application.chat import ConversationChat
 from app.shared.application import ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from fastapi import Request
@@ -21,6 +22,16 @@ def create_application_executor(
     )
 
 
+def create_conversation_chat(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+) -> ConversationChat:
+    from app.bootstrap.adapters.conversation_chat import (
+        DefaultConversationChatGateway,
+    )
+
+    return ConversationChat(DefaultConversationChatGateway(executor))
+
+
 def get_application_executor(
     request: Request,
 ) -> ApplicationExecutor[ApplicationCapabilities]:
@@ -28,3 +39,7 @@ def get_application_executor(
         ApplicationExecutor[ApplicationCapabilities],
         request.app.state.application_executor,
     )
+
+
+def get_conversation_chat(request: Request) -> ConversationChat:
+    return cast(ConversationChat, request.app.state.conversation_chat)

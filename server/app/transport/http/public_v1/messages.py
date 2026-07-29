@@ -1,7 +1,7 @@
 import uuid
 
-from app.bootstrap.container import build_conversation_chat
-from app.database.database import get_db
+from app.bootstrap.execution import get_conversation_chat
+from app.modules.conversations.application.chat import ConversationChat
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
 )
@@ -9,16 +9,15 @@ from app.shared.application import Actor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
 message_router = APIRouter()
 
 
 @message_router.get("/capabilities")
 def get_chat_capabilities(
-    db: Session = Depends(get_db),
+    chat: ConversationChat = Depends(get_conversation_chat),
 ) -> dict[str, object]:
-    return build_conversation_chat(db=db).capabilities()
+    return chat.capabilities()
 
 
 @message_router.post("/{conversation_id}/messages")
@@ -26,10 +25,10 @@ async def create_conversation_message(
     conversation_id: uuid.UUID,
     message: ConversationMessageRequest,
     http_request: Request,
-    db: Session = Depends(get_db),
+    chat: ConversationChat = Depends(get_conversation_chat),
     current_user: Actor = Depends(get_required_user),
 ) -> StreamingResponse:
-    stream = await build_conversation_chat(db=db).stream(
+    stream = await chat.stream(
         actor=current_user,
         conversation_id=conversation_id,
         request=message,

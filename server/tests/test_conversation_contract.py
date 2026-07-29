@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.settings import AppSettings
 from app.bootstrap.adapters.conversation_chat import (
     chat_message_multipaper,
 )
@@ -27,6 +29,7 @@ from app.modules.conversations.application.contracts.messages import (
 )
 from app.modules.conversations.infrastructure.message_repository import MessageCreate
 from app.shared.application import Actor
+from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -226,7 +229,7 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         document_id=uuid.uuid4(),
     )
     monkeypatch.setattr(
-        "app.bootstrap.adapters.conversation_chat.has_token_credits",
+        "app.bootstrap.adapters.conversation_chat_data.has_token_credits",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
@@ -235,7 +238,7 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         lambda *_args, **_kwargs: conversation,
     )
     monkeypatch.setattr(
-        "app.bootstrap.adapters.conversation_chat.conversation_policy.require_can_continue",
+        "app.bootstrap.adapters.conversation_chat_data.conversation_policy.require_can_continue",
         lambda *_args, **_kwargs: None,
     )
     enforce_rate_limit = MagicMock()
@@ -249,13 +252,18 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         acquire_concurrency,
     )
     with pytest.raises(AppError) as exc_info:
+        db = MagicMock(spec=Session)
+        executor = SqlAlchemyApplicationExecutor(
+            MagicMock(return_value=db),
+            lambda session: ApplicationCapabilities(session, AppSettings()),
+        )
         await chat_message_multipaper(
             request=MultiPaperChatRequest(
                 conversation_id=str(conversation.id),
                 user_query="Question",
             ),
             client_ip="127.0.0.1",
-            db=MagicMock(spec=Session),
+            executor=executor,
             current_user=_current_user(),
         )
 

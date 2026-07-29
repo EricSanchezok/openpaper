@@ -4,15 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
-from app.modules.conversations.infrastructure.message_repository import (
-    MessageCreate,
-    message_repository,
-)
-from app.modules.papers.infrastructure.repository import document_repository
-from app.bootstrap.adapters.project_documents import (
-    project_document_repository,
-)
-from app.database.models import ConversationScopeType
+from app.bootstrap.capabilities import ApplicationCapabilities
 from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
 from app.shared.domain import AppError, FailureKind
@@ -26,24 +18,20 @@ from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_operations import conversation_operations
 from app.llm.multi_paper_operations import multi_paper_operations
 from app.llm.paper_operations import paper_operations
-from app.llm.token_credits import has_token_credits, llm_usage_context
-from app.modules.projects.infrastructure.access import get_project_access
-from app.bootstrap.adapters.conversation_access import conversation_policy
-from app.bootstrap.adapters.conversation_repository import conversation_repository
-from app.bootstrap.adapters.research_repository import research_repository
+from app.llm.token_credits import llm_usage_context
 from app.modules.conversations.application.contracts.messages import (
     ChatMessageRequest,
     ConversationMessageRequest,
     EvidenceCollection,
     MultiPaperChatRequest,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, ApplicationExecutor
+from app.shared.domain.enums import ConversationScopeType
 from app.modules.conversations.infrastructure.chat_streaming import (
     stream_with_stable_error,
 )
 from dotenv import load_dotenv
 from pydantic import TypeAdapter
-from sqlalchemy.orm import Session
 
 load_dotenv()
 
@@ -151,153 +139,11 @@ async def _stream_chat_chunks(
             yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
 
 
-def _resolve_mention_scope(
-    db: Session,
-    current_user: Actor,
-    request: "MultiPaperChatRequest",
-    *,
-    project_id: uuid.UUID | None,
-) -> tuple[
-    list[str] | None,
-    list[dict[str, object]] | None,
-    list[dict[str, object]] | None,
-]:
-    """Resolve @-mentions into (scoped_document_ids, scope_snapshot, highlights).
-
-    - scoped_document_ids: the flat, user-scoped set of paper ids the search is
-      hard-limited to — a paper mention contributes itself, a project mention
-      contributes all of its papers, a highlight mention contributes its parent
-      paper. Used for retrieval scoping.
-    - scope_snapshot: a denormalized [{kind, id, title, ...}] of the mentioned
-      entities themselves (a project stays a single entry, not its papers),
-      persisted on the user message so it renders faithfully later.
-    - highlights: [{document_id, highlighted_text, notes}] for the mentioned
-      highlights, injected into the answer prompt so the model sees the exact
-      attached passages.
-
-    Every id is resolved through a user-scoped capability lookup, so a mention the user
-    can't access is silently dropped. All values are None when there are no
-    mentions at all (i.e. no scoping should be applied).
-    """
-    if (
-        not request.mentioned_document_ids
-        and not request.mentioned_project_ids
-        and not request.mentioned_highlight_ids
-    ):
-        return None, None, None
-
-    scoped: set[str] = set()
-    snapshot: list[dict[str, object]] = []
-
-    for document_id in request.mentioned_document_ids or []:
-        # In a project chat, resolve via project access (papers may be shared,
-        # i.e. not owned by the current user); otherwise resolve by ownership.
-        if project_id is not None:
-            paper = project_document_repository.get_paper_by_project(
-                db,
-                document_id=uuid.UUID(document_id),
-                project_id=project_id,
-                user=current_user,
-            )
-        else:
-            paper = document_repository.find_accessible(
-                db, document_id=document_id, user=current_user
-            )
-        if paper:
-            scoped.add(str(paper.id))
-            snapshot.append(
-                {"kind": "paper", "id": str(paper.id), "title": paper.title}
-            )
-
-    for mentioned_project_id in request.mentioned_project_ids or []:
-        project_access = get_project_access(
-            db,
-            project_id=uuid.UUID(mentioned_project_id),
-            user_id=current_user.id,
-        )
-        if project_access is None:
-            continue
-        project = project_access.project
-        document_ids = (
-            project_document_repository.get_project_document_ids_by_project_id(
-                db, project_id=uuid.UUID(mentioned_project_id), user=current_user
-            )
-        )
-        scoped.update(str(pid) for pid in document_ids)
-        snapshot.append(
-            {"kind": "project", "id": str(project.id), "title": project.title}
-        )
-
-    # Mentioned highlights are grouped by parent paper so each highlighted
-    # passage is delivered with that paper's title + abstract for grounding,
-    # rather than a bare paper id the model would have to cross-reference.
-    highlights_by_paper: dict[str, HighlightGroup] = {}
-    for highlight_id in request.mentioned_highlight_ids or []:
-        try:
-            item = research_repository.get_highlight_thread_visible(
-                db,
-                thread_id=uuid.UUID(highlight_id),
-                user_id=current_user.id,
-            )
-        except AppError:
-            continue
-        highlight = item.highlight_thread
-        if highlight is None or item.document_id is None:
-            continue
-        document_id_str = str(item.document_id)
-        # The parent paper joins the search scope so it stays searchable.
-        scoped.add(document_id_str)
-
-        group = highlights_by_paper.get(document_id_str)
-        if group is None:
-            paper = document_repository.find_accessible(
-                db, document_id=document_id_str, user=current_user
-            )
-            group = {
-                "document_id": document_id_str,
-                "paper_title": paper.title if paper else None,
-                "paper_abstract": paper.abstract if paper else None,
-                "highlights": [],
-            }
-            highlights_by_paper[document_id_str] = group
-
-        annotation_contents = [
-            annotation.content
-            for annotation in highlight.comments
-            if annotation.content
-        ]
-
-        snapshot.append(
-            {
-                "kind": "highlight",
-                "id": str(item.id),
-                "title": highlight.quote_text,
-                "document_id": document_id_str,
-                "paper_title": group["paper_title"],
-                "annotations": annotation_contents,
-            }
-        )
-
-        group["highlights"].append(
-            {
-                "highlighted_text": highlight.quote_text,
-                "page_number": highlight.page_number,
-                "annotations": annotation_contents,
-            }
-        )
-
-    return (
-        list(scoped),
-        snapshot,
-        [dict(group) for group in highlights_by_paper.values()],
-    )
-
-
 async def chat_message_multipaper(
     request: MultiPaperChatRequest,
     *,
     client_ip: str,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     current_user: Actor,
 ) -> AsyncGenerator[str, None]:
     """
@@ -306,31 +152,23 @@ async def chat_message_multipaper(
     This searches over the entire corpus of papers and returns a response based on the user's query.
     The response includes both the content and any relevant evidence gathered.
     """
-    if not has_token_credits(db, user=current_user):
-        raise AppError(
-            code="token_quota_exceeded",
-            message="Your weekly Token Credits are exhausted",
-            kind=FailureKind.RATE_LIMITED,
+    conversation_id = uuid.UUID(request.conversation_id)
+    conversation_scope = executor.query(
+        lambda capabilities: capabilities.conversation_chat_data.prepare(
+            actor=current_user,
+            conversation_id=conversation_id,
         )
-    conversation = conversation_repository.require_owned(
-        db,
-        conversation_id=uuid.UUID(request.conversation_id),
-        user_id=current_user.id,
     )
-    conversation_policy.require_can_continue(
-        db,
-        conversation=conversation,
-    )
-    if conversation.scope_type not in {
-        ConversationScopeType.GLOBAL.value,
-        ConversationScopeType.PROJECT.value,
+    if conversation_scope.scope_type not in {
+        ConversationScopeType.GLOBAL,
+        ConversationScopeType.PROJECT,
     }:
         raise AppError(
             code="conversation_scope_mismatch",
             message="This conversation cannot be used for a library chat",
             kind=FailureKind.CONFLICT,
         )
-    project_id = conversation.project_id
+    project_id = conversation_scope.project_id
     try:
         await enforce_rate_limit(
             user_id=int(current_user.id),
@@ -361,22 +199,25 @@ async def chat_message_multipaper(
         # into a flat set of in-scope paper ids (None == no scoping), a
         # denormalized snapshot to persist on the user message, and the
         # highlight passages to inject into the answer.
-        (
-            scoped_document_ids,
-            scope_snapshot,
-            mentioned_highlights,
-        ) = _resolve_mention_scope(
-            db,
-            current_user,
-            request,
-            project_id=project_id,
+        mention_request = ConversationMessageRequest.model_validate(
+            request.model_dump(exclude={"conversation_id"})
         )
+        mentions = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.mentions(
+                actor=current_user,
+                request=mention_request,
+                project_id=project_id,
+            )
+        )
+        scoped_document_ids = mentions.document_ids
+        scope_snapshot = mentions.snapshot
+        mentioned_highlights = mentions.highlights
 
         async for chunk in multi_paper_operations.gather_evidence(
             conversation_id=request.conversation_id,
             question=request.user_query,
             current_user=current_user,
-            db=db,
+            executor=executor,
             project_id=str(project_id) if project_id is not None else None,
             restrict_to_document_ids=scoped_document_ids,
         ):
@@ -414,21 +255,20 @@ async def chat_message_multipaper(
 
         yield f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}{END_DELIMITER}"
 
-        if project_id is not None:
-            all_papers = project_document_repository.get_all_papers_by_project_id(
-                db, project_id=project_id, user=current_user
+        all_papers = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.papers(
+                actor=current_user,
+                project_id=project_id,
             )
-        else:
-            all_papers = document_repository.list_available_library_documents(
-                db,
-                user=current_user,
-            )
+        )
 
         # Keep the answer-generation paper set aligned with the scoped
         # evidence space so citations can't reference out-of-scope papers.
         if scoped_document_ids is not None:
             allowed_ids = set(scoped_document_ids)
-            all_papers = [paper for paper in all_papers if str(paper.id) in allowed_ids]
+            all_papers = [
+                paper for paper in all_papers if str(paper.document_id) in allowed_ids
+            ]
 
         chat_generator = multi_paper_operations.chat_with_papers(
             question=request.user_query,
@@ -439,7 +279,7 @@ async def chat_message_multipaper(
             current_user=current_user,
             all_papers=all_papers,
             mentioned_highlights=mentioned_highlights,
-            db=db,
+            executor=executor,
         )
         async for stream_chunk in _stream_chat_chunks(
             chunk_generator=chat_generator,
@@ -481,14 +321,12 @@ async def chat_message_multipaper(
             else None
         )
 
-        # Save user message, with the @-mention scope snapshot attached.
-        message_repository.create(
-            db,
-            request=MessageCreate(
-                conversation_id=uuid.UUID(request.conversation_id),
-                role="user",
-                content=request.user_query,
-                references=(
+        executor.command(
+            lambda capabilities: capabilities.conversation_chat_data.save_turn(
+                actor=current_user,
+                conversation_id=conversation_id,
+                user_content=request.user_query,
+                user_references=(
                     _JSON_OBJECT.validate_python(formatted_references)
                     if formatted_references is not None
                     else None
@@ -498,41 +336,34 @@ async def chat_message_multipaper(
                     if scope_snapshot is not None
                     else None
                 ),
-            ),
-            user_id=current_user.id,
-        )
-
-        # Save assistant message with content, evidence, and trace.
-        # Artifacts go into their own table, linked back via message_id.
-        assistant_message = message_repository.create(
-            db,
-            request=MessageCreate(
-                conversation_id=uuid.UUID(request.conversation_id),
-                role="assistant",
-                content=full_content,
-                references=evidence if evidence else None,
-                trace=(
+                assistant_content=full_content,
+                assistant_references=(
+                    _JSON_OBJECT.validate_python(evidence) if evidence else None
+                ),
+                assistant_trace=(
                     _JSON_OBJECT.validate_python(assistant_trace)
                     if assistant_trace is not None
                     else None
                 ),
-            ),
-            user_id=current_user.id,
-        )
-
-        if assistant_message and artifacts_collected:
-            research_repository.create_citations_for_message(
-                db,
-                conversation=conversation,
-                message_id=assistant_message.id,
-                user_id=current_user.id,
-                snapshots=artifacts_collected,
+                artifacts=_JSON_OBJECT_LIST.validate_python(artifacts_collected),
             )
-
-        # Rename the conversation based on the chat history
-        conversation_operations.rename_conversation(
-            db=db, conversation_id=request.conversation_id, user=current_user
         )
+
+        history = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.history(
+                actor=current_user,
+                conversation_id=conversation_id,
+            )
+        )
+        new_title = conversation_operations.generate_title(history)
+        if new_title is not None:
+            executor.command(
+                lambda capabilities: capabilities.conversation_chat_data.rename(
+                    actor=current_user,
+                    conversation_id=conversation_id,
+                    title=new_title,
+                )
+            )
 
         # @-mention scoping usage: whether the client asked to scope,
         # what actually resolved (by entity type), and the effective
@@ -567,12 +398,11 @@ async def chat_message_multipaper(
                 "has_evidence": bool(evidence),
                 "reasoning_level": request.reasoning_level.value,
                 "time_taken": (datetime.now(timezone.utc) - start_time).total_seconds(),
-                "type": conversation.scope_type,
+                "type": conversation_scope.scope_type.value,
                 "project_id": str(project_id) if project_id is not None else None,
                 **mention_scope_props,
             },
             user_id=str(current_user.id),
-            db=db,
         )
 
     async def response_generator() -> AsyncGenerator[str, None]:
@@ -586,7 +416,6 @@ async def chat_message_multipaper(
                     delimiter=END_DELIMITER,
                     event_name="everything_chat_message_error",
                     user_id=current_user.id,
-                    db=db,
                     properties={
                         "type": "everything",
                         "conversation_id": request.conversation_id,
@@ -603,7 +432,7 @@ async def chat_message_stream(
     request: ChatMessageRequest,
     *,
     client_ip: str,
-    db: Session,
+    executor: ApplicationExecutor[ApplicationCapabilities],
     current_user: Actor,
 ) -> AsyncGenerator[str, None]:
     """
@@ -614,31 +443,23 @@ async def chat_message_stream(
     - concise: Short and to the point
     - detailed: Comprehensive and thorough
     """
-    if not has_token_credits(db, user=current_user):
-        raise AppError(
-            code="token_quota_exceeded",
-            message="Your weekly Token Credits are exhausted",
-            kind=FailureKind.RATE_LIMITED,
+    conversation_id = uuid.UUID(request.conversation_id)
+    conversation_scope = executor.query(
+        lambda capabilities: capabilities.conversation_chat_data.prepare(
+            actor=current_user,
+            conversation_id=conversation_id,
         )
-    conversation = conversation_repository.require_owned(
-        db,
-        conversation_id=uuid.UUID(request.conversation_id),
-        user_id=current_user.id,
-    )
-    conversation_policy.require_can_continue(
-        db,
-        conversation=conversation,
     )
     if (
-        conversation.scope_type != ConversationScopeType.PAPER.value
-        or conversation.document_id is None
+        conversation_scope.scope_type is not ConversationScopeType.PAPER
+        or conversation_scope.document_id is None
     ):
         raise AppError(
             code="conversation_scope_mismatch",
             message="This conversation cannot be used for a paper chat",
             kind=FailureKind.CONFLICT,
         )
-    document_id = str(conversation.document_id)
+    document_id = str(conversation_scope.document_id)
     try:
         await enforce_rate_limit(
             user_id=int(current_user.id),
@@ -669,7 +490,7 @@ async def chat_message_stream(
             reasoning_level=request.reasoning_level,
             user_references=request.user_references,
             response_style=request.style,
-            db=db,
+            executor=executor,
         )
 
         async for chunk in _stream_chat_chunks(
@@ -700,37 +521,28 @@ async def chat_message_stream(
             else None
         )
 
-        # Save user message
-        message_repository.create(
-            db,
-            request=MessageCreate(
-                conversation_id=uuid.UUID(request.conversation_id),
-                role="user",
-                content=request.user_query,
-                references=(
+        executor.command(
+            lambda capabilities: capabilities.conversation_chat_data.save_turn(
+                actor=current_user,
+                conversation_id=conversation_id,
+                user_content=request.user_query,
+                user_references=(
                     _JSON_OBJECT.validate_python(formatted_references)
                     if formatted_references is not None
                     else None
                 ),
-            ),
-            user_id=current_user.id,
-        )
-
-        # Save assistant message with both content and evidence
-        message_repository.create(
-            db,
-            request=MessageCreate(
-                conversation_id=uuid.UUID(request.conversation_id),
-                role="assistant",
-                content=full_content,
-                references=evidence if evidence else None,
-                trace=(
+                scope=None,
+                assistant_content=full_content,
+                assistant_references=(
+                    _JSON_OBJECT.validate_python(evidence) if evidence else None
+                ),
+                assistant_trace=(
                     _JSON_OBJECT.validate_python(assistant_trace)
                     if assistant_trace is not None
                     else None
                 ),
-            ),
-            user_id=current_user.id,
+                artifacts=[],
+            )
         )
 
         # Track chat message event
@@ -746,7 +558,6 @@ async def chat_message_stream(
                 "type": "paper",
             },
             user_id=str(current_user.id),
-            db=db,
         )
 
     async def response_generator() -> AsyncGenerator[str, None]:
@@ -760,7 +571,6 @@ async def chat_message_stream(
                     delimiter=END_DELIMITER,
                     event_name="chat_message_error",
                     user_id=current_user.id,
-                    db=db,
                     properties={
                         "document_id": document_id,
                         "conversation_id": request.conversation_id,
@@ -776,8 +586,11 @@ async def chat_message_stream(
 class DefaultConversationChatGateway:
     """Adapts the legacy LLM engine to the stable Conversation use case."""
 
-    def __init__(self, db: Session) -> None:
-        self._db = db
+    def __init__(
+        self,
+        executor: ApplicationExecutor[ApplicationCapabilities],
+    ) -> None:
+        self._executor = executor
 
     async def stream(
         self,
@@ -787,12 +600,13 @@ class DefaultConversationChatGateway:
         request: ConversationMessageRequest,
         client_ip: str,
     ) -> AsyncGenerator[str, None]:
-        conversation = conversation_repository.require_owned(
-            self._db,
-            conversation_id=conversation_id,
-            user_id=actor.id,
+        scope = self._executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.prepare(
+                actor=actor,
+                conversation_id=conversation_id,
+            )
         )
-        if conversation.scope_type == ConversationScopeType.PAPER.value:
+        if scope.scope_type is ConversationScopeType.PAPER:
             return await chat_message_stream(
                 ChatMessageRequest(
                     conversation_id=str(conversation_id),
@@ -802,7 +616,7 @@ class DefaultConversationChatGateway:
                     reasoning_level=request.reasoning_level,
                 ),
                 client_ip=client_ip,
-                db=self._db,
+                executor=self._executor,
                 current_user=actor,
             )
         return await chat_message_multipaper(
@@ -816,6 +630,6 @@ class DefaultConversationChatGateway:
                 mentioned_highlight_ids=request.mentioned_highlight_ids,
             ),
             client_ip=client_ip,
-            db=self._db,
+            executor=self._executor,
             current_user=actor,
         )

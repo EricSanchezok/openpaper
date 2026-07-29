@@ -101,7 +101,7 @@ from app.modules.research.infrastructure.generation import (
     DefaultGenerationCapacity,
 )
 from app.modules.conversations.application.conversations import Conversations
-from app.modules.conversations.application.chat import ConversationChat
+from app.modules.conversations.application.chat import ConversationChatData
 from app.bootstrap.adapters.conversation_lifecycle import (
     LlmConversationTitleGenerator,
     PostHogConversationEvents,
@@ -363,14 +363,12 @@ def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:
     )
 
 
-def build_conversation_chat(*, db: Session) -> ConversationChat:
-    # Lazy import avoids the LLM tool graph importing this composition root
-    # while the root itself is still being initialized.
-    from app.bootstrap.adapters.conversation_chat import (
-        DefaultConversationChatGateway,
+def build_conversation_chat_data(*, db: Session) -> ConversationChatData:
+    from app.bootstrap.adapters.conversation_chat_data import (
+        SqlAlchemyConversationChatData,
     )
 
-    return ConversationChat(DefaultConversationChatGateway(db))
+    return ConversationChatData(SqlAlchemyConversationChatData(db))
 
 
 def build_identity(*, db: Session) -> Identity:

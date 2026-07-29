@@ -6,10 +6,10 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Iterator, Sequence, cast
+from typing import Any, Iterator, Protocol, Sequence, cast
 
 import openai
-from app.database.models import Message, ReasoningLevel
+from app.database.models import ReasoningLevel
 from app.llm.token_credits import settle_token_usage
 from app.modules.papers.application.contracts.extraction import (
     FileContent,
@@ -41,6 +41,14 @@ MessageContent = TextContent | FileContent | SupplementaryContent
 MessageParam = str | Sequence[MessageContent]
 
 
+class HistoryMessage(Protocol):
+    @property
+    def role(self) -> str: ...
+
+    @property
+    def content(self) -> str: ...
+
+
 class LLMBackend(ABC):
     @abstractmethod
     def generate_content(
@@ -48,7 +56,7 @@ class LLMBackend(ABC):
         contents: MessageParam,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         system_prompt: str | None = None,
-        history: list[Message] | None = None,
+        history: Sequence[HistoryMessage] | None = None,
         function_declarations: list[dict[str, Any]] | None = None,
         tool_call_results: list[ToolCallResult] | None = None,
         schema: dict[str, Any] | None = None,
@@ -59,7 +67,7 @@ class LLMBackend(ABC):
     def send_message_stream(
         self,
         message: MessageParam,
-        history: list[Message],
+        history: Sequence[HistoryMessage],
         system_prompt: str,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         file: FileContent | None = None,
@@ -146,7 +154,7 @@ class DeepSeekBackend(LLMBackend):
         contents: MessageParam,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         system_prompt: str | None = None,
-        history: list[Message] | None = None,
+        history: Sequence[HistoryMessage] | None = None,
         function_declarations: list[dict[str, Any]] | None = None,
         tool_call_results: list[ToolCallResult] | None = None,
         schema: dict[str, Any] | None = None,
@@ -206,7 +214,7 @@ class DeepSeekBackend(LLMBackend):
     def send_message_stream(
         self,
         message: MessageParam,
-        history: list[Message],
+        history: Sequence[HistoryMessage],
         system_prompt: str,
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         file: FileContent | None = None,
@@ -294,7 +302,7 @@ class DeepSeekBackend(LLMBackend):
 
     def _prepare_messages(
         self,
-        history: list[Message],
+        history: Sequence[HistoryMessage],
         new_message: MessageParam,
         system_prompt: str = "",
         file: FileContent | None = None,

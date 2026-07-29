@@ -6,7 +6,6 @@ import pytest
 from app.modules.conversations.infrastructure.chat_streaming import (
     stream_with_stable_error,
 )
-from sqlalchemy.orm import Session
 
 
 @pytest.mark.asyncio
@@ -30,7 +29,6 @@ async def test_stream_failure_is_redacted_and_recorded(
             delimiter="END",
             event_name="chat_error",
             user_id=7,
-            db=MagicMock(spec=Session),
             properties={"conversation_id": "conversation"},
         )
     ]
