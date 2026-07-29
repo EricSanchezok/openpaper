@@ -29,6 +29,12 @@ At minimum, point `DATABASE_URL` at a `sanchezcloud` database with migrated
 the features you want to exercise. See [`../DEVELOPMENT.md`](../DEVELOPMENT.md)
 for the shared-local-account and AWS RDS distinction.
 
+The backend exposes one versioned capability surface and shares its application
+use cases with Agent adapters and the future MCP server. Architecture rules,
+resource semantics, transaction ownership, and the replaceable search boundary
+are documented in
+[`../docs/architecture/backend-capabilities.md`](../docs/architecture/backend-capabilities.md).
+
 AnySearch and Scholight are connected as remote Streamable HTTP MCP servers.
 Their tool schemas are discovered at runtime, so citation recovery uses the
 providers' native `search`, `extract`, and `search_papers` tools rather than
@@ -55,6 +61,10 @@ FastAPI automatically generates API documentation. Once the application is runni
 
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
+
+Public application routes are under `/api/v1`; provider webhooks are under
+`/webhooks/v1`. `/internal/v1` is reserved for authenticated worker traffic and
+is intentionally not routed by the production edge proxy.
 
 # Migrations
 

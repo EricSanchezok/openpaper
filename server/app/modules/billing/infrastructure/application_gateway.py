@@ -205,15 +205,20 @@ class StripePaymentProvider(PaymentProvider):
         price_id: str,
         payment_method_id: str | None,
     ) -> ProviderSubscription:
-        params: dict[str, object] = {
-            "customer": customer_id,
-            "items": [{"price": price_id}],
-            "metadata": {"user_id": str(user_id)},
-        }
-        if payment_method_id:
-            params["default_payment_method"] = payment_method_id
         try:
-            value = stripe.Subscription.create(**params)  # type: ignore[arg-type]
+            if payment_method_id:
+                value = stripe.Subscription.create(
+                    customer=customer_id,
+                    items=[{"price": price_id}],
+                    metadata={"user_id": str(user_id)},
+                    default_payment_method=payment_method_id,
+                )
+            else:
+                value = stripe.Subscription.create(
+                    customer=customer_id,
+                    items=[{"price": price_id}],
+                    metadata={"user_id": str(user_id)},
+                )
         except stripe.StripeError as exc:
             message = str(exc).lower()
             if any(
