@@ -19,6 +19,7 @@ FAILURE_HTTP_STATUS = {
     FailureKind.PERMISSION_DENIED: 403,
     FailureKind.NOT_FOUND: 404,
     FailureKind.CONFLICT: 409,
+    FailureKind.PAYLOAD_TOO_LARGE: 413,
     FailureKind.UNPROCESSABLE: 422,
     FailureKind.RATE_LIMITED: 429,
     FailureKind.DEPENDENCY_FAILURE: 502,

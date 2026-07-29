@@ -22,7 +22,7 @@ from app.modules.jobs.infrastructure.repository import job_repository
 from app.shared.application import Actor
 from app.helpers.celery_config import get_webhook_base_url
 from app.helpers.ai_limits import release_concurrency_by_id
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -212,5 +212,5 @@ async def dispatch_reserved_document(
         raise AppError(
             code="jobs_submission_failed",
             message="The document processing job could not be started",
-            status_code=503,
+            kind=FailureKind.UNAVAILABLE,
         ) from exc

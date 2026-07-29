@@ -23,7 +23,7 @@ from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.modules.papers.application.discovery import AccessibleDiscoveryDocument
 from app.modules.papers.infrastructure.repository import document_repository
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 
@@ -104,7 +104,7 @@ class AiExternalDiscoveryRateLimiter:
             raise AppError(
                 code=exc.code,
                 message="External search rate limit exceeded",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             ) from None
 
 

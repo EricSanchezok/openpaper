@@ -27,7 +27,7 @@ from app.modules.integrations.zotero.domain import (
     require_zotero_connected,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError, JsonValue
+from app.shared.domain import AppError, JsonValue, FailureKind
 from app.shared.domain.enums import JobOperation, JobStatus
 from pydantic import TypeAdapter
 
@@ -98,7 +98,7 @@ class Zotero:
             raise AppError(
                 code="zotero_connection_failed",
                 message="Zotero authorization is temporarily unavailable",
-                status_code=502,
+                kind=FailureKind.DEPENDENCY_FAILURE,
             )
         return ZoteroConnectResponse(auth_url=auth_url)
 
@@ -162,7 +162,7 @@ class Zotero:
             raise AppError(
                 code="zotero_import_invalid",
                 message="The selected Zotero items could not be imported",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             ) from exc
 
         if result.imported_count > 0:

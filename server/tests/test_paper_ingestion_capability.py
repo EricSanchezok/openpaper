@@ -7,7 +7,7 @@ from app.modules.papers.application.ingestion import (
     IngestPaper,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 def _actor() -> Actor:
@@ -93,7 +93,7 @@ async def test_concurrency_failure_marks_reserved_job_failed() -> None:
         side_effect=AppError(
             code="background_concurrency_limit",
             message="Too many jobs",
-            status_code=429,
+            kind=FailureKind.RATE_LIMITED,
         )
     )
     gateway = MagicMock()

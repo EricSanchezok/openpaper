@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import json
 
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 class SignedCursorCodec:
@@ -62,6 +62,6 @@ class SignedCursorCodec:
             raise AppError(
                 code=self._error_code,
                 message="The cursor is invalid or expired",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         return int(data["offset"])

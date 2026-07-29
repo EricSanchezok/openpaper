@@ -5,7 +5,7 @@ from uuid import UUID
 from app.helpers.postgres import sanitize_for_postgres
 from app.database.models import Conversation, Message
 from app.shared.domain import JsonValue
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -49,7 +49,7 @@ class MessageRepository:
             raise AppError(
                 code="conversation_not_found",
                 message="Conversation not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
 
         max_sequence = db.scalar(

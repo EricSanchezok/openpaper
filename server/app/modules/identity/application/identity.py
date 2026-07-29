@@ -15,7 +15,7 @@ from app.modules.identity.domain import (
     require_product_access,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +91,7 @@ class Identity:
             raise AppError(
                 code="user_not_found",
                 message="User not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         action = "blocked" if request.blocked else "unblocked"
         return SetUserBlockedResponse(

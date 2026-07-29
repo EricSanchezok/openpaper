@@ -10,7 +10,7 @@ from app.modules.jobs.application.contracts import (
     JobClaimResponse,
     JobFailureCallback,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.shared.domain.enums import JobOperation
 from pydantic import BaseModel, ValidationError
 
@@ -66,7 +66,7 @@ class JobCallbacks:
             raise AppError(
                 code="job_operation_unsupported",
                 message="Job operation has no callback handler",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         try:
             callback = registration.contract.model_validate(payload)
@@ -74,7 +74,7 @@ class JobCallbacks:
             raise AppError(
                 code="job_callback_invalid",
                 message="Job callback payload is invalid for its operation",
-                status_code=422,
+                kind=FailureKind.UNPROCESSABLE,
             ) from exc
         return await registration.handler.complete(job_id=job_id, callback=callback)
 
@@ -83,7 +83,7 @@ class JobCallbacks:
             raise AppError(
                 code="job_callback_mismatch",
                 message="Job callback ID does not match",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         return JobClaimResponse(
             claimed=self._lifecycle.fail(job_id=job_id, error_code=callback.error_code)
@@ -94,6 +94,6 @@ class JobCallbacks:
             raise AppError(
                 code="zotero_sync_interval_invalid",
                 message="Zotero sync interval is invalid",
-                status_code=422,
+                kind=FailureKind.UNPROCESSABLE,
             )
         return self._schedules.schedule_zotero_sync(threshold_seconds=threshold_seconds)

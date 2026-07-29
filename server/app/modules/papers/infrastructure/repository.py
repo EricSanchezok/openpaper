@@ -19,7 +19,7 @@ from app.database.models import (
     ProjectPaper,
     UploadReservation,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.helpers.paper_search import normalize_doi
 from app.modules.papers.infrastructure.access import (
     get_document_access,
@@ -202,7 +202,7 @@ class DocumentRepository:
             raise AppError(
                 code="library_paper_not_found",
                 message="Library paper not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         return entry
 
@@ -232,7 +232,7 @@ class DocumentRepository:
             raise AppError(
                 code="library_paper_not_found",
                 message="Library paper not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         return entry
 
@@ -324,7 +324,7 @@ class DocumentRepository:
             raise AppError(
                 code="public_paper_not_found",
                 message="Public paper not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         entry = db.scalar(
@@ -342,7 +342,7 @@ class DocumentRepository:
             raise AppError(
                 code="public_paper_not_found",
                 message="Public paper not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         return PublicLibraryPaper(
             entry=entry,

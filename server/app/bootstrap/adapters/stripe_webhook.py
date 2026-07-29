@@ -34,7 +34,7 @@ from app.helpers.email import (
 )
 from app.modules.billing.infrastructure.stripe_client import construct_stripe_event
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ async def process_stripe_webhook(
         raise AppError(
             code="stripe_webhook_not_configured",
             message="Stripe webhook is not configured",
-            status_code=500,
+            kind=FailureKind.INTERNAL,
         )
 
     event_id: str | None = None
@@ -82,7 +82,7 @@ async def process_stripe_webhook(
             raise AppError(
                 code="invalid_stripe_signature",
                 message="Invalid Stripe webhook signature",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
 
         # Handle the event
@@ -100,7 +100,7 @@ async def process_stripe_webhook(
             raise AppError(
                 code="stripe_webhook_in_progress",
                 message="Stripe webhook processing is already in progress",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
 
         claim = begin_webhook_attempt(
@@ -676,7 +676,7 @@ async def process_stripe_webhook(
         raise AppError(
             code="stripe_webhook_failed",
             message="Stripe webhook processing failed",
-            status_code=500,
+            kind=FailureKind.INTERNAL,
         ) from e
     finally:
         if event_lock is not None:

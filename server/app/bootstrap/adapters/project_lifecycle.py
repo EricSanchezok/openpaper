@@ -16,7 +16,7 @@ from app.database.models import (
     ResearchItem,
     ResearchScopeType,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -51,7 +51,7 @@ def prepare_project_deletion(
         raise AppError(
             code="project_has_active_jobs",
             message="Wait for active Project jobs to finish before deleting it",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     candidate_document_ids = tuple(

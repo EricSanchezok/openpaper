@@ -17,7 +17,7 @@ from app.modules.conversations.application.contracts.conversations import (
     MessageResponse,
 )
 from app.shared.application import Actor, SignedCursorCodec
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.shared.domain.enums import ConversationScopeType
 
 
@@ -214,7 +214,7 @@ class Conversations:
             raise AppError(
                 code="conversation_title_failed",
                 message="Conversation title could not be generated",
-                status_code=422,
+                kind=FailureKind.UNPROCESSABLE,
             )
         return ConversationAutoTitleResponse(title=title)
 

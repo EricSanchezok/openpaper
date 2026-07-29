@@ -14,7 +14,7 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectInvitation,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.modules.projects.infrastructure.access import (
     ProjectAccess,
     collaborator_permissions,
@@ -147,7 +147,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_not_found",
                 message="Project not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         plan = prepare_project_deletion(db, project=project)
         db.delete(project)
@@ -197,7 +197,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_collaborator_not_manageable",
                 message="This Project collaborator cannot be modified",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         target = db.scalar(
             select(ProjectCollaborator).where(
@@ -209,7 +209,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_collaborator_not_found",
                 message="Project collaborator not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
 
         requested_permissions = _permission_set(requested)
@@ -219,7 +219,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_collaborator_not_manageable",
                 message="You cannot modify a collaborator with permissions you do not have",
-                status_code=403,
+                kind=FailureKind.PERMISSION_DENIED,
             )
 
         target.can_edit_project = requested.edit_project
@@ -251,7 +251,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_collaborator_not_manageable",
                 message="This Project collaborator cannot be removed",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         target = db.scalar(
             select(ProjectCollaborator).where(
@@ -263,7 +263,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_collaborator_not_found",
                 message="Project collaborator not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         if not actor.is_owner and not actor.permissions.contains(
             collaborator_permissions(target)
@@ -271,7 +271,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_collaborator_not_manageable",
                 message="You cannot remove a collaborator with permissions you do not have",
-                status_code=403,
+                kind=FailureKind.PERMISSION_DENIED,
             )
         db.delete(target)
         db.flush()
@@ -308,7 +308,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_not_found",
                 message="Project not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         new_owner_membership = db.scalar(
             select(ProjectCollaborator).where(
@@ -320,7 +320,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_new_owner_not_collaborator",
                 message="The new owner must already be a collaborator",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
 
         reassign_project_quota_owner(
@@ -363,7 +363,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_permission_escalation",
                 message="You cannot grant a permission you do not have",
-                status_code=403,
+                kind=FailureKind.PERMISSION_DENIED,
             )
 
         normalized_email = _normalized_email(email)
@@ -375,7 +375,7 @@ class ProjectRepository:
                 raise AppError(
                     code="project_collaborator_exists",
                     message="This user already belongs to the Project",
-                    status_code=409,
+                    kind=FailureKind.CONFLICT,
                 )
             existing_member = db.scalar(
                 select(ProjectCollaborator).where(
@@ -387,7 +387,7 @@ class ProjectRepository:
                 raise AppError(
                     code="project_collaborator_exists",
                     message="This user already belongs to the Project",
-                    status_code=409,
+                    kind=FailureKind.CONFLICT,
                 )
 
         now = datetime.now(timezone.utc)
@@ -468,20 +468,20 @@ class ProjectRepository:
             raise AppError(
                 code="project_invitation_invalid",
                 message="Invitation is invalid or expired",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         project = db.get(Project, invitation.project_id)
         if project is None:
             raise AppError(
                 code="project_not_found",
                 message="Project not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         if project.owner_id == user_id:
             raise AppError(
                 code="project_collaborator_exists",
                 message="This user already belongs to the Project",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         inviter_access = get_project_access(
             db,
@@ -497,7 +497,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_invitation_authority_revoked",
                 message="The inviter no longer has permission to grant this access",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
 
         existing = db.scalar(
@@ -563,7 +563,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_invitation_not_found",
                 message="Project invitation not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         require_grant_subset(actor.facts, _invitation_permissions(invitation))
         invitation.revoked_at = datetime.now(timezone.utc)
@@ -597,7 +597,7 @@ class ProjectRepository:
             raise AppError(
                 code="project_invitation_not_found",
                 message="Project invitation not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         require_grant_subset(actor.facts, _invitation_permissions(invitation))
         invitation.revoked_at = datetime.now(timezone.utc)

@@ -284,7 +284,7 @@ def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -
             AppError(
                 code="conversation_not_found",
                 message="Conversation not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         ),
     )

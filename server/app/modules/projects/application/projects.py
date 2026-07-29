@@ -28,7 +28,7 @@ from app.modules.projects.application.contracts import (
     ProjectUpdateRequest,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,7 +396,7 @@ class Projects:
             raise AppError(
                 code="project_document_not_found",
                 message="Document not found in this Project",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         self._events.record(
             actor=actor,
@@ -471,7 +471,7 @@ class Projects:
             raise AppError(
                 code="project_document_not_found",
                 message="Document not found in this Project",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         try:
             return ProjectPaperFileUrlResponse(
@@ -481,7 +481,7 @@ class Projects:
             raise AppError(
                 code="document_file_url_unavailable",
                 message="The document file is temporarily unavailable",
-                status_code=503,
+                kind=FailureKind.UNAVAILABLE,
             ) from exc
 
     def projects_for_document(

@@ -7,7 +7,7 @@ import hmac
 import os
 import time
 from app.bootstrap.container import build_job_callback_protection
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from fastapi import Request
 
 
@@ -19,7 +19,7 @@ async def verify_jobs_webhook(
         raise AppError(
             code="jobs_webhook_not_configured",
             message="Jobs callback authentication is unavailable",
-            status_code=503,
+            kind=FailureKind.UNAVAILABLE,
         )
 
     timestamp = request.headers.get("X-Jobs-Timestamp", "")
@@ -31,14 +31,14 @@ async def verify_jobs_webhook(
         raise AppError(
             code="invalid_jobs_signature",
             message="Jobs callback signature is invalid",
-            status_code=401,
+            kind=FailureKind.UNAUTHENTICATED,
         ) from exc
 
     if abs(int(time.time()) - timestamp_value) > 300 or not nonce or len(nonce) > 64:
         raise AppError(
             code="expired_jobs_signature",
             message="Jobs callback signature has expired",
-            status_code=401,
+            kind=FailureKind.UNAUTHENTICATED,
         )
 
     body = await request.body()
@@ -58,12 +58,12 @@ async def verify_jobs_webhook(
         raise AppError(
             code="invalid_jobs_signature",
             message="Jobs callback signature is invalid",
-            status_code=401,
+            kind=FailureKind.UNAUTHENTICATED,
         )
 
     if not build_job_callback_protection().reserve_nonce(nonce):
         raise AppError(
             code="jobs_webhook_replayed",
             message="Jobs callback nonce has already been used",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )

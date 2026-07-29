@@ -18,7 +18,7 @@ from app.database.models import (
     Project,
     ProjectPaper,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.modules.billing.domain import (
     KB_SIZE_KEY,
     PAPER_UPLOAD_KEY,
@@ -136,7 +136,7 @@ def reassign_project_quota_owner(
         raise AppError(
             code="project_transfer_quota_exceeded",
             message="The new owner has reached their Project limit",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     project_document_count = int(
@@ -151,7 +151,7 @@ def reassign_project_quota_owner(
         raise AppError(
             code="project_transfer_paper_quota_exceeded",
             message="This Project exceeds the new owner's per-Project paper limit",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     project_active_count, project_active_size_kb = tuple(
@@ -197,7 +197,7 @@ def reassign_project_quota_owner(
         raise AppError(
             code="project_transfer_paper_quota_exceeded",
             message="The Project would exceed the new owner's paper limit",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     completed_size_kb = resource_usage_repository.completed_storage_kb(
@@ -216,7 +216,7 @@ def reassign_project_quota_owner(
         raise AppError(
             code="project_transfer_storage_quota_exceeded",
             message="The Project would exceed the new owner's storage limit",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     db.execute(
@@ -248,7 +248,7 @@ def reserve_upload(
         raise AppError(
             code="empty_upload",
             message="The uploaded file is empty",
-            status_code=400,
+            kind=FailureKind.INVALID_ARGUMENT,
         )
 
     if project_id is None:
@@ -268,7 +268,7 @@ def reserve_upload(
             raise AppError(
                 code="project_not_found",
                 message="Project not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         owner_id = project.owner_id
 
@@ -294,7 +294,7 @@ def reserve_upload(
                 raise AppError(
                     code="idempotency_key_reused",
                     message="The idempotency key was already used for another request",
-                    status_code=409,
+                    kind=FailureKind.CONFLICT,
                 )
             return existing_reservation
 
@@ -329,7 +329,7 @@ def reserve_upload(
                 else "document_already_in_library"
             ),
             message="This document is already in the selected collection",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     reap_stale_uploads(db, quota_owner_id=owner_id)
@@ -342,7 +342,7 @@ def reserve_upload(
         raise AppError(
             code="document_upload_in_progress",
             message="This document is already being uploaded to this collection",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     owner = get_quota_user(db, user_id=owner_id)
     limits = get_plan_limits(get_user_subscription_plan(db, owner))
@@ -368,7 +368,7 @@ def reserve_upload(
                 else "paper_quota_exceeded"
             ),
             message="The account's paper limit has been reached",
-            status_code=403,
+            kind=FailureKind.PERMISSION_DENIED,
         )
 
     completed_size_kb = resource_usage_repository.completed_storage_kb(
@@ -382,7 +382,7 @@ def reserve_upload(
                 else "storage_quota_exceeded"
             ),
             message="The account's storage limit would be exceeded",
-            status_code=403,
+            kind=FailureKind.PERMISSION_DENIED,
         )
 
     if project is not None:
@@ -405,7 +405,7 @@ def reserve_upload(
             raise AppError(
                 code="project_paper_quota_exceeded",
                 message="The Project's paper limit has been reached",
-                status_code=403,
+                kind=FailureKind.PERMISSION_DENIED,
             )
 
     job_id = uuid4()

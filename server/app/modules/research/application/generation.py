@@ -24,7 +24,7 @@ from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError, JsonValue
+from app.shared.domain import AppError, JsonValue, FailureKind
 from app.shared.domain.enums import JobOperation
 from pydantic import TypeAdapter
 
@@ -105,7 +105,7 @@ def _audio_source(document: AccessiblePaperContent) -> AudioSourceDocumentPayloa
         raise AppError(
             code="document_not_ready",
             message="The document has not finished indexing",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     return AudioSourceDocumentPayload(
         id=document.document_id,
@@ -159,7 +159,7 @@ class ResearchGeneration:
             raise AppError(
                 code="project_has_no_papers",
                 message="Add at least one paper before generating audio",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         return await self._audio(
             actor=actor,
@@ -249,7 +249,7 @@ class ResearchGeneration:
             raise AppError(
                 code="project_has_no_papers",
                 message="Add at least one paper before generating a data table",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         operation_id = uuid4()
         operation_key = (

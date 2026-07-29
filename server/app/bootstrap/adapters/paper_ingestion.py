@@ -25,7 +25,7 @@ from app.bootstrap.adapters.upload_repository import (
 )
 from app.bootstrap.adapters.upload_reservations import reserve_upload
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 
@@ -36,7 +36,7 @@ class DefaultPdfInputValidator:
             raise AppError(
                 code="invalid_pdf",
                 message=error or "The uploaded file is not a valid PDF",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
 
 
@@ -50,7 +50,7 @@ class SafePdfUrlSource:
             raise AppError(
                 code="invalid_pdf_url",
                 message=error or "The URL did not return a valid PDF",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
         filename = (
             PurePosixPath(unquote(urlparse(url).path)).name or "downloaded-paper.pdf"
@@ -75,7 +75,7 @@ class DefaultPaperIngestionLimits:
             raise AppError(
                 code=exc.code,
                 message="Upload rate limit exceeded",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             ) from None
 
     async def acquire(self, *, actor: Actor, job_id: UUID) -> None:
@@ -89,7 +89,7 @@ class DefaultPaperIngestionLimits:
             raise AppError(
                 code=exc.code,
                 message="Too many background jobs are already running",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             ) from None
 
 

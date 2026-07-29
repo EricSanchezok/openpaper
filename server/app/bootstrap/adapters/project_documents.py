@@ -13,7 +13,7 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectPaper,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.billing.infrastructure.quotas import (
     require_library_document_capacity,
@@ -52,7 +52,7 @@ class ProjectDocumentRepository:
             raise AppError(
                 code="project_not_found",
                 message="Project not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
 
         unique_ids = list(dict.fromkeys(document_ids))
@@ -85,7 +85,7 @@ class ProjectDocumentRepository:
             raise AppError(
                 code="library_document_not_found",
                 message="Every new document must exist in your Library",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
 
         require_project_document_capacity(
@@ -147,7 +147,7 @@ class ProjectDocumentRepository:
             raise AppError(
                 code="upload_reservation_invalid",
                 message="The Project upload reservation is no longer valid",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         reference = document_repository.attach_project(
             db,
@@ -317,7 +317,7 @@ class ProjectDocumentRepository:
             raise AppError(
                 code="project_document_not_found",
                 message="Document not found in this Project",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
 
         db.delete(project_paper)

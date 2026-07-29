@@ -13,7 +13,7 @@ from app.modules.papers.application.contracts.discovery import (
     OpenAlexWork,
 )
 from app.shared.application import Actor, SignedCursorCodec
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +184,7 @@ class DiscoverPapers:
             raise AppError(
                 code="citation_graph_source_required",
                 message="Either doi or document_id must be provided",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
 
         document: AccessibleDiscoveryDocument | None = None
@@ -197,7 +197,7 @@ class DiscoverPapers:
                 raise AppError(
                     code="paper_not_found",
                     message="Paper not found",
-                    status_code=404,
+                    kind=FailureKind.NOT_FOUND,
                 )
             if doi is None:
                 doi = document.doi
@@ -208,14 +208,14 @@ class DiscoverPapers:
             raise AppError(
                 code="paper_doi_unavailable",
                 message="A DOI could not be determined for this paper",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
         work = await self._catalog.find_by_doi(doi=doi)
         if work is None:
             raise AppError(
                 code="openalex_paper_not_found",
                 message="OpenAlex could not find a paper for this DOI",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         if document is not None and document.doi != doi:
             self._documents.set_doi(

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.database.models import Conversation, ConversationScopeType
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.bootstrap.adapters.conversation_access import conversation_policy
 from app.modules.papers.infrastructure.access import get_document_access
 from app.modules.projects.infrastructure.access import get_project_access
@@ -28,7 +28,7 @@ def _not_found() -> AppError:
     return AppError(
         code="conversation_not_found",
         message="Conversation not found",
-        status_code=404,
+        kind=FailureKind.NOT_FOUND,
     )
 
 
@@ -63,7 +63,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime | None, datetime, uuid.UUID]:
         raise AppError(
             code="conversation_cursor_invalid",
             message="Conversation cursor is invalid",
-            status_code=422,
+            kind=FailureKind.UNPROCESSABLE,
         ) from exc
 
 
@@ -147,7 +147,7 @@ class ConversationRepository:
                 raise AppError(
                     code="project_not_found",
                     message="Project not found",
-                    status_code=404,
+                    kind=FailureKind.NOT_FOUND,
                 )
             project_id = request.scope_id
             scope_label = access.project.title
@@ -162,7 +162,7 @@ class ConversationRepository:
                 raise AppError(
                     code="paper_not_found",
                     message="Paper not found",
-                    status_code=404,
+                    kind=FailureKind.NOT_FOUND,
                 )
             document_id = request.scope_id
             scope_label = document_access.document.title
@@ -294,7 +294,7 @@ class ConversationRepository:
             raise AppError(
                 code="paper_conversation_scope_fixed",
                 message="Paper conversations cannot change scope",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
 
         if request.scope_type == ConversationScopeType.PROJECT.value:
@@ -308,7 +308,7 @@ class ConversationRepository:
                 raise AppError(
                     code="project_not_found",
                     message="Project not found",
-                    status_code=404,
+                    kind=FailureKind.NOT_FOUND,
                 )
             conversation.scope_type = ConversationScopeType.PROJECT.value
             conversation.project_id = request.scope_id

@@ -14,7 +14,7 @@ from app.modules.papers.application.contracts.uploads import (
     UploadFromUrlRequest,
 )
 from app.shared.application import Actor, ApplicationExecutor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 
@@ -81,13 +81,13 @@ async def upload_pdf(
         raise AppError(
             code="upload_too_large",
             message=f"File too large (max {MAX_PDF_SIZE_MB}MB)",
-            status_code=413,
+            kind=FailureKind.PAYLOAD_TOO_LARGE,
         )
     if file.content_type not in {"application/pdf", "application/octet-stream"}:
         raise AppError(
             code="invalid_pdf_content_type",
             message="Uploaded file must use a PDF content type",
-            status_code=400,
+            kind=FailureKind.INVALID_ARGUMENT,
         )
 
     try:
@@ -99,7 +99,7 @@ async def upload_pdf(
                 raise AppError(
                     code="upload_too_large",
                     message=f"File too large (max {MAX_PDF_SIZE_MB}MB)",
-                    status_code=413,
+                    kind=FailureKind.PAYLOAD_TOO_LARGE,
                 )
             chunks.append(chunk)
         content = b"".join(chunks)
@@ -108,7 +108,7 @@ async def upload_pdf(
         raise AppError(
             code="upload_read_failed",
             message="The uploaded file could not be read",
-            status_code=400,
+            kind=FailureKind.INVALID_ARGUMENT,
         ) from None
 
     return await executor.command_async(

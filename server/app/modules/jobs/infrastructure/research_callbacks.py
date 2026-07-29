@@ -12,7 +12,7 @@ from app.database.models import (
     ResearchItemKind,
     ResearchScopeType,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.modules.jobs.infrastructure.repository import job_repository
@@ -60,13 +60,13 @@ def _validate_callback(
         raise AppError(
             code="job_operation_mismatch",
             message="Job operation does not match callback",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     if task_id != job_id:
         raise AppError(
             code="job_callback_mismatch",
             message="Job callback ID does not match",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
 
@@ -97,7 +97,7 @@ async def complete_audio_job(
             raise AppError(
                 code="job_callback_mismatch",
                 message="Research output ID does not match",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         _, changed = job_repository.complete(
             db,
@@ -175,7 +175,7 @@ async def complete_data_table_job(
             raise AppError(
                 code="job_callback_mismatch",
                 message="Research output ID does not match",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         _, changed = job_repository.complete(
             db,

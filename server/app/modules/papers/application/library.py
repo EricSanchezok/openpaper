@@ -18,7 +18,7 @@ from app.modules.papers.application.contracts.documents import (
 )
 from app.modules.papers.application.downloads import PaperDownloadSigner
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +118,7 @@ class PaperLibrary:
             raise AppError(
                 code="document_file_url_unavailable",
                 message="The document file is temporarily unavailable",
-                status_code=503,
+                kind=FailureKind.UNAVAILABLE,
             ) from exc
         return PublicPaperResponse(
             document=shared.document,

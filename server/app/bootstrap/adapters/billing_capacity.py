@@ -9,7 +9,7 @@ from app.modules.billing.infrastructure.quotas import (
 )
 from app.modules.papers.infrastructure.models import Document
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 
@@ -38,7 +38,7 @@ class BillingProjectCapacity:
             raise AppError(
                 code="project_quota_exceeded",
                 message="Project creation limit reached",
-                status_code=403,
+                kind=FailureKind.PERMISSION_DENIED,
             )
 
 
@@ -52,5 +52,5 @@ class BillingZoteroImportCapacity:
             raise AppError(
                 code="paper_quota_exceeded",
                 message=reason or "Upload limit reached",
-                status_code=403,
+                kind=FailureKind.PERMISSION_DENIED,
             )

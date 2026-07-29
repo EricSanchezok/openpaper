@@ -14,7 +14,7 @@ from app.modules.papers.domain import (
     DocumentAccessDecision,
     classify_document_access,
 )
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
@@ -119,6 +119,6 @@ def require_document_access(
         raise AppError(
             code="paper_not_found",
             message="Paper not found",
-            status_code=404,
+            kind=FailureKind.NOT_FOUND,
         )
     return access

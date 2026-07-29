@@ -28,7 +28,7 @@ from app.modules.billing.application.ports import (
     UsageReader,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class Billing:
             raise AppError(
                 code="subscription_already_active",
                 message="Use the customer portal to manage the active subscription",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
 
         if (
@@ -117,7 +117,7 @@ class Billing:
             raise AppError(
                 code="stripe_session_unavailable",
                 message="The checkout session could not be retrieved",
-                status_code=502,
+                kind=FailureKind.DEPENDENCY_FAILURE,
             ) from exc
 
         backend_found = False
@@ -213,7 +213,7 @@ class Billing:
             raise AppError(
                 code="stripe_customer_not_found",
                 message="No billing account is available for this user",
-                status_code=400,
+                kind=FailureKind.INVALID_ARGUMENT,
             )
         try:
             url = self._payments.create_portal_session(subscription.stripe_customer_id)
@@ -322,14 +322,14 @@ class Billing:
                     message=(
                         "The billing interval cannot be changed for this subscription"
                     ),
-                    status_code=400,
+                    kind=FailureKind.INVALID_ARGUMENT,
                 )
             current_price_id = provider_subscription.price_id
             if not current_price_id:
                 raise AppError(
                     code="subscription_price_unavailable",
                     message="The current subscription price is unavailable",
-                    status_code=409,
+                    kind=FailureKind.CONFLICT,
                 )
             if current_price_id == new_price_id:
                 return IntervalChangeResponse(
@@ -352,7 +352,7 @@ class Billing:
             raise AppError(
                 code="subscription_interval_failed",
                 message=("The subscription interval change could not be scheduled"),
-                status_code=502,
+                kind=FailureKind.DEPENDENCY_FAILURE,
             ) from exc
 
         self._subscriptions.save(actor.id, stripe_schedule_id=schedule.schedule_id)
@@ -404,7 +404,7 @@ class Billing:
             raise AppError(
                 code="subscription_schedule_cancel_failed",
                 message=("The scheduled subscription change could not be canceled"),
-                status_code=502,
+                kind=FailureKind.DEPENDENCY_FAILURE,
             ) from exc
         self._subscriptions.save(actor.id, stripe_schedule_id=None)
         self._events.record(
@@ -426,7 +426,7 @@ class Billing:
             raise AppError(
                 code="stripe_price_not_configured",
                 message="Subscription billing is not configured",
-                status_code=503,
+                kind=FailureKind.UNAVAILABLE,
             )
         return price_id
 
@@ -488,4 +488,6 @@ class Billing:
             "stripe_checkout_failed": ("The checkout session could not be created"),
             "stripe_portal_failed": "The billing portal could not be opened",
         }
-        raise AppError(code=code, message=messages[code], status_code=502) from exc
+        raise AppError(
+            code=code, message=messages[code], kind=FailureKind.DEPENDENCY_FAILURE
+        ) from exc

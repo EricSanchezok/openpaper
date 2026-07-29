@@ -11,7 +11,7 @@ from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class PaperContentCapabilities:
             raise AppError(
                 code="paper_not_found",
                 message="Paper not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         paper = self._content.get(
             actor=actor,
@@ -68,7 +68,7 @@ class PaperContentCapabilities:
             raise AppError(
                 code="paper_not_found",
                 message="Paper not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         return paper
 

@@ -15,7 +15,7 @@ from app.bootstrap.adapters.project_documents import (
 from app.database.models import ConversationScopeType
 from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
@@ -310,7 +310,7 @@ async def chat_message_multipaper(
         raise AppError(
             code="token_quota_exceeded",
             message="Your weekly Token Credits are exhausted",
-            status_code=429,
+            kind=FailureKind.RATE_LIMITED,
         )
     conversation = conversation_repository.require_owned(
         db,
@@ -328,7 +328,7 @@ async def chat_message_multipaper(
         raise AppError(
             code="conversation_scope_mismatch",
             message="This conversation cannot be used for a library chat",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     project_id = conversation.project_id
     try:
@@ -345,7 +345,7 @@ async def chat_message_multipaper(
         raise AppError(
             code=exc.code,
             message="AI request limit exceeded",
-            status_code=429,
+            kind=FailureKind.RATE_LIMITED,
         ) from None
 
     async def run_response_generator() -> AsyncGenerator[str, None]:
@@ -618,7 +618,7 @@ async def chat_message_stream(
         raise AppError(
             code="token_quota_exceeded",
             message="Your weekly Token Credits are exhausted",
-            status_code=429,
+            kind=FailureKind.RATE_LIMITED,
         )
     conversation = conversation_repository.require_owned(
         db,
@@ -636,7 +636,7 @@ async def chat_message_stream(
         raise AppError(
             code="conversation_scope_mismatch",
             message="This conversation cannot be used for a paper chat",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     document_id = str(conversation.document_id)
     try:
@@ -653,7 +653,7 @@ async def chat_message_stream(
         raise AppError(
             code=exc.code,
             message="AI request limit exceeded",
-            status_code=429,
+            kind=FailureKind.RATE_LIMITED,
         ) from None
 
     async def run_response_generator() -> AsyncGenerator[str, None]:

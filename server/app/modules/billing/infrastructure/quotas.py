@@ -30,7 +30,7 @@ from app.database.models import (
     SubscriptionStatus,
 )
 from app.database.telemetry import track_event
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.shared.application import Actor
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -73,7 +73,7 @@ def get_quota_user(db: Session, *, user_id: int) -> Actor:
         raise AppError(
             code="quota_owner_not_found",
             message="The account that owns this resource no longer exists",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     profile = user.profile
     return Actor.from_identity_projection(

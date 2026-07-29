@@ -8,7 +8,7 @@ from uuid import UUID
 from app.modules.papers.application.content import PaperContentCapabilities
 from app.modules.papers.application.contracts.documents import DocumentFileUrlResponse
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 class PaperDownloadSigner(Protocol):
@@ -45,7 +45,7 @@ class GetPaperDownload:
             raise AppError(
                 code="document_file_url_unavailable",
                 message="The document file is temporarily unavailable",
-                status_code=503,
+                kind=FailureKind.UNAVAILABLE,
             ) from exc
         return DocumentFileUrlResponse(
             file_url=file_url,

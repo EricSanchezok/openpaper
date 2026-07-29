@@ -14,7 +14,7 @@ from app.database.models import (
     JobStatus,
 )
 from app.shared.domain import JsonValue
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.modules.jobs.domain import (
     DEFAULT_JOB_LEASE,
     can_complete_job,
@@ -161,7 +161,7 @@ class JobRepository:
             raise AppError(
                 code="job_not_found",
                 message="Job not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         return job
 
@@ -182,7 +182,7 @@ class JobRepository:
             raise AppError(
                 code="job_not_found",
                 message="Job not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         return job
 
@@ -286,7 +286,7 @@ class JobRepository:
             raise AppError(
                 code="job_not_found",
                 message="Job not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         if not can_complete_job(JobStatus(job.status)):
             return job, False
@@ -313,7 +313,7 @@ class JobRepository:
             raise AppError(
                 code="job_not_found",
                 message="Job not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         if not can_fail_job(JobStatus(job.status)):
             return job, False

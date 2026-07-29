@@ -17,7 +17,7 @@ from app.database.models import (
     ConversationScopeType,
 )
 from app.shared.domain import JsonValue
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.helpers.s3 import s3_service
 from app.modules.papers.infrastructure.access import require_document_access
 from app.bootstrap.adapters.research_access import (
@@ -75,7 +75,7 @@ class ResearchRepository:
             raise AppError(
                 code="research_item_not_found",
                 message="Research item not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         research_item_policy.require_visible(db, item=item, user_id=user_id)
         return item
@@ -309,7 +309,7 @@ class ResearchRepository:
             raise AppError(
                 code="highlight_thread_not_found",
                 message="Highlight thread not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         research_item_policy.require_visible(db, item=item, user_id=user_id)
         return item
@@ -389,14 +389,14 @@ class ResearchRepository:
             raise AppError(
                 code="highlight_thread_not_found",
                 message="Highlight thread not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         access = research_item_policy.evaluate(db, item=item, user_id=user_id)
         if not access.has_scope_access:
             raise AppError(
                 code="research_item_scope_access_lost",
                 message="This thread is read-only until scope access is restored",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         comment = AnnotationComment(
             thread_id=thread_id,
@@ -438,7 +438,7 @@ class ResearchRepository:
             raise AppError(
                 code="annotation_comment_not_found",
                 message="Annotation comment not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         item = db.get(ResearchItem, comment.thread_id)
         if item is None:
@@ -448,7 +448,7 @@ class ResearchRepository:
             raise AppError(
                 code="research_item_scope_access_lost",
                 message="This comment is read-only until scope access is restored",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         return comment
 
@@ -470,7 +470,7 @@ class ResearchRepository:
             raise AppError(
                 code="personal_research_cannot_be_shared",
                 message="Personal research cannot be shared without a target scope",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         item.is_shared = shared
         db.flush()
@@ -498,7 +498,7 @@ class ResearchRepository:
             raise AppError(
                 code="highlight_thread_not_found",
                 message="Highlight thread not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         shared = values.pop("shared", None)
         if shared is not None:
@@ -572,7 +572,7 @@ class ResearchRepository:
                 raise AppError(
                     code="highlight_thread_has_other_replies",
                     message="Confirm deletion of replies from other contributors",
-                    status_code=409,
+                    kind=FailureKind.CONFLICT,
                     details={"affected_reply_count": other_reply_count},
                 )
         object_key = (

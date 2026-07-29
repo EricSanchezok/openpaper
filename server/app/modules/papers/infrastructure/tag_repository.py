@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.database.models import LibraryPaper, LibraryPaperTag, PaperTag
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ def _normalized_name(name: str) -> str:
         raise AppError(
             code="library_tag_name_invalid",
             message="Tag name cannot be empty",
-            status_code=422,
+            kind=FailureKind.UNPROCESSABLE,
         )
     return normalized
 
@@ -60,7 +60,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_tag_already_exists",
                 message="A tag with this name already exists",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         tag_id = uuid.uuid4()
         created_id = db.scalar(
@@ -78,7 +78,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_tag_already_exists",
                 message="A tag with this name already exists",
-                status_code=409,
+                kind=FailureKind.CONFLICT,
             )
         tag = db.get(PaperTag, created_id)
         if tag is None:
@@ -144,7 +144,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_paper_not_found",
                 message="Paper not found in your Library",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         tag_exists = db.scalar(
             select(PaperTag.id).where(
@@ -156,7 +156,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_tag_not_found",
                 message="Library tag not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         created_id = db.scalar(
             insert(LibraryPaperTag)
@@ -193,7 +193,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_paper_not_found",
                 message="One or more papers were not found in your Library",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         owned_tag_ids = set(
             db.scalars(
@@ -207,7 +207,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_tag_not_found",
                 message="One or more Library tags were not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
 
         rows = [
@@ -260,7 +260,7 @@ class LibraryTagRepository:
             raise AppError(
                 code="library_tag_assignment_not_found",
                 message="Tag assignment not found",
-                status_code=404,
+                kind=FailureKind.NOT_FOUND,
             )
         db.delete(association)
         db.flush()

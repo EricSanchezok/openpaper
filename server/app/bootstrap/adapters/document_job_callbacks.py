@@ -31,7 +31,7 @@ from app.database.models import (
 )
 from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.ai_limits import release_concurrency_by_id
@@ -351,7 +351,7 @@ def complete_pdf_postprocess_job(
         raise AppError(
             code="job_callback_mismatch",
             message="Job callback does not match",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     if job.status == JobStatus.COMPLETED.value:
         return JobClaimResponse(claimed=False)
@@ -359,7 +359,7 @@ def complete_pdf_postprocess_job(
         raise AppError(
             code="job_scope_missing",
             message="Job scope is incomplete",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     paper = db.get(Document, job.document_id)
     user = user_repository.get(db, id=job.requested_by_id)
@@ -367,7 +367,7 @@ def complete_pdf_postprocess_job(
         raise AppError(
             code="job_scope_missing",
             message="Job scope is no longer available",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     with callback_transaction(
         db,
@@ -397,7 +397,7 @@ def complete_document_gc_job(
         raise AppError(
             code="job_callback_mismatch",
             message="Job callback does not match",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     if job.status == JobStatus.COMPLETED.value:
         return JobClaimResponse(claimed=False)
@@ -414,13 +414,13 @@ def complete_document_gc_job(
         raise AppError(
             code="document_gc_retry_required",
             message="Document cleanup will be retried",
-            status_code=503,
+            kind=FailureKind.UNAVAILABLE,
         )
     if not result.deleted and not result.cancelled:
         raise AppError(
             code="document_gc_not_due",
             message="Document cleanup is not due",
-            status_code=503,
+            kind=FailureKind.UNAVAILABLE,
         )
     job_repository.complete(
         db,
@@ -443,7 +443,7 @@ def complete_storage_delete_job(
         raise AppError(
             code="job_callback_mismatch",
             message="Job callback does not match",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     _, changed = job_repository.complete(
         db,
@@ -468,7 +468,7 @@ async def handle_paper_processing_webhook(
         raise AppError(
             code="job_not_found",
             message="Job not found",
-            status_code=404,
+            kind=FailureKind.NOT_FOUND,
         )
 
     job_id = str(job.id)
@@ -477,7 +477,7 @@ async def handle_paper_processing_webhook(
         raise AppError(
             code="job_operation_mismatch",
             message="Job operation does not match callback",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     if durable_job.status == JobStatus.COMPLETED:
@@ -491,7 +491,7 @@ async def handle_paper_processing_webhook(
         raise AppError(
             code="job_requester_missing",
             message="The job requester is unavailable",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
 
     job_user: Actor = Actor(
@@ -641,7 +641,7 @@ async def handle_paper_processing_webhook(
                 raise AppError(
                     code="paper_not_found",
                     message="Paper not found",
-                    status_code=404,
+                    kind=FailureKind.NOT_FOUND,
                 )
             if not can_complete_processing(
                 DocumentProcessingStatus(existing_paper.processing_status)
@@ -864,7 +864,7 @@ async def complete_zotero_postprocess_job(
         raise AppError(
             code="job_callback_mismatch",
             message="Job callback does not match",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     if job.status == JobStatus.COMPLETED.value:
         return JobClaimResponse(claimed=False)
@@ -872,7 +872,7 @@ async def complete_zotero_postprocess_job(
         raise AppError(
             code="job_scope_missing",
             message="Job scope is incomplete",
-            status_code=409,
+            kind=FailureKind.CONFLICT,
         )
     user = user_repository.get(db, id=job.requested_by_id)
     if user is None:

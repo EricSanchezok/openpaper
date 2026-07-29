@@ -13,7 +13,7 @@ from app.helpers.ai_limits import (
 )
 from app.llm.token_credits import has_token_credits
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 
@@ -26,7 +26,7 @@ class DefaultGenerationCapacity:
             raise AppError(
                 code="token_quota_exceeded",
                 message="Token Credits are exhausted",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             )
 
     async def enforce_rate(
@@ -46,7 +46,7 @@ class DefaultGenerationCapacity:
             raise AppError(
                 code=exc.code,
                 message="AI request limit exceeded",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             ) from None
 
     async def acquire_audio(self, *, actor: Actor, operation_id: UUID) -> None:
@@ -69,7 +69,7 @@ class DefaultGenerationCapacity:
             raise AppError(
                 code=exc.code,
                 message="AI request limit exceeded",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             ) from None
 
     async def acquire_background(
@@ -88,7 +88,7 @@ class DefaultGenerationCapacity:
             raise AppError(
                 code=exc.code,
                 message="AI request limit exceeded",
-                status_code=429,
+                kind=FailureKind.RATE_LIMITED,
             ) from None
 
     async def release_audio(self, *, actor: Actor, operation_id: UUID) -> None:

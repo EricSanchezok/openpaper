@@ -114,6 +114,30 @@ def test_domain_rules_are_pure_and_transport_neutral() -> None:
     assert violations == []
 
 
+def test_app_errors_never_embed_http_status_codes() -> None:
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            name = (
+                function.id
+                if isinstance(function, ast.Name)
+                else function.attr
+                if isinstance(function, ast.Attribute)
+                else None
+            )
+            if name == "AppError" and any(
+                keyword.arg == "status_code" for keyword in node.keywords
+            ):
+                violations.append(
+                    f"{path.relative_to(APP_ROOT)}:{node.lineno} passes status_code"
+                )
+    assert violations == []
+
+
 def test_repositories_never_commit_the_callers_transaction() -> None:
     violations: list[str] = []
     for path in (APP_ROOT / "modules").rglob("*repository.py"):

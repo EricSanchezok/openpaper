@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.helpers.advisory_locks import AdvisoryLock
 from app.helpers.ai_limits import release_concurrency_by_id
 from sqlalchemy.orm import Session
@@ -85,7 +85,7 @@ async def pdf_ingestion_callback(
         raise AppError(
             code="pdf_webhook_failed",
             message="The PDF processing result could not be applied",
-            status_code=500,
+            kind=FailureKind.INTERNAL,
         ) from exc
     finally:
         lock.release()
