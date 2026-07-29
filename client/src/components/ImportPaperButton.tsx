@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { fetchFromApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { fetchPublicPaper } from '@/lib/documents';
+import type { CollectPaperResponse } from '@/lib/schema';
 
 interface ShareOwnerInfo {
     owner_id?: string | number;
@@ -72,7 +73,7 @@ export function ImportPaperButton() {
         const toastId = toast.loading("Importing paper to your library...");
 
         try {
-            const response = await fetchFromApi(
+            const response = await fetchFromApi<CollectPaperResponse>(
                 `/shares/${encodeURIComponent(shareId)}/collect`,
                 {
                 method: 'POST',

@@ -63,7 +63,7 @@ export function useProject(projectId?: string): UseProjectResult {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetchFromApi(`/projects/${projectId}`);
+            const response = await fetchFromApi<Project>(`/projects/${projectId}`);
             setProject(response);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch project ${projectId}`));
@@ -122,7 +122,10 @@ export function useProjectPapers(
         setError(null);
         try {
             const query = loadUrls ? "?load_urls=true" : "";
-            const response = await fetchFromApi(`/projects/${projectId}/papers${query}`);
+            const response = await fetchFromApi<{
+                items: Array<Omit<PaperItem, "id"> & { document_id: string }>;
+                next_cursor: string | null;
+            }>(`/projects/${projectId}/papers${query}`);
             setPapers(
                 (response.items || []).map(
                     (paper: Omit<PaperItem, "id"> & { document_id: string }) => ({

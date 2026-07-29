@@ -40,6 +40,25 @@ export type ZoteroLibraryResponse = {
 	remaining_slots: number;
 };
 
+export type ZoteroImportStatusListResponse = {
+	items: ZoteroImportStatusItem[];
+	next_cursor: string | null;
+};
+
+export type ZoteroConnectResponse = {
+	auth_url: string;
+};
+
+export type ZoteroDisconnectResponse = {
+	success: boolean;
+	message: string | null;
+};
+
+export type ZoteroSyncResponse = {
+	new_annotations_count: number;
+	synced_papers_count: number;
+};
+
 export type SortBy =
 	| "dateModified"
 	| "datePublished"

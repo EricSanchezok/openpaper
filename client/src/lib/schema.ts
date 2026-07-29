@@ -209,6 +209,16 @@ export interface DurableJob {
     completed_at: string | null;
 }
 
+export interface JobListResponse {
+    items: DurableJob[];
+    next_cursor: string | null;
+}
+
+export interface ResearchItemListResponse {
+    items: ResearchItem[];
+    next_cursor: string | null;
+}
+
 export interface PaperHighlight {
     id?: string;
     raw_text: string;
@@ -270,6 +280,11 @@ export interface Conversation {
 
 export interface ConversationListResponse {
     items: Conversation[];
+    next_cursor: string | null;
+}
+
+export interface ConversationMessagesResponse {
+    items: ChatMessage[];
     next_cursor: string | null;
 }
 
@@ -345,6 +360,11 @@ export interface OpenAlexResponse {
     results: Array<OpenAlexPaper>
 }
 
+export interface DiscoveryPaperListResponse {
+    items: Array<OpenAlexPaper>;
+    next_cursor: string | null;
+}
+
 export interface OpenAlexMatchResponse {
     center: OpenAlexPaper;
     cites: OpenAlexResponse;
@@ -387,6 +407,39 @@ export interface UserSubscription {
         new_interval: "month" | "year";
         effective_date: string;
     } | null;
+}
+
+export interface PortalSessionResponse {
+    url: string;
+}
+
+export interface BillingActionResponse {
+    success: boolean;
+    error: string | null;
+    message: string | null;
+    redirect_to_checkout?: boolean;
+    subscription_id?: string | null;
+    action?: string | null;
+}
+
+export interface CheckoutSessionResponse {
+    client_secret: string | null;
+}
+
+export interface CheckoutSessionStatusResponse {
+    status: string;
+    customer_email: string | null;
+    backend_subscription_found: boolean;
+    backend_subscription_status: string | null;
+}
+
+export interface ChatCapabilitiesResponse {
+    reasoning_levels: Array<{
+        id: 'standard' | 'deep';
+        label: string;
+        description: string;
+    }>;
+    default_reasoning_level: 'standard' | 'deep';
 }
 
 export interface HighlightResult {
@@ -476,6 +529,25 @@ export interface PaperTag {
     id: string;
     name: string;
     color: string | null;
+}
+
+export interface LibraryPaperShareResponse {
+    share_token: string;
+    is_public: boolean;
+}
+
+export interface CollectPaperResponse {
+    document_id: string;
+    library_entry_id: string;
+    collected: boolean;
+}
+
+export interface PendingPaperJobListResponse {
+    items: Array<{
+        job_id: string;
+        title: string | null;
+    }>;
+    next_cursor: string | null;
 }
 
 export interface PaperItem {

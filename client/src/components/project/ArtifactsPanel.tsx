@@ -29,7 +29,12 @@ import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvid
 import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
 import { fetchFromApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { DurableJob, ResearchItem } from "@/lib/schema";
+import type {
+    DurableJob,
+    JobListResponse,
+    ResearchItem,
+    ResearchItemListResponse,
+} from "@/lib/schema";
 
 const audioLengthOptions = [
     { label: "Short (5–10 mins)", value: "short" },
@@ -209,8 +214,8 @@ export function ArtifactsPanel() {
     const refresh = useCallback(async () => {
         try {
             const [researchResponse, jobResponse] = await Promise.all([
-                fetchFromApi(`/projects/${projectId}/research-items`),
-                fetchFromApi(`/jobs?project_id=${projectId}&active=true`),
+                fetchFromApi<ResearchItemListResponse>(`/projects/${projectId}/research-items`),
+                fetchFromApi<JobListResponse>(`/jobs?project_id=${projectId}&active=true`),
             ]);
             setItems(researchResponse.items ?? []);
             setJobs(jobResponse.items ?? []);

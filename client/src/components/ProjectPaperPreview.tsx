@@ -1,6 +1,6 @@
 "use client";
 
-import type { PaperItem } from "@/lib/schema";
+import type { CollectPaperResponse, PaperItem } from "@/lib/schema";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 import { FilePlus2 } from "lucide-react";
@@ -47,7 +47,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                 document_id: paper.id,
             };
 
-            const response = await fetchFromApi('/library/papers', {
+            const response = await fetchFromApi<CollectPaperResponse>('/library/papers', {
                 method: 'POST',
                 body: JSON.stringify(requestBody),
             });

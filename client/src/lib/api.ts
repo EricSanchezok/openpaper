@@ -4,7 +4,10 @@ import {
     refreshAccessToken,
 } from "./auth-session";
 import { apiUrl } from "./api-config";
-import type { Project, ProjectListResponse } from "./schema";
+import type {
+    Project,
+    ProjectListResponse,
+} from "./schema";
 
 async function requestWithAuth(endpoint: string, options: RequestInit): Promise<Response> {
     const token = getAccessToken();
@@ -33,7 +36,10 @@ async function requestWithAuth(endpoint: string, options: RequestInit): Promise<
     }
 }
 
-export async function fetchFromApi(endpoint: string, options: RequestInit = {}) {
+export async function fetchFromApi<T = unknown>(
+    endpoint: string,
+    options: RequestInit = {},
+): Promise<T> {
     const headers: HeadersInit = {};
 
     // Only set Content-Type to application/json if we're not sending FormData
@@ -74,10 +80,10 @@ export async function fetchFromApi(endpoint: string, options: RequestInit = {}) 
     }
 
     if (response.status === 204) {
-        return null; // No content to return
+        return null as T;
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
 }
 
 export async function fetchStreamFromApi(
@@ -125,9 +131,9 @@ export async function fetchStreamFromApi(
 }
 
 export async function getProjectsForPaper(documentId: string): Promise<Project[]> {
-    const response = await fetchFromApi(
+    const response = await fetchFromApi<ProjectListResponse>(
         `/papers/${documentId}/projects`,
-    ) as ProjectListResponse;
+    );
     return response.items;
 }
 
@@ -141,7 +147,7 @@ export async function getProjectPaperFileUrl(
     projectId: string,
     documentId: string,
 ): Promise<string | null> {
-    const response = await fetchFromApi(
+    const response = await fetchFromApi<{ file_url: string | null }>(
         `/projects/${projectId}/papers/${documentId}/download-url`,
     );
     return response?.file_url ?? null;
@@ -153,6 +159,6 @@ export async function getProjectPaperFileUrl(
  * canonical document payload.
  */
 export async function getPaperFileUrl(documentId: string): Promise<string | null> {
-    const response = await fetchFromApi(`/papers/${documentId}/download-url`);
+    const response = await fetchFromApi<{ file_url: string | null }>(`/papers/${documentId}/download-url`);
     return response?.file_url ?? null;
 }

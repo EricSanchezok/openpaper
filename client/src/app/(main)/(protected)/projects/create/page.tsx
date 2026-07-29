@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchFromApi } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import type { Project } from "@/lib/schema";
 
 export default function CreateProjectPage() {
 	const [title, setTitle] = useState("");
@@ -22,7 +23,7 @@ export default function CreateProjectPage() {
 		setError(null);
 
 		try {
-			const project = await fetchFromApi("/projects", {
+			const project = await fetchFromApi<Project>("/projects", {
 				method: "POST",
 				body: JSON.stringify({ title, description }),
 			});

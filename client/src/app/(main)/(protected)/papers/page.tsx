@@ -2,7 +2,7 @@
 
 import { fetchFromApi } from "@/lib/api";
 import { useCallback, useEffect, useState } from "react";
-import { PaperItem, MinimalJob } from "@/lib/schema";
+import { PaperItem, MinimalJob, JobListResponse, Project } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -106,7 +106,7 @@ function PapersPageContent() {
 
     const refetchPendingJobs = useCallback(async () => {
         try {
-            const response = await fetchFromApi(
+            const response = await fetchFromApi<JobListResponse>(
                 "/jobs?operation=pdf_process&active=true",
             );
             if (!response?.items?.length) return;
@@ -179,7 +179,7 @@ function PapersPageContent() {
         const documentIds = papersForNewProject.map(p => p.id);
 
         try {
-            const project = await fetchFromApi("/projects", {
+            const project = await fetchFromApi<Project>("/projects", {
                 method: "POST",
                 body: JSON.stringify({ title, description }),
             });

@@ -26,7 +26,7 @@
     "/api/v1/conversations": ["get", "post"],
     "/api/v1/conversations/capabilities": ["get"],
     "/api/v1/conversations/{conversation_id}": ["delete", "get", "patch"],
-    "/api/v1/conversations/{conversation_id}/auto-title": ["post"],
+    "/api/v1/conversations/{conversation_id}/title": ["post"],
     "/api/v1/conversations/{conversation_id}/messages": ["get", "post"],
     "/api/v1/conversations/{conversation_id}/scope": ["put"],
     "/api/v1/discovery/papers/authors": ["get"],

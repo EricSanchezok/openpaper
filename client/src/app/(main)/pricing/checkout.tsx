@@ -14,6 +14,7 @@ import {
     SheetHeader,
     SheetTitle,
 } from "@/components/ui/sheet";
+import type { CheckoutSessionResponse } from "@/lib/schema";
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY || '');
@@ -35,11 +36,14 @@ export default function CheckoutSheet({ open, onOpenChange, interval, planName, 
         setIsLoading(true);
         setError(null);
 
-        return fetchFromApi(`/billing/checkout-sessions?interval=${interval}`, {
+        return fetchFromApi<CheckoutSessionResponse>(`/billing/checkout-sessions?interval=${interval}`, {
             method: "POST",
         })
             .then((data) => {
                 setIsLoading(false);
+                if (!data.client_secret) {
+                    throw new Error("Checkout session did not return a client secret.");
+                }
                 return data.client_secret;
             })
             .catch((err) => {

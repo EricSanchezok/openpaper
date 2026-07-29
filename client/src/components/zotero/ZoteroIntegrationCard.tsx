@@ -16,10 +16,14 @@ import { ZoteroGuideModal } from "./ZoteroGuideModal";
 import { ZoteroLibraryModal } from "./ZoteroLibraryModal";
 import {
 	ZoteroImportResponse,
+	ZoteroImportStatusListResponse,
 	ZoteroImportStatusItem,
 	ZoteroLibraryItem,
 	ZoteroLibraryResponse,
 	ZoteroStatus,
+	ZoteroConnectResponse,
+	ZoteroDisconnectResponse,
+	ZoteroSyncResponse,
 } from "./types";
 import {
 	computeImportProgress,
@@ -62,7 +66,7 @@ export function ZoteroIntegrationCard() {
 	const fetchZoteroStatus = useCallback(async () => {
 		setZoteroLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/connection");
+			const data = await fetchFromApi<ZoteroStatus>("/integrations/zotero/connection");
 			setZoteroStatus(data);
 		} catch (error) {
 			console.error("Failed to fetch Zotero status:", error);
@@ -74,7 +78,7 @@ export function ZoteroIntegrationCard() {
 
 	const fetchRecentImports = useCallback(async () => {
 		try {
-			const data = await fetchFromApi("/integrations/zotero/imports");
+			const data = await fetchFromApi<ZoteroImportStatusListResponse>("/integrations/zotero/imports");
 			setRecentImports(data.items ?? []);
 		} catch {
 			setRecentImports([]);
@@ -139,7 +143,7 @@ export function ZoteroIntegrationCard() {
 	const handleZoteroConnect = async () => {
 		setZoteroActionLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/oauth/connect");
+			const data = await fetchFromApi<ZoteroConnectResponse>("/integrations/zotero/oauth/connect");
 			if (data.auth_url) {
 				window.location.href = data.auth_url;
 			} else {
@@ -207,7 +211,7 @@ export function ZoteroIntegrationCard() {
 		const pollImportStatus = async () => {
 			if (importDoneRef.current) return;
 			try {
-				const data = await fetchFromApi(
+				const data = await fetchFromApi<ZoteroImportStatusListResponse>(
 					`/integrations/zotero/imports?${statusQuery}`,
 				);
 				if (importDoneRef.current) return;
@@ -290,7 +294,7 @@ export function ZoteroIntegrationCard() {
 	const handleZoteroDisconnect = async () => {
 		setZoteroActionLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/connection", {
+			const data = await fetchFromApi<ZoteroDisconnectResponse>("/integrations/zotero/connection", {
 				method: "DELETE",
 			});
 			if (data.success) {
@@ -313,7 +317,7 @@ export function ZoteroIntegrationCard() {
 	const handleZoteroSync = async () => {
 		setZoteroSyncLoading(true);
 		try {
-			const data = await fetchFromApi("/integrations/zotero/sync-runs", { method: "POST" });
+			const data = await fetchFromApi<ZoteroSyncResponse>("/integrations/zotero/sync-runs", { method: "POST" });
 			if (data.new_annotations_count > 0) {
 				toast.success(
 					`Synced ${data.new_annotations_count} new annotation${data.new_annotations_count === 1 ? "" : "s"} across ${data.synced_papers_count} paper${data.synced_papers_count === 1 ? "" : "s"}.`

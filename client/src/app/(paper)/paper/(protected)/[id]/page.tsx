@@ -524,7 +524,7 @@ export default function PaperView() {
         if (!id || !paperData || isSharing) return;
         setIsSharing(true);
         try {
-            const response = await fetchFromApi(
+            const response = await fetchFromApi<import("@/lib/schema").LibraryPaperShareResponse>(
                 `/library/papers/${id}/share`,
                 {
                 method: 'POST',

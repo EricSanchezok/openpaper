@@ -15,6 +15,7 @@ import {
 import { AnimatedGradientText } from "@/components/magicui/animated-gradient-text";
 import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
+import type { Conversation } from "@/lib/schema";
 
 // Project home is the new-chat surface: a centered composer over the project's
 // papers. Navigation to existing chats lives in the workspace rail.
@@ -79,7 +80,7 @@ export default function ProjectPage() {
 
         setIsSubmitting(true);
         try {
-            const newConversation = await fetchFromApi("/conversations", {
+            const newConversation = await fetchFromApi<Conversation>("/conversations", {
                 method: "POST",
                 body: JSON.stringify({
                     title: "New conversation",

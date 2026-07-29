@@ -9,7 +9,12 @@ import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import CheckoutSheet from "./checkout";
 import { fetchFromApi } from "@/lib/api";
-import { SubscriptionStatus, UserSubscription } from "@/lib/schema";
+import {
+    BillingActionResponse,
+    PortalSessionResponse,
+    SubscriptionStatus,
+    UserSubscription,
+} from "@/lib/schema";
 import PricingTable from "./pricingTable";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -68,7 +73,7 @@ export default function PricingPage() {
     const handleManageSubscription = async () => {
         setIsPortalLoading(true);
         try {
-            const response = await fetchFromApi("/billing/portal-sessions", {
+            const response = await fetchFromApi<PortalSessionResponse>("/billing/portal-sessions", {
                 method: "POST",
             });
 
@@ -87,7 +92,7 @@ export default function PricingPage() {
     const handleIntervalChange = async (newInterval: "month" | "year") => {
         setIsIntervalChangeLoading(true);
         try {
-            const response = await fetchFromApi(`/billing/subscription/interval?new_interval=${newInterval}`, {
+            const response = await fetchFromApi<BillingActionResponse>(`/billing/subscription/interval?new_interval=${newInterval}`, {
                 method: "PATCH",
                 headers: {
                     'Content-Type': 'application/json',
@@ -99,7 +104,7 @@ export default function PricingPage() {
                 setIsAnnual(newInterval === "year");
 
                 // Refresh the subscription data
-                const updatedSubscription = await fetchFromApi("/billing/subscription", {
+                const updatedSubscription = await fetchFromApi<UserSubscription>("/billing/subscription", {
                     method: "GET",
                 });
                 setUserSubscription(updatedSubscription);
@@ -118,7 +123,7 @@ export default function PricingPage() {
     const handleCancelScheduledChange = async () => {
         setIsIntervalChangeLoading(true);
         try {
-            const response = await fetchFromApi("/billing/subscription/interval", {
+            const response = await fetchFromApi<BillingActionResponse>("/billing/subscription/interval", {
                 method: "DELETE",
             });
 
@@ -131,7 +136,7 @@ export default function PricingPage() {
                 }
 
                 // Refresh the subscription data
-                const updatedSubscription = await fetchFromApi("/billing/subscription", {
+                const updatedSubscription = await fetchFromApi<UserSubscription>("/billing/subscription", {
                     method: "GET",
                 });
                 setUserSubscription(updatedSubscription);
@@ -150,7 +155,7 @@ export default function PricingPage() {
     const handleResubscribe = async () => {
         setIsResubscribeLoading(true);
         try {
-            const response = await fetchFromApi("/billing/subscription/resume", {
+            const response = await fetchFromApi<BillingActionResponse>("/billing/subscription/resume", {
                 method: "POST",
             });
 
@@ -163,7 +168,7 @@ export default function PricingPage() {
                 await new Promise(resolve => setTimeout(resolve, 800));
 
                 // Refresh the subscription data to reflect the reactivated subscription
-                const updatedSubscription = await fetchFromApi("/billing/subscription", {
+                const updatedSubscription = await fetchFromApi<UserSubscription>("/billing/subscription", {
                     method: "GET",
                 });
 

@@ -200,7 +200,7 @@ export function SidePanelContent({
 
         async function fetchCapabilities() {
             try {
-                const response = await fetchFromApi(`/conversations/capabilities`);
+                const response = await fetchFromApi<import("@/lib/schema").ChatCapabilitiesResponse>(`/conversations/capabilities`);
                 if (Array.isArray(response.reasoning_levels)) {
                     setReasoningCapabilities(response.reasoning_levels);
                 }

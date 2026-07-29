@@ -20,6 +20,7 @@ import {
     ChatMessage,
     CitationArtifact,
     Conversation,
+    ConversationMessagesResponse,
     MessageTrace,
     Reference,
 } from '@/lib/schema';
@@ -132,7 +133,7 @@ function UnderstandPageContent() {
         try {
             const [detail, response] = await Promise.all([
                 fetchFromApi(`/conversations/${id}`) as Promise<Conversation>,
-                fetchFromApi(
+                fetchFromApi<ConversationMessagesResponse>(
                     `/conversations/${id}/messages?limit=100`,
                 ),
             ]);
@@ -270,7 +271,7 @@ function UnderstandPageContent() {
 
         if (!currentConversationId) {
             try {
-                const newConversationResponse = await fetchFromApi('/conversations', {
+                const newConversationResponse = await fetchFromApi<Conversation>('/conversations', {
                     method: 'POST',
                     body: JSON.stringify({ scope_type: 'global' }),
                 });

@@ -16,7 +16,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchFromApi } from "@/lib/api";
-import type { DurableJob, ResearchItem } from "@/lib/schema";
+import type {
+    DurableJob,
+    JobListResponse,
+    ResearchItem,
+    ResearchItemListResponse,
+} from "@/lib/schema";
 
 interface AudioOverviewProps {
     document_id: string;
@@ -32,8 +37,8 @@ export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
     const refresh = useCallback(async () => {
         try {
             const [researchResponse, jobResponse] = await Promise.all([
-                fetchFromApi(`/papers/${document_id}/research-items`),
-                fetchFromApi(
+                fetchFromApi<ResearchItemListResponse>(`/papers/${document_id}/research-items`),
+                fetchFromApi<JobListResponse>(
                     `/jobs?document_id=${document_id}&operation=audio_generate&active=true`,
                 ),
             ]);

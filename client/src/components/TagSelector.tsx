@@ -56,7 +56,7 @@ export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
     const handleCreateTag = async () => {
         if (!newTagName.trim()) return;
         try {
-            const newTag = await fetchFromApi("/library/tags", {
+            const newTag = await fetchFromApi<PaperTag>("/library/tags", {
                 method: "POST",
                 body: JSON.stringify({ name: newTagName }),
             });

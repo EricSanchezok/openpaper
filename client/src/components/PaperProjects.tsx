@@ -97,7 +97,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
 
     const handleCreateProjectSubmit = async (title: string, description: string) => {
         try {
-            const project = await fetchFromApi("/projects", {
+            const project = await fetchFromApi<Project>("/projects", {
                 method: "POST",
                 body: JSON.stringify({ title, description }),
             });

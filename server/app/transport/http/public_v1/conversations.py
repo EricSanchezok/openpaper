@@ -141,7 +141,7 @@ def move_conversation(
 
 
 @conversation_router.post(
-    "/{conversation_id}/auto-title",
+    "/{conversation_id}/title",
     response_model=ConversationAutoTitleResponse,
 )
 def auto_title_conversation(

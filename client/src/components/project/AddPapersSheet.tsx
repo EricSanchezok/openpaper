@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchFromApi } from "@/lib/api";
-import { MinimalJob } from "@/lib/schema";
+import { MinimalJob, PdfUploadResponse } from "@/lib/schema";
 import { uploadFromUrlWithFallbackForProject } from "@/lib/uploadUtils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -114,7 +114,7 @@ export function AddPapersSheet() {
             formData.append("file", file);
 
             try {
-                const response = await fetchFromApi(`/paper-ingestions/uploads?project_id=${projectId}`, {
+                const response = await fetchFromApi<PdfUploadResponse>(`/paper-ingestions/uploads?project_id=${projectId}`, {
                     method: "POST",
                     body: formData,
                 });

@@ -6,19 +6,12 @@ import hashlib
 import hmac
 import os
 import time
-from datetime import UTC, datetime, timedelta
-
-from app.database.database import get_db
-from app.database.models import JobsWebhookNonce
-from fastapi import Depends, HTTPException, Request
-from sqlalchemy import delete
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from app.bootstrap.container import build_job_callback_protection
+from fastapi import HTTPException, Request
 
 
 async def verify_jobs_webhook(
     request: Request,
-    db: Session = Depends(get_db),
 ) -> None:
     secret = os.getenv("JOBS_WEBHOOK_SIGNING_SECRET")
     if not secret or len(secret.encode()) < 32:
@@ -51,14 +44,5 @@ async def verify_jobs_webhook(
     if not hmac.compare_digest(signature, expected):
         raise HTTPException(status_code=401, detail="invalid_jobs_signature")
 
-    try:
-        db.execute(
-            delete(JobsWebhookNonce).where(
-                JobsWebhookNonce.created_at < datetime.now(UTC) - timedelta(minutes=10)
-            )
-        )
-        db.add(JobsWebhookNonce(nonce=nonce))
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="jobs_webhook_replayed") from exc
+    if not build_job_callback_protection().reserve_nonce(nonce):
+        raise HTTPException(status_code=409, detail="jobs_webhook_replayed")

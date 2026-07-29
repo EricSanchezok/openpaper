@@ -152,6 +152,11 @@ class OpenAlexResponse(BaseModel):
         return data
 
 
+class DiscoveryPaperListResponse(BaseModel):
+    items: list[OpenAlexWork]
+    next_cursor: str | None = None
+
+
 def _try_parse_work(item: object) -> OpenAlexWork | None:
     try:
         return OpenAlexWork.model_validate(item)

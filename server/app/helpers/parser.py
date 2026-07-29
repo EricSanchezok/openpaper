@@ -6,11 +6,12 @@ from datetime import datetime
 from urllib.parse import urljoin, urlsplit
 
 import requests
+from app.modules.papers.application.ingestion import MAX_PDF_SIZE_MB
 from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 
-MAX_UPLOAD_SIZE_MB = 30
+MAX_UPLOAD_SIZE_MB = MAX_PDF_SIZE_MB
 DOCUMENT_PAGE_LIMIT = 800
 MAX_URL_REDIRECTS = 5
 URL_DOWNLOAD_TIMEOUT_SECONDS = 30

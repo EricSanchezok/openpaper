@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Search, ArrowLeft, ArrowRight, ChevronUp, ChevronDown, ChevronRight, SquareLibrary, ExternalLink, Loader2, User, History } from "lucide-react";
 import { fetchFromApi } from "@/lib/api";
-import { OpenAlexPaper, OpenAlexMatchResponse, OpenAlexResponse } from "@/lib/schema";
+import { DiscoveryPaperListResponse, OpenAlexPaper, OpenAlexMatchResponse } from "@/lib/schema";
 import { CitationGraphSkeleton } from "./CitationGraphSkeleton";
 
 type ViewMode = "paper" | "author";
@@ -19,7 +19,7 @@ interface AuthorInfo {
 
 interface NavigationEntry {
     mode: ViewMode;
-    data: OpenAlexMatchResponse | OpenAlexResponse;
+    data: OpenAlexMatchResponse | DiscoveryPaperListResponse;
     doi?: string;
     author?: AuthorInfo;
 }
@@ -29,7 +29,7 @@ function CitationGraphContent() {
 
     const [doiInput, setDoiInput] = useState("");
     const [graphData, setGraphData] = useState<OpenAlexMatchResponse | null>(null);
-    const [authorData, setAuthorData] = useState<OpenAlexResponse | null>(null);
+    const [authorData, setAuthorData] = useState<DiscoveryPaperListResponse | null>(null);
     const [currentAuthor, setCurrentAuthor] = useState<AuthorInfo | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>("paper");
     const [loading, setLoading] = useState(false);
@@ -113,7 +113,7 @@ function CitationGraphContent() {
         setGraphData(null);
 
         try {
-            const response: OpenAlexResponse = await fetchFromApi(
+            const response: DiscoveryPaperListResponse = await fetchFromApi(
                 `/discovery/papers/authors?author_id=${encodeURIComponent(authorId)}`
             );
 
@@ -159,7 +159,7 @@ function CitationGraphContent() {
                     updateUrl({ doi: prevEntry.doi }, true);
                 }
             } else {
-                const data = prevEntry.data as OpenAlexResponse;
+                const data = prevEntry.data as DiscoveryPaperListResponse;
                 setAuthorData(data);
                 setGraphData(null);
                 setCurrentAuthor(prevEntry.author || null);
@@ -188,7 +188,7 @@ function CitationGraphContent() {
                     updateUrl({ doi: nextEntry.doi }, true);
                 }
             } else {
-                const data = nextEntry.data as OpenAlexResponse;
+                const data = nextEntry.data as DiscoveryPaperListResponse;
                 setAuthorData(data);
                 setGraphData(null);
                 setCurrentAuthor(nextEntry.author || null);
@@ -229,7 +229,7 @@ function CitationGraphContent() {
                 updateUrl({ doi: entry.doi }, true);
             }
         } else {
-            const data = entry.data as OpenAlexResponse;
+            const data = entry.data as DiscoveryPaperListResponse;
             setAuthorData(data);
             setGraphData(null);
             setCurrentAuthor(entry.author || null);
@@ -393,7 +393,7 @@ function CitationGraphContent() {
                                         {currentAuthor.name}
                                     </h1>
                                     <p className="text-sm text-muted-foreground">
-                                        {authorData.meta.count.toLocaleString()} works found
+                                        {authorData.items.length.toLocaleString()} works loaded
                                     </p>
                                 </div>
                             </div>
@@ -401,16 +401,16 @@ function CitationGraphContent() {
 
                         {/* Author Works List */}
                         <div className="bg-card border rounded-xl overflow-hidden">
-                            {authorData.results.length === 0 ? (
+                            {authorData.items.length === 0 ? (
                                 <div className="p-12 text-center text-muted-foreground">
                                     No works found for this author
                                 </div>
                             ) : (
-                                authorData.results.map((paper, index) => (
+                                authorData.items.map((paper, index) => (
                                     <div
                                         key={paper.id}
                                         onClick={() => navigateToPaper(paper)}
-                                        className={`p-4 flex items-center gap-4 cursor-pointer hover:bg-accent/50 transition-colors ${index < authorData.results.length - 1 ? "border-b" : ""
+                                        className={`p-4 flex items-center gap-4 cursor-pointer hover:bg-accent/50 transition-colors ${index < authorData.items.length - 1 ? "border-b" : ""
                                             }`}
                                     >
                                         <div className="flex-1 min-w-0">

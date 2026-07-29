@@ -8,6 +8,7 @@ import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { fetchFromApi } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { Project } from "@/lib/schema";
 
 interface QuickActionCardProps {
     icon: React.ReactNode;
@@ -80,7 +81,7 @@ export function QuickActions({ onUploadComplete, onProjectCreated, onUploadStart
 
     const handleCreateProject = async (title: string, description: string) => {
         try {
-            const response = await fetchFromApi("/projects", {
+            const response = await fetchFromApi<Project>("/projects", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title, description }),

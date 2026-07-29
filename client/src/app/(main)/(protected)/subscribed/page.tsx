@@ -8,20 +8,14 @@ import { CheckCircle, XCircle, Upload, MessageSquare, Sparkles, ArrowLeft } from
 import confetti from 'canvas-confetti'
 import LoadingIndicator from '@/components/utils/Loading'
 import Link from 'next/link'
-
-interface SessionStatusResponse {
-    status: string
-    customer_email: string | null
-    backend_subscription_found: boolean
-    backend_subscription_status: string | null
-}
+import type { CheckoutSessionStatusResponse } from '@/lib/schema'
 
 function SubscribedPageContent() {
     const searchParams = useSearchParams()
     const router = useRouter()
     const sessionId = searchParams.get('session_id')
 
-    const [sessionStatus, setSessionStatus] = useState<SessionStatusResponse | null>(null)
+    const [sessionStatus, setSessionStatus] = useState<CheckoutSessionStatusResponse | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>('')
     const [confettiTriggered, setConfettiTriggered] = useState(false)
@@ -64,7 +58,7 @@ function SubscribedPageContent() {
 
         const fetchSessionStatus = async () => {
             try {
-                const response = await fetchFromApi(`/billing/checkout-sessions/${encodeURIComponent(sessionId)}`)
+                const response = await fetchFromApi<CheckoutSessionStatusResponse>(`/billing/checkout-sessions/${encodeURIComponent(sessionId)}`)
                 setSessionStatus(response)
             } catch (err) {
                 setError('Failed to fetch subscription status')

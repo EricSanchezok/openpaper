@@ -38,6 +38,10 @@ export interface User extends BasicUser {
     is_blocked: boolean;
 }
 
+interface MessageResponse {
+    message: string;
+}
+
 interface AuthContextType {
     user: User | null;
     loading: boolean;
@@ -134,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const register = useCallback(
         async (email: string, password: string, displayName: string): Promise<string> => {
-            const response = await fetchFromApi("/auth/register", {
+            const response = await fetchFromApi<MessageResponse>("/auth/register", {
                 method: "POST",
                 body: JSON.stringify({ email, password, display_name: displayName }),
             });
@@ -144,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     const messageAction = useCallback(async (endpoint: string, body: object): Promise<string> => {
-        const response = await fetchFromApi(endpoint, {
+        const response = await fetchFromApi<MessageResponse>(endpoint, {
             method: "POST",
             body: JSON.stringify(body),
         });

@@ -8,10 +8,11 @@ from uuid import UUID
 
 from app.modules.papers.application.contracts.discovery import (
     OpenAlexCitationGraph,
+    DiscoveryPaperListResponse,
     OpenAlexResponse,
     OpenAlexWork,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, SignedCursorCodec
 from app.shared.domain import AppError
 
 
@@ -72,11 +73,13 @@ class DiscoverPapers:
         documents: DiscoveryDocumentGateway,
         rate_limiter: ExternalDiscoveryRateLimiter,
         events: DiscoveryEventRecorder,
+        cursors: SignedCursorCodec,
     ) -> None:
         self._catalog = catalog
         self._documents = documents
         self._rate_limiter = rate_limiter
         self._events = events
+        self._cursors = cursors
 
     async def search(
         self,
@@ -84,8 +87,14 @@ class DiscoverPapers:
         actor: Actor,
         client_ip: str,
         query: str,
-        page: int,
-    ) -> OpenAlexResponse:
+        cursor: str | None,
+    ) -> DiscoveryPaperListResponse:
+        fingerprint = f"{actor.id}:search:{query.casefold()}"
+        page = (
+            self._cursors.decode(cursor=cursor, fingerprint=fingerprint)
+            if cursor
+            else 1
+        )
         await self._rate_limiter.check(actor=actor, client_ip=client_ip)
         results = await self._catalog.search(query=query, page=page)
         self._events.record(
@@ -97,7 +106,11 @@ class DiscoverPapers:
                 "total_count": results.meta.get("count", 0),
             },
         )
-        return results
+        return self._list_response(
+            results=results,
+            page=page,
+            fingerprint=fingerprint,
+        )
 
     async def author_works(
         self,
@@ -105,8 +118,14 @@ class DiscoverPapers:
         actor: Actor,
         client_ip: str,
         author_id: str,
-        page: int,
-    ) -> OpenAlexResponse:
+        cursor: str | None,
+    ) -> DiscoveryPaperListResponse:
+        fingerprint = f"{actor.id}:author:{author_id}"
+        page = (
+            self._cursors.decode(cursor=cursor, fingerprint=fingerprint)
+            if cursor
+            else 1
+        )
         await self._rate_limiter.check(actor=actor, client_ip=client_ip)
         results = await self._catalog.author_works(author_id=author_id, page=page)
         self._events.record(
@@ -118,7 +137,39 @@ class DiscoverPapers:
                 "total_count": results.meta.get("count", 0),
             },
         )
-        return results
+        return self._list_response(
+            results=results,
+            page=page,
+            fingerprint=fingerprint,
+        )
+
+    def _list_response(
+        self,
+        *,
+        results: OpenAlexResponse,
+        page: int,
+        fingerprint: str,
+    ) -> DiscoveryPaperListResponse:
+        count_value = results.meta.get("count", 0)
+        per_page_value = results.meta.get("per_page", len(results.results))
+        count = count_value if isinstance(count_value, int) else 0
+        per_page = (
+            per_page_value
+            if isinstance(per_page_value, int) and per_page_value > 0
+            else len(results.results) or 1
+        )
+        has_more = page * per_page < count
+        return DiscoveryPaperListResponse(
+            items=results.results,
+            next_cursor=(
+                self._cursors.encode(
+                    fingerprint=fingerprint,
+                    offset=page + 1,
+                )
+                if has_more
+                else None
+            ),
+        )
 
     async def match(
         self,

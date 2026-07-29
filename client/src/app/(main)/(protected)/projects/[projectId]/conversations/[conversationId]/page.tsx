@@ -8,6 +8,7 @@ import {
     ChatMessage,
     CitationArtifact,
     Conversation,
+    ConversationMessagesResponse,
     MessageTrace,
     Reference,
 } from '@/lib/schema';
@@ -166,7 +167,7 @@ function ProjectConversationPageContent() {
         try {
             const [detail, response] = await Promise.all([
                 fetchFromApi(`/conversations/${id}`) as Promise<Conversation>,
-                fetchFromApi(
+                fetchFromApi<ConversationMessagesResponse>(
                     `/conversations/${id}/messages?limit=100`,
                 ),
             ]);

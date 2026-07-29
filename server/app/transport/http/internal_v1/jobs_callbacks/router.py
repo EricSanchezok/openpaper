@@ -1,6 +1,6 @@
 """Authenticated router composition for Jobs callbacks."""
 
-from app.helpers.jobs_webhooks import verify_jobs_webhook
+from app.transport.http.internal_v1.authentication import verify_jobs_webhook
 from fastapi import APIRouter, Depends
 
 from .lifecycle import lifecycle_webhook_router

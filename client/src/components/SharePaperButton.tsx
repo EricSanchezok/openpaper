@@ -9,7 +9,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from 
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { fetchFromApi } from '@/lib/api';
-import { PaperData } from '@/lib/schema';
+import { LibraryPaperShareResponse, PaperData } from '@/lib/schema';
 import { fetchPaperData as fetchDocumentPaperData } from '@/lib/documents';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -52,7 +52,7 @@ export function SharePaperButton() {
         setIsSharing(true);
         try {
             const current = paperData ?? await fetchDocumentPaperData(documentId);
-            const response = await fetchFromApi(
+            const response = await fetchFromApi<LibraryPaperShareResponse>(
                 `/library/papers/${documentId}/share`,
                 { method: 'POST' },
             );

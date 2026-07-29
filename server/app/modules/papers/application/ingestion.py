@@ -11,6 +11,9 @@ from app.modules.papers.application.contracts.uploads import UploadAcceptedRespo
 from app.shared.application import Actor
 from app.shared.domain import AppError
 
+MAX_PDF_SIZE_MB = 30
+MAX_PDF_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024
+
 
 @dataclass(frozen=True, slots=True)
 class FetchedPdf:

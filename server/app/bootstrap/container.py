@@ -90,6 +90,7 @@ from app.modules.research.infrastructure.item_gateway import (
 )
 from app.modules.jobs.application.jobs import Jobs
 from app.modules.jobs.application.callbacks import JobCallbacks
+from app.modules.jobs.application.authentication import ProtectJobCallback
 from app.modules.jobs.infrastructure.application_gateway import (
     SqlAlchemyJobsGateway,
 )
@@ -210,12 +211,17 @@ def build_library_tags(*, db: Session) -> LibraryTags:
     return LibraryTags(SqlAlchemyLibraryTagGateway(db))
 
 
-def build_paper_discovery(*, db: Session) -> DiscoverPapers:
+def build_paper_discovery(*, db: Session, cursor_secret: str) -> DiscoverPapers:
     return DiscoverPapers(
         catalog=OpenAlexPaperCatalog(),
         documents=SqlDiscoveryDocumentGateway(db),
         rate_limiter=AiExternalDiscoveryRateLimiter(),
         events=PostHogDiscoveryEventRecorder(db),
+        cursors=SignedCursorCodec(
+            cursor_secret,
+            revision="external-discovery-v1",
+            error_code="discovery_cursor_expired",
+        ),
     )
 
 
@@ -260,6 +266,14 @@ def build_research_items(*, db: Session) -> ResearchItems:
 
 def build_jobs(*, db: Session) -> Jobs:
     return Jobs(SqlAlchemyJobsGateway(db))
+
+
+def build_job_callback_protection() -> ProtectJobCallback:
+    from app.modules.jobs.infrastructure.authentication import (
+        SqlAlchemyCallbackNonceStore,
+    )
+
+    return ProtectJobCallback(SqlAlchemyCallbackNonceStore())
 
 
 def build_job_callbacks(*, db: Session) -> JobCallbacks:

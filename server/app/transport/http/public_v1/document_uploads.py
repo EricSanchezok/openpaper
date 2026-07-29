@@ -8,7 +8,10 @@ from uuid import UUID
 
 from app.bootstrap.container import build_paper_ingestion, build_pdf_url_source
 from app.database.database import get_db
-from app.helpers.parser import MAX_UPLOAD_SIZE_MB
+from app.modules.papers.application.ingestion import (
+    MAX_PDF_BYTES,
+    MAX_PDF_SIZE_MB,
+)
 from app.modules.papers.application.contracts.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
@@ -68,14 +71,14 @@ async def upload_pdf(
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
-    max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    max_bytes = MAX_PDF_BYTES
     declared_size = request.headers.get("content-length")
     if declared_size and (
         not declared_size.isdigit() or int(declared_size) > max_bytes + 1024 * 1024
     ):
         raise AppError(
             code="upload_too_large",
-            message=f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
+            message=f"File too large (max {MAX_PDF_SIZE_MB}MB)",
             status_code=413,
         )
     if file.content_type not in {"application/pdf", "application/octet-stream"}:
@@ -93,7 +96,7 @@ async def upload_pdf(
             if total > max_bytes:
                 raise AppError(
                     code="upload_too_large",
-                    message=f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
+                    message=f"File too large (max {MAX_PDF_SIZE_MB}MB)",
                     status_code=413,
                 )
             chunks.append(chunk)
