@@ -92,13 +92,13 @@ Start the local stack:
 uv run start
 ```
 
-Run an opt-in real MinerU check with a temporary, externally reachable PDF URL:
+Run an opt-in real MinerU check with a local PDF:
 
 ```bash
-uv run python scripts/smoke_mineru.py "https://example.com/test-paper.pdf"
+uv run python scripts/smoke_mineru.py "/absolute/path/to/test-paper.pdf"
 ```
 
 The smoke test uses real provider quota and is intentionally excluded from CI.
-It prints the `submit`, `poll`, `download`, and `archive` stages independently,
-plus safe IDs, timings, output size, and classified diagnostics. It never prints
-credentials or the signed source URL.
+It prints the `submit`, `upload`, `poll`, `download`, and `archive` stages
+independently, plus safe IDs, timings, output size, and classified diagnostics.
+It never prints credentials or the signed upload URL.

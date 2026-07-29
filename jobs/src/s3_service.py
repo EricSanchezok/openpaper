@@ -7,7 +7,7 @@ import os
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from mypy_boto3_s3 import S3Client
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,9 @@ class S3Service:
             config=Config(
                 signature_version="s3v4",
                 s3={"addressing_style": "virtual"},
+                connect_timeout=10,
+                read_timeout=60,
+                retries={"mode": "standard", "total_max_attempts": 3},
             ),
         )
 
@@ -61,18 +64,9 @@ class S3Service:
                 Bucket=self.bucket_name, Key=object_key
             )
             return response["Body"].read()
-        except ClientError as e:
+        except (BotoCoreError, ClientError) as e:
             logger.error(f"Error downloading file from S3: {e}")
             raise
-
-    def generate_presigned_download_url(
-        self, object_key: str, expiration_seconds: int = 900
-    ) -> str:
-        return self.s3_client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self.bucket_name, "Key": object_key},
-            ExpiresIn=expiration_seconds,
-        )
 
     def upload_bytes_to_key(
         self,

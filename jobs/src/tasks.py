@@ -5,6 +5,7 @@ Celery tasks for Scholens jobs
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 PARSER_UPGRADE_MAX_RETRIES = 16
 PARSER_UPGRADE_MAX_RETRY_DELAY_SECONDS = 15 * 60
+PDF_TASK_SOFT_TIME_LIMIT_SECONDS = 1200
+PDF_TASK_TIME_LIMIT_SECONDS = 1260
+PDF_PRIMARY_PHASE_DEADLINE_SECONDS = 840
 
 
 def _update_status(task: Any, task_id: str, status: str) -> None:
@@ -76,7 +80,12 @@ def _claim_job(claim_url: str | None, *, task_id: str) -> bool:
         raise
 
 
-@celery_app.task(bind=True, name="upload_and_process_file")
+@celery_app.task(
+    bind=True,
+    name="upload_and_process_file",
+    soft_time_limit=PDF_TASK_SOFT_TIME_LIMIT_SECONDS,
+    time_limit=PDF_TASK_TIME_LIMIT_SECONDS,
+)
 def upload_and_process_file(
     self,
     s3_object_key: str,
@@ -92,6 +101,7 @@ def upload_and_process_file(
     are produced. Used by the Zotero import path.
     """
     task_id = self.request.id
+    primary_phase_deadline = time.monotonic() + PDF_PRIMARY_PHASE_DEADLINE_SECONDS
     if not _claim_job(claim_url, task_id=task_id):
         return {"task_id": task_id, "status": "duplicate"}
     usage_events: list[dict[str, Any]] = []
@@ -106,10 +116,6 @@ def upload_and_process_file(
                 return s3_service.download_file_to_bytes(s3_object_key)
 
         pdf_bytes = asyncio.run(download_with_timer())
-        source_url = s3_service.generate_presigned_download_url(
-            s3_object_key,
-            expiration_seconds=int(os.getenv("MINERU_SOURCE_URL_TTL_SECONDS", "900")),
-        )
 
         write_to_status("Processing PDF file")
 
@@ -118,11 +124,11 @@ def upload_and_process_file(
             result = asyncio.run(
                 process_pdf_file(
                     pdf_bytes,
-                    source_url,
                     s3_object_key,
                     task_id,
                     status_callback=write_to_status,
                     skip_metadata_extraction=skip_metadata_extraction,
+                    mineru_deadline=primary_phase_deadline,
                 )
             )
 

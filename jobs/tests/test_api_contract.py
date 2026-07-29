@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from src.app import app
 from src.celery_app import celery_app
+from src.tasks import upload_and_process_file
 
 
 def test_jobs_api_exposes_only_health() -> None:
@@ -30,7 +31,7 @@ def test_worker_has_no_referral_task_or_queue() -> None:
     assert "user_processing" not in worker_script
 
 
-def test_worker_runtime_budget_covers_mineru_deadline_and_upgrade_task() -> None:
+def test_pdf_task_budget_reserves_time_after_foreground_parsing() -> None:
     worker_script = (
         Path(__file__).parents[1] / "scripts" / "start_worker.sh"
     ).read_text(encoding="utf-8")
@@ -38,6 +39,8 @@ def test_worker_runtime_budget_covers_mineru_deadline_and_upgrade_task() -> None
     task_routes = celery_app.conf.task_routes
     assert task_routes
     assert task_routes["upgrade_pdf_parser"] == {"queue": "pdf_processing"}
+    assert upload_and_process_file.soft_time_limit == 1200
+    assert upload_and_process_file.time_limit == 1260
     assert "--soft-time-limit=900" in worker_script
     assert "--time-limit=960" in worker_script
 

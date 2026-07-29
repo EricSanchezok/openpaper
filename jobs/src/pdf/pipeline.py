@@ -123,11 +123,11 @@ async def _upload_full_parser_artifacts(
 
 async def process_pdf_file(
     pdf_bytes: bytes,
-    source_url: str,
     s3_object_key: str,
     job_id: str,
     status_callback: Callable[[str], None],
     skip_metadata_extraction: bool = False,
+    mineru_deadline: float | None = None,
 ) -> PDFProcessingResult:
     start_time = datetime.now(timezone.utc)
     mineru_client: MinerUClient | None = None
@@ -143,7 +143,11 @@ async def process_pdf_file(
             mineru_client = MinerUClient(config)
             await mineru_client.state_store.save_source_key(job_id, s3_object_key)
             mineru_task = asyncio.create_task(
-                mineru_client.parse_url(source_url, data_id=job_id)
+                mineru_client.parse_file(
+                    pdf_bytes,
+                    data_id=job_id,
+                    deadline=mineru_deadline,
+                )
             )
         else:
             status_callback("Indexing PDF in local text mode")
@@ -177,7 +181,7 @@ async def process_pdf_file(
             and mineru_client is not None
         ):
             parser_upgrade_pending = (
-                await mineru_client.state_store.get_task_id(job_id) is not None
+                await mineru_client.state_store.get_checkpoint(job_id) is not None
             )
 
         preview_object_key = await _upload_preview(
@@ -250,13 +254,30 @@ async def upgrade_pdf_from_checkpoint(job_id: str) -> PDFParserUpgradeResult:
         )
     client = MinerUClient(config)
     try:
-        document = await client.parse_existing(data_id=job_id)
         source_s3_key = await client.state_store.get_source_key(job_id)
         if source_s3_key is None:
             raise ParserContentError(
                 "Parser checkpoint has no canonical source key",
                 phase="checkpoint",
             )
+        checkpoint = await client.state_store.get_checkpoint(job_id)
+        if checkpoint is None:
+            raise ParserContentError(
+                "MinerU batch checkpoint is missing",
+                phase="checkpoint",
+            )
+        pdf_bytes = (
+            await asyncio.to_thread(
+                s3_service.download_file_to_bytes,
+                source_s3_key,
+            )
+            if not checkpoint.uploaded
+            else None
+        )
+        document = await client.parse_existing(
+            data_id=job_id,
+            pdf_bytes=pdf_bytes,
+        )
         document_sha256 = _document_sha256_from_source_key(source_s3_key)
         markdown_key, archive_key = await _upload_full_parser_artifacts(
             document,

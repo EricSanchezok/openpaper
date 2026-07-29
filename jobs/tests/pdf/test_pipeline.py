@@ -20,6 +20,7 @@ from src.pdf.pipeline import (
     process_pdf_file,
     upgrade_pdf_from_checkpoint,
 )
+from src.pdf.state import MinerUBatchCheckpoint
 from src.schemas import PDFProcessingResult, PaperMetadataExtraction
 
 
@@ -136,7 +137,6 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
     result = asyncio.run(
         process_pdf_file(
             pdf_bytes,
-            "https://source.example/paper.pdf",
             f"documents/{'a' * 64}/source.pdf",
             "job-1",
             status_callback=lambda _status: None,
@@ -172,8 +172,12 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
     class MemoryState:
         cleared = False
 
-        async def get_task_id(self, _job_id: str) -> str | None:
-            return "running-mineru-task"
+        async def get_checkpoint(self, _job_id: str) -> MinerUBatchCheckpoint | None:
+            return MinerUBatchCheckpoint(
+                batch_id="running-mineru-batch",
+                upload_url="https://upload.example/paper.pdf",
+                uploaded=True,
+            )
 
         async def save_source_key(self, _job_id: str, _source_key: str) -> None:
             return None
@@ -187,11 +191,18 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
         def __init__(self, _config: MinerUConfig) -> None:
             self.state_store = state
 
-        async def parse_url(self, _source_url: str, *, data_id: str) -> ParsedDocument:
+        async def parse_file(
+            self,
+            _pdf_bytes: bytes,
+            *,
+            data_id: str,
+            deadline: float | None = None,
+        ) -> ParsedDocument:
+            del data_id, deadline
             raise ParserTransientError(
                 "poll deadline expired",
                 phase="poll",
-                task_id="running-mineru-task",
+                task_id="running-mineru-batch",
             )
 
         async def close(self) -> None:
@@ -228,7 +239,6 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
     result = asyncio.run(
         process_pdf_file(
             pdf_bytes,
-            "https://source.example/paper.pdf",
             f"documents/{'b' * 64}/source.pdf",
             "job-1",
             status_callback=lambda _status: None,
@@ -262,8 +272,21 @@ def test_upgrade_resumes_checkpoint_and_uses_idempotent_artifact_keys(
         async def get_source_key(self, _job_id: str) -> str | None:
             return f"documents/{'c' * 64}/source.pdf"
 
-        async def parse_existing(self, *, data_id: str) -> ParsedDocument:
+        async def get_checkpoint(self, _job_id: str) -> MinerUBatchCheckpoint | None:
+            return MinerUBatchCheckpoint(
+                batch_id="batch-1",
+                upload_url="https://upload.example/paper.pdf",
+                uploaded=False,
+            )
+
+        async def parse_existing(
+            self,
+            *,
+            data_id: str,
+            pdf_bytes: bytes | None = None,
+        ) -> ParsedDocument:
             assert data_id == "job-1"
+            assert pdf_bytes == b"pdf-source"
             return parsed
 
         async def close(self) -> None:
@@ -282,6 +305,10 @@ def test_upgrade_resumes_checkpoint_and_uses_idempotent_artifact_keys(
     monkeypatch.setattr(
         "src.pdf.pipeline.s3_service.upload_bytes_to_key",
         upload_to_key,
+    )
+    monkeypatch.setattr(
+        "src.pdf.pipeline.s3_service.download_file_to_bytes",
+        lambda _key: b"pdf-source",
     )
 
     result = asyncio.run(upgrade_pdf_from_checkpoint("job-1"))

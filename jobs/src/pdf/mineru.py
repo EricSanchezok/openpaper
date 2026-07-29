@@ -29,7 +29,11 @@ from src.pdf.models import (
     ParserSecurityError,
     ParserTransientError,
 )
-from src.pdf.state import ParserStateStore, ParserTaskState
+from src.pdf.state import (
+    MinerUBatchCheckpoint,
+    ParserStateStore,
+    ParserTaskState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -411,61 +415,75 @@ class MinerUClient:
         )
         return payload
 
-    async def submit_task(
+    async def request_upload(
         self,
         client: httpx.AsyncClient,
-        source_url: str,
         *,
         data_id: str,
-    ) -> str:
+    ) -> MinerUBatchCheckpoint:
         payload = await self._json_request(
             client,
             "POST",
-            f"{self.config.base_url}/extract/task",
+            f"{self.config.base_url}/file-urls/batch",
             phase="submit",
             json_body={
-                "url": source_url,
+                "files": [
+                    {
+                        "name": f"{data_id}.pdf",
+                        "data_id": data_id,
+                        "is_ocr": True,
+                    }
+                ],
                 "model_version": self.config.model_version,
-                "is_ocr": True,
                 "enable_formula": True,
                 "enable_table": True,
-                "data_id": data_id,
             },
         )
-        task_id = (payload.get("data") or {}).get("task_id")
-        if not task_id or not isinstance(task_id, str):
+        data = payload.get("data") or {}
+        batch_id = data.get("batch_id")
+        file_urls = data.get("file_urls")
+        if (
+            not isinstance(batch_id, str)
+            or not batch_id
+            or not isinstance(file_urls, list)
+            or len(file_urls) != 1
+            or not isinstance(file_urls[0], str)
+            or not file_urls[0]
+        ):
             raise ParserTransientError(
-                "MinerU response did not include task_id",
+                "MinerU response did not include a batch upload target",
                 phase="submit",
                 trace_id=self._trace_id(payload=payload),
             )
-        return task_id
+        return MinerUBatchCheckpoint(
+            batch_id=batch_id,
+            upload_url=file_urls[0],
+        )
 
-    async def _get_or_submit_task(
+    async def _get_or_create_batch(
         self,
         client: httpx.AsyncClient,
-        source_url: str,
         *,
         data_id: str,
-    ) -> str:
-        existing_task_id = await self.state_store.get_task_id(data_id)
-        if existing_task_id:
-            return existing_task_id
+    ) -> MinerUBatchCheckpoint:
+        checkpoint = await self.state_store.get_checkpoint(data_id)
+        if checkpoint is not None:
+            return checkpoint
 
         lock_token = await self.state_store.acquire_submit_lock(data_id)
         if lock_token is None:
-            existing_task_id = await self.state_store.wait_for_task_id(data_id)
-            if existing_task_id:
-                return existing_task_id
-            raise ParserTransientError("Timed out waiting for MinerU task submission")
+            checkpoint = await self.state_store.wait_for_checkpoint(data_id)
+            if checkpoint is not None:
+                return checkpoint
+            raise ParserTransientError("Timed out waiting for MinerU batch submission")
 
         try:
-            existing_task_id = await self.state_store.get_task_id(data_id)
-            if existing_task_id:
-                return existing_task_id
-            task_id = await self.submit_task(client, source_url, data_id=data_id)
-            await self.state_store.save_task_id(data_id, task_id)
-            return task_id
+            checkpoint = await self.state_store.get_checkpoint(data_id)
+            if checkpoint is not None:
+                return checkpoint
+            checkpoint = await self.request_upload(client, data_id=data_id)
+            await self.state_store.save_checkpoint(data_id, checkpoint)
+            return checkpoint
         finally:
             try:
                 await self.state_store.release_submit_lock(data_id, lock_token)
@@ -476,29 +494,135 @@ class MinerUClient:
                     exc_info=True,
                 )
 
-    async def get_task_status(
+    async def upload_file(
+        self,
+        upload_url: str,
+        pdf_bytes: bytes,
+        *,
+        batch_id: str,
+        deadline: float,
+    ) -> None:
+        try:
+            await asyncio.to_thread(self._validate_external_url, upload_url)
+        except ParserError as exc:
+            raise self._add_error_context(
+                exc,
+                phase="upload",
+                task_id=batch_id,
+            )
+        attempt = 0
+        last_error: ParserTransientError | None = None
+        async with self._download_client() as client:
+            while time.monotonic() < deadline:
+                attempt += 1
+                remaining = deadline - time.monotonic()
+                try:
+                    response = await client.put(
+                        upload_url,
+                        content=pdf_bytes,
+                        timeout=min(self.config.request_timeout_seconds, remaining),
+                    )
+                    if 300 <= response.status_code < 400:
+                        raise ParserSecurityError(
+                            "MinerU upload target redirected unexpectedly",
+                            phase="upload",
+                            task_id=batch_id,
+                            http_status=response.status_code,
+                        )
+                    if response.status_code == 429 or response.status_code >= 500:
+                        raise ParserTransientError(
+                            "MinerU upload target is temporarily unavailable",
+                            retry_after=self._retry_after(response),
+                            phase="upload",
+                            task_id=batch_id,
+                            http_status=response.status_code,
+                        )
+                    if response.status_code >= 400:
+                        raise ParserTransientError(
+                            "MinerU upload target rejected the file",
+                            phase="upload",
+                            task_id=batch_id,
+                            http_status=response.status_code,
+                        )
+                    return
+                except httpx.TransportError as exc:
+                    last_error = ParserTransientError(
+                        "MinerU file upload failed",
+                        phase="upload",
+                        task_id=batch_id,
+                        exception_type=type(exc).__name__,
+                    )
+                except ParserTransientError as exc:
+                    last_error = exc
+                logger.warning(
+                    "MinerU upload failed; retrying the idempotent PUT; diagnostics=%s",
+                    json.dumps(last_error.diagnostic_fields(), sort_keys=True),
+                    extra={
+                        **last_error.diagnostic_fields(),
+                        "attempt": attempt,
+                    },
+                )
+                await self._backoff(
+                    attempt,
+                    last_error,
+                    deadline=deadline,
+                    slow_after_fast_failures=True,
+                )
+        if last_error is not None:
+            raise ParserTransientError(
+                f"MinerU batch {batch_id} upload deadline expired",
+                phase="upload",
+                task_id=batch_id,
+                trace_id=last_error.trace_id,
+                http_status=last_error.http_status,
+                exception_type=last_error.exception_type,
+            ) from last_error
+        raise ParserTransientError(
+            f"MinerU batch {batch_id} upload deadline expired",
+            phase="upload",
+            task_id=batch_id,
+        )
+
+    async def get_batch_result(
         self,
         client: httpx.AsyncClient,
-        task_id: str,
+        batch_id: str,
         *,
+        data_id: str,
         timeout_seconds: float | None = None,
     ) -> dict:
         payload = await self._json_request(
             client,
             "GET",
-            f"{self.config.base_url}/extract/task/{task_id}",
+            f"{self.config.base_url}/extract-results/batch/{batch_id}",
             phase="poll",
-            task_id=task_id,
+            task_id=batch_id,
             timeout_seconds=timeout_seconds,
         )
         data = payload.get("data") or {}
         if not isinstance(data, dict):
             raise ParserTransientError(
-                "MinerU task status is invalid",
+                "MinerU batch status is invalid",
                 phase="poll",
-                task_id=task_id,
+                task_id=batch_id,
             )
-        return data
+        results = data.get("extract_result")
+        if not isinstance(results, list):
+            raise ParserTransientError(
+                "MinerU batch result list is invalid",
+                phase="poll",
+                task_id=batch_id,
+            )
+        for result in results:
+            if isinstance(result, dict) and result.get("data_id") == data_id:
+                return result
+        if len(results) == 1 and isinstance(results[0], dict):
+            return results[0]
+        raise ParserTransientError(
+            "MinerU batch result is missing the requested document",
+            phase="poll",
+            task_id=batch_id,
+        )
 
     @staticmethod
     def _backoff_seconds(
@@ -539,8 +663,9 @@ class MinerUClient:
     async def _get_status_until_deadline(
         self,
         client: httpx.AsyncClient,
-        task_id: str,
+        batch_id: str,
         *,
+        data_id: str,
         deadline: float,
     ) -> dict:
         last_error: ParserTransientError | None = None
@@ -548,9 +673,10 @@ class MinerUClient:
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
             try:
-                return await self.get_task_status(
+                return await self.get_batch_result(
                     client,
-                    task_id,
+                    batch_id,
+                    data_id=data_id,
                     timeout_seconds=min(
                         self.config.request_timeout_seconds,
                         remaining,
@@ -581,25 +707,26 @@ class MinerUClient:
                 )
         if last_error is not None:
             raise ParserTransientError(
-                f"MinerU task {task_id} polling deadline expired",
+                f"MinerU batch {batch_id} polling deadline expired",
                 phase="poll",
-                task_id=task_id,
+                task_id=batch_id,
                 mineru_code=last_error.mineru_code,
                 trace_id=last_error.trace_id,
                 http_status=last_error.http_status,
                 exception_type=last_error.exception_type,
             ) from last_error
         raise ParserTransientError(
-            f"MinerU task {task_id} polling deadline expired",
+            f"MinerU batch {batch_id} polling deadline expired",
             phase="poll",
-            task_id=task_id,
+            task_id=batch_id,
         )
 
-    async def poll_task(
+    async def poll_batch(
         self,
         client: httpx.AsyncClient,
-        task_id: str,
+        batch_id: str,
         *,
+        data_id: str,
         deadline: float | None = None,
     ) -> str:
         lifecycle_deadline = (
@@ -610,7 +737,8 @@ class MinerUClient:
         while time.monotonic() < lifecycle_deadline:
             data = await self._get_status_until_deadline(
                 client,
-                task_id,
+                batch_id,
+                data_id=data_id,
                 deadline=lifecycle_deadline,
             )
             state = str(data.get("state", "")).lower()
@@ -620,14 +748,14 @@ class MinerUClient:
                     raise ParserTransientError(
                         "MinerU completed without an archive URL",
                         phase="poll",
-                        task_id=task_id,
+                        task_id=batch_id,
                     )
                 return archive_url
             if state == "failed":
                 raise ParserContentError(
                     "MinerU could not parse the document",
                     phase="poll",
-                    task_id=task_id,
+                    task_id=batch_id,
                     mineru_code=str(data.get("err_code") or "")[:80] or None,
                     trace_id=str(data.get("trace_id") or "")[:160] or None,
                 )
@@ -635,13 +763,13 @@ class MinerUClient:
             if remaining > 0:
                 await asyncio.sleep(min(self.config.poll_seconds, remaining))
         raise ParserTransientError(
-            f"MinerU task {task_id} timed out",
+            f"MinerU batch {batch_id} timed out",
             phase="poll",
-            task_id=task_id,
+            task_id=batch_id,
         )
 
     @staticmethod
-    def _validate_archive_url(url: str) -> None:
+    def _validate_external_url(url: str) -> None:
         parsed = urlsplit(url)
         if (
             parsed.scheme != "https"
@@ -649,7 +777,7 @@ class MinerUClient:
             or parsed.username is not None
             or parsed.password is not None
         ):
-            raise ParserSecurityError("MinerU archive URL must be a public HTTPS URL")
+            raise ParserSecurityError("MinerU URL must be a public HTTPS URL")
         try:
             addresses = socket.getaddrinfo(
                 parsed.hostname,
@@ -657,15 +785,13 @@ class MinerUClient:
                 type=socket.SOCK_STREAM,
             )
         except OSError as exc:
-            raise ParserTransientError(
-                "MinerU archive host could not be resolved"
-            ) from exc
+            raise ParserTransientError("MinerU host could not be resolved") from exc
         if not addresses or any(
             not ipaddress.ip_address(address[4][0]).is_global for address in addresses
         ):
-            raise ParserSecurityError(
-                "MinerU archive URL resolved to a non-public address"
-            )
+            raise ParserSecurityError("MinerU URL resolved to a non-public address")
+
+    _validate_archive_url = _validate_external_url
 
     async def _download_once(
         self,
@@ -751,7 +877,8 @@ class MinerUClient:
     async def download_archive(
         self,
         api_client: httpx.AsyncClient,
-        task_id: str,
+        batch_id: str,
+        data_id: str,
         archive_url: str,
         *,
         deadline: float | None = None,
@@ -771,7 +898,7 @@ class MinerUClient:
                     return await self._download_once(
                         download_client,
                         current_url,
-                        task_id=task_id,
+                        task_id=batch_id,
                     )
                 except ParserTransientError as exc:
                     last_error = exc
@@ -797,7 +924,8 @@ class MinerUClient:
                         break
                     refreshed = await self._get_status_until_deadline(
                         api_client,
-                        task_id,
+                        batch_id,
+                        data_id=data_id,
                         deadline=lifecycle_deadline,
                     )
                     if str(refreshed.get("state", "")).lower() == "done":
@@ -806,18 +934,18 @@ class MinerUClient:
                             current_url = refreshed_url
         if last_error is not None:
             raise ParserTransientError(
-                f"MinerU task {task_id} archive download deadline expired",
+                f"MinerU batch {batch_id} archive download deadline expired",
                 phase="download",
-                task_id=task_id,
+                task_id=batch_id,
                 mineru_code=last_error.mineru_code,
                 trace_id=last_error.trace_id,
                 http_status=last_error.http_status,
                 exception_type=last_error.exception_type,
             ) from last_error
         raise ParserTransientError(
-            f"MinerU task {task_id} archive download deadline expired",
+            f"MinerU batch {batch_id} archive download deadline expired",
             phase="download",
-            task_id=task_id,
+            task_id=batch_id,
         )
 
     def read_archive(self, archive_bytes: bytes) -> ParsedDocument:
@@ -894,87 +1022,128 @@ class MinerUClient:
             archive_bytes=archive_bytes,
         )
 
-    async def parse_url(
+    async def parse_file(
         self,
-        source_url: str,
+        pdf_bytes: bytes,
         *,
         data_id: str,
+        deadline: float | None = None,
         phase_callback: Callable[[str, str | None], None] | None = None,
     ) -> ParsedDocument:
-        deadline = time.monotonic() + self.config.task_timeout_seconds
+        lifecycle_deadline = min(
+            deadline if deadline is not None else float("inf"),
+            time.monotonic() + self.config.task_timeout_seconds,
+        )
+        if lifecycle_deadline <= time.monotonic():
+            raise ParserTransientError(
+                "MinerU foreground parsing budget is exhausted",
+                phase="deadline",
+            )
         async with self._api_client() as client:
             if phase_callback is not None:
                 phase_callback("submit", None)
-            task_id = await self._get_or_submit_task(
+            checkpoint = await self._get_or_create_batch(
                 client,
-                source_url,
                 data_id=data_id,
             )
+            batch_id = checkpoint.batch_id
+            if not checkpoint.uploaded:
+                if phase_callback is not None:
+                    phase_callback("upload", batch_id)
+                await self.upload_file(
+                    checkpoint.upload_url,
+                    pdf_bytes,
+                    batch_id=batch_id,
+                    deadline=lifecycle_deadline,
+                )
+                await self.state_store.mark_uploaded(data_id)
             if phase_callback is not None:
-                phase_callback("poll", task_id)
-            archive_url = await self.poll_task(
+                phase_callback("poll", batch_id)
+            archive_url = await self.poll_batch(
                 client,
-                task_id,
-                deadline=deadline,
+                batch_id,
+                data_id=data_id,
+                deadline=lifecycle_deadline,
             )
             if phase_callback is not None:
-                phase_callback("download", task_id)
+                phase_callback("download", batch_id)
             archive_bytes = await self.download_archive(
                 client,
-                task_id,
+                batch_id,
+                data_id,
                 archive_url,
-                deadline=deadline,
+                deadline=lifecycle_deadline,
             )
         if phase_callback is not None:
-            phase_callback("archive", task_id)
+            phase_callback("archive", batch_id)
         try:
             return self.read_archive(archive_bytes)
         except ParserError as exc:
             raise self._add_error_context(
                 exc,
                 phase="archive",
-                task_id=task_id,
+                task_id=batch_id,
             )
 
     async def parse_existing(
         self,
         *,
         data_id: str,
+        pdf_bytes: bytes | None = None,
         phase_callback: Callable[[str, str | None], None] | None = None,
     ) -> ParsedDocument:
-        """Resume a persisted MinerU task without ever submitting a new one."""
+        """Resume a persisted MinerU batch without creating a new one."""
         deadline = time.monotonic() + self.config.task_timeout_seconds
-        task_id = await self.state_store.get_task_id(data_id)
-        if task_id is None:
+        checkpoint = await self.state_store.get_checkpoint(data_id)
+        if checkpoint is None:
             raise ParserContentError(
-                "MinerU task checkpoint is missing",
+                "MinerU batch checkpoint is missing",
                 phase="checkpoint",
             )
+        batch_id = checkpoint.batch_id
+        if not checkpoint.uploaded:
+            if pdf_bytes is None:
+                raise ParserTransientError(
+                    "MinerU batch still requires its source file",
+                    phase="upload",
+                    task_id=batch_id,
+                )
+            if phase_callback is not None:
+                phase_callback("upload", batch_id)
+            await self.upload_file(
+                checkpoint.upload_url,
+                pdf_bytes,
+                batch_id=batch_id,
+                deadline=deadline,
+            )
+            await self.state_store.mark_uploaded(data_id)
         async with self._api_client() as client:
             if phase_callback is not None:
-                phase_callback("poll", task_id)
-            archive_url = await self.poll_task(
+                phase_callback("poll", batch_id)
+            archive_url = await self.poll_batch(
                 client,
-                task_id,
+                batch_id,
+                data_id=data_id,
                 deadline=deadline,
             )
             if phase_callback is not None:
-                phase_callback("download", task_id)
+                phase_callback("download", batch_id)
             archive_bytes = await self.download_archive(
                 client,
-                task_id,
+                batch_id,
+                data_id,
                 archive_url,
                 deadline=deadline,
             )
         if phase_callback is not None:
-            phase_callback("archive", task_id)
+            phase_callback("archive", batch_id)
         try:
             return self.read_archive(archive_bytes)
         except ParserError as exc:
             raise self._add_error_context(
                 exc,
                 phase="archive",
-                task_id=task_id,
+                task_id=batch_id,
             )
 
     async def close(self) -> None:

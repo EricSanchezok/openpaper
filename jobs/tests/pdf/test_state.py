@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from src.pdf.state import ParserStateStore
+from src.pdf.state import MinerUBatchCheckpoint, ParserStateStore
 
 
 class MemoryRedis:
@@ -45,8 +45,14 @@ def test_state_checkpoint_and_submit_lock_are_namespaced() -> None:
         redis = MemoryRedis()
         store = ParserStateStore(redis_client=redis)
 
-        await store.save_task_id("job-1", "mineru-task")
-        assert await store.get_task_id("job-1") == "mineru-task"
+        checkpoint = MinerUBatchCheckpoint(
+            batch_id="mineru-batch",
+            upload_url="https://upload.example/paper.pdf",
+        )
+        await store.save_checkpoint("job-1", checkpoint)
+        assert await store.get_checkpoint("job-1") == checkpoint
+        uploaded = await store.mark_uploaded("job-1")
+        assert uploaded.uploaded is True
 
         token = await store.acquire_submit_lock("job-1")
         assert token is not None
@@ -55,7 +61,7 @@ def test_state_checkpoint_and_submit_lock_are_namespaced() -> None:
         assert await store.acquire_submit_lock("job-1") is not None
 
         await store.clear("job-1")
-        assert await store.get_task_id("job-1") is None
+        assert await store.get_checkpoint("job-1") is None
         await store.close()
         assert redis.closed
 

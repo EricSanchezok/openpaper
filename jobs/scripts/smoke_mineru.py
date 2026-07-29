@@ -6,14 +6,16 @@ import argparse
 import asyncio
 import time
 import uuid
+from pathlib import Path
 
 from src.pdf.mineru import MinerUClient
 from src.pdf.models import ParserError
 
 
-async def run(source_url: str) -> None:
+async def run(source_file: Path) -> None:
     job_id = f"smoke-{uuid.uuid4().hex}"
     client = MinerUClient()
+    pdf_bytes = source_file.read_bytes()
     started_at = time.monotonic()
     last_phase_at = started_at
 
@@ -31,8 +33,8 @@ async def run(source_url: str) -> None:
         last_phase_at = now
 
     try:
-        result = await client.parse_url(
-            source_url,
+        result = await client.parse_file(
+            pdf_bytes,
             data_id=job_id,
             phase_callback=report_phase,
         )
@@ -64,11 +66,11 @@ async def run(source_url: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Submit one externally reachable PDF URL to MinerU."
+        description="Upload one local PDF through MinerU's signed batch API."
     )
-    parser.add_argument("source_url", help="A temporary HTTPS URL for a test PDF")
+    parser.add_argument("source_file", type=Path, help="Path to a local PDF")
     args = parser.parse_args()
-    asyncio.run(run(args.source_url))
+    asyncio.run(run(args.source_file))
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import time
 import zipfile
 
 import httpx
@@ -14,21 +15,43 @@ from src.pdf.models import (
     ParserSecurityError,
     ParserTransientError,
 )
+from src.pdf.state import MinerUBatchCheckpoint
 
 
 class MemoryStateStore:
-    def __init__(self, task_id: str | None = None) -> None:
-        self.task_id = task_id
+    def __init__(self, batch_id: str | None = None, *, uploaded: bool = True) -> None:
+        self.checkpoint = (
+            MinerUBatchCheckpoint(
+                batch_id=batch_id,
+                upload_url="https://upload.example/paper.pdf",
+                uploaded=uploaded,
+            )
+            if batch_id
+            else None
+        )
         self.lock_token: str | None = None
 
-    async def get_task_id(self, _job_id: str) -> str | None:
-        return self.task_id
+    async def get_checkpoint(self, _job_id: str) -> MinerUBatchCheckpoint | None:
+        return self.checkpoint
 
-    async def save_task_id(self, _job_id: str, task_id: str) -> None:
-        self.task_id = task_id
+    async def save_checkpoint(
+        self,
+        _job_id: str,
+        checkpoint: MinerUBatchCheckpoint,
+    ) -> None:
+        self.checkpoint = checkpoint
+
+    async def mark_uploaded(self, _job_id: str) -> MinerUBatchCheckpoint:
+        assert self.checkpoint is not None
+        self.checkpoint = MinerUBatchCheckpoint(
+            batch_id=self.checkpoint.batch_id,
+            upload_url=self.checkpoint.upload_url,
+            uploaded=True,
+        )
+        return self.checkpoint
 
     async def clear(self, _job_id: str) -> None:
-        self.task_id = None
+        self.checkpoint = None
 
     async def acquire_submit_lock(self, _job_id: str) -> str | None:
         if self.lock_token is not None:
@@ -36,8 +59,8 @@ class MemoryStateStore:
         self.lock_token = "lock-token"
         return self.lock_token
 
-    async def wait_for_task_id(self, _job_id: str) -> str | None:
-        return self.task_id
+    async def wait_for_checkpoint(self, _job_id: str) -> MinerUBatchCheckpoint | None:
+        return self.checkpoint
 
     async def release_submit_lock(self, _job_id: str, token: str) -> None:
         if self.lock_token == token:
@@ -76,6 +99,26 @@ def _archive() -> bytes:
             ),
         )
     return output.getvalue()
+
+
+def _batch_result(
+    *,
+    state: str = "done",
+    archive_url: str = "https://cdn.example/result.zip",
+) -> dict:
+    result = {
+        "data_id": "job-1",
+        "state": state,
+    }
+    if state == "done":
+        result["full_zip_url"] = archive_url
+    return {
+        "code": 0,
+        "data": {
+            "batch_id": "batch-1",
+            "extract_result": [result],
+        },
+    }
 
 
 async def _no_backoff(
@@ -133,7 +176,7 @@ def test_content_list_builds_page_aware_canonical_markdown() -> None:
     assert markdown[offsets[2][0] : offsets[2][1]] == "\n\n$x = 1$"
 
 
-def test_resumes_existing_task_without_resubmitting(
+def test_resumes_existing_batch_without_resubmitting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = {"post": 0}
@@ -147,18 +190,15 @@ def test_resumes_existing_task_without_resubmitting(
             return httpx.Response(200, content=archive_bytes, request=request)
         return httpx.Response(
             200,
-            json={
-                "code": 0,
-                "data": {
-                    "state": "done",
-                    "full_zip_url": "https://cdn.example/result.zip",
-                },
-            },
+            json=_batch_result(),
             request=request,
         )
 
     monkeypatch.setattr(
         MinerUClient, "_validate_archive_url", staticmethod(lambda _: None)
+    )
+    monkeypatch.setattr(
+        MinerUClient, "_validate_external_url", staticmethod(lambda _: None)
     )
     client = MinerUClient(
         _config(),
@@ -168,8 +208,8 @@ def test_resumes_existing_task_without_resubmitting(
     phases: list[tuple[str, str | None]] = []
 
     result = asyncio.run(
-        client.parse_url(
-            "https://source.example/paper.pdf",
+        client.parse_file(
+            b"%PDF-test",
             data_id="job-1",
             phase_callback=lambda phase, task_id: phases.append((phase, task_id)),
         )
@@ -194,31 +234,54 @@ def test_download_retry_refreshes_task_without_resubmitting(
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
             calls["post"] += 1
+            assert request.url.path == "/api/v4/file-urls/batch"
+            assert request.headers["authorization"] == "Bearer test-token"
+            assert json.loads(request.content) == {
+                "files": [
+                    {
+                        "name": "job-1.pdf",
+                        "data_id": "job-1",
+                        "is_ocr": True,
+                    }
+                ],
+                "model_version": "vlm",
+                "enable_formula": True,
+                "enable_table": True,
+            }
             return httpx.Response(
                 200,
-                json={"code": 0, "data": {"task_id": "task-1"}},
+                json={
+                    "code": 0,
+                    "data": {
+                        "batch_id": "batch-1",
+                        "file_urls": ["https://upload.example/paper.pdf"],
+                    },
+                },
                 request=request,
             )
+        if request.method == "PUT":
+            assert "authorization" not in request.headers
+            assert "content-type" not in request.headers
+            assert request.content == b"%PDF-test"
+            return httpx.Response(200, request=request)
         if request.url.host == "cdn.example":
             calls["download"] += 1
             if calls["download"] == 1:
                 raise httpx.ConnectError("connection reset", request=request)
             return httpx.Response(200, content=archive_bytes, request=request)
         calls["poll"] += 1
+        assert request.url.path == "/api/v4/extract-results/batch/batch-1"
         return httpx.Response(
             200,
-            json={
-                "code": 0,
-                "data": {
-                    "state": "done",
-                    "full_zip_url": "https://cdn.example/result.zip",
-                },
-            },
+            json=_batch_result(),
             request=request,
         )
 
     monkeypatch.setattr(
         MinerUClient, "_validate_archive_url", staticmethod(lambda _: None)
+    )
+    monkeypatch.setattr(
+        MinerUClient, "_validate_external_url", staticmethod(lambda _: None)
     )
     monkeypatch.setattr(MinerUClient, "_backoff", staticmethod(_no_backoff))
     client = MinerUClient(
@@ -227,12 +290,51 @@ def test_download_retry_refreshes_task_without_resubmitting(
         transport=httpx.MockTransport(handler),
     )
 
-    result = asyncio.run(
-        client.parse_url("https://source.example/paper.pdf", data_id="job-1")
-    )
+    result = asyncio.run(client.parse_file(b"%PDF-test", data_id="job-1"))
 
     assert result.quality.value == "full"
     assert calls == {"post": 1, "download": 2, "poll": 2}
+
+
+def test_resumes_incomplete_batch_and_retries_upload_without_resubmitting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"post": 0, "upload": 0}
+    archive_bytes = _archive()
+    state = MemoryStateStore("batch-1", uploaded=False)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            calls["post"] += 1
+            return httpx.Response(500, request=request)
+        if request.method == "PUT":
+            calls["upload"] += 1
+            if calls["upload"] == 1:
+                raise httpx.ConnectError("response lost", request=request)
+            return httpx.Response(200, request=request)
+        if request.url.host == "cdn.example":
+            return httpx.Response(200, content=archive_bytes, request=request)
+        return httpx.Response(200, json=_batch_result(), request=request)
+
+    monkeypatch.setattr(
+        MinerUClient, "_validate_external_url", staticmethod(lambda _: None)
+    )
+    monkeypatch.setattr(
+        MinerUClient, "_validate_archive_url", staticmethod(lambda _: None)
+    )
+    monkeypatch.setattr(MinerUClient, "_backoff", staticmethod(_no_backoff))
+    client = MinerUClient(
+        _config(),
+        state,
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = asyncio.run(client.parse_file(b"%PDF-test", data_id="job-1"))
+
+    assert result.quality.value == "full"
+    assert calls == {"post": 0, "upload": 2}
+    assert state.checkpoint is not None
+    assert state.checkpoint.uploaded is True
 
 
 def test_download_survives_more_than_four_consecutive_tls_failures(
@@ -250,13 +352,7 @@ def test_download_survives_more_than_four_consecutive_tls_failures(
         calls["poll"] += 1
         return httpx.Response(
             200,
-            json={
-                "code": 0,
-                "data": {
-                    "state": "done",
-                    "full_zip_url": "https://cdn.example/result.zip",
-                },
-            },
+            json=_batch_result(),
             request=request,
         )
 
@@ -272,9 +368,7 @@ def test_download_survives_more_than_four_consecutive_tls_failures(
         transport=httpx.MockTransport(handler),
     )
 
-    result = asyncio.run(
-        client.parse_url("https://source.example/paper.pdf", data_id="job-1")
-    )
+    result = asyncio.run(client.parse_file(b"%PDF-test", data_id="job-1"))
 
     assert result.quality.value == "full"
     assert calls == {"download": 6, "poll": 6}
@@ -295,12 +389,37 @@ def test_submit_transport_failure_is_not_blindly_retried() -> None:
     )
     with pytest.raises(ParserTransientError, match="submit"):
         asyncio.run(
-            client.parse_url(
-                "https://source.example/paper.pdf",
+            client.parse_file(
+                b"%PDF-test",
                 data_id="job-1",
             )
         )
     assert calls == 1
+
+
+def test_expired_foreground_budget_does_not_submit() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500, request=request)
+
+    client = MinerUClient(
+        _config(),
+        MemoryStateStore(),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ParserTransientError, match="budget is exhausted"):
+        asyncio.run(
+            client.parse_file(
+                b"%PDF-test",
+                data_id="job-1",
+                deadline=time.monotonic() - 1,
+            )
+        )
+    assert calls == 0
 
 
 def test_authorization_failure_is_configuration_error() -> None:
@@ -314,8 +433,8 @@ def test_authorization_failure_is_configuration_error() -> None:
     )
     with pytest.raises(ParserConfigurationError, match="authorization"):
         asyncio.run(
-            client.parse_url(
-                "https://source.example/paper.pdf",
+            client.parse_file(
+                b"%PDF-test",
                 data_id="job-1",
             )
         )
@@ -336,13 +455,7 @@ def test_poll_survives_more_than_four_consecutive_network_failures(
             raise httpx.ConnectTimeout("temporary TLS failure", request=request)
         return httpx.Response(
             200,
-            json={
-                "code": 0,
-                "data": {
-                    "state": "done",
-                    "full_zip_url": "https://cdn.example/result.zip",
-                },
-            },
+            json=_batch_result(),
             request=request,
         )
 
@@ -358,9 +471,7 @@ def test_poll_survives_more_than_four_consecutive_network_failures(
         transport=httpx.MockTransport(handler),
     )
 
-    result = asyncio.run(
-        client.parse_url("https://source.example/paper.pdf", data_id="job-1")
-    )
+    result = asyncio.run(client.parse_file(b"%PDF-test", data_id="job-1"))
 
     assert result.quality.value == "full"
     assert calls == 6
