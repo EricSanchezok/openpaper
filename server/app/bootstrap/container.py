@@ -88,6 +88,7 @@ from app.modules.research.infrastructure.item_gateway import (
     SqlAlchemyResearchItemGateway,
 )
 from app.modules.jobs.application.jobs import Jobs
+from app.modules.jobs.application.callbacks import JobCallbacks
 from app.modules.jobs.infrastructure.application_gateway import (
     SqlAlchemyJobsGateway,
 )
@@ -248,6 +249,59 @@ def build_research_items(*, db: Session) -> ResearchItems:
 
 def build_jobs(*, db: Session) -> Jobs:
     return Jobs(SqlAlchemyJobsGateway(db))
+
+
+def build_job_callbacks(*, db: Session) -> JobCallbacks:
+    # Callback adapters touch several domain modules and are loaded only by
+    # the internal callback transport, avoiding composition-root import cycles.
+    from app.modules.jobs.application.callbacks import RegisteredJobCallback
+    from app.modules.jobs.application.contracts import (
+        AudioOverviewWebhookData,
+        DataTableWebhookData,
+        JobCallbackIdentity,
+        PdfProcessingWebhookData,
+        StorageDeleteCallback,
+    )
+    from app.modules.jobs.infrastructure.callback_gateway import (
+        AudioCompletion,
+        DataTableCompletion,
+        DocumentGcCompletion,
+        PdfPostprocessCompletion,
+        PdfProcessCompletion,
+        SqlAlchemyJobLifecycle,
+        StorageDeleteCompletion,
+        ZoteroPostprocessCompletion,
+        ZoteroSyncSchedule,
+    )
+    from app.shared.domain.enums import JobOperation
+
+    return JobCallbacks(
+        lifecycle=SqlAlchemyJobLifecycle(db),
+        handlers={
+            JobOperation.PDF_PROCESS: RegisteredJobCallback(
+                PdfProcessingWebhookData, PdfProcessCompletion(db)
+            ),
+            JobOperation.PDF_POSTPROCESS: RegisteredJobCallback(
+                JobCallbackIdentity, PdfPostprocessCompletion(db)
+            ),
+            JobOperation.DOCUMENT_GC: RegisteredJobCallback(
+                JobCallbackIdentity, DocumentGcCompletion(db)
+            ),
+            JobOperation.STORAGE_DELETE: RegisteredJobCallback(
+                StorageDeleteCallback, StorageDeleteCompletion(db)
+            ),
+            JobOperation.ZOTERO_POSTPROCESS: RegisteredJobCallback(
+                JobCallbackIdentity, ZoteroPostprocessCompletion(db)
+            ),
+            JobOperation.AUDIO_GENERATE: RegisteredJobCallback(
+                AudioOverviewWebhookData, AudioCompletion(db)
+            ),
+            JobOperation.DATA_TABLE_GENERATE: RegisteredJobCallback(
+                DataTableWebhookData, DataTableCompletion(db)
+            ),
+        },
+        schedules=ZoteroSyncSchedule(db),
+    )
 
 
 def build_research_generation(*, db: Session) -> ResearchGeneration:

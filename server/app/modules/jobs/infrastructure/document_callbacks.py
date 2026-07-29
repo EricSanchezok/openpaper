@@ -71,12 +71,11 @@ from app.modules.jobs.infrastructure.callback_boundaries import (
     optional_savepoint,
     pdf_ingestion_callback,
 )
-from fastapi import Request
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.transport.http.internal_v1.jobs_callbacks.research import settle_jobs_usage
+from app.modules.jobs.infrastructure.research_callbacks import settle_jobs_usage
 
 logger = logging.getLogger(__name__)
 
@@ -799,17 +798,8 @@ async def handle_paper_processing_webhook(
     return {"status": "webhook processed"}
 
 
-def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
+def schedule_zotero_jobs(*, threshold_seconds: int, db: Session) -> dict[str, int]:
     """Persist one idempotent job per due and eligible Zotero user."""
-    threshold_seconds = int(
-        request.query_params.get("threshold_seconds", str(24 * 3600))
-    )
-    if threshold_seconds < 60:
-        raise AppError(
-            code="zotero_sync_interval_invalid",
-            message="Zotero sync interval is invalid",
-            status_code=422,
-        )
     threshold_hours = threshold_seconds / 3600
     user_ids = zotero_import_repository.list_user_ids_due_for_sync(
         db, threshold_hours=threshold_hours
@@ -851,7 +841,6 @@ def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
         )
         if job.id == job_id:
             scheduled += 1
-    db.commit()
     return {
         "total_users": len(user_ids),
         "scheduled_jobs": scheduled,

@@ -1,11 +1,9 @@
 """Lease callbacks shared by every durable Jobs operation."""
 
-from __future__ import annotations
-
 import uuid
 
+from app.bootstrap.container import build_job_callbacks
 from app.database.database import get_db
-from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.jobs.application.contracts import JobClaimResponse
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -21,7 +19,7 @@ def claim_durable_job(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> JobClaimResponse:
-    return JobClaimResponse(claimed=job_repository.claim(db, job_id=job_id) is not None)
+    return build_job_callbacks(db=db).claim(job_id=job_id)
 
 
 @lifecycle_webhook_router.post(
@@ -32,5 +30,4 @@ def heartbeat_durable_job(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> JobClaimResponse:
-    updated = job_repository.heartbeat(db, job_id=job_id)
-    return JobClaimResponse(claimed=updated)
+    return build_job_callbacks(db=db).heartbeat(job_id=job_id)

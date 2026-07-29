@@ -133,8 +133,6 @@ async def complete_audio_job(
                 model_version=result.model_version,
             )
             db.add(item)
-    db.commit()
-
     if job.requested_by_id is not None:
         settle_jobs_usage(job.requested_by_id, webhook.usage_events)
         await release_concurrency_by_id(
@@ -207,8 +205,6 @@ async def complete_data_table_job(
                 row_failures=[str(document_id) for document_id in result.row_failures],
             )
             db.add(item)
-    db.commit()
-
     if job.requested_by_id is not None:
         settle_jobs_usage(job.requested_by_id, webhook.usage_events)
         await release_concurrency_by_id(

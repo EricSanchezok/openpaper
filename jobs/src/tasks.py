@@ -429,7 +429,7 @@ def periodic_zotero_sync(self):
     webhook_base = os.getenv("WEBHOOK_BASE_URL", "http://localhost:8000")
     sync_interval = int(ZOTERO_SYNC_INTERVAL_SECONDS)
     url = (
-        f"{webhook_base}/internal/v1/integrations/zotero/schedule"
+        f"{webhook_base}/internal/v1/schedules/zotero-sync"
         f"?threshold_seconds={sync_interval}"
     )
     logger.info("Scheduling due Zotero jobs")
