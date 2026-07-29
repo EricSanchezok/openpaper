@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.modules.conversations.infrastructure.chat_gateway import (
+from app.bootstrap.adapters.conversation_chat import (
     chat_message_multipaper,
 )
 from app.modules.conversations.infrastructure.message_repository import (
@@ -226,7 +226,7 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         document_id=uuid.uuid4(),
     )
     monkeypatch.setattr(
-        "app.modules.conversations.infrastructure.chat_gateway.has_token_credits",
+        "app.bootstrap.adapters.conversation_chat.has_token_credits",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
@@ -235,17 +235,17 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         lambda *_args, **_kwargs: conversation,
     )
     monkeypatch.setattr(
-        "app.modules.conversations.infrastructure.chat_gateway.conversation_policy.require_can_continue",
+        "app.bootstrap.adapters.conversation_chat.conversation_policy.require_can_continue",
         lambda *_args, **_kwargs: None,
     )
     enforce_rate_limit = MagicMock()
     acquire_concurrency = MagicMock()
     monkeypatch.setattr(
-        "app.modules.conversations.infrastructure.chat_gateway.enforce_rate_limit",
+        "app.bootstrap.adapters.conversation_chat.enforce_rate_limit",
         enforce_rate_limit,
     )
     monkeypatch.setattr(
-        "app.modules.conversations.infrastructure.chat_gateway.acquire_concurrency",
+        "app.bootstrap.adapters.conversation_chat.acquire_concurrency",
         acquire_concurrency,
     )
     with pytest.raises(AppError) as exc_info:

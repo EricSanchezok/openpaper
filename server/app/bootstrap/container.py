@@ -287,7 +287,7 @@ def build_job_callbacks(*, db: Session) -> JobCallbacks:
         PdfProcessingWebhookData,
         StorageDeleteCallback,
     )
-    from app.modules.jobs.infrastructure.callback_gateway import (
+    from app.bootstrap.adapters.job_callback_handlers import (
         AudioCompletion,
         DataTableCompletion,
         DocumentGcCompletion,
@@ -357,7 +357,7 @@ def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:
 def build_conversation_chat(*, db: Session) -> ConversationChat:
     # Lazy import avoids the LLM tool graph importing this composition root
     # while the root itself is still being initialized.
-    from app.modules.conversations.infrastructure.chat_gateway import (
+    from app.bootstrap.adapters.conversation_chat import (
         DefaultConversationChatGateway,
     )
 

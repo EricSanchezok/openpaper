@@ -25,7 +25,7 @@ from app.modules.integrations.zotero.infrastructure.import_repository import (
     zotero_import_repository,
 )
 from app.modules.integrations.zotero.infrastructure.oauth import zotero_auth_client
-from app.modules.integrations.zotero.infrastructure.service import (
+from app.bootstrap.adapters.zotero_workflow import (
     import_batch,
     list_library,
     sync_batch,

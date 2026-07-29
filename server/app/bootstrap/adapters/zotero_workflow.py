@@ -1,4 +1,4 @@
-"""Zotero import and synchronization orchestration."""
+"""Cross-module Zotero import and synchronization adapter."""
 
 import asyncio
 import hashlib

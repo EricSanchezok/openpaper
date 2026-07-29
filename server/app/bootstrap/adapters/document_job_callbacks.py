@@ -1,4 +1,4 @@
-"""PDF, storage, and Zotero callbacks from the Scholens Jobs service."""
+"""Cross-module PDF, storage, and Zotero callback adapter."""
 
 import logging
 import uuid
@@ -58,7 +58,7 @@ from app.modules.jobs.application.contracts import (
 )
 from app.shared.application import Actor
 from app.modules.identity.infrastructure.users import actor_from_auth_user
-from app.modules.integrations.zotero.infrastructure.service import (
+from app.bootstrap.adapters.zotero_workflow import (
     apply_zotero_annotations,
     auto_import_new_papers,
     sync_batch,

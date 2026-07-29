@@ -13,10 +13,8 @@ from app.modules.jobs.application.contracts import (
     PdfProcessingWebhookData,
     StorageDeleteCallback,
 )
-from app.modules.jobs.infrastructure import (
-    document_callbacks,
-    research_callbacks,
-)
+from app.bootstrap.adapters import document_job_callbacks
+from app.modules.jobs.infrastructure import research_callbacks
 from app.modules.jobs.infrastructure.repository import job_repository
 from app.shared.domain.enums import JobOperation
 from pydantic import BaseModel
@@ -48,7 +46,7 @@ class PdfProcessCompletion(JobCompletionHandler):
         self._db = db
 
     async def complete(self, *, job_id: UUID, callback: BaseModel) -> object:
-        return await document_callbacks.handle_paper_processing_webhook(
+        return await document_job_callbacks.handle_paper_processing_webhook(
             str(job_id),
             cast(PdfProcessingWebhookData, callback),
             self._db,
@@ -60,7 +58,7 @@ class PdfPostprocessCompletion(JobCompletionHandler):
         self._db = db
 
     async def complete(self, *, job_id: UUID, callback: BaseModel) -> object:
-        return document_callbacks.complete_pdf_postprocess_job(
+        return document_job_callbacks.complete_pdf_postprocess_job(
             job_id, cast(JobCallbackIdentity, callback), self._db
         )
 
@@ -70,7 +68,7 @@ class DocumentGcCompletion(JobCompletionHandler):
         self._db = db
 
     async def complete(self, *, job_id: UUID, callback: BaseModel) -> object:
-        return document_callbacks.complete_document_gc_job(
+        return document_job_callbacks.complete_document_gc_job(
             job_id, cast(JobCallbackIdentity, callback), self._db
         )
 
@@ -80,7 +78,7 @@ class StorageDeleteCompletion(JobCompletionHandler):
         self._db = db
 
     async def complete(self, *, job_id: UUID, callback: BaseModel) -> object:
-        return document_callbacks.complete_storage_delete_job(
+        return document_job_callbacks.complete_storage_delete_job(
             job_id, cast(StorageDeleteCallback, callback), self._db
         )
 
@@ -90,7 +88,7 @@ class ZoteroPostprocessCompletion(JobCompletionHandler):
         self._db = db
 
     async def complete(self, *, job_id: UUID, callback: BaseModel) -> object:
-        return await document_callbacks.complete_zotero_postprocess_job(
+        return await document_job_callbacks.complete_zotero_postprocess_job(
             job_id, cast(JobCallbackIdentity, callback), self._db
         )
 
@@ -120,7 +118,7 @@ class ZoteroSyncSchedule:
         self._db = db
 
     def schedule_zotero_sync(self, *, threshold_seconds: int) -> dict[str, int]:
-        return document_callbacks.schedule_zotero_jobs(
+        return document_job_callbacks.schedule_zotero_jobs(
             threshold_seconds=threshold_seconds,
             db=self._db,
         )

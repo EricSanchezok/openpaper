@@ -3,10 +3,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from app.modules.integrations.zotero.infrastructure import (
-    service as zotero_import_module,
-)
-from app.modules.integrations.zotero.infrastructure.service import (
+from app.bootstrap.adapters import zotero_workflow as zotero_import_module
+from app.bootstrap.adapters.zotero_workflow import (
     _parse_zotero_date_added,
     auto_import_new_papers,
 )
