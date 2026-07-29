@@ -93,7 +93,7 @@ def test_refresh_cookie_is_scoped_to_scholens_auth_routes() -> None:
     config = runtime.build_refresh_cookie_config(environment="development")
 
     assert config.name == "scholens_refresh"
-    assert config.path == "/api/auth"
+    assert config.path == "/api/v1/auth"
     assert config.max_age_seconds == 7 * 24 * 60 * 60
     assert config.secure is False
     assert config.samesite == "strict"

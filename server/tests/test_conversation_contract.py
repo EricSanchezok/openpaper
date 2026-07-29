@@ -62,11 +62,11 @@ def test_assistant_trace_serializes_as_an_object() -> None:
 def test_conversation_scope_contract_is_private_and_unified() -> None:
     paths = set(app.openapi()["paths"])
 
-    assert "/api/conversations" in paths
-    assert "/api/conversations/{conversation_id}/scope" in paths
-    assert "/api/conversations/{conversation_id}/messages" in paths
-    assert not any(path.startswith("/api/conversation/") for path in paths)
-    assert not any(path.startswith("/api/projects/conversations") for path in paths)
+    assert "/api/v1/conversations" in paths
+    assert "/api/v1/conversations/{conversation_id}/scope" in paths
+    assert "/api/v1/conversations/{conversation_id}/messages" in paths
+    assert not any(path.startswith("/api/v1/conversation/") for path in paths)
+    assert not any(path.startswith("/api/v1/projects/conversations") for path in paths)
     assert not any("conversation/share" in path for path in paths)
 
     table = Conversation.__table__

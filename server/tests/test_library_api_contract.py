@@ -134,13 +134,13 @@ def test_revoking_share_removes_the_only_public_credential() -> None:
 def test_library_tag_api_uses_library_document_boundaries() -> None:
     paths = app.openapi()["paths"]
 
-    assert "/api/documents/uploads" in paths
-    assert "/api/documents/uploads/from-url" in paths
-    assert "/api/library/tags" in paths
-    assert "/api/library/tags/assignments" in paths
-    assert "/api/library/papers/by-document/{document_id}/tags/{tag_id}" in paths
-    assert not any(path.startswith("/api/paper/tag") for path in paths)
-    assert not any(path.startswith("/api/paper/upload") for path in paths)
+    assert "/api/v1/documents/uploads" in paths
+    assert "/api/v1/documents/uploads/from-url" in paths
+    assert "/api/v1/library/tags" in paths
+    assert "/api/v1/library/tags/assignments" in paths
+    assert "/api/v1/library/papers/by-document/{document_id}/tags/{tag_id}" in paths
+    assert not any(path.startswith("/api/v1/paper/tag") for path in paths)
+    assert not any(path.startswith("/api/v1/paper/upload") for path in paths)
 
 
 def test_library_tag_assignment_is_strict_and_bounded() -> None:

@@ -79,7 +79,7 @@ def build_refresh_cookie_config(*, environment: str) -> RefreshCookieConfig:
         max_age_seconds=settings.jwt_refresh_token_ttl_days * 24 * 60 * 60,
         secure=environment.lower() == "production",
         samesite="strict",
-        path="/api/auth",
+        path="/api/v1/auth",
     )
 
 

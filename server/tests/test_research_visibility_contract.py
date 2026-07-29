@@ -236,18 +236,18 @@ def test_citation_snapshot_is_strictly_validated_before_persistence() -> None:
 def test_research_api_exposes_only_the_new_typed_routes() -> None:
     paths = app.openapi()["paths"]
     expected = {
-        "/api/documents/{document_id}/research-items",
-        "/api/documents/{document_id}/highlight-threads",
-        "/api/highlight-threads/{thread_id}",
-        "/api/highlight-threads/{thread_id}/comments",
-        "/api/annotation-comments/{comment_id}",
-        "/api/projects/{project_id}/research-items",
-        "/api/research-items/{item_id}",
+        "/api/v1/documents/{document_id}/research-items",
+        "/api/v1/documents/{document_id}/highlight-threads",
+        "/api/v1/highlight-threads/{thread_id}",
+        "/api/v1/highlight-threads/{thread_id}/comments",
+        "/api/v1/annotation-comments/{comment_id}",
+        "/api/v1/projects/{project_id}/research-items",
+        "/api/v1/research-items/{item_id}",
     }
     assert expected.issubset(paths)
-    assert not any("/api/highlight/" in path for path in paths)
-    assert not any("/api/annotation/" in path for path in paths)
-    assert not any("/api/projects/artifacts" in path for path in paths)
+    assert not any("/api/v1/highlight/" in path for path in paths)
+    assert not any("/api/v1/annotation/" in path for path in paths)
+    assert not any("/api/v1/projects/artifacts" in path for path in paths)
     assert not any("/visibility" in path for path in paths)
 
 
