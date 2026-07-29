@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from app.services.chat_streaming import stream_with_stable_error
+from app.modules.conversations.infrastructure.chat_streaming import stream_with_stable_error
 from sqlalchemy.orm import Session
 
 
@@ -17,7 +17,7 @@ async def test_stream_failure_is_redacted_and_recorded(
 
     track_event = MagicMock()
     monkeypatch.setattr(
-        "app.services.chat_streaming.track_event",
+        "app.modules.conversations.infrastructure.chat_streaming.track_event",
         track_event,
     )
 

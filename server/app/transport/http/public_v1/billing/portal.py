@@ -3,7 +3,7 @@ import logging
 import stripe
 from app.transport.http.public_v1.billing.config import MONTHLY_PRICE_ID, YEARLY_PRICE_ID, YOUR_DOMAIN
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.database.crud.subscription_crud import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import subscription_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError

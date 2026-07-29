@@ -13,7 +13,7 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.modules.papers.infrastructure.repository import document_repository
-from app.services.resource_quotas import (
+from app.modules.billing.infrastructure.quotas import (
     require_library_document_capacity,
     require_project_document_capacity,
 )
@@ -320,7 +320,7 @@ class ProjectDocumentRepository:
 
         db.delete(project_paper)
         db.flush()
-        from app.services.document_gc import schedule_document_gc
+        from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
 
         schedule_document_gc(db, document_id=document_id)
         db.flush()

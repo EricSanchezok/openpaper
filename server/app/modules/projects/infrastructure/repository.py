@@ -22,12 +22,12 @@ from app.modules.projects.infrastructure.access import (
     require_project_permission,
 )
 from app.modules.projects.application.contracts import ProjectPermissionSet
-from app.services.project_lifecycle import (
+from app.modules.projects.infrastructure.lifecycle import (
     schedule_orphan_documents,
     prepare_project_deletion,
     schedule_project_storage_cleanup,
 )
-from app.services.upload_reservations import reassign_project_quota_owner
+from app.modules.papers.infrastructure.upload_reservations import reassign_project_quota_owner
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 

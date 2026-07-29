@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.services.zotero import service as zotero_import_module
-from app.services.zotero.service import (
+from app.modules.integrations.zotero.infrastructure import service as zotero_import_module
+from app.modules.integrations.zotero.infrastructure.service import (
     _normalize_payload_item,
     _page_from_annotation,
     _serialize_annotations_payload,
@@ -179,7 +179,7 @@ class TestZoteroSyncItem(unittest.TestCase):
 
 class TestZoteroImportCrudFilters(unittest.TestCase):
     def test_list_syncable_excludes_url_imports(self) -> None:
-        from app.database.crud.zotero_import_crud import zotero_import_crud
+        from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
 
         db = MagicMock()
         db.scalars.return_value.all.return_value = []

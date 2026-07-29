@@ -21,7 +21,7 @@ from app.modules.papers.application.contracts.documents import (
     PublicPaperResponse,
 )
 from app.shared.application import Actor
-from app.services.resource_quotas import require_library_document_capacity
+from app.modules.billing.infrastructure.quotas import require_library_document_capacity
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session

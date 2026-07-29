@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from app.errors import AppError
-from app.services.callback_boundaries import (
+from app.modules.jobs.infrastructure.callback_boundaries import (
     callback_transaction,
     optional_savepoint,
     pdf_ingestion_callback,
@@ -50,7 +50,7 @@ async def test_pdf_callback_failure_cleans_up_and_releases_everything(
     fallback = MagicMock()
     release = AsyncMock()
     monkeypatch.setattr(
-        "app.services.callback_boundaries.release_concurrency_by_id",
+        "app.modules.jobs.infrastructure.callback_boundaries.release_concurrency_by_id",
         release,
     )
 

@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from app.integrations.jobs_client import JobsClient
+from app.modules.jobs.infrastructure.client import JobsClient
 from app.helpers.redaction import redact_url
 
 
@@ -20,7 +20,7 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
     celery_app = MagicMock()
     celery_app.send_task.side_effect = [MagicMock(id="task_pdf")]
     with patch(
-        "app.integrations.jobs_client.Celery", return_value=celery_app
+        "app.modules.jobs.infrastructure.client.Celery", return_value=celery_app
     ) as celery:
         client = JobsClient(
             celery_broker_url="amqp://user:password@rabbitmq:5672//",

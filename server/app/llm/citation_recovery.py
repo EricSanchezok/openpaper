@@ -20,7 +20,7 @@ from app.database.models import Document
 from app.helpers.citations import CitationFields, bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import extract_doi_from_url
 from app.helpers.parser import parse_publication_date
-from app.integrations.mcp import (
+from app.modules.conversations.infrastructure.mcp_client import (
     call_remote_tool_sync,
     discover_function_declarations_sync,
 )

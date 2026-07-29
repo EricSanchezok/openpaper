@@ -10,7 +10,7 @@ from app.database.models import (
     JobStatus,
 )
 from app.modules.jobs.infrastructure.repository import job_repository
-from app.services.job_dispatcher import dispatch_pending_jobs_once
+from app.modules.jobs.infrastructure.dispatcher import dispatch_pending_jobs_once
 from sqlalchemy.orm import Session
 
 
@@ -85,17 +85,17 @@ def test_publish_failure_keeps_dispatch_pending_for_retry() -> None:
     session.scalars.return_value.all.return_value = []
 
     with (
-        patch("app.services.job_dispatcher.SessionLocal", return_value=session),
+        patch("app.modules.jobs.infrastructure.dispatcher.SessionLocal", return_value=session),
         patch(
-            "app.services.job_dispatcher.job_repository.recover_expired_leases",
+            "app.modules.jobs.infrastructure.dispatcher.job_repository.recover_expired_leases",
             return_value=0,
         ),
         patch(
-            "app.services.job_dispatcher.job_repository.pending_dispatches",
+            "app.modules.jobs.infrastructure.dispatcher.job_repository.pending_dispatches",
             return_value=[dispatch],
         ),
         patch(
-            "app.services.job_dispatcher.jobs_client.publish_task",
+            "app.modules.jobs.infrastructure.dispatcher.jobs_client.publish_task",
             side_effect=RuntimeError("jobs_broker_unavailable"),
         ),
     ):

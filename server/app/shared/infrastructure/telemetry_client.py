@@ -1,7 +1,7 @@
 """Typed boundary around the untyped PostHog SDK."""
 
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Callable, Protocol, cast
 
 from posthog import Posthog
 
@@ -23,7 +23,8 @@ def create_posthog_client(
     *,
     synchronous: bool = False,
 ) -> PostHogClient:
-    return Posthog(
+    factory = cast(Callable[..., PostHogClient], Posthog)
+    return factory(
         api_key,
         host="https://us.i.posthog.com",
         sync_mode=synchronous,

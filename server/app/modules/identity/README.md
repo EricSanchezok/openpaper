@@ -16,11 +16,11 @@ service library. It does not maintain a second user table or login session.
 
 ## HTTP API
 
-The cloud-auth routers are mounted directly by `app.main`:
+The cloud-auth routers are mounted by the bootstrap composition root:
 
-- `/api/auth/*`: register, verify email, login, refresh, logout, password reset
-- `/api/user/*`: shared identity profile operations
-- `/api/me`: shared identity enriched with Scholens profile state
+- `/api/v1/auth/*`: register, verify email, login, refresh, logout, password reset
+- `/api/v1/me/profile`: shared identity profile operations
+- `/api/v1/me`: shared identity enriched with Scholens profile state
 
 Protected endpoints require `Authorization: Bearer <access-token>`. Scholens
 keeps access tokens in browser memory. Refresh tokens are rotated in the

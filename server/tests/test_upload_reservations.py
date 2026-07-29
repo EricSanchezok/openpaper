@@ -11,8 +11,8 @@ from app.database.models import (
     SubscriptionPlan,
 )
 from app.errors import AppError
-from app.services.upload_lifecycle import UploadCleanupPlan
-from app.services.upload_reservations import (
+from app.modules.papers.infrastructure.upload_lifecycle import UploadCleanupPlan
+from app.modules.papers.infrastructure.upload_reservations import (
     reassign_project_quota_owner,
     reserve_upload,
 )
@@ -20,36 +20,36 @@ from app.services.upload_reservations import (
 
 def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
     return (
-        patch("app.services.upload_reservations.lock_account_resource_quota"),
+        patch("app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"),
         patch(
-            "app.services.upload_reservations.get_quota_user",
+            "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
             return_value=MagicMock(),
         ),
         patch(
-            "app.services.upload_reservations.get_user_subscription_plan",
+            "app.modules.papers.infrastructure.upload_reservations.get_user_subscription_plan",
             return_value=SubscriptionPlan.BASIC,
         ),
         patch(
-            "app.services.upload_reservations._active_account_reservations",
+            "app.modules.papers.infrastructure.upload_reservations._active_account_reservations",
             return_value=(active_count, active_size_kb),
         ),
         patch(
-            "app.services.upload_reservations.resource_usage_repository.completed_reference_count",
+            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_reference_count",
             return_value=0,
         ),
         patch(
-            "app.services.upload_reservations._has_active_duplicate_reservation",
+            "app.modules.papers.infrastructure.upload_reservations._has_active_duplicate_reservation",
             return_value=False,
         ),
         patch(
-            "app.services.upload_reservations.resource_usage_repository.completed_storage_kb",
+            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_storage_kb",
             return_value=0,
         ),
         patch(
-            "app.services.upload_reservations.reap_stale_uploads",
+            "app.modules.papers.infrastructure.upload_reservations.reap_stale_uploads",
             return_value=UploadCleanupPlan(),
         ),
-        patch("app.services.upload_reservations.delete_upload_storage"),
+        patch("app.modules.papers.infrastructure.upload_reservations.delete_upload_storage"),
     )
 
 
@@ -84,7 +84,7 @@ def test_personal_upload_is_reserved_to_requester() -> None:
         patches[7],
         patches[8] as storage_cleanup,
         patch(
-            "app.services.upload_reservations.job_repository.create",
+            "app.modules.papers.infrastructure.upload_reservations.job_repository.create",
             return_value=durable_job,
         ),
     ):
@@ -119,10 +119,10 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
 
     with (
         patch(
-            "app.services.upload_reservations.require_project_permission"
+            "app.modules.papers.infrastructure.upload_reservations.require_project_permission"
         ) as permission,
         patch(
-            "app.services.upload_reservations._unattached_project_reservations",
+            "app.modules.papers.infrastructure.upload_reservations._unattached_project_reservations",
             return_value=2,
         ),
         patches[0] as quota_lock,
@@ -135,7 +135,7 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         patches[7],
         patches[8],
         patch(
-            "app.services.upload_reservations.job_repository.create",
+            "app.modules.papers.infrastructure.upload_reservations.job_repository.create",
             return_value=durable_job,
         ),
     ):
@@ -205,7 +205,7 @@ def test_same_document_cannot_be_reserved_twice_for_one_library() -> None:
         patches[3],
         patches[4],
         patch(
-            "app.services.upload_reservations._has_active_duplicate_reservation",
+            "app.modules.papers.infrastructure.upload_reservations._has_active_duplicate_reservation",
             return_value=True,
         ),
         patches[6],
@@ -268,26 +268,26 @@ def test_project_transfer_accounts_for_documents_and_active_reservations() -> No
 
     with (
         patch(
-            "app.services.upload_reservations.lock_account_resource_quota"
+            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
         ) as quota_lock,
         patch(
-            "app.services.upload_reservations.get_quota_user",
+            "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
             return_value=MagicMock(),
         ),
         patch(
-            "app.services.upload_reservations.get_user_subscription_plan",
+            "app.modules.papers.infrastructure.upload_reservations.get_user_subscription_plan",
             return_value=SubscriptionPlan.BASIC,
         ),
         patch(
-            "app.services.upload_reservations._active_account_reservations",
+            "app.modules.papers.infrastructure.upload_reservations._active_account_reservations",
             return_value=(1, 40),
         ),
         patch(
-            "app.services.upload_reservations.resource_usage_repository.completed_reference_count",
+            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_reference_count",
             return_value=2,
         ),
         patch(
-            "app.services.upload_reservations.resource_usage_repository.completed_storage_kb",
+            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_storage_kb",
             return_value=200,
         ),
     ):
@@ -303,13 +303,13 @@ def test_project_transfer_rejects_new_owner_project_limit() -> None:
     db.scalar.return_value = 2
 
     with (
-        patch("app.services.upload_reservations.lock_account_resource_quota"),
+        patch("app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"),
         patch(
-            "app.services.upload_reservations.get_quota_user",
+            "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
             return_value=MagicMock(),
         ),
         patch(
-            "app.services.upload_reservations.get_user_subscription_plan",
+            "app.modules.papers.infrastructure.upload_reservations.get_user_subscription_plan",
             return_value=SubscriptionPlan.BASIC,
         ),
         pytest.raises(AppError) as error,

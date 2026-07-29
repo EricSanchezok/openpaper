@@ -1,11 +1,11 @@
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.database.crud.zotero_crud import zotero_crud
-from app.database.crud.zotero_import_crud import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
+from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
 from app.database.database import get_db
 from app.database.models import ZoteroImportedItem
 from app.database.telemetry import track_event
 from app.errors import AppError
-from app.services.resource_quotas import can_user_upload_paper
+from app.modules.billing.infrastructure.quotas import can_user_upload_paper
 from app.shared.application import Actor
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroImportError,
@@ -18,7 +18,7 @@ from app.modules.integrations.zotero.application.contracts import (
     ZoteroLibraryResponse,
     ZoteroSyncResponse,
 )
-from app.services.zotero.service import import_batch, list_library, sync_batch
+from app.modules.integrations.zotero.infrastructure.service import import_batch, list_library, sync_batch
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 

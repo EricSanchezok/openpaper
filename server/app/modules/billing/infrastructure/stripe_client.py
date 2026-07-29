@@ -1,5 +1,6 @@
 """Typed boundary around Stripe's untyped webhook constructor."""
 
+from collections.abc import Callable
 from typing import cast
 
 import stripe
@@ -10,7 +11,8 @@ def construct_stripe_event(
     signature: str,
     secret: str,
 ) -> stripe.Event:
-    return cast(
-        stripe.Event,
-        stripe.Webhook.construct_event(payload, signature, secret),
+    constructor = cast(
+        Callable[[bytes, str, str], stripe.Event],
+        stripe.Webhook.construct_event,
     )
+    return constructor(payload, signature, secret)

@@ -2,8 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.services import stripe_webhook as webhook
-from app.services.stripe_webhook_ledger import WebhookClaim
+from app.modules.billing.infrastructure import stripe_webhook as webhook
+from app.modules.billing.infrastructure.stripe_webhook_ledger import WebhookClaim
 from app.database.models import StripeWebhookEventStatus
 from fastapi import HTTPException
 from sqlalchemy.orm import Session

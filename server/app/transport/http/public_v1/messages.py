@@ -42,7 +42,7 @@ from app.modules.conversations.application.contracts.messages import (
     MultiPaperChatRequest,
 )
 from app.shared.application import Actor
-from app.services.chat_streaming import stream_with_stable_error
+from app.modules.conversations.infrastructure.chat_streaming import stream_with_stable_error
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse

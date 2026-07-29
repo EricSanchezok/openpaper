@@ -8,9 +8,9 @@ from app.transport.http.public_v1.billing.config import (
     SubscriptionInterval,
 )
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.database.crud.subscription_crud import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import subscription_crud
 from app.database.database import get_db
-from app.services.resource_quotas import get_user_usage_info
+from app.modules.billing.infrastructure.quotas import get_user_usage_info
 from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session

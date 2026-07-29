@@ -104,7 +104,7 @@ def schedule_orphan_documents(
     plan: ProjectDeletionPlan,
 ) -> None:
     """Schedule canonical cleanup after ProjectPaper cascades have been flushed."""
-    from app.services.document_gc import schedule_document_gc
+    from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
 
     for document_id in plan.candidate_document_ids:
         schedule_document_gc(db, document_id=document_id)
@@ -116,7 +116,7 @@ def schedule_project_storage_cleanup(
     project_id: UUID,
     plan: ProjectDeletionPlan,
 ) -> None:
-    from app.services.storage_cleanup import schedule_storage_deletion
+    from app.modules.papers.infrastructure.storage_cleanup import schedule_storage_deletion
 
     schedule_storage_deletion(
         db,

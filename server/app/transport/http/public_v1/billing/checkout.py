@@ -8,7 +8,7 @@ from app.transport.http.public_v1.billing.config import (
     SubscriptionInterval,
 )
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.database.crud.subscription_crud import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import subscription_crud
 from app.database.database import get_db
 from app.database.models import SubscriptionStatus
 from app.database.telemetry import track_event

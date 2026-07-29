@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from app.modules.identity.infrastructure.cloud_auth import auth_lifespan
-from app.services.job_dispatcher import run_job_dispatcher
+from app.modules.jobs.infrastructure.dispatcher import run_job_dispatcher
 from fastapi import FastAPI
 
 

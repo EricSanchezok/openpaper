@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from app.modules.billing.infrastructure.usage_repository import (
     resource_usage_repository,
 )
-from app.database.crud.subscription_crud import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import subscription_crud
 from app.database.models import (
     AuthUser,
     Document,

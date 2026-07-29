@@ -2,10 +2,10 @@ import logging
 import os
 from typing import Any
 
-from app.database.crud.subscription_crud import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import subscription_crud
 from app.database.database import SessionLocal
 from app.database.models import Subscription
-from app.integrations.posthog_client import capture_event, create_posthog_client
+from app.shared.infrastructure.telemetry_client import capture_event, create_posthog_client
 from sqlalchemy.exc import InvalidRequestError, OperationalError
 from sqlalchemy.orm import Session
 

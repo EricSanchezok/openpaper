@@ -19,7 +19,7 @@ from app.modules.jobs.application.contracts import (
     JobResponse,
 )
 from app.shared.application import Actor
-from app.services.research_generation import (
+from app.modules.research.infrastructure.generation import (
     enqueue_audio_generation,
     enqueue_data_table_generation,
     list_project_generation_documents,

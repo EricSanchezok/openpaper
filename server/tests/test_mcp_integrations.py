@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import jwt
 import pytest
-from app.integrations.mcp import (
+from app.modules.conversations.infrastructure.mcp_client import (
     MCPToolError,
     RemoteMCPServer,
     function_declaration_from_mcp_tool,
@@ -64,7 +64,7 @@ def test_remote_mcp_auth_header_is_optional() -> None:
 def test_scholight_delegation_identifies_current_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.integrations.mcp import SCHOLIGHT_MCP
+    from app.modules.conversations.infrastructure.mcp_client import SCHOLIGHT_MCP
 
     monkeypatch.setenv("SCHOLIGHT_MCP_DELEGATION_JWT_SECRET", "d" * 32)
     with llm_usage_context(user_id=42, feature="test"):

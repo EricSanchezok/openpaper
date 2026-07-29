@@ -11,7 +11,7 @@ from app.modules.jobs.application.contracts import (
     PdfProcessingWebhookData,
     StorageDeleteCallback,
 )
-from app.services import document_callbacks
+from app.modules.jobs.infrastructure import document_callbacks
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 

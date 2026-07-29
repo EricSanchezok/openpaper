@@ -8,12 +8,12 @@ from app.transport.http.public_v1.billing.config import (
     YEARLY_PRICE_ID,
     is_valid_price_id,
 )
-from app.services.stripe_webhook_ledger import (
+from app.modules.billing.infrastructure.stripe_webhook_ledger import (
     begin_webhook_attempt,
     complete_webhook,
     fail_webhook,
 )
-from app.database.crud.subscription_crud import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import subscription_crud
 from app.modules.identity.infrastructure.users import user_repository
 from app.database.database import engine
 from app.database.models import (
@@ -28,7 +28,7 @@ from app.helpers.email import (
     send_confirmation_cancellation_email,
     send_subscription_welcome_email,
 )
-from app.integrations.stripe_webhooks import construct_stripe_event
+from app.modules.billing.infrastructure.stripe_client import construct_stripe_event
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session

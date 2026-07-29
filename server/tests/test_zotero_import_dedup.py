@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from app.database.models import ZoteroImportSource, ZoteroImportStatus
 from app.helpers.paper_search import normalize_doi
-from app.services.zotero import service as zotero_import_module
-from app.services.zotero.service import (
+from app.modules.integrations.zotero.infrastructure import service as zotero_import_module
+from app.modules.integrations.zotero.infrastructure.service import (
     _discover_import_candidates,
     _link_zotero_item_to_existing_paper,
     import_batch,
@@ -435,7 +435,7 @@ class TestImportBatchParallel(unittest.IsolatedAsyncioTestCase):
             return await real_gather(*coros, **kwargs)
 
         with patch(
-            "app.services.zotero.service.asyncio.gather",
+            "app.modules.integrations.zotero.infrastructure.service.asyncio.gather",
             side_effect=track_gather,
         ):
             result = await import_batch(

@@ -43,8 +43,8 @@ from app.modules.papers.application.contracts.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
 )
-from app.services.document_submission import dispatch_reserved_document
-from app.services.upload_reservations import reserve_upload
+from app.modules.papers.infrastructure.submission import dispatch_reserved_document
+from app.modules.papers.infrastructure.upload_reservations import reserve_upload
 from dotenv import load_dotenv
 from fastapi import (
     APIRouter,

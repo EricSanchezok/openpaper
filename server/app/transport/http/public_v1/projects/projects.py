@@ -8,7 +8,7 @@ from app.database.models import (
     AuthUser,
 )
 from app.database.telemetry import track_event
-from app.services.resource_quotas import can_user_create_project
+from app.modules.billing.infrastructure.quotas import can_user_create_project
 from app.modules.projects.infrastructure.repository import project_repository
 from app.modules.projects.application.contracts import (
     ProjectCreateRequest,

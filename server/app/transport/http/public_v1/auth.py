@@ -9,13 +9,13 @@ from app.transport.http.public_v1.auth_dependencies import (
     get_admin_user,
     get_required_user,
 )
-from app.auth.zotero import zotero_auth_client
+from app.modules.integrations.zotero.infrastructure.oauth import zotero_auth_client
 from app.modules.papers.infrastructure.search_repository import (
     document_search_repository,
 )
 from app.modules.identity.infrastructure.users import user_repository
-from app.database.crud.zotero_crud import zotero_crud
-from app.database.crud.zotero_import_crud import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
+from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError

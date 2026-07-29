@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from app.database.models import Document, Project
 from app.errors import AppError
-from app.services.project_lifecycle import (
+from app.modules.projects.infrastructure.lifecycle import (
     ProjectDeletionPlan,
     prepare_project_deletion,
     schedule_orphan_documents,
@@ -47,7 +47,7 @@ def test_project_deletion_preserves_private_chats_and_schedules_document_gc() ->
     schedule_gc = MagicMock()
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "app.services.document_gc.schedule_document_gc",
+        "app.modules.papers.infrastructure.garbage_collection.schedule_document_gc",
         schedule_gc,
     )
     try:
@@ -79,7 +79,7 @@ def test_storage_cleanup_is_persisted_before_project_commit(
 ) -> None:
     schedule_delete = MagicMock()
     monkeypatch.setattr(
-        "app.services.storage_cleanup.schedule_storage_deletion",
+        "app.modules.papers.infrastructure.storage_cleanup.schedule_storage_deletion",
         schedule_delete,
     )
     plan = ProjectDeletionPlan(

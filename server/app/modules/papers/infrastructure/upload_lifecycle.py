@@ -99,7 +99,7 @@ def reap_stale_uploads(
                     )
                 )
             db.flush()
-            from app.services.document_gc import schedule_document_gc
+            from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
 
             schedule_document_gc(db, document_id=durable_job.document_id)
         if durable_job.document_id is not None:

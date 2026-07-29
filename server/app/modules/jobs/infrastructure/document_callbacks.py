@@ -12,8 +12,8 @@ from app.modules.papers.infrastructure.upload_repository import (
     upload_reservation_repository,
 )
 from app.modules.identity.infrastructure.users import user_repository
-from app.database.crud.zotero_crud import zotero_crud
-from app.database.crud.zotero_import_crud import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
+from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
 from app.database.database import engine
 from app.database.models import (
     ConversationScopeType,
@@ -32,8 +32,8 @@ from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.celery_config import get_webhook_base_url
-from app.services.resource_quotas import can_user_auto_sync_zotero
-from app.services.document_gc import collect_document_if_due
+from app.modules.billing.infrastructure.quotas import can_user_auto_sync_zotero
+from app.modules.papers.infrastructure.garbage_collection import collect_document_if_due
 from app.llm.citation_handler import CitationHandler
 from app.modules.conversations.infrastructure.repository import conversation_repository
 from app.modules.papers.infrastructure.search_repository import (
@@ -54,13 +54,13 @@ from app.modules.jobs.application.contracts import (
 )
 from app.shared.application import Actor
 from app.modules.identity.infrastructure.users import actor_from_auth_user
-from app.services.zotero.service import (
+from app.modules.integrations.zotero.infrastructure.service import (
     apply_zotero_annotations,
     auto_import_new_papers,
     sync_batch,
 )
-from app.services.document_annotations import create_ai_highlights
-from app.services.callback_boundaries import (
+from app.modules.research.infrastructure.document_annotations import create_ai_highlights
+from app.modules.jobs.infrastructure.callback_boundaries import (
     callback_transaction,
     optional_savepoint,
     pdf_ingestion_callback,
@@ -263,7 +263,7 @@ def handle_failed_upload(
                     )
                 )
             db.flush()
-            from app.services.document_gc import schedule_document_gc
+            from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
 
             schedule_document_gc(db, document_id=document_id)
 
