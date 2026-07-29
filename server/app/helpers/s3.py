@@ -11,11 +11,14 @@ import os
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from types_boto3_s3 import S3Client
+
+if TYPE_CHECKING:
+    from types_boto3_s3 import S3Client
 
 logger = logging.getLogger(__name__)
 
