@@ -8,7 +8,7 @@ from app.modules.conversations.infrastructure.message_repository import (
     MessageCreate,
     message_repository,
 )
-from app.modules.papers.infrastructure.upload_repository import (
+from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
 )
 from app.modules.identity.infrastructure.users import user_repository

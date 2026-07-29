@@ -29,7 +29,7 @@ from app.bootstrap.adapters.project_lifecycle import (
     prepare_project_deletion,
     schedule_project_storage_cleanup,
 )
-from app.modules.papers.infrastructure.upload_reservations import (
+from app.bootstrap.adapters.upload_reservations import (
     reassign_project_quota_owner,
 )
 from sqlalchemy import or_, select

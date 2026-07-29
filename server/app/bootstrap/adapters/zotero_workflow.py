@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
-from app.modules.papers.infrastructure.upload_repository import (
+from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
 )
 from app.modules.integrations.zotero.infrastructure.connection_repository import (
@@ -50,7 +50,7 @@ from app.shared.application import Actor
 from app.bootstrap.adapters.research_annotations import (
     require_parsed_content,
 )
-from app.modules.papers.infrastructure.upload_reservations import reserve_upload
+from app.bootstrap.adapters.upload_reservations import reserve_upload
 from app.bootstrap.adapters.document_submission import submit_reserved_document
 from sqlalchemy import select
 from sqlalchemy.orm import Session

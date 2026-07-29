@@ -79,7 +79,7 @@ def test_storage_cleanup_is_persisted_before_project_commit(
 ) -> None:
     schedule_delete = MagicMock()
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.storage_cleanup.schedule_storage_deletion",
+        "app.bootstrap.adapters.storage_cleanup.schedule_storage_deletion",
         schedule_delete,
     )
     plan = ProjectDeletionPlan(

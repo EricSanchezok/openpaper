@@ -1,3 +1,5 @@
+"""Cross-module persistence for durable paper-ingestion reservations."""
+
 import uuid
 from datetime import datetime, timezone
 

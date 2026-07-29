@@ -118,7 +118,7 @@ def schedule_project_storage_cleanup(
     project_id: UUID,
     plan: ProjectDeletionPlan,
 ) -> None:
-    from app.modules.papers.infrastructure.storage_cleanup import (
+    from app.bootstrap.adapters.storage_cleanup import (
         schedule_storage_deletion,
     )
 

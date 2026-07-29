@@ -1,4 +1,4 @@
-"""Atomic upload authorization and owner-paid resource reservation."""
+"""Cross-module upload authorization and owner-paid resource reservation."""
 
 from __future__ import annotations
 

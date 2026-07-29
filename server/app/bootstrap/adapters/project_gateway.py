@@ -8,7 +8,7 @@ from app.database.models import AuthUser, Project, ProjectInvitation
 from app.database.telemetry import track_event
 from app.helpers.email import send_project_invite_email
 from app.helpers.s3 import s3_service
-from app.modules.papers.infrastructure.upload_repository import (
+from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
 )
 from app.modules.projects.application.contracts import (

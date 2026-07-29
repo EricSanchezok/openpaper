@@ -188,7 +188,7 @@ async def dispatch_reserved_document(
         return task_id
     except Exception as exc:
         logger.error("Document processing job submission failed", exc_info=True)
-        from app.modules.papers.infrastructure.upload_repository import (
+        from app.bootstrap.adapters.upload_repository import (
             upload_reservation_repository,
         )
 

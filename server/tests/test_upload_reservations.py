@@ -12,7 +12,7 @@ from app.database.models import (
     UploadReservation,
 )
 from app.shared.domain import AppError
-from app.modules.papers.infrastructure.upload_reservations import (
+from app.bootstrap.adapters.upload_reservations import (
     reassign_project_quota_owner,
     reserve_upload,
 )
@@ -21,34 +21,34 @@ from app.modules.papers.infrastructure.upload_reservations import (
 def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
     return (
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
+            "app.bootstrap.adapters.upload_reservations.get_quota_user",
             return_value=MagicMock(),
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.get_user_subscription_plan",
+            "app.bootstrap.adapters.upload_reservations.get_user_subscription_plan",
             return_value=SubscriptionPlan.BASIC,
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations._active_account_reservations",
+            "app.bootstrap.adapters.upload_reservations._active_account_reservations",
             return_value=(active_count, active_size_kb),
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_reference_count",
+            "app.bootstrap.adapters.upload_reservations.resource_usage_repository.completed_reference_count",
             return_value=0,
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations._has_active_duplicate_reservation",
+            "app.bootstrap.adapters.upload_reservations._has_active_duplicate_reservation",
             return_value=False,
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_storage_kb",
+            "app.bootstrap.adapters.upload_reservations.resource_usage_repository.completed_storage_kb",
             return_value=0,
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.reap_stale_uploads",
+            "app.bootstrap.adapters.upload_reservations.reap_stale_uploads",
             return_value=None,
         ),
     )
@@ -84,7 +84,7 @@ def test_personal_upload_is_reserved_to_requester() -> None:
         patches[6],
         patches[7],
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.job_repository.create",
+            "app.bootstrap.adapters.upload_reservations.job_repository.create",
             return_value=durable_job,
         ),
     ):
@@ -119,10 +119,10 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
 
     with (
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.require_project_permission"
+            "app.bootstrap.adapters.upload_reservations.require_project_permission"
         ) as permission,
         patch(
-            "app.modules.papers.infrastructure.upload_reservations._unattached_project_reservations",
+            "app.bootstrap.adapters.upload_reservations._unattached_project_reservations",
             return_value=2,
         ),
         patches[0] as quota_lock,
@@ -134,7 +134,7 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         patches[6],
         patches[7],
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.job_repository.create",
+            "app.bootstrap.adapters.upload_reservations.job_repository.create",
             return_value=durable_job,
         ),
     ):
@@ -203,7 +203,7 @@ def test_same_document_cannot_be_reserved_twice_for_one_library() -> None:
         patches[3],
         patches[4],
         patch(
-            "app.modules.papers.infrastructure.upload_reservations._has_active_duplicate_reservation",
+            "app.bootstrap.adapters.upload_reservations._has_active_duplicate_reservation",
             return_value=True,
         ),
         patches[6],
@@ -258,10 +258,10 @@ def test_idempotency_key_returns_the_original_reservation() -> None:
 
     with (
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.job_repository.find_by_idempotency_key",
+            "app.bootstrap.adapters.upload_reservations.job_repository.find_by_idempotency_key",
             return_value=existing_job,
         ),
     ):
@@ -302,26 +302,26 @@ def test_project_transfer_accounts_for_documents_and_active_reservations() -> No
 
     with (
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
         ) as quota_lock,
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
+            "app.bootstrap.adapters.upload_reservations.get_quota_user",
             return_value=MagicMock(),
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.get_user_subscription_plan",
+            "app.bootstrap.adapters.upload_reservations.get_user_subscription_plan",
             return_value=SubscriptionPlan.BASIC,
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations._active_account_reservations",
+            "app.bootstrap.adapters.upload_reservations._active_account_reservations",
             return_value=(1, 40),
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_reference_count",
+            "app.bootstrap.adapters.upload_reservations.resource_usage_repository.completed_reference_count",
             return_value=2,
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.resource_usage_repository.completed_storage_kb",
+            "app.bootstrap.adapters.upload_reservations.resource_usage_repository.completed_storage_kb",
             return_value=200,
         ),
     ):
@@ -338,14 +338,14 @@ def test_project_transfer_rejects_new_owner_project_limit() -> None:
 
     with (
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+            "app.bootstrap.adapters.upload_reservations.lock_account_resource_quota"
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
+            "app.bootstrap.adapters.upload_reservations.get_quota_user",
             return_value=MagicMock(),
         ),
         patch(
-            "app.modules.papers.infrastructure.upload_reservations.get_user_subscription_plan",
+            "app.bootstrap.adapters.upload_reservations.get_user_subscription_plan",
             return_value=SubscriptionPlan.BASIC,
         ),
         pytest.raises(AppError) as error,

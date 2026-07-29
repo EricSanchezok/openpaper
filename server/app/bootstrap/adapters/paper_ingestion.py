@@ -20,10 +20,10 @@ from app.modules.papers.application.ingestion import (
     content_sha256,
 )
 from app.bootstrap.adapters.document_submission import dispatch_reserved_document
-from app.modules.papers.infrastructure.upload_repository import (
+from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
 )
-from app.modules.papers.infrastructure.upload_reservations import reserve_upload
+from app.bootstrap.adapters.upload_reservations import reserve_upload
 from app.shared.application import Actor
 from app.shared.domain import AppError
 from sqlalchemy.orm import Session

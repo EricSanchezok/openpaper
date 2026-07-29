@@ -583,7 +583,7 @@ class ResearchRepository:
         db.delete(item)
         db.flush()
         if object_key is not None:
-            from app.modules.papers.infrastructure.storage_cleanup import (
+            from app.bootstrap.adapters.storage_cleanup import (
                 schedule_storage_deletion,
             )
 

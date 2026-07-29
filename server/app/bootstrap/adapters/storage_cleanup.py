@@ -1,4 +1,4 @@
-"""Durable deletion of generated S3 objects that have no database owner."""
+"""Cross-module deletion of generated storage objects without a database owner."""
 
 from __future__ import annotations
 
