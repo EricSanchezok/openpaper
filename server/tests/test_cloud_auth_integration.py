@@ -7,7 +7,7 @@ from app.database.models import AuthUser, Base
 from app.modules.identity.infrastructure import cloud_auth as runtime
 from app.modules.identity.infrastructure import application_gateway
 from app.transport.http.public_v1 import auth_dependencies as dependencies
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from cloud_auth.models.user import UserRecord
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -88,7 +88,7 @@ async def test_product_block_does_not_modify_shared_account() -> None:
         with pytest.raises(AppError) as exc_info:
             await dependencies.get_current_user(_cloud_user(), MagicMock())
 
-    assert exc_info.value.status_code == 403
+    assert exc_info.value.kind is FailureKind.PERMISSION_DENIED
     assert exc_info.value.message == "Scholens access is suspended"
 
 

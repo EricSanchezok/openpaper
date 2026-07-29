@@ -5,7 +5,7 @@ import pytest
 from app.bootstrap.adapters import stripe_webhook as webhook
 from app.modules.billing.infrastructure.stripe_webhook_ledger import WebhookClaim
 from app.database.models import StripeWebhookEventStatus
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy.orm import Session
 
 
@@ -29,7 +29,7 @@ async def test_invalid_signature_is_rejected_without_creating_ledger_row() -> No
                 db=db,
             )
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.kind is FailureKind.INVALID_ARGUMENT
     begin.assert_not_called()
 
 
@@ -122,7 +122,7 @@ async def test_concurrent_delivery_returns_retryable_error_without_failing_owner
                 db=db,
             )
 
-    assert exc_info.value.status_code == 409
+    assert exc_info.value.kind is FailureKind.CONFLICT
     fail.assert_not_called()
 
 
@@ -164,7 +164,7 @@ async def test_core_processing_failure_is_recorded_and_retried_by_stripe() -> No
                 db=db,
             )
 
-    assert exc_info.value.status_code == 500
+    assert exc_info.value.kind is FailureKind.INTERNAL
     fail.assert_called_once_with(
         db,
         event_id="evt_failed",

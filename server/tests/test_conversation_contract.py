@@ -10,7 +10,7 @@ from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.database.models import Conversation, Message
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.main import app
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.bootstrap.adapters.conversation_lifecycle import (
@@ -295,7 +295,7 @@ def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -
             user_id=_current_user().id,
         )
 
-    assert exc_info.value.status_code == 404
+    assert exc_info.value.kind is FailureKind.NOT_FOUND
     assert exc_info.value.code == "conversation_not_found"
 
 

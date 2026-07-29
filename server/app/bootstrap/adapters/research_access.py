@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.database.models import ResearchItem, ResearchScopeType
 from app.database.models import (
     LibraryPaper,
@@ -11,19 +9,18 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectPaper,
 )
-from app.shared.domain import AppError
+from app.modules.research.domain import (
+    ResearchAccessDecision,
+    ResearchAccessFacts,
+    evaluate_research_access,
+    require_research_manager,
+    require_research_visible,
+)
 from app.modules.papers.infrastructure.access import get_document_access
 from app.modules.projects.infrastructure.access import get_project_access
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.orm import Session
-
-
-@dataclass(frozen=True, slots=True)
-class ResearchItemAccess:
-    can_view: bool
-    can_manage: bool
-    has_scope_access: bool
 
 
 def research_item_visible_to(user_id: int) -> ColumnElement[bool]:
@@ -94,12 +91,9 @@ class ResearchItemPolicy:
         *,
         item: ResearchItem,
         user_id: int,
-    ) -> ResearchItemAccess:
+    ) -> ResearchAccessDecision:
         is_creator = item.created_by_id == user_id
         scope_type = ResearchScopeType(item.scope_type)
-
-        if scope_type == ResearchScopeType.PERSONAL:
-            return ResearchItemAccess(is_creator, is_creator, is_creator)
 
         if scope_type == ResearchScopeType.DOCUMENT:
             has_scope_access = (
@@ -111,7 +105,7 @@ class ResearchItemPolicy:
                 )
                 is not None
             )
-        else:
+        elif scope_type == ResearchScopeType.PROJECT:
             has_scope_access = (
                 item.project_id is not None
                 and get_project_access(
@@ -122,10 +116,16 @@ class ResearchItemPolicy:
                 is not None
             )
 
-        return ResearchItemAccess(
-            can_view=is_creator or (item.is_shared and has_scope_access),
-            can_manage=is_creator and has_scope_access,
-            has_scope_access=has_scope_access,
+        else:
+            has_scope_access = is_creator
+
+        return evaluate_research_access(
+            ResearchAccessFacts(
+                scope_type=scope_type,
+                is_creator=is_creator,
+                is_shared=item.is_shared,
+                has_scope_access=has_scope_access,
+            )
         )
 
     def require_visible(
@@ -134,14 +134,9 @@ class ResearchItemPolicy:
         *,
         item: ResearchItem,
         user_id: int,
-    ) -> ResearchItemAccess:
+    ) -> ResearchAccessDecision:
         access = self.evaluate(db, item=item, user_id=user_id)
-        if not access.can_view:
-            raise AppError(
-                code="research_item_not_found",
-                message="Research item not found",
-                status_code=404,
-            )
+        require_research_visible(access)
         return access
 
     def require_creator_manager(
@@ -150,20 +145,17 @@ class ResearchItemPolicy:
         *,
         item: ResearchItem,
         user_id: int,
-    ) -> ResearchItemAccess:
+    ) -> ResearchAccessDecision:
         access = self.require_visible(db, item=item, user_id=user_id)
-        if item.created_by_id != user_id:
-            raise AppError(
-                code="research_item_permission_denied",
-                message="Only the creator can modify this research item",
-                status_code=403,
-            )
-        if not access.has_scope_access:
-            raise AppError(
-                code="research_item_scope_access_lost",
-                message="This research item is read-only until scope access is restored",
-                status_code=409,
-            )
+        require_research_manager(
+            ResearchAccessFacts(
+                scope_type=ResearchScopeType(item.scope_type),
+                is_creator=item.created_by_id == user_id,
+                is_shared=item.is_shared,
+                has_scope_access=access.has_scope_access,
+            ),
+            access,
+        )
         return access
 
 

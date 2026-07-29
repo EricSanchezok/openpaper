@@ -81,6 +81,39 @@ def test_domain_and_application_contracts_are_framework_independent() -> None:
     assert violations == []
 
 
+def test_domain_rules_are_pure_and_transport_neutral() -> None:
+    forbidden_roots = {
+        "fastapi",
+        "pydantic",
+        "sqlalchemy",
+        "boto3",
+        "stripe",
+        "requests",
+        "requests_oauthlib",
+        "cloud_auth",
+    }
+    domain_roots = [
+        APP_ROOT / "shared" / "domain",
+        *(path for path in (APP_ROOT / "modules").glob("*/domain")),
+        APP_ROOT / "modules" / "integrations" / "zotero" / "domain",
+    ]
+    violations: list[str] = []
+    for root in domain_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.py"):
+            for imported in _imports(path):
+                if imported.split(".", 1)[0] in forbidden_roots:
+                    violations.append(
+                        f"{path.relative_to(APP_ROOT)} imports {imported}"
+                    )
+            if "status_code=" in path.read_text(encoding="utf-8"):
+                violations.append(
+                    f"{path.relative_to(APP_ROOT)} embeds an HTTP status code"
+                )
+    assert violations == []
+
+
 def test_repositories_never_commit_the_callers_transaction() -> None:
     violations: list[str] = []
     for path in (APP_ROOT / "modules").rglob("*repository.py"):

@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from app.transport.http.errors import (
     app_error_handler,
     http_error_handler,
@@ -39,7 +39,7 @@ def test_app_error_uses_stable_public_contract() -> None:
             AppError(
                 code="jobs_service_unavailable",
                 message="Processing is temporarily unavailable",
-                status_code=503,
+                kind=FailureKind.UNAVAILABLE,
             ),
         )
     )

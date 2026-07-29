@@ -2,27 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
-
 from app.database.models import Conversation, ConversationScopeType
-from app.shared.domain import AppError
+from app.modules.conversations.domain import (
+    ConversationAccessDecision,
+    ConversationAccessFacts,
+    evaluate_conversation_access,
+    require_conversation_continuable,
+)
 from app.modules.papers.infrastructure.access import get_document_access
 from app.modules.projects.infrastructure.access import get_project_access
 from sqlalchemy.orm import Session
-
-ConversationReadOnlyReason = Literal[
-    "scope_access_lost",
-    "project_deleted",
-    "document_deleted",
-]
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationAccess:
-    scope_label: str | None
-    can_continue: bool
-    read_only_reason: ConversationReadOnlyReason | None
 
 
 class ConversationPolicy:
@@ -30,23 +19,10 @@ class ConversationPolicy:
 
     def evaluate(
         self, db: Session, *, conversation: Conversation
-    ) -> ConversationAccess:
+    ) -> ConversationAccessDecision:
         scope_type = ConversationScopeType(conversation.scope_type)
-        if scope_type == ConversationScopeType.GLOBAL:
-            return ConversationAccess(None, True, None)
-
-        if conversation.context_deleted_at is not None:
-            reason: ConversationReadOnlyReason = (
-                "project_deleted"
-                if scope_type == ConversationScopeType.PROJECT
-                else "document_deleted"
-            )
-            return ConversationAccess(
-                conversation.scope_label_snapshot,
-                False,
-                reason,
-            )
-
+        resolved_scope_label: str | None = None
+        has_scope_access = True
         if scope_type == ConversationScopeType.PROJECT:
             if conversation.project_id is None:
                 raise RuntimeError("active_project_conversation_missing_project")
@@ -55,31 +31,28 @@ class ConversationPolicy:
                 project_id=conversation.project_id,
                 user_id=conversation.user_id,
             )
-            return ConversationAccess(
-                (
-                    access.project.title
-                    if access is not None
-                    else conversation.scope_label_snapshot
-                ),
-                access is not None,
-                None if access is not None else "scope_access_lost",
+            has_scope_access = access is not None
+            resolved_scope_label = access.project.title if access is not None else None
+        elif scope_type == ConversationScopeType.PAPER:
+            if conversation.document_id is None:
+                raise RuntimeError("active_paper_conversation_missing_document")
+            document_access = get_document_access(
+                db,
+                document_id=conversation.document_id,
+                user_id=conversation.user_id,
             )
-
-        if conversation.document_id is None:
-            raise RuntimeError("active_paper_conversation_missing_document")
-        document_access = get_document_access(
-            db,
-            document_id=conversation.document_id,
-            user_id=conversation.user_id,
-        )
-        return ConversationAccess(
-            (
-                document_access.document.title
-                if document_access is not None
-                else conversation.scope_label_snapshot
-            ),
-            document_access is not None,
-            None if document_access is not None else "scope_access_lost",
+            has_scope_access = document_access is not None
+            resolved_scope_label = (
+                document_access.document.title if document_access is not None else None
+            )
+        return evaluate_conversation_access(
+            ConversationAccessFacts(
+                scope_type=scope_type,
+                context_deleted=conversation.context_deleted_at is not None,
+                has_scope_access=has_scope_access,
+                resolved_scope_label=resolved_scope_label,
+                scope_label_snapshot=conversation.scope_label_snapshot,
+            )
         )
 
     def require_can_continue(
@@ -87,15 +60,10 @@ class ConversationPolicy:
         db: Session,
         *,
         conversation: Conversation,
-    ) -> ConversationAccess:
+    ) -> ConversationAccessDecision:
         access = self.evaluate(db, conversation=conversation)
-        if access.can_continue:
-            return access
-        raise AppError(
-            code=access.read_only_reason or "conversation_read_only",
-            message="This conversation is read-only because its context is unavailable",
-            status_code=409,
-        )
+        require_conversation_continuable(access)
+        return access
 
 
 conversation_policy = ConversationPolicy()

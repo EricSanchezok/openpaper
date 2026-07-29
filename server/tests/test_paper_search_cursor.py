@@ -15,7 +15,7 @@ from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 
 
 def _actor() -> Actor:
@@ -128,4 +128,4 @@ def test_search_cursor_rejects_tampering_and_query_reuse(
         )
 
     assert error.value.code == "search_cursor_expired"
-    assert error.value.status_code == 409
+    assert error.value.kind is FailureKind.CONFLICT

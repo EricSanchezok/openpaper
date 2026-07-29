@@ -5,38 +5,22 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.database.models import Project, ProjectCollaborator
-from app.shared.domain import AppError
+from app.modules.projects.domain import (
+    ProjectAccessFacts,
+    ProjectPermission,
+    ProjectPermissions,
+    require_permission,
+)
+from app.shared.domain import AppError, FailureKind
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-ProjectPermission = Literal[
+ProjectPermissionName = Literal[
     "edit_project",
     "manage_papers",
     "manage_collaborators",
     "owner",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectPermissions:
-    edit_project: bool = False
-    manage_papers: bool = False
-    manage_collaborators: bool = False
-
-    def contains(self, requested: ProjectPermissions) -> bool:
-        return (
-            (not requested.edit_project or self.edit_project)
-            and (not requested.manage_papers or self.manage_papers)
-            and (not requested.manage_collaborators or self.manage_collaborators)
-        )
-
-    @classmethod
-    def all(cls) -> ProjectPermissions:
-        return cls(
-            edit_project=True,
-            manage_papers=True,
-            manage_collaborators=True,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +42,14 @@ class ProjectAccess:
     @property
     def can_manage_collaborators(self) -> bool:
         return self.is_owner or self.permissions.manage_collaborators
+
+    @property
+    def facts(self) -> ProjectAccessFacts:
+        return ProjectAccessFacts(
+            user_id=self.user_id,
+            owner_id=self.project.owner_id,
+            permissions=self.permissions,
+        )
 
 
 def get_project_access(
@@ -104,7 +96,7 @@ def require_project_access(
         raise AppError(
             code="project_not_found",
             message="Project not found",
-            status_code=404,
+            kind=FailureKind.NOT_FOUND,
         )
     return access
 
@@ -114,23 +106,10 @@ def require_project_permission(
     *,
     project_id: uuid.UUID,
     user_id: int,
-    permission: ProjectPermission,
+    permission: ProjectPermissionName,
 ) -> ProjectAccess:
     access = require_project_access(db, project_id=project_id, user_id=user_id)
-    allowed = {
-        "edit_project": access.can_edit_project,
-        "manage_papers": access.can_manage_papers,
-        "manage_collaborators": access.can_manage_collaborators,
-        "owner": access.is_owner,
-    }.get(permission)
-    if allowed is None:
-        raise ValueError(f"Unknown project permission: {permission}")
-    if not allowed:
-        raise AppError(
-            code="project_permission_denied",
-            message="You do not have permission to perform this project action",
-            status_code=403,
-        )
+    require_permission(access.facts, ProjectPermission(permission))
     return access
 
 

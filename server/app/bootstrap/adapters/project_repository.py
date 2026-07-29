@@ -17,13 +17,18 @@ from app.database.models import (
 from app.shared.domain import AppError
 from app.modules.projects.infrastructure.access import (
     ProjectAccess,
-    ProjectPermissions,
     collaborator_permissions,
     get_project_access,
     require_project_access,
     require_project_permission,
 )
 from app.modules.projects.application.contracts import ProjectPermissionSet
+from app.modules.projects.domain import (
+    ProjectPermissions,
+    is_distinct_non_owner_member,
+    require_grant_subset,
+    require_member_can_leave,
+)
 from app.bootstrap.adapters.project_lifecycle import (
     schedule_orphan_documents,
     prepare_project_deletion,
@@ -68,15 +73,6 @@ def _invitation_permissions(
         manage_papers=invitation.can_manage_papers,
         manage_collaborators=invitation.can_manage_collaborators,
     )
-
-
-def _require_grant_subset(actor: ProjectAccess, requested: ProjectPermissions) -> None:
-    if not actor.permissions.contains(requested):
-        raise AppError(
-            code="project_permission_escalation",
-            message="You cannot manage permissions you do not have",
-            status_code=403,
-        )
 
 
 class ProjectRepository:
@@ -193,7 +189,11 @@ class ProjectRepository:
             user_id=actor_id,
             permission="manage_collaborators",
         )
-        if actor_id == target_user_id or actor.project.owner_id == target_user_id:
+        if not is_distinct_non_owner_member(
+            actor_id=actor_id,
+            target_user_id=target_user_id,
+            owner_id=actor.project.owner_id,
+        ):
             raise AppError(
                 code="project_collaborator_not_manageable",
                 message="This Project collaborator cannot be modified",
@@ -214,7 +214,7 @@ class ProjectRepository:
 
         requested_permissions = _permission_set(requested)
         current_permissions = collaborator_permissions(target)
-        _require_grant_subset(actor, requested_permissions)
+        require_grant_subset(actor.facts, requested_permissions)
         if not actor.is_owner and not actor.permissions.contains(current_permissions):
             raise AppError(
                 code="project_collaborator_not_manageable",
@@ -243,7 +243,11 @@ class ProjectRepository:
             user_id=actor_id,
             permission="manage_collaborators",
         )
-        if actor_id == target_user_id or actor.project.owner_id == target_user_id:
+        if not is_distinct_non_owner_member(
+            actor_id=actor_id,
+            target_user_id=target_user_id,
+            owner_id=actor.project.owner_id,
+        ):
             raise AppError(
                 code="project_collaborator_not_manageable",
                 message="This Project collaborator cannot be removed",
@@ -274,12 +278,10 @@ class ProjectRepository:
 
     def leave(self, db: Session, *, project_id: uuid.UUID, user_id: int) -> None:
         access = require_project_access(db, project_id=project_id, user_id=user_id)
-        if access.is_owner:
-            raise AppError(
-                code="project_owner_must_transfer",
-                message="Transfer or delete the project before leaving",
-                status_code=409,
-            )
+        require_member_can_leave(
+            user_id=user_id,
+            owner_id=access.project.owner_id,
+        )
         if access.collaborator is None:
             raise RuntimeError("Non-owner project access has no collaborator")
         db.delete(access.collaborator)
@@ -400,7 +402,7 @@ class ProjectRepository:
             .with_for_update()
         )
         if pending is not None:
-            _require_grant_subset(actor, _invitation_permissions(pending))
+            require_grant_subset(actor.facts, _invitation_permissions(pending))
             pending.revoked_at = now
             db.flush()
 
@@ -563,7 +565,7 @@ class ProjectRepository:
                 message="Project invitation not found",
                 status_code=404,
             )
-        _require_grant_subset(actor, _invitation_permissions(invitation))
+        require_grant_subset(actor.facts, _invitation_permissions(invitation))
         invitation.revoked_at = datetime.now(timezone.utc)
         db.flush()
 
@@ -597,7 +599,7 @@ class ProjectRepository:
                 message="Project invitation not found",
                 status_code=404,
             )
-        _require_grant_subset(actor, _invitation_permissions(invitation))
+        require_grant_subset(actor.facts, _invitation_permissions(invitation))
         invitation.revoked_at = datetime.now(timezone.utc)
         db.flush()
         raw_token = secrets.token_urlsafe(32)

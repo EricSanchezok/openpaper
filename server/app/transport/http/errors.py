@@ -5,13 +5,26 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 
-from app.shared.domain import AppError
+from app.shared.domain import AppError, FailureKind
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
+
+FAILURE_HTTP_STATUS = {
+    FailureKind.INVALID_ARGUMENT: 400,
+    FailureKind.UNAUTHENTICATED: 401,
+    FailureKind.PERMISSION_DENIED: 403,
+    FailureKind.NOT_FOUND: 404,
+    FailureKind.CONFLICT: 409,
+    FailureKind.UNPROCESSABLE: 422,
+    FailureKind.RATE_LIMITED: 429,
+    FailureKind.DEPENDENCY_FAILURE: 502,
+    FailureKind.UNAVAILABLE: 503,
+    FailureKind.INTERNAL: 500,
+}
 
 
 class ApiErrorResponse(BaseModel):
@@ -41,7 +54,7 @@ async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
         details=exc.details,
     )
     return JSONResponse(
-        status_code=exc.status_code,
+        status_code=FAILURE_HTTP_STATUS[exc.kind],
         content=payload.model_dump(exclude_none=True),
     )
 

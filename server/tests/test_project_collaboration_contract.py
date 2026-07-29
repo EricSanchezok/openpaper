@@ -24,7 +24,8 @@ from app.database.models import (
 )
 from app.shared.domain import AppError
 from app.main import app
-from app.modules.projects.infrastructure.access import ProjectAccess, ProjectPermissions
+from app.modules.projects.domain import ProjectPermissions
+from app.modules.projects.infrastructure.access import ProjectAccess
 from app.bootstrap.adapters.project_repository import project_repository
 from app.modules.projects.application.contracts import (
     ProjectInvitationCreateRequest,
