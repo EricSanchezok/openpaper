@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.transport.http.public_v1.messages import chat_message_multipaper
+from app.modules.conversations.infrastructure.chat_gateway import (
+    chat_message_multipaper,
+)
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
@@ -27,7 +29,6 @@ from app.modules.conversations.infrastructure.message_repository import MessageC
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
-from starlette.requests import Request
 
 
 def _current_user() -> Actor:
@@ -225,7 +226,7 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         document_id=uuid.uuid4(),
     )
     monkeypatch.setattr(
-        "app.transport.http.public_v1.messages.has_token_credits",
+        "app.modules.conversations.infrastructure.chat_gateway.has_token_credits",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
@@ -234,36 +235,26 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         lambda *_args, **_kwargs: conversation,
     )
     monkeypatch.setattr(
-        "app.transport.http.public_v1.messages.conversation_policy.require_can_continue",
+        "app.modules.conversations.infrastructure.chat_gateway.conversation_policy.require_can_continue",
         lambda *_args, **_kwargs: None,
     )
     enforce_rate_limit = MagicMock()
     acquire_concurrency = MagicMock()
     monkeypatch.setattr(
-        "app.transport.http.public_v1.messages.enforce_rate_limit",
+        "app.modules.conversations.infrastructure.chat_gateway.enforce_rate_limit",
         enforce_rate_limit,
     )
     monkeypatch.setattr(
-        "app.transport.http.public_v1.messages.acquire_concurrency",
+        "app.modules.conversations.infrastructure.chat_gateway.acquire_concurrency",
         acquire_concurrency,
     )
-    http_request = Request(
-        {
-            "type": "http",
-            "method": "POST",
-            "path": "/api/message/chat/everything",
-            "headers": [],
-            "client": ("127.0.0.1", 1234),
-        }
-    )
-
     with pytest.raises(AppError) as exc_info:
         await chat_message_multipaper(
             request=MultiPaperChatRequest(
                 conversation_id=str(conversation.id),
                 user_query="Question",
             ),
-            http_request=http_request,
+            client_ip="127.0.0.1",
             db=MagicMock(spec=Session),
             current_user=_current_user(),
         )

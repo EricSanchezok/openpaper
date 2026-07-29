@@ -25,7 +25,6 @@ import {
 
 interface ChatRequestBody {
     user_query: string;
-    conversation_id: string | null;
     mentioned_document_ids?: string[];
     reasoning_level: "standard" | "deep";
 }
@@ -328,7 +327,6 @@ function ProjectConversationPageContent() {
 
         const requestBody: ChatRequestBody = {
             user_query: query,
-            conversation_id: conversationId,
             reasoning_level: reasoningLevel,
         };
         if (submittedMentions.documentIds.length > 0) {
@@ -336,7 +334,7 @@ function ProjectConversationPageContent() {
         }
 
         try {
-            const stream = await fetchStreamFromApi('/assistant/chat/everything', {
+            const stream = await fetchStreamFromApi(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

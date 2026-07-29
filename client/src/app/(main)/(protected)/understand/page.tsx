@@ -27,7 +27,6 @@ import { useAuth } from '@/lib/auth';
 
 interface ChatRequestBody {
     user_query: string;
-    conversation_id: string | null;
     mentioned_document_ids?: string[];
     mentioned_project_ids?: string[];
     mentioned_highlight_ids?: string[];
@@ -288,10 +287,12 @@ function UnderstandPageContent() {
                 return;
             }
         }
+        if (!currentConversationId) {
+            return;
+        }
 
         const requestBody: ChatRequestBody = {
             user_query: userMessage.content,
-            conversation_id: currentConversationId,
             reasoning_level: reasoningLevel,
         };
         if (!mentionSelectionIsEmpty(submittedMentions)) {
@@ -309,7 +310,7 @@ function UnderstandPageContent() {
         }
 
         try {
-            const stream = await fetchStreamFromApi('/assistant/chat/everything', {
+            const stream = await fetchStreamFromApi(`/conversations/${encodeURIComponent(currentConversationId)}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

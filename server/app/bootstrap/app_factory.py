@@ -91,6 +91,8 @@ def _public_router() -> APIRouter:
         prefix="/integrations/zotero/oauth",
         tags=["zotero"],
     )
+    # Static chat capability routes must precede the UUID conversation route.
+    router.include_router(message_router, prefix="/conversations")
     router.include_router(conversation_router, prefix="/conversations")
     router.include_router(library_router, prefix="/library")
     router.include_router(library_project_papers_router, prefix="/library")
@@ -98,7 +100,6 @@ def _public_router() -> APIRouter:
     router.include_router(document_router, prefix="/papers")
     router.include_router(paper_projects_router, prefix="/papers")
     router.include_router(public_document_router, prefix="/shares")
-    router.include_router(message_router, prefix="/assistant")
     router.include_router(projects_router, prefix="/projects")
     router.include_router(project_papers_router, prefix="/projects")
     router.include_router(projects_invitation_router)

@@ -82,7 +82,6 @@ interface SidePanelContentProps {
 
 interface ChatRequestBody {
     user_query: string;
-    conversation_id: string | null;
     user_references: string[];
     reasoning_level: 'standard' | 'deep';
 }
@@ -201,7 +200,7 @@ export function SidePanelContent({
 
         async function fetchCapabilities() {
             try {
-                const response = await fetchFromApi(`/assistant/capabilities`);
+                const response = await fetchFromApi(`/conversations/capabilities`);
                 if (Array.isArray(response.reasoning_levels)) {
                     setReasoningCapabilities(response.reasoning_levels);
                 }
@@ -332,6 +331,7 @@ export function SidePanelContent({
         if (
             !currentMessage.trim()
             || isStreaming
+            || !conversationId
             || conversation?.capabilities.send === false
         ) return;
 
@@ -357,13 +357,12 @@ export function SidePanelContent({
 
         const requestBody: ChatRequestBody = {
             user_query: userMessage.content,
-            conversation_id: conversationId,
             user_references: userMessageReferences,
             reasoning_level: reasoningLevel,
         };
 
         try {
-            const stream = await fetchStreamFromApi('/assistant/chat/paper', {
+            const stream = await fetchStreamFromApi(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

@@ -99,6 +99,7 @@ from app.modules.research.infrastructure.generation import (
     DefaultGenerationCapacity,
 )
 from app.modules.conversations.application.conversations import Conversations
+from app.modules.conversations.application.chat import ConversationChat
 from app.modules.conversations.infrastructure.application_gateway import (
     LlmConversationTitleGenerator,
     PostHogConversationEvents,
@@ -272,6 +273,16 @@ def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:
             error_code="conversation_message_cursor_expired",
         ),
     )
+
+
+def build_conversation_chat(*, db: Session) -> ConversationChat:
+    # Lazy import avoids the LLM tool graph importing this composition root
+    # while the root itself is still being initialized.
+    from app.modules.conversations.infrastructure.chat_gateway import (
+        DefaultConversationChatGateway,
+    )
+
+    return ConversationChat(DefaultConversationChatGateway(db))
 
 
 def build_identity(*, db: Session) -> Identity:
