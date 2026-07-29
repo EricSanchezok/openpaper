@@ -236,3 +236,46 @@ def test_public_openapi_surface_matches_reviewed_v1_contract() -> None:
         (ROOT / "server" / "openapi" / "v1-contract.json").read_text(encoding="utf-8")
     )
     assert actual == expected
+
+
+def test_mutation_status_and_idempotency_contracts_are_stable() -> None:
+    paths = app.openapi()["paths"]
+    async_mutations = {
+        "/api/v1/paper-ingestions/uploads",
+        "/api/v1/paper-ingestions/urls",
+        "/api/v1/integrations/zotero/imports",
+        "/api/v1/integrations/zotero/sync-runs",
+        "/api/v1/papers/{document_id}/audio-overviews",
+        "/api/v1/projects/{project_id}/audio-overviews",
+        "/api/v1/projects/{project_id}/data-tables",
+    }
+    idempotent_mutations = async_mutations - {"/api/v1/integrations/zotero/sync-runs"}
+    created_resources = {
+        "/api/v1/conversations",
+        "/api/v1/library/papers",
+        "/api/v1/library/tags",
+        "/api/v1/projects",
+        "/api/v1/projects/{project_id}/papers",
+        "/api/v1/projects/{project_id}/invitations",
+    }
+    empty_deletions = {
+        "/api/v1/conversations/{conversation_id}",
+        "/api/v1/library/papers/{document_id}",
+        "/api/v1/projects/{project_id}",
+        "/api/v1/projects/{project_id}/papers/{document_id}",
+        "/api/v1/integrations/zotero/connection",
+    }
+
+    for path in async_mutations:
+        assert "202" in paths[path]["post"]["responses"]
+    for path in created_resources:
+        assert "201" in paths[path]["post"]["responses"]
+    for path in empty_deletions:
+        assert "204" in paths[path]["delete"]["responses"]
+    for path in idempotent_mutations:
+        parameters = paths[path]["post"].get("parameters", [])
+        assert any(
+            parameter["in"] == "header"
+            and parameter["name"].casefold() == "idempotency-key"
+            for parameter in parameters
+        )
