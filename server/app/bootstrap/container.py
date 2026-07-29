@@ -86,6 +86,13 @@ from app.modules.research.application.generation import (
 from app.modules.research.infrastructure.generation import (
     DefaultGenerationCapacity,
 )
+from app.modules.conversations.application.conversations import Conversations
+from app.modules.conversations.infrastructure.application_gateway import (
+    LlmConversationTitleGenerator,
+    PostHogConversationEvents,
+    SqlAlchemyConversationGateway,
+)
+from app.shared.application import SignedCursorCodec
 from sqlalchemy.orm import Session
 
 
@@ -212,4 +219,17 @@ def build_research_generation(*, db: Session) -> ResearchGeneration:
         ),
         jobs=SqlAlchemyJobsGateway(db),
         capacity=DefaultGenerationCapacity(db),
+    )
+
+
+def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:
+    return Conversations(
+        gateway=SqlAlchemyConversationGateway(db),
+        titles=LlmConversationTitleGenerator(db),
+        events=PostHogConversationEvents(db),
+        message_cursors=SignedCursorCodec(
+            cursor_secret,
+            revision="conversation-messages-v1",
+            error_code="conversation_message_cursor_expired",
+        ),
     )

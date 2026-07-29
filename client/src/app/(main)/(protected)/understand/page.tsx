@@ -134,7 +134,7 @@ function UnderstandPageContent() {
             const [detail, response] = await Promise.all([
                 fetchFromApi(`/conversations/${id}`) as Promise<Conversation>,
                 fetchFromApi(
-                    `/conversations/${id}/messages?page=1&page_size=100`,
+                    `/conversations/${id}/messages?limit=100`,
                 ),
             ]);
             if (response?.items) {

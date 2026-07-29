@@ -106,5 +106,29 @@ class MessageRepository:
         # Reverse the results to get chronological order
         return list(reversed(messages))
 
+    def list_conversation_messages(
+        self,
+        db: Session,
+        *,
+        conversation_id: UUID,
+        user_id: int,
+        offset: int,
+        limit: int,
+    ) -> list[Message]:
+        """Return a newest-first page, presented in chronological order."""
+        messages = db.scalars(
+            select(Message)
+            .options(selectinload(Message.research_items))
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                Message.conversation_id == conversation_id,
+                Conversation.user_id == user_id,
+            )
+            .order_by(desc(Message.sequence))
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        return list(reversed(messages))
+
 
 message_repository = MessageRepository()

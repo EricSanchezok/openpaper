@@ -3,10 +3,6 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.transport.http.public_v1.conversations import (
-    get_conversation,
-    get_conversation_messages,
-)
 from app.transport.http.public_v1.messages import chat_message_multipaper
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
@@ -15,6 +11,9 @@ from app.database.models import Conversation, Message
 from app.shared.domain import AppError
 from app.main import app
 from app.modules.conversations.infrastructure.repository import conversation_repository
+from app.modules.conversations.infrastructure.application_gateway import (
+    SqlAlchemyConversationGateway,
+)
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationMoveRequest,
@@ -300,10 +299,9 @@ def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -
     )
 
     with pytest.raises(AppError) as exc_info:
-        get_conversation(
+        SqlAlchemyConversationGateway(MagicMock(spec=Session)).get(
             conversation_id=uuid.uuid4(),
-            db=MagicMock(spec=Session),
-            current_user=_current_user(),
+            user_id=_current_user().id,
         )
 
     assert exc_info.value.status_code == 404
@@ -329,21 +327,20 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
     )
     monkeypatch.setattr(
         message_repository,
-        "get_conversation_messages",
+        "list_conversation_messages",
         lambda *_args, **_kwargs: [MagicMock()],
     )
 
     with pytest.raises(ValueError, match="invalid message payload"):
         monkeypatch.setattr(
-            "app.transport.http.public_v1.conversations.serialize_messages",
+            "app.modules.conversations.infrastructure.application_gateway.serialize_messages",
             lambda _messages: (_ for _ in ()).throw(
                 ValueError("invalid message payload")
             ),
         )
-        get_conversation_messages(
+        SqlAlchemyConversationGateway(MagicMock(spec=Session)).messages(
             conversation_id=conversation_id,
-            page=1,
-            page_size=10,
-            db=MagicMock(spec=Session),
-            current_user=_current_user(),
+            offset=0,
+            limit=10,
+            user_id=_current_user().id,
         )

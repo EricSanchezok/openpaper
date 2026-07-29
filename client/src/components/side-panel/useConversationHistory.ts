@@ -9,6 +9,7 @@ interface ConversationListResponse {
 
 interface MessagePageResponse {
 	items: ChatMessage[];
+	next_cursor: string | null;
 }
 
 interface UseConversationHistoryOptions {
@@ -28,7 +29,7 @@ export function useConversationHistory({
 	const [hasMoreMessages, setHasMoreMessages] = useState(true);
 	const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
 	const [isFetchingHistory, setIsFetchingHistory] = useState(true);
-	const [page, setPage] = useState(1);
+	const [messageCursor, setMessageCursor] = useState<string | null>(null);
 	const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
 	const fetchMoreMessages = useCallback(async () => {
@@ -41,8 +42,11 @@ export function useConversationHistory({
 
 		setIsLoadingMoreMessages(true);
 		try {
+			const cursorQuery = messageCursor
+				? `&cursor=${encodeURIComponent(messageCursor)}`
+				: "";
 			const response = (await fetchFromApi(
-				`/conversations/${conversationId}/messages?page=${page}&page_size=50`,
+				`/conversations/${conversationId}/messages?limit=50${cursorQuery}`,
 				{ method: "GET" },
 			)) as MessagePageResponse;
 			const fetchedMessages = response.items.map((message) => ({
@@ -59,7 +63,8 @@ export function useConversationHistory({
 			const container = messagesContainerRef.current;
 			const previousHeight = container?.scrollHeight ?? 0;
 			setMessages((previous) => [...fetchedMessages, ...previous]);
-			setPage((current) => current + 1);
+			setMessageCursor(response.next_cursor);
+			setHasMoreMessages(response.next_cursor !== null);
 			requestAnimationFrame(() => {
 				if (container) {
 					container.scrollTop = container.scrollHeight - previousHeight;
@@ -74,12 +79,16 @@ export function useConversationHistory({
 		hasMoreMessages,
 		isFetchingHistory,
 		isLoadingMoreMessages,
-		page,
+		messageCursor,
 	]);
 
 	useEffect(() => {
 		if (!enabled || !documentId) return;
 
+		setMessages([]);
+		setMessageCursor(null);
+		setHasMoreMessages(true);
+		setIsFetchingHistory(true);
 		let cancelled = false;
 		async function loadConversation() {
 			try {
