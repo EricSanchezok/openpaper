@@ -12,7 +12,7 @@ from app.database.models import (
     UploadReservation,
 )
 from app.shared.application import Actor
-from app.modules.papers.infrastructure.submission import submit_reserved_document
+from app.bootstrap.adapters.document_submission import submit_reserved_document
 from sqlalchemy.orm import Session
 
 
@@ -77,27 +77,27 @@ async def test_personal_submission_persists_identity_before_broker_publish(
     attach_library = MagicMock(return_value=SimpleNamespace(created=True))
     add_dispatch = MagicMock()
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.s3_service.upload_document_source",
+        "app.bootstrap.adapters.document_submission.s3_service.upload_document_source",
         upload_source,
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.document_repository.get_by_sha256",
+        "app.bootstrap.adapters.document_submission.document_repository.get_by_sha256",
         get_by_sha,
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.document_repository.get_or_create",
+        "app.bootstrap.adapters.document_submission.document_repository.get_or_create",
         get_or_create,
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.document_repository.attach_library",
+        "app.bootstrap.adapters.document_submission.document_repository.attach_library",
         attach_library,
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.job_repository.add_dispatch",
+        "app.bootstrap.adapters.document_submission.job_repository.add_dispatch",
         add_dispatch,
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.track_event",
+        "app.bootstrap.adapters.document_submission.track_event",
         MagicMock(),
     )
 
@@ -136,27 +136,27 @@ async def test_project_submission_consumes_reserved_project_destination(
     db = MagicMock(spec=Session)
     attach = MagicMock(return_value=(SimpleNamespace(document_id=document.id), True))
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.s3_service.upload_document_source",
+        "app.bootstrap.adapters.document_submission.s3_service.upload_document_source",
         MagicMock(),
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.document_repository.get_by_sha256",
+        "app.bootstrap.adapters.document_submission.document_repository.get_by_sha256",
         MagicMock(return_value=None),
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.document_repository.get_or_create",
+        "app.bootstrap.adapters.document_submission.document_repository.get_or_create",
         MagicMock(return_value=SimpleNamespace(document=document, created=True)),
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.project_document_repository.attach_reserved_upload",
+        "app.bootstrap.adapters.document_submission.project_document_repository.attach_reserved_upload",
         attach,
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.job_repository.add_dispatch",
+        "app.bootstrap.adapters.document_submission.job_repository.add_dispatch",
         MagicMock(),
     )
     monkeypatch.setattr(
-        "app.modules.papers.infrastructure.submission.track_event",
+        "app.bootstrap.adapters.document_submission.track_event",
         MagicMock(),
     )
 

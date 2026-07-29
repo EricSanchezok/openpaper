@@ -1,4 +1,4 @@
-"""Infrastructure adapters for the shared paper-ingestion use case."""
+"""Cross-module infrastructure adapter for paper ingestion."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.modules.papers.application.ingestion import (
     IngestionReservation,
     content_sha256,
 )
-from app.modules.papers.infrastructure.submission import dispatch_reserved_document
+from app.bootstrap.adapters.document_submission import dispatch_reserved_document
 from app.modules.papers.infrastructure.upload_repository import (
     upload_reservation_repository,
 )

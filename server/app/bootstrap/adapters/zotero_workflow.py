@@ -51,7 +51,7 @@ from app.modules.research.infrastructure.document_annotations import (
     require_parsed_content,
 )
 from app.modules.papers.infrastructure.upload_reservations import reserve_upload
-from app.modules.papers.infrastructure.submission import submit_reserved_document
+from app.bootstrap.adapters.document_submission import submit_reserved_document
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

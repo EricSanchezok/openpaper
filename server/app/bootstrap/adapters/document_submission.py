@@ -1,4 +1,4 @@
-"""Canonical PDF ingestion and deterministic Jobs hand-off."""
+"""Cross-module canonical document submission and Jobs hand-off."""
 
 from __future__ import annotations
 

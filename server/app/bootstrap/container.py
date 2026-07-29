@@ -19,7 +19,7 @@ from app.modules.papers.application.downloads import GetPaperDownload
 from app.modules.papers.infrastructure.downloads import S3PaperDownloadSigner
 from app.helpers.s3 import DEFAULT_SIGNED_URL_TTL_SECONDS
 from app.modules.papers.application.ingestion import IngestPaper
-from app.modules.papers.infrastructure.ingestion import (
+from app.bootstrap.adapters.paper_ingestion import (
     DefaultPaperIngestionLimits,
     DefaultPdfInputValidator,
     SafePdfUrlSource,
