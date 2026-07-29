@@ -8,11 +8,13 @@ from app.transport.http.public_v1.billing.config import (
     SubscriptionInterval,
 )
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.helpers.email import notify_converted_billing_interval
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -32,7 +34,7 @@ def change_subscription_interval(
     Schedule a billing interval change at the end of the current billing period
     using Stripe Subscription Schedules. No immediate charge or proration.
     """
-    subscription = subscription_crud.get_by_user_id(db, current_user.id)
+    subscription = subscription_repository.get_by_user_id(db, current_user.id)
 
     if not subscription:
         return {"success": False, "error": "No existing subscription found"}
@@ -107,7 +109,7 @@ def change_subscription_interval(
             ],
         )
 
-        subscription_crud.create_or_update(
+        subscription_repository.create_or_update(
             db,
             current_user.id,
             {"stripe_schedule_id": schedule.id},
@@ -168,7 +170,7 @@ def cancel_scheduled_change(
     Cancel a previously scheduled billing interval change.
     Releases the Stripe Subscription Schedule so the subscription continues as-is.
     """
-    subscription = subscription_crud.get_by_user_id(db, current_user.id)
+    subscription = subscription_repository.get_by_user_id(db, current_user.id)
 
     if not subscription:
         return {"success": False, "error": "No existing subscription found"}
@@ -192,7 +194,7 @@ def cancel_scheduled_change(
             status_code=502,
         ) from exc
 
-    subscription_crud.create_or_update(
+    subscription_repository.create_or_update(
         db, current_user.id, {"stripe_schedule_id": None}
     )
 

@@ -24,7 +24,7 @@ class OnboardingUpdate(OnboardingBase):
     pass
 
 
-class OnboardingCrud:
+class OnboardingRepository:
     def get_by(self, db: Session, *, user: Actor) -> Onboarding | None:
         return db.scalar(select(Onboarding).where(Onboarding.user_id == user.id))
 
@@ -55,4 +55,4 @@ class OnboardingCrud:
 
 
 # Create a single instance to use throughout the application
-onboarding_crud = OnboardingCrud()
+onboarding_repository = OnboardingRepository()

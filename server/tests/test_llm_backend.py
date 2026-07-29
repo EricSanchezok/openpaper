@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from app.transport.http.public_v1.messages import ChatMessageRequest, MultiPaperChatRequest
+from app.transport.http.public_v1.messages import (
+    ChatMessageRequest,
+    MultiPaperChatRequest,
+)
 from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
 from app.llm.backend import DeepSeekBackend

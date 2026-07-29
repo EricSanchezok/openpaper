@@ -11,7 +11,9 @@ from app.database.models import (
 )
 from app.modules.projects.infrastructure.access import get_project_access
 from app.shared.application import Actor
-from app.modules.papers.infrastructure.upload_lifecycle import active_upload_freshness_clause
+from app.modules.papers.infrastructure.upload_lifecycle import (
+    active_upload_freshness_clause,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

@@ -1,12 +1,18 @@
 import logging
 
 import stripe
-from app.transport.http.public_v1.billing.config import MONTHLY_PRICE_ID, YEARLY_PRICE_ID, YOUR_DOMAIN
+from app.transport.http.public_v1.billing.config import (
+    MONTHLY_PRICE_ID,
+    YEARLY_PRICE_ID,
+    YOUR_DOMAIN,
+)
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.database.database import get_db
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -23,7 +29,7 @@ def create_customer_portal_session(
 ) -> dict[str, str | None]:
     """Create a Stripe customer portal session for the current user"""
     try:
-        subscription = subscription_crud.get_by_user_id(db, current_user.id)
+        subscription = subscription_repository.get_by_user_id(db, current_user.id)
 
         if not subscription or not subscription.stripe_customer_id:
             raise AppError(
@@ -62,7 +68,7 @@ def resubscribe(
     2. If subscription is already canceled, it will create a new subscription
        using the existing customer and payment method
     """
-    subscription = subscription_crud.get_by_user_id(db, current_user.id)
+    subscription = subscription_repository.get_by_user_id(db, current_user.id)
 
     if not subscription:
         return {

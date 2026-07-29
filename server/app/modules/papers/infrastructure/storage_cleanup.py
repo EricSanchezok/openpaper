@@ -35,9 +35,7 @@ def schedule_storage_deletion(
             queue="storage_gc",
             task_kwargs={
                 "object_keys": keys_json,
-                "callback_url": (
-                    f"{base_url}/internal/v1/jobs/{job_id}/complete"
-                ),
+                "callback_url": (f"{base_url}/internal/v1/jobs/{job_id}/complete"),
                 "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
             },
             job_id=job_id,

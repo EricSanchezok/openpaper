@@ -10,7 +10,7 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectPaper,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 

@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from app.modules.billing.infrastructure.usage_repository import (
     resource_usage_repository,
 )
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.database.models import (
     AuthUser,
     Document,
@@ -17,7 +19,7 @@ from app.database.models import (
     SubscriptionStatus,
 )
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.shared.application import Actor
 from app.modules.identity.infrastructure.users import actor_from_auth_user
 from sqlalchemy import func, select
@@ -59,7 +61,7 @@ def get_user_subscription_plan(db: Session, user: Actor) -> SubscriptionPlan:
     Get the user's current subscription plan.
     Returns BASIC if no active subscription is found.
     """
-    subscription = subscription_crud.get_by_user_id(db, user.id)
+    subscription = subscription_repository.get_by_user_id(db, user.id)
 
     if not subscription:
         return SubscriptionPlan.BASIC

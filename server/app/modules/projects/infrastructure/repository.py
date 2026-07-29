@@ -12,7 +12,7 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectInvitation,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.projects.infrastructure.access import (
     ProjectAccess,
     ProjectPermissions,
@@ -27,7 +27,9 @@ from app.modules.projects.infrastructure.lifecycle import (
     prepare_project_deletion,
     schedule_project_storage_cleanup,
 )
-from app.modules.papers.infrastructure.upload_reservations import reassign_project_quota_owner
+from app.modules.papers.infrastructure.upload_reservations import (
+    reassign_project_quota_owner,
+)
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -89,22 +91,6 @@ class ProjectRepository:
         self, db: Session, *, project_id: uuid.UUID, user_id: int
     ) -> ProjectAccess:
         return require_project_access(db, project_id=project_id, user_id=user_id)
-
-    def touch(
-        self,
-        db: Session,
-        *,
-        project_id: uuid.UUID,
-        commit: bool = True,
-    ) -> None:
-        project = db.get(Project, project_id)
-        if project is None:
-            return
-        project.updated_at = datetime.now(timezone.utc)
-        if commit:
-            db.flush()
-        else:
-            db.flush()
 
     def list_accessible(
         self, db: Session, *, user_id: int, limit: int | None = None

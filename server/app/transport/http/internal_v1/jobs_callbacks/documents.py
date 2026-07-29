@@ -14,6 +14,7 @@ from app.modules.jobs.infrastructure import document_callbacks
 from fastapi import Request
 from sqlalchemy.orm import Session
 
+
 def complete_pdf_postprocess_job(
     job_id: uuid.UUID,
     callback: JobCallbackIdentity,

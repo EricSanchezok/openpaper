@@ -15,7 +15,7 @@ from app.helpers.s3 import s3_service
 from app.modules.papers.application.contracts.search import (
     AnnotationSearchResult,
     HighlightSearchResult,
-    PaperSearchRequest,
+    PaperSearchQuery,
     PaperSearchResponse,
     PaperSearchResult,
     PaperSearchStats,
@@ -228,7 +228,9 @@ def search_knowledge_base(
                 title=paper.title,
                 authors=paper.authors,
                 abstract=paper.abstract,
-                status=library_paper.status if library_paper else paper.processing_status,
+                status=library_paper.status
+                if library_paper
+                else paper.processing_status,
                 publish_date=paper.publish_date,
                 created_at=paper.created_at,
                 last_accessed_at=(
@@ -266,7 +268,7 @@ class PostgresPaperSearch:
         self,
         *,
         actor: Actor,
-        request: PaperSearchRequest,
+        request: PaperSearchQuery,
     ) -> PaperSearchResponse:
         return search_knowledge_base(
             self._db,

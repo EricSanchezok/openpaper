@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.advisory_locks import AdvisoryLock
 from app.helpers.ai_limits import release_concurrency_by_id
 from sqlalchemy.orm import Session

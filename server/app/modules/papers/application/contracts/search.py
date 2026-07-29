@@ -9,9 +9,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PaperSearchRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     query: str = Field(min_length=2, max_length=1_000)
     limit: int = Field(default=50, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
+    cursor: str | None = Field(default=None, max_length=1_024)
+
+
+class PaperSearchQuery(BaseModel):
+    query: str
+    limit: int
+    offset: int = Field(ge=0)
 
 
 class HighlightSearchResult(BaseModel):
@@ -57,6 +65,7 @@ class PaperSearchResponse(BaseModel):
     total_papers: int
     total_highlights: int
     total_annotations: int
+    next_cursor: str | None = None
 
 
 class PaperSearchStats(BaseModel):

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 from app.database.models import Document, Project
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.projects.infrastructure.lifecycle import (
     ProjectDeletionPlan,
     prepare_project_deletion,

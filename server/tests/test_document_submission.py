@@ -169,7 +169,7 @@ async def test_project_submission_consumes_reserved_project_destination(
     attach.assert_called_once_with(
         db=db,
         document=document,
-            upload_job=upload_job,
-            user=_user(),
-            project_id=project_id,
-        )
+        upload_job=upload_job,
+        user=_user(),
+        project_id=project_id,
+    )

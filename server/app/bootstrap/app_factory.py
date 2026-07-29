@@ -11,8 +11,14 @@ import logging
 from app.transport.http.public_v1.auth import auth_router, zotero_oauth_router
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
-from app.transport.http.public_v1.documents import document_router, library_router, public_document_router
-from app.transport.http.internal_v1.jobs_callbacks import webhook_router as jobs_callback_router
+from app.transport.http.public_v1.documents import (
+    document_router,
+    library_router,
+    public_document_router,
+)
+from app.transport.http.internal_v1.jobs_callbacks import (
+    webhook_router as jobs_callback_router,
+)
 from app.transport.http.public_v1.library_tags import library_tags_router
 from app.transport.http.public_v1.messages import message_router
 from app.transport.http.public_v1.discovery import paper_search_router

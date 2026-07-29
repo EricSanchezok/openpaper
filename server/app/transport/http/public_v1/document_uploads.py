@@ -27,7 +27,7 @@ from app.modules.papers.infrastructure.upload_repository import (
     upload_reservation_repository,
 )
 from app.database.database import get_db
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,

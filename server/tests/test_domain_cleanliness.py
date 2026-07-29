@@ -10,6 +10,15 @@ BUSINESS_ROOTS = (
     ROOT / "jobs" / "src",
     ROOT / "client" / "src",
 )
+HTTP_ROOT = ROOT / "server" / "app" / "transport" / "http"
+
+
+def _http_route_paths() -> list[Path]:
+    return [
+        path
+        for path in HTTP_ROOT.rglob("*.py")
+        if path.name not in {"__init__.py", "auth_dependencies.py", "errors.py"}
+    ]
 
 
 def _business_source() -> str:
@@ -62,18 +71,16 @@ def test_streaming_errors_never_expose_exception_text() -> None:
     assert exposed_exception.search(source) is None
 
 
-def test_api_modules_do_not_define_request_or_response_models() -> None:
-    api_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (ROOT / "server" / "app" / "api").rglob("*.py")
+def test_http_adapters_do_not_define_request_or_response_models() -> None:
+    adapter_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in _http_route_paths()
     )
-    assert re.search(r"^class\s+\w+\(BaseModel\)", api_source, re.MULTILINE) is None
+    assert re.search(r"^class\s+\w+\(BaseModel\)", adapter_source, re.MULTILINE) is None
 
 
-def test_api_modules_do_not_own_broad_exception_boundaries() -> None:
+def test_http_adapters_do_not_own_broad_exception_boundaries() -> None:
     violations: list[str] = []
-    api_root = ROOT / "server" / "app" / "api"
-    for path in api_root.rglob("*.py"):
+    for path in _http_route_paths():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.ExceptHandler):
@@ -81,13 +88,12 @@ def test_api_modules_do_not_own_broad_exception_boundaries() -> None:
             if node.type is None or (
                 isinstance(node.type, ast.Name) and node.type.id == "Exception"
             ):
-                violations.append(f"{path.relative_to(api_root)}:{node.lineno}")
+                violations.append(f"{path.relative_to(HTTP_ROOT)}:{node.lineno}")
     assert violations == []
 
 
-def test_api_modules_use_the_stable_application_error_contract() -> None:
-    api_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (ROOT / "server" / "app" / "api").rglob("*.py")
+def test_http_adapters_use_the_stable_application_error_contract() -> None:
+    adapter_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in _http_route_paths()
     )
-    assert "HTTPException" not in api_source
+    assert "HTTPException" not in adapter_source

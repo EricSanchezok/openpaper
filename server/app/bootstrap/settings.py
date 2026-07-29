@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PUBLIC_API_PREFIX = "/api/v1"
@@ -17,3 +18,7 @@ class AppSettings(BaseSettings):
     environment: str = "development"
     client_domain: str = "http://localhost:3000"
     paper_search_backend: Literal["postgres_fts"] = "postgres_fts"
+    paper_search_cursor_secret: str = Field(
+        default="development-only-search-cursor-secret",
+        min_length=32,
+    )

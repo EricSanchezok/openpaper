@@ -13,7 +13,9 @@ from app.modules.billing.infrastructure.stripe_webhook_ledger import (
     complete_webhook,
     fail_webhook,
 )
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.modules.identity.infrastructure.users import user_repository
 from app.database.database import engine
 from app.database.models import (
@@ -169,8 +171,8 @@ async def process_stripe_webhook(
                     return _ignore_event(db, event_id=event_id)
 
                 # Try to find the user by customer ID
-                existing_subscription = subscription_crud.get_by_stripe_customer_id(
-                    db, customer_id
+                existing_subscription = (
+                    subscription_repository.get_by_stripe_customer_id(db, customer_id)
                 )
 
                 user_id: int | None = None
@@ -229,7 +231,7 @@ async def process_stripe_webhook(
                         "cancel_at_period_end": stripe_sub.cancel_at_period_end,
                     }
 
-                    subscription = subscription_crud.create_or_update(
+                    subscription = subscription_repository.create_or_update(
                         db, user_id, subscription_data
                     )
 
@@ -267,7 +269,7 @@ async def process_stripe_webhook(
             subscription_id = stripe_sub.id
 
             try:
-                subscription = subscription_crud.get_by_stripe_subscription_id(
+                subscription = subscription_repository.get_by_stripe_subscription_id(
                     db, subscription_id
                 )
 
@@ -298,7 +300,7 @@ async def process_stripe_webhook(
 
                     updated_sub_item = stripe_sub["items"]["data"][0]
 
-                    subscription_crud.update_subscription_status(
+                    subscription_repository.update_subscription_status(
                         db,
                         subscription_id,
                         stripe_sub.status,
@@ -378,7 +380,7 @@ async def process_stripe_webhook(
             subscription_id = stripe_sub.id
 
             try:
-                subscription = subscription_crud.get_by_stripe_subscription_id(
+                subscription = subscription_repository.get_by_stripe_subscription_id(
                     db, subscription_id
                 )
 
@@ -397,7 +399,7 @@ async def process_stripe_webhook(
                         return _ignore_event(db, event_id=event_id)
 
                     # Downgrade to BASIC plan on cancellation
-                    subscription_crud.update_subscription_status(
+                    subscription_repository.update_subscription_status(
                         db,
                         subscription_id,
                         stripe_price_id=stripe_received_price_id,
@@ -445,12 +447,14 @@ async def process_stripe_webhook(
 
             try:
                 if subscription_id:
-                    subscription = subscription_crud.get_by_stripe_subscription_id(
-                        db, subscription_id
+                    subscription = (
+                        subscription_repository.get_by_stripe_subscription_id(
+                            db, subscription_id
+                        )
                     )
 
                     if subscription:
-                        subscription_crud.update_subscription_status(
+                        subscription_repository.update_subscription_status(
                             db, subscription_id, status=SubscriptionStatus.PAST_DUE
                         )
 
@@ -495,12 +499,14 @@ async def process_stripe_webhook(
 
             try:
                 if subscription_id:
-                    subscription = subscription_crud.get_by_stripe_subscription_id(
-                        db, subscription_id
+                    subscription = (
+                        subscription_repository.get_by_stripe_subscription_id(
+                            db, subscription_id
+                        )
                     )
 
                     if subscription:
-                        subscription_crud.update_subscription_status(
+                        subscription_repository.update_subscription_status(
                             db, subscription_id, status=SubscriptionStatus.ACTIVE
                         )
 
@@ -528,8 +534,10 @@ async def process_stripe_webhook(
 
             try:
                 if subscription_id:
-                    subscription = subscription_crud.get_by_stripe_subscription_id(
-                        db, subscription_id
+                    subscription = (
+                        subscription_repository.get_by_stripe_subscription_id(
+                            db, subscription_id
+                        )
                     )
 
                     if subscription:
@@ -571,12 +579,12 @@ async def process_stripe_webhook(
             subscription_id = stripe_sub.id
 
             try:
-                subscription = subscription_crud.get_by_stripe_subscription_id(
+                subscription = subscription_repository.get_by_stripe_subscription_id(
                     db, subscription_id
                 )
 
                 if subscription:
-                    subscription_crud.update_subscription_status(
+                    subscription_repository.update_subscription_status(
                         db,
                         subscription_id,
                         status="past_due",
@@ -621,15 +629,17 @@ async def process_stripe_webhook(
 
             try:
                 if subscription_id:
-                    subscription = subscription_crud.get_by_stripe_subscription_id(
-                        db, subscription_id
+                    subscription = (
+                        subscription_repository.get_by_stripe_subscription_id(
+                            db, subscription_id
+                        )
                     )
 
                     if (
                         subscription
                         and str(subscription.stripe_schedule_id) == schedule_id
                     ):
-                        subscription_crud.create_or_update(
+                        subscription_repository.create_or_update(
                             db,
                             subscription.user_id,
                             {"stripe_schedule_id": None},

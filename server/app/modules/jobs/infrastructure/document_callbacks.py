@@ -12,8 +12,12 @@ from app.modules.papers.infrastructure.upload_repository import (
     upload_reservation_repository,
 )
 from app.modules.identity.infrastructure.users import user_repository
-from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
-from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import (
+    zotero_connection_repository,
+)
+from app.modules.integrations.zotero.infrastructure.import_repository import (
+    zotero_import_repository,
+)
 from app.database.database import engine
 from app.database.models import (
     ConversationScopeType,
@@ -27,7 +31,7 @@ from app.database.models import (
 )
 from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.helpers.ai_limits import release_concurrency_by_id
@@ -59,7 +63,9 @@ from app.modules.integrations.zotero.infrastructure.service import (
     auto_import_new_papers,
     sync_batch,
 )
-from app.modules.research.infrastructure.document_annotations import create_ai_highlights
+from app.modules.research.infrastructure.document_annotations import (
+    create_ai_highlights,
+)
 from app.modules.jobs.infrastructure.callback_boundaries import (
     callback_transaction,
     optional_savepoint,
@@ -181,11 +187,11 @@ def _finalize_zotero_import(
     # apply_zotero_annotations (below) flips the row to COMPLETED but preserves
     # this note (it only sets error_message when given one).
     if error_message:
-        zotero_import = zotero_import_crud.get_by_upload_job_id(
+        zotero_import = zotero_import_repository.get_by_upload_job_id(
             db, upload_job_id=uuid.UUID(job_id)
         )
         if zotero_import:
-            zotero_import_crud.update_status(
+            zotero_import_repository.update_status(
                 db,
                 item=zotero_import,
                 status=ZoteroImportStatus.PROCESSING,
@@ -263,7 +269,9 @@ def handle_failed_upload(
                     )
                 )
             db.flush()
-            from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
+            from app.modules.papers.infrastructure.garbage_collection import (
+                schedule_document_gc,
+            )
 
             schedule_document_gc(db, document_id=document_id)
 
@@ -279,11 +287,11 @@ def handle_failed_upload(
         if exc.code != "job_not_found":
             raise
 
-    zotero_import = zotero_import_crud.get_by_upload_job_id(
+    zotero_import = zotero_import_repository.get_by_upload_job_id(
         db, upload_job_id=uuid.UUID(job_id)
     )
     if zotero_import:
-        zotero_import_crud.update_status(
+        zotero_import_repository.update_status(
             db,
             item=zotero_import,
             status=ZoteroImportStatus.FAILED,
@@ -526,7 +534,7 @@ async def handle_paper_processing_webhook(
     status = webhook_data.status
     result = webhook_data.result
 
-    zotero_import = zotero_import_crud.get_by_upload_job_id(
+    zotero_import = zotero_import_repository.get_by_upload_job_id(
         db, upload_job_id=uuid.UUID(job_id)
     )
 
@@ -803,7 +811,7 @@ def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
             status_code=422,
         )
     threshold_hours = threshold_seconds / 3600
-    user_ids = zotero_import_crud.list_user_ids_due_for_sync(
+    user_ids = zotero_import_repository.list_user_ids_due_for_sync(
         db, threshold_hours=threshold_hours
     )
     scheduled = 0
@@ -821,7 +829,7 @@ def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
             skipped += 1
             continue
 
-        if not zotero_crud.get_by_user_id(db, user_id=user.id):
+        if not zotero_connection_repository.get_by_user_id(db, user_id=user.id):
             skipped += 1
             continue
         job_id = uuid.uuid4()
@@ -835,9 +843,7 @@ def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
                 task_name="postprocess_zotero",
                 queue="zotero_sync",
                 task_kwargs={
-                    "callback_url": (
-                        f"{base_url}/internal/v1/jobs/{job_id}/complete"
-                    ),
+                    "callback_url": (f"{base_url}/internal/v1/jobs/{job_id}/complete"),
                     "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
                 },
                 job_id=job_id,
@@ -888,7 +894,7 @@ async def complete_zotero_postprocess_job(
     current_user = actor_from_auth_user(user)
     if (
         not can_user_auto_sync_zotero(db, current_user)
-        or zotero_crud.get_by_user_id(db, user_id=user.id) is None
+        or zotero_connection_repository.get_by_user_id(db, user_id=user.id) is None
     ):
         job_repository.complete(
             db,

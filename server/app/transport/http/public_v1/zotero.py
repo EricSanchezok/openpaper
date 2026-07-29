@@ -1,10 +1,14 @@
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
-from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import (
+    zotero_connection_repository,
+)
+from app.modules.integrations.zotero.infrastructure.import_repository import (
+    zotero_import_repository,
+)
 from app.database.database import get_db
 from app.database.models import ZoteroImportedItem
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.billing.infrastructure.quotas import can_user_upload_paper
 from app.shared.application import Actor
 from app.modules.integrations.zotero.application.contracts import (
@@ -18,7 +22,11 @@ from app.modules.integrations.zotero.application.contracts import (
     ZoteroLibraryResponse,
     ZoteroSyncResponse,
 )
-from app.modules.integrations.zotero.infrastructure.service import import_batch, list_library, sync_batch
+from app.modules.integrations.zotero.infrastructure.service import (
+    import_batch,
+    list_library,
+    sync_batch,
+)
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -31,7 +39,9 @@ def zotero_library(
     db: Session = Depends(get_db),
 ) -> ZoteroLibraryResponse:
     """List importable journal articles, conference papers, and preprints from the user's Zotero library."""
-    connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
+    connection = zotero_connection_repository.get_by_user_id(
+        db, user_id=current_user.id
+    )
     if not connection:
         raise AppError(
             code="zotero_not_connected",
@@ -53,7 +63,9 @@ async def zotero_import(
     db: Session = Depends(get_db),
 ) -> ZoteroImportResponse:
     """Import selected journal articles, conference papers, and preprints from Zotero (PDF or URL fallback)."""
-    connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
+    connection = zotero_connection_repository.get_by_user_id(
+        db, user_id=current_user.id
+    )
     if not connection:
         raise AppError(
             code="zotero_not_connected",
@@ -101,7 +113,9 @@ async def zotero_sync(
     db: Session = Depends(get_db),
 ) -> ZoteroSyncResponse:
     """Manually trigger annotation sync for all already-imported Zotero PDF papers. Available to all plan tiers."""
-    connection = zotero_crud.get_by_user_id(db, user_id=current_user.id)
+    connection = zotero_connection_repository.get_by_user_id(
+        db, user_id=current_user.id
+    )
     if not connection:
         raise AppError(
             code="zotero_not_connected",
@@ -155,10 +169,10 @@ async def zotero_import_status_list(
 ) -> ZoteroImportStatusListResponse:
     """List recent Zotero import records for the current user."""
     if item_keys:
-        rows = zotero_import_crud.list_by_item_keys(
+        rows = zotero_import_repository.list_by_item_keys(
             db, user_id=current_user.id, item_keys=item_keys
         )
     else:
-        rows = zotero_import_crud.list_recent_by_user(db, user_id=current_user.id)
+        rows = zotero_import_repository.list_recent_by_user(db, user_id=current_user.id)
     items = _zotero_import_status_items(rows)
     return ZoteroImportStatusListResponse(items=items)

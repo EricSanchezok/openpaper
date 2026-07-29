@@ -3,8 +3,12 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app.database.models import SubscriptionPlan
-from app.modules.integrations.zotero.infrastructure import service as zotero_import_module
-from app.modules.integrations.zotero.infrastructure.service import _compute_max_new_imports
+from app.modules.integrations.zotero.infrastructure import (
+    service as zotero_import_module,
+)
+from app.modules.integrations.zotero.infrastructure.service import (
+    _compute_max_new_imports,
+)
 
 
 class TestComputeMaxNewImports(unittest.TestCase):
@@ -91,7 +95,9 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
     @patch("app.modules.billing.infrastructure.quotas.resource_usage_repository")
     @patch("app.modules.billing.infrastructure.quotas.get_user_subscription_plan")
     def test_basic_5_used(self, mock_plan, mock_resource_usage):
-        from app.modules.billing.infrastructure.quotas import get_remaining_paper_upload_slots
+        from app.modules.billing.infrastructure.quotas import (
+            get_remaining_paper_upload_slots,
+        )
 
         mock_plan.return_value = SubscriptionPlan.BASIC
         mock_resource_usage.completed_reference_count.return_value = 5
@@ -103,7 +109,9 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
     @patch("app.modules.billing.infrastructure.quotas.resource_usage_repository")
     @patch("app.modules.billing.infrastructure.quotas.get_user_subscription_plan")
     def test_basic_at_limit(self, mock_plan, mock_resource_usage):
-        from app.modules.billing.infrastructure.quotas import get_remaining_paper_upload_slots
+        from app.modules.billing.infrastructure.quotas import (
+            get_remaining_paper_upload_slots,
+        )
 
         mock_plan.return_value = SubscriptionPlan.BASIC
         mock_resource_usage.completed_reference_count.return_value = 10
@@ -115,7 +123,9 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
     @patch("app.modules.billing.infrastructure.quotas.resource_usage_repository")
     @patch("app.modules.billing.infrastructure.quotas.get_user_subscription_plan")
     def test_researcher_499(self, mock_plan, mock_resource_usage):
-        from app.modules.billing.infrastructure.quotas import get_remaining_paper_upload_slots
+        from app.modules.billing.infrastructure.quotas import (
+            get_remaining_paper_upload_slots,
+        )
 
         mock_plan.return_value = SubscriptionPlan.RESEARCHER
         mock_resource_usage.completed_reference_count.return_value = 499
@@ -127,7 +137,9 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
     @patch("app.modules.billing.infrastructure.quotas.resource_usage_repository")
     @patch("app.modules.billing.infrastructure.quotas.get_user_subscription_plan")
     def test_researcher_at_limit(self, mock_plan, mock_resource_usage):
-        from app.modules.billing.infrastructure.quotas import get_remaining_paper_upload_slots
+        from app.modules.billing.infrastructure.quotas import (
+            get_remaining_paper_upload_slots,
+        )
 
         mock_plan.return_value = SubscriptionPlan.RESEARCHER
         mock_resource_usage.completed_reference_count.return_value = 500
@@ -140,7 +152,9 @@ class TestGetRemainingPaperUploadSlots(unittest.TestCase):
     @patch("app.modules.billing.infrastructure.quotas.get_user_subscription_plan")
     def test_over_limit_clamps_to_zero(self, mock_plan, mock_resource_usage):
         """If somehow over limit, return 0 not negative."""
-        from app.modules.billing.infrastructure.quotas import get_remaining_paper_upload_slots
+        from app.modules.billing.infrastructure.quotas import (
+            get_remaining_paper_upload_slots,
+        )
 
         mock_plan.return_value = SubscriptionPlan.BASIC
         mock_resource_usage.completed_reference_count.return_value = 15

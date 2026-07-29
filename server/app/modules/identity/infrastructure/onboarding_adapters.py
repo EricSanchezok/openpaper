@@ -9,9 +9,9 @@ from app.modules.identity.application.onboarding_contracts import (
     OnboardingResponse,
 )
 from app.modules.identity.infrastructure.cloud_auth import auth_manager
-from app.modules.identity.infrastructure.onboarding import (
+from app.modules.identity.infrastructure.onboarding_repository import (
     OnboardingCreate,
-    onboarding_crud,
+    onboarding_repository,
 )
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
@@ -27,15 +27,15 @@ class SqlAlchemyOnboardingWriter:
         actor: Actor,
         request: CreateOnboardingRequest,
     ) -> OnboardingResponse:
-        existing = onboarding_crud.get_by(self._db, user=actor)
+        existing = onboarding_repository.get_by(self._db, user=actor)
         values = request.model_dump(exclude_unset=True, mode="json")
         if existing is None:
-            onboarding = onboarding_crud.create(
+            onboarding = onboarding_repository.create(
                 self._db,
                 obj_in=OnboardingCreate(user_id=actor.id, **values),
             )
         else:
-            onboarding = onboarding_crud.update(
+            onboarding = onboarding_repository.update(
                 self._db,
                 db_obj=existing,
                 obj_in=values,

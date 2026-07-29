@@ -2,10 +2,15 @@ import logging
 import os
 from typing import Any
 
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.database.database import SessionLocal
 from app.database.models import Subscription
-from app.shared.infrastructure.telemetry_client import capture_event, create_posthog_client
+from app.shared.infrastructure.telemetry_client import (
+    capture_event,
+    create_posthog_client,
+)
 from sqlalchemy.exc import InvalidRequestError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -38,7 +43,7 @@ def _lookup_subscription(db: Session | None, user_id: int) -> Subscription | Non
     """
     if db is not None:
         try:
-            return subscription_crud.get_by_user_id(db, user_id=user_id)
+            return subscription_repository.get_by_user_id(db, user_id=user_id)
         except (InvalidRequestError, OperationalError) as e:
             logger.warning(
                 "track_event: provided db session unusable (%s); falling back",
@@ -47,7 +52,7 @@ def _lookup_subscription(db: Session | None, user_id: int) -> Subscription | Non
 
     try:
         with SessionLocal() as fresh_db:
-            return subscription_crud.get_by_user_id(fresh_db, user_id=user_id)
+            return subscription_repository.get_by_user_id(fresh_db, user_id=user_id)
     except Exception as e:
         logger.warning("track_event: subscription lookup failed: %s", e)
         return None

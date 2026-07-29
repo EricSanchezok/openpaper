@@ -3,7 +3,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.modules.integrations.zotero.infrastructure import service as zotero_import_module
+from app.modules.integrations.zotero.infrastructure import (
+    service as zotero_import_module,
+)
 from app.modules.integrations.zotero.infrastructure.service import (
     _normalize_payload_item,
     _page_from_annotation,
@@ -64,14 +66,14 @@ class TestZoteroSyncItem(unittest.TestCase):
         self.user = MagicMock()
         self.client = MagicMock()
 
-    @patch.object(zotero_import_module, "zotero_import_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
     @patch.object(zotero_import_module, "research_repository")
     @patch.object(zotero_import_module, "document_repository")
     def test_sync_appends_new_annotation(
         self,
         mock_document_repository: MagicMock,
         mock_research_repository: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_import_repository: MagicMock,
     ) -> None:
         mock_document_repository.find_accessible.return_value = self.paper
         mock_research_repository.get_zotero_annotation_keys.return_value = set()
@@ -116,16 +118,16 @@ class TestZoteroSyncItem(unittest.TestCase):
 
         self.assertEqual(result["new_annotations_count"], 1)
         mock_apply.assert_called_once()
-        mock_import_crud.update_after_sync.assert_called_once()
+        mock_import_repository.update_after_sync.assert_called_once()
 
-    @patch.object(zotero_import_module, "zotero_import_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
     @patch.object(zotero_import_module, "research_repository")
     @patch.object(zotero_import_module, "document_repository")
     def test_sync_is_idempotent(
         self,
         mock_document_repository: MagicMock,
         mock_research_repository: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_import_repository: MagicMock,
     ) -> None:
         mock_document_repository.find_accessible.return_value = self.paper
         mock_research_repository.get_zotero_annotation_keys.return_value = {"ANN1"}
@@ -149,7 +151,7 @@ class TestZoteroSyncItem(unittest.TestCase):
 
         self.assertEqual(result["new_annotations_count"], 0)
         mock_apply.assert_not_called()
-        mock_import_crud.update_after_sync.assert_called_once()
+        mock_import_repository.update_after_sync.assert_called_once()
 
     @patch.object(zotero_import_module, "research_repository")
     def test_backfill_sets_key_without_creating_highlight(
@@ -177,15 +179,17 @@ class TestZoteroSyncItem(unittest.TestCase):
         )
 
 
-class TestZoteroImportCrudFilters(unittest.TestCase):
+class TestZoteroImportRepositoryFilters(unittest.TestCase):
     def test_list_syncable_excludes_url_imports(self) -> None:
-        from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
+        from app.modules.integrations.zotero.infrastructure.import_repository import (
+            zotero_import_repository,
+        )
 
         db = MagicMock()
         db.scalars.return_value.all.return_value = []
 
         user_id = uuid4()
-        zotero_import_crud.list_syncable_by_user(db, user_id=user_id, limit=10)
+        zotero_import_repository.list_syncable_by_user(db, user_id=user_id, limit=10)
 
         db.scalars.assert_called_once()
         statement = db.scalars.call_args.args[0]
@@ -200,19 +204,19 @@ class TestZoteroImportCrudFilters(unittest.TestCase):
 
 class TestSyncBatch(unittest.IsolatedAsyncioTestCase):
     @patch.object(zotero_import_module, "_sync_item")
-    @patch.object(zotero_import_module, "zotero_import_crud")
-    @patch.object(zotero_import_module, "zotero_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
+    @patch.object(zotero_import_module, "zotero_connection_repository")
     async def test_sync_batch_aggregates_results(
         self,
-        mock_zotero_crud: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
+        mock_import_repository: MagicMock,
         mock_sync_item: MagicMock,
     ) -> None:
-        mock_zotero_crud.get_by_user_id.return_value = MagicMock(
+        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
             zotero_user_id="123", api_key="key"
         )
         import_row = MagicMock(zotero_item_key="ITEM1")
-        mock_import_crud.list_syncable_by_user.return_value = [import_row]
+        mock_import_repository.list_syncable_by_user.return_value = [import_row]
         mock_sync_item.return_value = {
             "zotero_item_key": "ITEM1",
             "document_id": str(uuid4()),

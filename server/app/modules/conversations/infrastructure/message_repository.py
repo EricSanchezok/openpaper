@@ -5,7 +5,7 @@ from uuid import UUID
 from app.helpers.postgres import sanitize_for_postgres
 from app.database.models import Conversation, Message
 from app.shared.domain import JsonValue
-from app.errors import AppError
+from app.shared.domain import AppError
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload

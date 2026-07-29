@@ -14,11 +14,15 @@ from app.modules.papers.infrastructure.search_repository import (
     document_search_repository,
 )
 from app.modules.identity.infrastructure.users import user_repository
-from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
-from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import (
+    zotero_connection_repository,
+)
+from app.modules.integrations.zotero.infrastructure.import_repository import (
+    zotero_import_repository,
+)
 from app.database.database import get_db
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.identity.application import BlockUserRequest
 from app.shared.application import Actor
 from app.modules.integrations.zotero.application.contracts import (
@@ -81,8 +85,8 @@ async def zotero_connect(
             status_code=status.HTTP_502_BAD_GATEWAY,
         )
 
-    zotero_crud.delete_pending_for_user(db=db, user_id=current_user.id)
-    zotero_crud.create_pending(
+    zotero_connection_repository.delete_pending_for_user(db=db, user_id=current_user.id)
+    zotero_connection_repository.create_pending(
         db=db,
         user_id=current_user.id,
         oauth_token=request_token.oauth_token,
@@ -100,7 +104,9 @@ async def zotero_callback(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     error_redirect = f"{client_domain}/settings?zotero=error"
-    pending = zotero_crud.get_pending_by_token(db=db, oauth_token=oauth_token)
+    pending = zotero_connection_repository.get_pending_by_token(
+        db=db, oauth_token=oauth_token
+    )
     if pending is None or pending.user_id is None:
         return RedirectResponse(url=error_redirect, status_code=status.HTTP_302_FOUND)
 
@@ -108,7 +114,7 @@ async def zotero_callback(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at < datetime.now(UTC):
-        zotero_crud.delete_pending(db=db, pending=pending)
+        zotero_connection_repository.delete_pending(db=db, pending=pending)
         return RedirectResponse(url=error_redirect, status_code=status.HTTP_302_FOUND)
 
     access_token = zotero_auth_client.get_access_token(
@@ -119,13 +125,13 @@ async def zotero_callback(
     if access_token is None:
         return RedirectResponse(url=error_redirect, status_code=status.HTTP_302_FOUND)
 
-    zotero_crud.upsert_connection(
+    zotero_connection_repository.upsert_connection(
         db=db,
         user_id=pending.user_id,
         zotero_user_id=access_token.zotero_user_id,
         api_key=access_token.api_key,
     )
-    zotero_crud.delete_pending(db=db, pending=pending)
+    zotero_connection_repository.delete_pending(db=db, pending=pending)
     track_event("zotero_connected", user_id=str(pending.user_id), db=db)
     return RedirectResponse(
         url=f"{client_domain}/settings?zotero=connected",
@@ -138,14 +144,16 @@ async def zotero_status(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroStatusResponse:
-    connection = zotero_crud.get_by_user_id(db=db, user_id=current_user.id)
+    connection = zotero_connection_repository.get_by_user_id(
+        db=db, user_id=current_user.id
+    )
     if connection is None:
         return ZoteroStatusResponse(connected=False)
 
     return ZoteroStatusResponse(
         connected=True,
         connected_at=connection.created_at,
-        last_synced_at=zotero_import_crud.get_max_last_synced_at(
+        last_synced_at=zotero_import_repository.get_max_last_synced_at(
             db, user_id=current_user.id
         ),
     )
@@ -156,7 +164,9 @@ async def zotero_disconnect(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
 ) -> ZoteroDisconnectResponse:
-    deleted = zotero_crud.delete_by_user_id(db=db, user_id=current_user.id)
+    deleted = zotero_connection_repository.delete_by_user_id(
+        db=db, user_id=current_user.id
+    )
     if not deleted:
         return ZoteroDisconnectResponse(
             success=False, message="No Zotero account connected"

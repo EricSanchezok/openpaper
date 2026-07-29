@@ -13,7 +13,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 
-class CRUDZoteroImport:
+class ZoteroImportRepository:
     def get_by_item_key(
         self, db: Session, *, user_id: int, zotero_item_key: str
     ) -> ZoteroImportedItem | None:
@@ -102,7 +102,7 @@ class CRUDZoteroImport:
             status=status,
         )
         db.add(db_obj)
-        db.commit()
+        db.flush()
         db.refresh(db_obj)
         return db_obj
 
@@ -121,7 +121,7 @@ class CRUDZoteroImport:
         if document_id is not None:
             setattr(item, "document_id", document_id)
         db.add(item)
-        db.commit()
+        db.flush()
         db.refresh(item)
         return item
 
@@ -200,7 +200,7 @@ class CRUDZoteroImport:
         if last_synced_at is not None:
             setattr(item, "last_synced_at", last_synced_at)
         db.add(item)
-        db.commit()
+        db.flush()
         db.refresh(item)
         return item
 
@@ -215,9 +215,9 @@ class CRUDZoteroImport:
         setattr(item, "annotations_payload", annotations_payload)
         setattr(item, "last_synced_at", last_synced_at)
         db.add(item)
-        db.commit()
+        db.flush()
         db.refresh(item)
         return item
 
 
-zotero_import_crud = CRUDZoteroImport()
+zotero_import_repository = ZoteroImportRepository()

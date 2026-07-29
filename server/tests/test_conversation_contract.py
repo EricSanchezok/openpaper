@@ -3,13 +3,16 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.transport.http.public_v1.conversations import get_conversation, get_conversation_messages
+from app.transport.http.public_v1.conversations import (
+    get_conversation,
+    get_conversation_messages,
+)
 from app.transport.http.public_v1.messages import chat_message_multipaper
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.database.models import Conversation, Message
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.main import app
 from app.modules.conversations.infrastructure.repository import conversation_repository
 from app.modules.conversations.application.contracts.conversations import (

@@ -12,8 +12,12 @@ from uuid import UUID
 from app.modules.papers.infrastructure.upload_repository import (
     upload_reservation_repository,
 )
-from app.modules.integrations.zotero.infrastructure.connection_repository import zotero_crud
-from app.modules.integrations.zotero.infrastructure.import_repository import zotero_import_crud
+from app.modules.integrations.zotero.infrastructure.connection_repository import (
+    zotero_connection_repository,
+)
+from app.modules.integrations.zotero.infrastructure.import_repository import (
+    zotero_import_repository,
+)
 from app.database.database import SessionLocal
 from app.database.models import (
     Document,
@@ -43,7 +47,9 @@ from app.modules.research.infrastructure.repository import (
 )
 from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
-from app.modules.research.infrastructure.document_annotations import require_parsed_content
+from app.modules.research.infrastructure.document_annotations import (
+    require_parsed_content,
+)
 from app.modules.papers.infrastructure.upload_reservations import reserve_upload
 from app.modules.papers.infrastructure.submission import submit_reserved_document
 from sqlalchemy import select
@@ -607,7 +613,7 @@ async def _link_zotero_item_to_existing_paper(
         _serialize_annotations_payload(annotations) if annotations else None
     )
 
-    import_row = zotero_import_crud.create(
+    import_row = zotero_import_repository.create(
         db,
         user_id=user.id,
         zotero_item_key=item_key,
@@ -713,7 +719,7 @@ async def _discover_import_candidates(
                 logger.debug("Skipping Zotero item %s: no title, DOI, or URL", item_key)
                 continue
 
-            existing_import = zotero_import_crud.get_by_item_key(
+            existing_import = zotero_import_repository.get_by_item_key(
                 db, user_id=user.id, zotero_item_key=item_key
             )
             if existing_import:
@@ -843,7 +849,7 @@ async def _import_one_paper(
     created_document_id: str | None = None
 
     try:
-        import_row = zotero_import_crud.create(
+        import_row = zotero_import_repository.create(
             db,
             user_id=user.id,
             zotero_item_key=item_key,
@@ -861,7 +867,7 @@ async def _import_one_paper(
         ) = await _resolve_pdf_bytes(client, item)
         if not pdf_bytes:
             if import_row:
-                zotero_import_crud.update_status(
+                zotero_import_repository.update_status(
                     db,
                     item=import_row,
                     status=ZoteroImportStatus.FAILED,
@@ -920,7 +926,7 @@ async def _import_one_paper(
         # recognizes this as a Zotero import (and keeps the paper instead of
         # requiring LLM metadata) even if the worker completes immediately.
         if import_row:
-            zotero_import_crud.finalize_processing_import(
+            zotero_import_repository.finalize_processing_import(
                 db,
                 item=import_row,
                 import_source=import_source,
@@ -956,7 +962,7 @@ async def _import_one_paper(
             exc_info=True,
         )
         if import_row:
-            zotero_import_crud.update_status(
+            zotero_import_repository.update_status(
                 db,
                 item=import_row,
                 status=ZoteroImportStatus.FAILED,
@@ -1002,7 +1008,7 @@ def list_library(
     Returns up to `limit` items sorted by dateModified (Zotero default), each
     annotated with an `already_imported` flag.
     """
-    connection = zotero_crud.get_by_user_id(db, user_id=user.id)
+    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
     if not connection:
         raise ValueError("Zotero account not connected")
 
@@ -1148,7 +1154,7 @@ async def _discover_candidates_by_keys(
         if not _has_importable_metadata(item_data):
             continue
 
-        existing_import = zotero_import_crud.get_by_item_key(
+        existing_import = zotero_import_repository.get_by_item_key(
             db, user_id=user.id, zotero_item_key=item_key
         )
         if existing_import:
@@ -1218,7 +1224,7 @@ async def import_batch(
     paper-processing webhook finalizes each paper and applies Zotero annotations as
     the worker completes. Progress is tracked via the zotero_imported_items rows.
     """
-    connection = zotero_crud.get_by_user_id(db, user_id=user.id)
+    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
     if not connection:
         raise ValueError("Zotero account not connected")
 
@@ -1330,7 +1336,7 @@ def apply_zotero_annotations(
     document_id: str,
     user: Actor,
 ) -> None:
-    import_row = zotero_import_crud.get_by_upload_job_id(
+    import_row = zotero_import_repository.get_by_upload_job_id(
         db, upload_job_id=UUID(upload_job_id)
     )
     if not import_row:
@@ -1340,7 +1346,7 @@ def apply_zotero_annotations(
         import_row.import_source == ZoteroImportSource.URL
         or not import_row.annotations_payload
     ):
-        zotero_import_crud.update_status(
+        zotero_import_repository.update_status(
             db,
             item=import_row,
             status=ZoteroImportStatus.COMPLETED,
@@ -1384,7 +1390,7 @@ def apply_zotero_annotations(
                 page_offsets=page_offsets,
             )
 
-        zotero_import_crud.update_status(
+        zotero_import_repository.update_status(
             db,
             item=import_row,
             status=ZoteroImportStatus.COMPLETED,
@@ -1397,7 +1403,7 @@ def apply_zotero_annotations(
             e,
             exc_info=True,
         )
-        zotero_import_crud.update_status(
+        zotero_import_repository.update_status(
             db,
             item=import_row,
             status=ZoteroImportStatus.FAILED,
@@ -1463,7 +1469,7 @@ def _sync_item(
             ):
                 new_annotations_count += 1
 
-    zotero_import_crud.update_after_sync(
+    zotero_import_repository.update_after_sync(
         db,
         item=import_row,
         annotations_payload=_serialize_annotations_payload(remote_annotations),
@@ -1484,7 +1490,7 @@ async def sync_batch(
     limit: int = 50,
 ) -> dict[str, Any]:
     """Append-only sync of new Zotero annotations for already-imported PDF papers."""
-    connection = zotero_crud.get_by_user_id(db, user_id=user.id)
+    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
     if not connection:
         raise ValueError("Zotero account not connected")
 
@@ -1493,7 +1499,7 @@ async def sync_batch(
         api_key=str(connection.api_key),
     )
 
-    syncable = zotero_import_crud.list_syncable_by_user(
+    syncable = zotero_import_repository.list_syncable_by_user(
         db, user_id=user.id, limit=limit
     )
 
@@ -1544,11 +1550,11 @@ async def auto_import_new_papers(
     Only items with Zotero dateAdded >= max(created_at) on completed
     zotero_imported_items are considered (first manual import batch).
     """
-    connection = zotero_crud.get_by_user_id(db, user_id=user.id)
+    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
     if not connection:
         raise ValueError("Zotero account not connected")
 
-    import_since = zotero_import_crud.get_auto_import_since(db, user_id=user.id)
+    import_since = zotero_import_repository.get_auto_import_since(db, user_id=user.id)
     if import_since is None:
         logger.info(
             "auto_import_new_papers: no completed imports for user %s, skipping",

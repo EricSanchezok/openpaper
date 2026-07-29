@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from app.modules.integrations.zotero.infrastructure import service as zotero_import_module
+from app.modules.integrations.zotero.infrastructure import (
+    service as zotero_import_module,
+)
 from app.modules.integrations.zotero.infrastructure.service import (
     _parse_zotero_date_added,
     auto_import_new_papers,
@@ -25,8 +27,8 @@ class TestParseZoteroDateAdded(unittest.TestCase):
 class TestAutoImportWindow(unittest.IsolatedAsyncioTestCase):
     @patch.object(zotero_import_module, "import_batch", new_callable=AsyncMock)
     @patch.object(zotero_import_module, "list_library")
-    @patch.object(zotero_import_module, "zotero_import_crud")
-    @patch.object(zotero_import_module, "zotero_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
+    @patch.object(zotero_import_module, "zotero_connection_repository")
     @patch.object(
         zotero_import_module, "can_user_upload_paper", return_value=(True, None)
     )
@@ -37,14 +39,14 @@ class TestAutoImportWindow(unittest.IsolatedAsyncioTestCase):
         self,
         _mock_slots: MagicMock,
         _mock_can_upload: MagicMock,
-        mock_zotero_crud: MagicMock,
-        mock_zotero_import_crud: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
+        mock_zotero_import_repository: MagicMock,
         mock_list_library: MagicMock,
         mock_import_batch: AsyncMock,
     ) -> None:
         since = datetime(2025, 6, 1, tzinfo=timezone.utc)
-        mock_zotero_crud.get_by_user_id.return_value = MagicMock()
-        mock_zotero_import_crud.get_auto_import_since.return_value = since
+        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock()
+        mock_zotero_import_repository.get_auto_import_since.return_value = since
 
         mock_list_library.return_value = {
             "items": [
@@ -75,16 +77,16 @@ class TestAutoImportWindow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["auto_imported_count"], 1)
 
     @patch.object(zotero_import_module, "list_library")
-    @patch.object(zotero_import_module, "zotero_import_crud")
-    @patch.object(zotero_import_module, "zotero_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
+    @patch.object(zotero_import_module, "zotero_connection_repository")
     async def test_skips_when_no_completed_imports(
         self,
-        mock_zotero_crud: MagicMock,
-        mock_zotero_import_crud: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
+        mock_zotero_import_repository: MagicMock,
         mock_list_library: MagicMock,
     ) -> None:
-        mock_zotero_crud.get_by_user_id.return_value = MagicMock()
-        mock_zotero_import_crud.get_auto_import_since.return_value = None
+        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock()
+        mock_zotero_import_repository.get_auto_import_since.return_value = None
 
         user = MagicMock()
         user.id = uuid4()

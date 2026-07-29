@@ -12,7 +12,7 @@ from app.database.models import (
     ResearchItemKind,
     ResearchScopeType,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.llm.token_credits import llm_usage_context, settle_token_usage
 from app.modules.jobs.infrastructure.repository import job_repository

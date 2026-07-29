@@ -10,6 +10,7 @@ from app.modules.papers.application.contracts.search import (
 )
 from app.modules.papers.application.search import (
     GetPaperSearchStats,
+    SearchCursorCodec,
     SearchPapers,
 )
 from app.shared.application import Actor
@@ -41,7 +42,8 @@ async def search_knowledge_base_endpoint(
     """
     settings: AppSettings = http_request.app.state.settings
     results = SearchPapers(
-        build_paper_search(backend=settings.paper_search_backend, db=db)
+        build_paper_search(backend=settings.paper_search_backend, db=db),
+        SearchCursorCodec(settings.paper_search_cursor_secret),
     )(
         actor=current_user,
         request=request,
@@ -55,7 +57,7 @@ async def search_knowledge_base_endpoint(
             "total_highlights": results.total_highlights,
             "total_annotations": results.total_annotations,
             "limit": request.limit,
-            "offset": request.offset,
+            "has_cursor": request.cursor is not None,
         },
         db=db,
     )

@@ -157,7 +157,7 @@ async def test_core_processing_failure_is_recorded_and_retried_by_stripe() -> No
             ),
         ),
         patch.object(
-            webhook.subscription_crud,
+            webhook.subscription_repository,
             "get_by_stripe_subscription_id",
             side_effect=RuntimeError("database unavailable"),
         ),

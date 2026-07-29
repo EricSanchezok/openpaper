@@ -35,8 +35,8 @@ class SubscriptionUpdate(BaseModel):
     cancel_at_period_end: bool | None = None
 
 
-class CRUDSubscription:
-    """CRUD operations for subscription management"""
+class SubscriptionRepository:
+    """Persistence operations for subscription management."""
 
     def is_user_active(self, db: Session, user: Actor) -> bool:
         """Check if the user has an active subscription"""
@@ -83,7 +83,7 @@ class CRUDSubscription:
             # Update existing subscription
             for key, value in subscription_data.items():
                 setattr(subscription, key, value)
-            db.commit()
+            db.flush()
             db.refresh(subscription)
             return subscription
 
@@ -91,7 +91,7 @@ class CRUDSubscription:
         create_data = SubscriptionCreate(user_id=user_id, **subscription_data)
         created = Subscription(**create_data.model_dump())
         db.add(created)
-        db.commit()
+        db.flush()
         db.refresh(created)
         return created
 
@@ -129,9 +129,9 @@ class CRUDSubscription:
         if cancel_at_period_end is not None:
             setattr(subscription, "cancel_at_period_end", cancel_at_period_end)
 
-        db.commit()
+        db.flush()
         db.refresh(subscription)
         return subscription
 
 
-subscription_crud = CRUDSubscription()
+subscription_repository = SubscriptionRepository()

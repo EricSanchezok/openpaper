@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.jobs.infrastructure.callback_boundaries import (
     callback_transaction,
     optional_savepoint,

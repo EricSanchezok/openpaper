@@ -6,7 +6,9 @@ from uuid import uuid4
 
 from app.database.models import ZoteroImportSource, ZoteroImportStatus
 from app.helpers.paper_search import normalize_doi
-from app.modules.integrations.zotero.infrastructure import service as zotero_import_module
+from app.modules.integrations.zotero.infrastructure import (
+    service as zotero_import_module,
+)
 from app.modules.integrations.zotero.infrastructure.service import (
     _discover_import_candidates,
     _link_zotero_item_to_existing_paper,
@@ -35,7 +37,7 @@ class TestNormalizeDoi(unittest.TestCase):
 
 class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
     @patch.object(zotero_import_module, "_sync_item")
-    @patch.object(zotero_import_module, "zotero_import_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
     @patch.object(
         zotero_import_module,
         "_resolve_zotero_attachment_info",
@@ -49,7 +51,7 @@ class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
     async def test_creates_import_row_and_syncs_annotations(
         self,
         mock_resolve: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_import_repository: MagicMock,
         mock_sync_item: MagicMock,
     ) -> None:
         user = MagicMock()
@@ -57,7 +59,7 @@ class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
         paper = MagicMock()
         paper.id = uuid4()
         import_row = MagicMock()
-        mock_import_crud.create.return_value = import_row
+        mock_import_repository.create.return_value = import_row
         client = MagicMock()
         item = {"key": "ITEM2", "data": {"title": "Document", "DOI": "10.1234/x"}}
 
@@ -70,8 +72,8 @@ class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
             user=user,
         )
 
-        mock_import_crud.create.assert_called_once()
-        create_kwargs = mock_import_crud.create.call_args.kwargs
+        mock_import_repository.create.assert_called_once()
+        create_kwargs = mock_import_repository.create.call_args.kwargs
         self.assertEqual(create_kwargs["zotero_item_key"], "ITEM2")
         self.assertEqual(create_kwargs["document_id"], paper.id)
         self.assertEqual(create_kwargs["status"], ZoteroImportStatus.COMPLETED)
@@ -100,8 +102,8 @@ def _patch_import_pipeline(fn):
         patch.object(zotero_import_module, "_apply_zotero_tags"),
         patch.object(zotero_import_module, "upload_reservation_repository"),
         patch.object(zotero_import_module, "document_repository"),
-        patch.object(zotero_import_module, "zotero_import_crud"),
-        patch.object(zotero_import_module, "zotero_crud"),
+        patch.object(zotero_import_module, "zotero_import_repository"),
+        patch.object(zotero_import_module, "zotero_connection_repository"),
         patch.object(zotero_import_module, "ZoteroApiClient"),
         patch.object(
             zotero_import_module,
@@ -138,19 +140,19 @@ class _ImportPipelineHelpers:
     def _configure_mocks(
         self,
         *,
-        mock_zotero_crud: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
+        mock_import_repository: MagicMock,
         mock_document_repository: MagicMock,
-        mock_upload_job_crud: MagicMock,
+        mock_upload_reservation_repository: MagicMock,
         mock_client_cls: MagicMock,
         items: list,
     ) -> tuple[MagicMock, MagicMock, MagicMock]:
         user = MagicMock()
         user.id = 42
-        mock_zotero_crud.get_by_user_id.return_value = MagicMock(
+        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
             zotero_user_id="1", api_key="key"
         )
-        mock_import_crud.get_by_item_key.return_value = None
+        mock_import_repository.get_by_item_key.return_value = None
 
         paper = MagicMock()
         paper.id = uuid4()
@@ -185,24 +187,24 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
         new_callable=AsyncMock,
     )
     @patch.object(zotero_import_module, "document_repository")
-    @patch.object(zotero_import_module, "zotero_import_crud")
-    @patch.object(zotero_import_module, "zotero_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
+    @patch.object(zotero_import_module, "zotero_connection_repository")
     @patch.object(zotero_import_module, "ZoteroApiClient")
     async def test_skips_when_doi_matches_existing_paper(
         self,
         mock_client_cls: MagicMock,
-        mock_zotero_crud: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
+        mock_import_repository: MagicMock,
         mock_document_repository: MagicMock,
         mock_link: AsyncMock,
         mock_max_new: MagicMock,
     ) -> None:
         user = MagicMock()
         user.id = uuid4()
-        mock_zotero_crud.get_by_user_id.return_value = MagicMock(
+        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
             zotero_user_id="1", api_key="key"
         )
-        mock_import_crud.get_by_item_key.return_value = None
+        mock_import_repository.get_by_item_key.return_value = None
 
         existing_paper = MagicMock()
         existing_paper.id = uuid4()
@@ -226,10 +228,10 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
         mock_submit_job: MagicMock,
         mock_reserve_upload: MagicMock,
         mock_tags: MagicMock,
-        mock_upload_job_crud: MagicMock,
+        mock_upload_reservation_repository: MagicMock,
         mock_document_repository: MagicMock,
-        mock_import_crud: MagicMock,
-        mock_zotero_crud: MagicMock,
+        mock_import_repository: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
         mock_client_cls: MagicMock,
         mock_max_new: MagicMock,
         mock_resolve_pdf: AsyncMock,
@@ -238,10 +240,10 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
         mock_document_repository.find_library_document_by_doi.return_value = None
 
         user, paper, _ = self._configure_mocks(
-            mock_zotero_crud=mock_zotero_crud,
-            mock_import_crud=mock_import_crud,
+            mock_zotero_connection_repository=mock_zotero_connection_repository,
+            mock_import_repository=mock_import_repository,
             mock_document_repository=mock_document_repository,
-            mock_upload_job_crud=mock_upload_job_crud,
+            mock_upload_reservation_repository=mock_upload_reservation_repository,
             mock_client_cls=mock_client_cls,
             items=[self._make_item("ITEM1"), self._make_item("ITEM2")],
         )
@@ -263,20 +265,20 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
         mock_submit_job: MagicMock,
         mock_reserve_upload: MagicMock,
         mock_tags: MagicMock,
-        mock_upload_job_crud: MagicMock,
+        mock_upload_reservation_repository: MagicMock,
         mock_document_repository: MagicMock,
-        mock_import_crud: MagicMock,
-        mock_zotero_crud: MagicMock,
+        mock_import_repository: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
         mock_client_cls: MagicMock,
         mock_max_new: MagicMock,
         mock_resolve_pdf: AsyncMock,
         mock_link: AsyncMock,
     ) -> None:
         user, _, _ = self._configure_mocks(
-            mock_zotero_crud=mock_zotero_crud,
-            mock_import_crud=mock_import_crud,
+            mock_zotero_connection_repository=mock_zotero_connection_repository,
+            mock_import_repository=mock_import_repository,
             mock_document_repository=mock_document_repository,
-            mock_upload_job_crud=mock_upload_job_crud,
+            mock_upload_reservation_repository=mock_upload_reservation_repository,
             mock_client_cls=mock_client_cls,
             items=[self._make_item("ITEM1", doi=None)],
         )
@@ -310,10 +312,10 @@ class TestImportBatchNoTitleDedup(
         mock_submit_job: MagicMock,
         mock_upload_pdf: MagicMock,
         mock_tags: MagicMock,
-        mock_upload_job_crud: MagicMock,
+        mock_upload_reservation_repository: MagicMock,
         mock_document_repository: MagicMock,
-        mock_import_crud: MagicMock,
-        mock_zotero_crud: MagicMock,
+        mock_import_repository: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
         mock_client_cls: MagicMock,
         mock_max_new: MagicMock,
         mock_resolve_pdf: AsyncMock,
@@ -322,10 +324,10 @@ class TestImportBatchNoTitleDedup(
         mock_document_repository.find_library_document_by_doi.return_value = None
 
         user, _, _ = self._configure_mocks(
-            mock_zotero_crud=mock_zotero_crud,
-            mock_import_crud=mock_import_crud,
+            mock_zotero_connection_repository=mock_zotero_connection_repository,
+            mock_import_repository=mock_import_repository,
             mock_document_repository=mock_document_repository,
-            mock_upload_job_crud=mock_upload_job_crud,
+            mock_upload_reservation_repository=mock_upload_reservation_repository,
             mock_client_cls=mock_client_cls,
             items=[self._make_item("ITEM1"), self._make_item("ITEM2")],
         )
@@ -353,17 +355,17 @@ class TestDiscoverImportCandidates(unittest.IsolatedAsyncioTestCase):
     @patch.object(
         zotero_import_module, "_compute_max_new_imports", return_value=(1, None)
     )
-    @patch.object(zotero_import_module, "zotero_import_crud")
+    @patch.object(zotero_import_module, "zotero_import_repository")
     @patch.object(zotero_import_module, "document_repository")
     async def test_caps_candidates_at_upload_slots(
         self,
         mock_document_repository: MagicMock,
-        mock_import_crud: MagicMock,
+        mock_import_repository: MagicMock,
         mock_max_new: MagicMock,
     ) -> None:
         user = MagicMock()
         user.id = uuid4()
-        mock_import_crud.get_by_item_key.return_value = None
+        mock_import_repository.get_by_item_key.return_value = None
         mock_document_repository.find_library_document_by_doi.return_value = None
 
         client = MagicMock()
@@ -393,16 +395,16 @@ class TestImportBatchParallel(unittest.IsolatedAsyncioTestCase):
         "_discover_candidates_by_keys",
         new_callable=AsyncMock,
     )
-    @patch.object(zotero_import_module, "zotero_crud")
+    @patch.object(zotero_import_module, "zotero_connection_repository")
     async def test_runs_gather_over_discovered_candidates(
         self,
-        mock_zotero_crud: MagicMock,
+        mock_zotero_connection_repository: MagicMock,
         mock_discover: AsyncMock,
         mock_import_one: AsyncMock,
     ) -> None:
         user = MagicMock()
         user.id = uuid4()
-        mock_zotero_crud.get_by_user_id.return_value = MagicMock(
+        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
             zotero_user_id="1", api_key="key"
         )
 

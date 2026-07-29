@@ -14,7 +14,7 @@ from app.database.models import (
     JobStatus,
 )
 from app.shared.domain import JsonValue
-from app.errors import AppError
+from app.shared.domain import AppError
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session

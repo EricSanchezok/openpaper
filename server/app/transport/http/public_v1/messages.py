@@ -20,7 +20,7 @@ from app.database.models import (
 )
 from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
@@ -42,7 +42,9 @@ from app.modules.conversations.application.contracts.messages import (
     MultiPaperChatRequest,
 )
 from app.shared.application import Actor
-from app.modules.conversations.infrastructure.chat_streaming import stream_with_stable_error
+from app.modules.conversations.infrastructure.chat_streaming import (
+    stream_with_stable_error,
+)
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -201,7 +203,7 @@ def _resolve_mention_scope(
       highlights, injected into the answer prompt so the model sees the exact
       attached passages.
 
-    Every id is resolved through a user-scoped CRUD call, so a mention the user
+    Every id is resolved through a user-scoped capability lookup, so a mention the user
     can't access is silently dropped. All values are None when there are no
     mentions at all (i.e. no scoping should be applied).
     """

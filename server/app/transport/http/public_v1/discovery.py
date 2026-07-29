@@ -12,7 +12,7 @@ from app.helpers.paper_search import (
     search_open_alex,
 )
 from app.modules.papers.infrastructure.repository import document_repository
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Query, Request

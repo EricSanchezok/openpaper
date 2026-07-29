@@ -11,7 +11,7 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectPaper,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.billing.infrastructure.quotas import (
     require_library_document_capacity,
@@ -238,7 +238,7 @@ class ProjectDocumentRepository:
         ).all()
         return list(papers)
 
-    def get_library_paper_ids(
+    def get_library_document_ids(
         self,
         db: Session,
         *,
@@ -320,7 +320,9 @@ class ProjectDocumentRepository:
 
         db.delete(project_paper)
         db.flush()
-        from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
+        from app.modules.papers.infrastructure.garbage_collection import (
+            schedule_document_gc,
+        )
 
         schedule_document_gc(db, document_id=document_id)
         db.flush()

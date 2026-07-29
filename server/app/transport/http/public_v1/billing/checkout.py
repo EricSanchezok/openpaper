@@ -8,11 +8,13 @@ from app.transport.http.public_v1.billing.config import (
     SubscriptionInterval,
 )
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.database.database import get_db
 from app.database.models import SubscriptionStatus
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.shared.application import Actor
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -30,7 +32,7 @@ def create_checkout_session(
 ) -> dict[str, str | None]:
     try:
         # Get or initialize customer ID
-        subscription = subscription_crud.get_by_user_id(db, current_user.id)
+        subscription = subscription_repository.get_by_user_id(db, current_user.id)
         customer_id: str | None = None
 
         # Prevent duplicate subscriptions - if user already has an active or past_due subscription,
@@ -85,7 +87,7 @@ def create_checkout_session(
 
             # Store customer ID in database
             if not subscription:
-                subscription_crud.create_or_update(
+                subscription_repository.create_or_update(
                     db, current_user.id, {"stripe_customer_id": customer_id}
                 )
 
@@ -158,7 +160,7 @@ async def session_status(
                 try:
                     # Check if we have the subscription in our database
                     user_id = int(client_reference_id)
-                    subscription = subscription_crud.get_by_user_id(db, user_id)
+                    subscription = subscription_repository.get_by_user_id(db, user_id)
 
                     if subscription and subscription.stripe_subscription_id:
                         backend_subscription_found = True

@@ -20,7 +20,7 @@ from app.modules.projects.application.contracts import (
     ProjectUpdateRequest,
 )
 from app.shared.application import Actor
-from app.errors import AppError
+from app.shared.domain import AppError
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 

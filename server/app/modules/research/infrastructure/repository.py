@@ -17,7 +17,7 @@ from app.database.models import (
     ConversationScopeType,
 )
 from app.shared.domain import JsonValue
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.s3 import s3_service
 from app.modules.papers.infrastructure.access import require_document_access
 from app.modules.research.infrastructure.access import (
@@ -583,7 +583,9 @@ class ResearchRepository:
         db.delete(item)
         db.flush()
         if object_key is not None:
-            from app.modules.papers.infrastructure.storage_cleanup import schedule_storage_deletion
+            from app.modules.papers.infrastructure.storage_cleanup import (
+                schedule_storage_deletion,
+            )
 
             schedule_storage_deletion(
                 db,

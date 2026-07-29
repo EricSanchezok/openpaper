@@ -8,7 +8,9 @@ from app.transport.http.public_v1.billing.config import (
     SubscriptionInterval,
 )
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.billing.infrastructure.subscription_repository import subscription_crud
+from app.modules.billing.infrastructure.subscription_repository import (
+    subscription_repository,
+)
 from app.database.database import get_db
 from app.modules.billing.infrastructure.quotas import get_user_usage_info
 from app.shared.application import Actor
@@ -26,7 +28,7 @@ async def get_user_subscription(
     current_user: Actor = Depends(get_required_user),
 ) -> dict[str, object]:
     """Get the current user's subscription status"""
-    subscription = subscription_crud.get_by_user_id(db, current_user.id)
+    subscription = subscription_repository.get_by_user_id(db, current_user.id)
 
     if not subscription:
         return {"has_subscription": False, "subscription": None}
@@ -75,7 +77,7 @@ async def get_user_subscription(
                     plan_interval = SubscriptionInterval.YEARLY
 
                 # Update subscription status
-                subscription = subscription_crud.update_subscription_status(
+                subscription = subscription_repository.update_subscription_status(
                     db,
                     sub_id,
                     stripe_sub["status"],

@@ -11,7 +11,7 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectPaper,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.papers.infrastructure.access import get_document_access
 from app.modules.projects.infrastructure.access import get_project_access
 from sqlalchemy import and_, exists, or_, select

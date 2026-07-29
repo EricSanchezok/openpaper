@@ -19,7 +19,7 @@ from app.database.models import (
     ProjectPaper,
     UploadReservation,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.paper_search import normalize_doi
 from app.modules.papers.infrastructure.access import (
     get_document_access,
@@ -278,7 +278,9 @@ class DocumentRepository:
         document_id = entry.document_id
         db.delete(entry)
         db.flush()
-        from app.modules.papers.infrastructure.garbage_collection import schedule_document_gc
+        from app.modules.papers.infrastructure.garbage_collection import (
+            schedule_document_gc,
+        )
 
         schedule_document_gc(db, document_id=document_id)
         db.flush()

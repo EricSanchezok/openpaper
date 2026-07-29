@@ -3,7 +3,9 @@
 from unittest.mock import MagicMock
 
 import pytest
-from app.modules.conversations.infrastructure.chat_streaming import stream_with_stable_error
+from app.modules.conversations.infrastructure.chat_streaming import (
+    stream_with_stable_error,
+)
 from sqlalchemy.orm import Session
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.database.models import LibraryPaper, LibraryPaperTag, PaperTag
-from app.errors import AppError
+from app.shared.domain import AppError
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session

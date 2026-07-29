@@ -1,8 +1,8 @@
 import asyncio
 import json
 
-from app.errors import (
-    AppError,
+from app.shared.domain import AppError
+from app.transport.http.errors import (
     app_error_handler,
     http_error_handler,
     unhandled_error_handler,

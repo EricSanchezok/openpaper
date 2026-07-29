@@ -9,7 +9,7 @@ from app.modules.projects.infrastructure.document_repository import (
 )
 from app.database.database import get_db
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.s3 import s3_service
 from app.modules.projects.application.contracts import (
     AddPaperToProjectRequest,
@@ -126,8 +126,8 @@ async def get_project_papers(
     papers = project_document_repository.get_papers_metadata_by_project_id(
         db, project_id=project_id, user=current_user
     )
-    library_paper_ids = set(
-        project_document_repository.get_library_paper_ids(
+    library_document_ids = set(
+        project_document_repository.get_library_document_ids(
             db,
             document_ids=[paper.id for paper in papers],
             user=current_user,
@@ -155,7 +155,7 @@ async def get_project_papers(
                 doi=paper.doi,
                 publish_date=paper.publish_date,
                 file_url=file_urls.get(str(paper.id)),
-                in_library=paper.id in library_paper_ids,
+                in_library=paper.id in library_document_ids,
             )
             for paper in papers
         ]

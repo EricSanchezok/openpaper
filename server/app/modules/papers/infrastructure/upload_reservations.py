@@ -18,7 +18,7 @@ from app.database.models import (
     Project,
     ProjectPaper,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.billing.infrastructure.quotas import (
     KB_SIZE_KEY,
     PAPER_UPLOAD_KEY,

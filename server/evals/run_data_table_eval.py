@@ -5,7 +5,8 @@ Characterizes what the live extraction pipeline does with columns that
 require arithmetic (derived columns), per KHO-305. Seeds an eval user and
 one project per manifest paper, then drives the REAL flow over HTTP:
 
-    POST /api/projects/tables  ->  Celery (jobs worker)  ->  webhook  ->  result
+    POST /api/v1/projects/{project_id}/data-tables
+      -> Celery (jobs worker) -> internal callback -> durable job result
 
 Requires the full local stack running: server API, RabbitMQ, jobs worker,
 and S3 credentials in server/.env (papers are uploaded to the app bucket so
@@ -20,6 +21,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -31,13 +33,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 import requests
-from app.database.crud.paper_crud import PaperCreate, paper_crud
-from app.database.crud.projects.project_paper_crud import project_paper_crud
 from app.database.database import SessionLocal
-from app.database.models import AuthUser
+from app.database.models import AuthUser, DocumentProcessingStatus
 from app.helpers.s3 import s3_service
-from app.repositories.projects import project_repository
-from app.schemas.user import CurrentUser
+from app.modules.identity.infrastructure.users import actor_from_auth_user
+from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.projects.infrastructure.repository import project_repository
+from app.shared.application import Actor
 from dotenv import load_dotenv
 from pypdf import PdfReader
 
@@ -92,14 +94,14 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     )
 
 
-def get_eval_user(db) -> CurrentUser:
+def get_eval_user(db) -> Actor:
     raw_user_id = os.getenv("EVAL_USER_ID")
     if not raw_user_id or not raw_user_id.isdigit():
         raise RuntimeError("EVAL_USER_ID must identify an existing cloud-auth user")
     user = db.get(AuthUser, int(raw_user_id))
     if user is None:
         raise RuntimeError("EVAL_USER_ID does not exist in auth.users")
-    return CurrentUser.from_auth_user(user)
+    return actor_from_auth_user(user)
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +109,7 @@ def get_eval_user(db) -> CurrentUser:
 # ---------------------------------------------------------------------------
 
 
-def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
+def seed(db, current_user: Actor, manifest: dict, results: dict) -> dict:
     """Upload each manifest paper to S3, create paper + project records.
 
     Idempotent: seeded ids are recorded in the results file and verified
@@ -120,8 +122,10 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
         state = seed_state.get(key, {})
 
         if state.get("document_id") and state.get("project_id"):
-            existing = paper_crud.get(
-                db, id=uuid.UUID(state["document_id"]), user=current_user
+            existing = document_repository.find_accessible(
+                db,
+                document_id=uuid.UUID(state["document_id"]),
+                user=current_user,
             )
             if existing:
                 logger.info(f"[seed] {key}: already seeded, skipping")
@@ -132,26 +136,34 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
         if not pdf_path.exists():
             raise FileNotFoundError(f"Seed PDF missing: {pdf_path}")
 
-        logger.info(f"[seed] {key}: uploading {paper_cfg['file']} to S3")
-        object_key, file_url = s3_service.upload_any_file(
-            pdf_path, paper_cfg["file"], "application/pdf"
-        )
-
         with open(pdf_path, "rb") as f:
-            raw_content = extract_text_from_pdf(f.read())
-
-        paper = paper_crud.create(
-            db=db,
-            obj_in=PaperCreate(
-                file_url=file_url,
-                s3_object_key=object_key,
-                raw_content=raw_content,
-                title=paper_cfg["title"],
-            ),
-            user=current_user,
+            pdf_bytes = f.read()
+        raw_content = extract_text_from_pdf(pdf_bytes)
+        digest = hashlib.sha256(pdf_bytes).hexdigest()
+        logger.info(f"[seed] {key}: uploading {paper_cfg['file']} to S3")
+        object_key = s3_service.upload_document_source(
+            sha256=digest,
+            pdf_bytes=pdf_bytes,
         )
-        if not paper:
-            raise RuntimeError(f"Failed to create paper record for {key}")
+        canonical = document_repository.get_or_create(
+            db,
+            sha256=digest,
+            original_filename=paper_cfg["file"],
+            mime_type="application/pdf",
+            size_bytes=len(pdf_bytes),
+            s3_object_key=object_key,
+            created_by_id=current_user.id,
+            processing_job_id=uuid.uuid4(),
+        )
+        paper = canonical.document
+        paper.raw_content = raw_content
+        paper.title = paper_cfg["title"]
+        paper.processing_status = DocumentProcessingStatus.COMPLETED.value
+        document_repository.attach_library(
+            db,
+            document_id=paper.id,
+            user_id=current_user.id,
+        )
 
         project = project_repository.create(
             db,
@@ -160,12 +172,13 @@ def seed(db, current_user: CurrentUser, manifest: dict, results: dict) -> dict:
             description="Seeded by evals.run_data_table_eval (KHO-308)",
         )
 
-        project_paper_crud.attach_library_documents(
-            db=db,
-            document_ids=[uuid.UUID(str(paper.id))],
-            user=current_user,
+        document_repository.attach_project(
+            db,
+            document_id=paper.id,
             project_id=uuid.UUID(str(project.id)),
+            added_by_id=current_user.id,
         )
+        db.commit()
 
         seed_state[key] = {
             "document_id": str(paper.id),
@@ -192,42 +205,17 @@ class ApiClient:
 
     def create_job(self, project_id: str, columns: list[str]) -> dict:
         resp = self.session.post(
-            f"{self.base_url}/api/projects/tables",
-            json={"project_id": project_id, "columns": columns},
+            f"{self.base_url}/api/v1/projects/{project_id}/data-tables",
+            json={"columns": columns},
             timeout=60,
         )
         resp.raise_for_status()
-        return resp.json()
+        return resp.json()["job"]
 
     def job_status(self, job_id: str) -> dict:
-        resp = self.session.get(
-            f"{self.base_url}/api/projects/tables/{job_id}", timeout=60
-        )
+        resp = self.session.get(f"{self.base_url}/api/v1/jobs/{job_id}", timeout=60)
         resp.raise_for_status()
         return resp.json()
-
-    def result_id_for_job(self, project_id: str, job_id: str) -> Optional[str]:
-        # The job flips to "completed" slightly before the webhook persists the
-        # result row, so retry the lookup briefly.
-        for _ in range(6):
-            resp = self.session.get(
-                f"{self.base_url}/api/projects/tables/jobs/{project_id}",
-                params={"all": "true"},
-                timeout=60,
-            )
-            resp.raise_for_status()
-            for job in resp.json().get("jobs", []):
-                if job.get("id") == job_id and job.get("result_id"):
-                    return job["result_id"]
-            time.sleep(5)
-        return None
-
-    def fetch_result(self, result_id: str) -> dict:
-        resp = self.session.get(
-            f"{self.base_url}/api/projects/tables/results/{result_id}", timeout=60
-        )
-        resp.raise_for_status()
-        return resp.json()["data"]
 
 
 def run_extraction(
@@ -251,11 +239,10 @@ def run_extraction(
             raise TimeoutError(f"Job {job_id} timed out")
         time.sleep(POLL_INTERVAL_SECONDS)
 
-    result_id = api.result_id_for_job(project_id, job_id)
-    if not result_id:
-        raise RuntimeError(f"Job {job_id} completed but has no result_id")
-
-    result = api.fetch_result(result_id)
+    result = status.get("result")
+    if not isinstance(result, dict):
+        raise RuntimeError(f"Job {job_id} completed without a typed result")
+    result_id = result.get("research_item_id")
     logger.info(f"[run] {label}: result {result_id} fetched")
     return {"job_id": job_id, "result_id": result_id, "result": result}
 

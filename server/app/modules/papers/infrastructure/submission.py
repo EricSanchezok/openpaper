@@ -21,7 +21,7 @@ from app.modules.jobs.infrastructure.repository import job_repository
 from app.shared.application import Actor
 from app.helpers.celery_config import get_webhook_base_url
 from app.helpers.ai_limits import release_concurrency_by_id
-from app.errors import AppError
+from app.shared.domain import AppError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -149,9 +149,7 @@ async def submit_reserved_document(
         queue="pdf_processing",
         kwargs={
             "s3_object_key": document.s3_object_key,
-            "webhook_url": (
-                f"{base_url}/internal/v1/jobs/{upload_job.id}/complete"
-            ),
+            "webhook_url": (f"{base_url}/internal/v1/jobs/{upload_job.id}/complete"),
             "claim_url": f"{base_url}/internal/v1/jobs/{upload_job.id}/claim",
             "skip_metadata_extraction": skip_metadata_extraction,
         },

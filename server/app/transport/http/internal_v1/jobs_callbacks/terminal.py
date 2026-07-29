@@ -7,7 +7,7 @@ from typing import Any
 
 from app.database.database import get_db
 from app.database.models import JobOperation
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.jobs.application.contracts import (
     AudioOverviewWebhookData,
     DataTableWebhookData,

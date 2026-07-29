@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.database.models import Project, ProjectCollaborator
-from app.errors import AppError
+from app.shared.domain import AppError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

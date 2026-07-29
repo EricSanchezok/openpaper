@@ -10,7 +10,7 @@ from app.database.models import (
     Project,
     SubscriptionPlan,
 )
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.papers.infrastructure.upload_lifecycle import UploadCleanupPlan
 from app.modules.papers.infrastructure.upload_reservations import (
     reassign_project_quota_owner,
@@ -20,7 +20,9 @@ from app.modules.papers.infrastructure.upload_reservations import (
 
 def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
     return (
-        patch("app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"),
+        patch(
+            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+        ),
         patch(
             "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
             return_value=MagicMock(),
@@ -49,7 +51,9 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
             "app.modules.papers.infrastructure.upload_reservations.reap_stale_uploads",
             return_value=UploadCleanupPlan(),
         ),
-        patch("app.modules.papers.infrastructure.upload_reservations.delete_upload_storage"),
+        patch(
+            "app.modules.papers.infrastructure.upload_reservations.delete_upload_storage"
+        ),
     )
 
 
@@ -303,7 +307,9 @@ def test_project_transfer_rejects_new_owner_project_limit() -> None:
     db.scalar.return_value = 2
 
     with (
-        patch("app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"),
+        patch(
+            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+        ),
         patch(
             "app.modules.papers.infrastructure.upload_reservations.get_quota_user",
             return_value=MagicMock(),

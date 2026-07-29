@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.database.models import Conversation, ConversationScopeType
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.conversations.infrastructure.access import conversation_policy
 from app.modules.papers.infrastructure.access import get_document_access
 from app.modules.projects.infrastructure.access import get_project_access

@@ -45,11 +45,11 @@ def test_checkout_keeps_generic_promotion_codes_without_referral_discount() -> N
     with (
         patch.object(checkout, "MONTHLY_PRICE_ID", "price_monthly"),
         patch.object(
-            checkout.subscription_crud,
+            checkout.subscription_repository,
             "get_by_user_id",
             return_value=None,
         ),
-        patch.object(checkout.subscription_crud, "create_or_update"),
+        patch.object(checkout.subscription_repository, "create_or_update"),
         patch.object(
             checkout.stripe.Customer,
             "create",

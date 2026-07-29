@@ -9,7 +9,7 @@ from app.modules.conversations.infrastructure.message_repository import (
 from app.database.database import get_db
 from app.database.models import ConversationScopeType
 from app.database.telemetry import track_event
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.llm.conversation_operations import conversation_operations
 from app.modules.conversations.infrastructure.repository import conversation_repository
 from app.modules.conversations.application.contracts.conversations import (

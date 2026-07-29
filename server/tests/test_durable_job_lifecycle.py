@@ -85,7 +85,10 @@ def test_publish_failure_keeps_dispatch_pending_for_retry() -> None:
     session.scalars.return_value.all.return_value = []
 
     with (
-        patch("app.modules.jobs.infrastructure.dispatcher.SessionLocal", return_value=session),
+        patch(
+            "app.modules.jobs.infrastructure.dispatcher.SessionLocal",
+            return_value=session,
+        ),
         patch(
             "app.modules.jobs.infrastructure.dispatcher.job_repository.recover_expired_leases",
             return_value=0,

@@ -7,7 +7,7 @@ from typing import Literal
 
 from app.database.models import Document, JobOperation, ProjectPaper
 from app.shared.domain import JsonValue
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
@@ -281,9 +281,7 @@ async def enqueue_data_table_generation(
                 queue="data_table",
                 task_kwargs={
                     "request": payload,
-                    "webhook_url": (
-                        f"{base_url}/internal/v1/jobs/{job_id}/complete"
-                    ),
+                    "webhook_url": (f"{base_url}/internal/v1/jobs/{job_id}/complete"),
                     "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
                 },
                 job_id=job_id,

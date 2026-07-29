@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 PENDING_TTL_MINUTES = 15
 
 
-class CRUDZotero:
+class ZoteroConnectionRepository:
     def create_pending(
         self,
         db: Session,
@@ -26,7 +26,7 @@ class CRUDZotero:
             expires_at=expires_at,
         )
         db.add(db_obj)
-        db.commit()
+        db.flush()
         db.refresh(db_obj)
         return db_obj
 
@@ -41,13 +41,13 @@ class CRUDZotero:
 
     def delete_pending(self, db: Session, *, pending: ZoteroOAuthPending) -> None:
         db.delete(pending)
-        db.commit()
+        db.flush()
 
     def delete_pending_for_user(self, db: Session, *, user_id: int) -> None:
         db.execute(
             delete(ZoteroOAuthPending).where(ZoteroOAuthPending.user_id == user_id)
         )
-        db.commit()
+        db.flush()
 
     def upsert_connection(
         self,
@@ -62,7 +62,7 @@ class CRUDZotero:
             existing.zotero_user_id = str(zotero_user_id)
             existing.api_key = str(api_key)
             db.add(existing)
-            db.commit()
+            db.flush()
             db.refresh(existing)
             return existing
 
@@ -72,7 +72,7 @@ class CRUDZotero:
             api_key=api_key,
         )
         db.add(db_obj)
-        db.commit()
+        db.flush()
         db.refresh(db_obj)
         return db_obj
 
@@ -86,8 +86,8 @@ class CRUDZotero:
         if not connection:
             return False
         db.delete(connection)
-        db.commit()
+        db.flush()
         return True
 
 
-zotero_crud = CRUDZotero()
+zotero_connection_repository = ZoteroConnectionRepository()

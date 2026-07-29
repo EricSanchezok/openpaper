@@ -55,6 +55,20 @@ def test_domain_and_application_contracts_are_framework_independent() -> None:
     assert violations == []
 
 
+def test_repositories_never_commit_the_callers_transaction() -> None:
+    violations: list[str] = []
+    for path in (APP_ROOT / "modules").rglob("*repository.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "commit"
+            ):
+                violations.append(f"{path.relative_to(APP_ROOT)}:{node.lineno}")
+    assert violations == []
+
+
 def test_only_versioned_public_routes_are_exposed() -> None:
     paths = set(app.openapi()["paths"])
     public_business_paths = {path for path in paths if path.startswith("/api/")}
@@ -83,9 +97,7 @@ def test_jobs_use_one_generic_versioned_lifecycle_surface() -> None:
         "audio",
         "data-table",
     }
-    assert not any(
-        path.rsplit("/", 1)[-1] in operation_suffixes for path in paths
-    )
+    assert not any(path.rsplit("/", 1)[-1] in operation_suffixes for path in paths)
 
 
 def test_public_openapi_surface_matches_reviewed_v1_contract() -> None:
@@ -105,8 +117,6 @@ def test_public_openapi_surface_matches_reviewed_v1_contract() -> None:
         },
     }
     expected = json.loads(
-        (ROOT / "server" / "openapi" / "v1-contract.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "server" / "openapi" / "v1-contract.json").read_text(encoding="utf-8")
     )
     assert actual == expected

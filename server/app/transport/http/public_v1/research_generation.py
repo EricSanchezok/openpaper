@@ -7,7 +7,7 @@ import uuid
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import JobOperation, JobStatus
-from app.errors import AppError
+from app.shared.domain import AppError
 from app.modules.papers.infrastructure.access import require_document_access
 from app.modules.projects.infrastructure.access import require_project_access
 from app.modules.jobs.infrastructure.repository import job_repository
