@@ -18,6 +18,29 @@ const eslintConfig = [
         rules: {
             "react-hooks/exhaustive-deps": "off"
         }
+    },
+    {
+        files: [
+            "src/app/**/*.{ts,tsx}",
+            "src/components/**/*.{ts,tsx}",
+            "src/hooks/**/*.{ts,tsx}",
+        ],
+        rules: {
+            "no-restricted-globals": [
+                "error",
+                {
+                    name: "fetch",
+                    message: "Use the typed API client; keep authentication and error handling centralized.",
+                },
+            ],
+        },
+    },
+    {
+        files: ["src/components/BlogPostToast.tsx"],
+        rules: {
+            // This reads a static file emitted by the Next.js build, not the API.
+            "no-restricted-globals": "off",
+        },
     }
 ];
 
