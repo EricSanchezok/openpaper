@@ -69,6 +69,52 @@ def test_repositories_never_commit_the_callers_transaction() -> None:
     assert violations == []
 
 
+def test_transport_only_depends_on_application_and_protocol_layers() -> None:
+    forbidden_fragments = (
+        ".infrastructure",
+        "app.database.models",
+        "app.helpers",
+        "app.llm",
+    )
+    violations: list[str] = []
+    for path in (APP_ROOT / "transport").rglob("*.py"):
+        for imported in _imports(path):
+            if any(fragment in imported for fragment in forbidden_fragments):
+                violations.append(f"{path.relative_to(APP_ROOT)} imports {imported}")
+    assert violations == []
+
+
+def test_application_never_selects_infrastructure_adapters() -> None:
+    violations: list[str] = []
+    for path in (APP_ROOT / "modules").rglob("application/**/*.py"):
+        for imported in _imports(path):
+            if ".infrastructure" in imported:
+                violations.append(f"{path.relative_to(APP_ROOT)} imports {imported}")
+    assert violations == []
+
+
+def test_explicit_commits_are_limited_to_owned_background_transactions() -> None:
+    allowed = {
+        "modules/billing/infrastructure/stripe_webhook_ledger.py",
+        "modules/jobs/infrastructure/dispatcher.py",
+        "modules/papers/infrastructure/garbage_collection.py",
+    }
+    violations: list[str] = []
+    for path in (APP_ROOT / "modules").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if not any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "commit"
+            for node in ast.walk(tree)
+        ):
+            continue
+        relative = str(path.relative_to(APP_ROOT))
+        if relative not in allowed:
+            violations.append(relative)
+    assert violations == []
+
+
 def test_paper_agent_and_mcp_adapters_share_application_capabilities() -> None:
     agent = APP_ROOT / "transport" / "agent" / "paper_tools.py"
     mcp = APP_ROOT / "transport" / "mcp" / "papers.py"
@@ -105,6 +151,7 @@ def test_jobs_use_one_generic_versioned_lifecycle_surface() -> None:
         "/internal/v1/jobs/{job_id}/complete",
         "/internal/v1/jobs/{job_id}/fail",
     } <= paths
+    assert "/internal/v1/schedules/zotero-sync" in paths
     operation_suffixes = {
         "pdf-postprocess",
         "document-gc",

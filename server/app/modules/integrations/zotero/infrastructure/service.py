@@ -740,7 +740,7 @@ async def _discover_import_candidates(
                     continue
 
                 db.delete(existing_import)
-                db.commit()
+                db.flush()
 
             doi = normalize_doi(item_data.get("DOI"))
             if doi:
@@ -1175,7 +1175,7 @@ async def _discover_candidates_by_keys(
                 continue
 
             db.delete(existing_import)
-            db.commit()
+            db.flush()
 
         doi = normalize_doi(item_data.get("DOI"))
         if doi:

@@ -281,7 +281,6 @@ def handle_failed_upload(
             job_id=uuid.UUID(job_id),
             error_code="pdf_processing_failed",
         )
-        db.commit()
     except AppError as exc:
         if exc.code != "job_not_found":
             raise
@@ -375,7 +374,6 @@ def complete_pdf_postprocess_job(
             job_id=job_id,
             result={"document_id": str(paper.id)},
         )
-        db.commit()
     return JobClaimResponse(claimed=True)
 
 
@@ -399,7 +397,6 @@ def complete_document_gc_job(
             job_id=job_id,
             result={"deleted": True, "cancelled": False},
         )
-        db.commit()
         return JobClaimResponse(claimed=True)
 
     result = collect_document_if_due(db, document_id=job.document_id)
@@ -423,7 +420,6 @@ def complete_document_gc_job(
             "cancelled": result.cancelled,
         },
     )
-    db.commit()
     return JobClaimResponse(claimed=True)
 
 
@@ -444,7 +440,6 @@ def complete_storage_delete_job(
         job_id=job_id,
         result={"deleted_count": callback.deleted_count},
     )
-    db.commit()
     return JobClaimResponse(claimed=changed)
 
 
@@ -585,7 +580,6 @@ async def handle_paper_processing_webhook(
                 )
                 if finalized:
                     _complete_pdf_job(db, job_id=job.id, result=result)
-                    db.commit()
                     track_event(
                         "zotero_paper_processed",
                         properties={"worker_duration": result.duration},
@@ -756,9 +750,6 @@ async def handle_paper_processing_webhook(
                 job_id=uuid.UUID(job_id),
                 result=result,
             )
-            if paper is not None:
-                db.commit()
-
             if paper:
                 _enqueue_pdf_postprocess(
                     db,
@@ -766,7 +757,6 @@ async def handle_paper_processing_webhook(
                     document_id=uuid.UUID(str(paper.id)),
                     user_id=job_user.id,
                 )
-                db.commit()
 
         else:
             # Processing failed.
@@ -785,7 +775,6 @@ async def handle_paper_processing_webhook(
                 )
                 if salvaged:
                     _complete_pdf_job(db, job_id=job.id, result=result)
-                    db.commit()
                     return {
                         "status": "webhook processed - zotero salvage",
                         "document_id": salvaged,
@@ -878,7 +867,6 @@ async def complete_zotero_postprocess_job(
             job_id=job_id,
             result={"skipped": "user_not_found"},
         )
-        db.commit()
         return JobClaimResponse(claimed=True)
     current_user = actor_from_auth_user(user)
     if (
@@ -890,7 +878,6 @@ async def complete_zotero_postprocess_job(
             job_id=job_id,
             result={"skipped": "not_eligible_or_disconnected"},
         )
-        db.commit()
         return JobClaimResponse(claimed=True)
 
     with callback_transaction(
@@ -912,7 +899,6 @@ async def complete_zotero_postprocess_job(
                 "auto_imported_count": imported_count,
             },
         )
-        db.commit()
         track_event(
             "zotero_auto_sync",
             user_id=str(user.id),
