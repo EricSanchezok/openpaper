@@ -17,7 +17,7 @@ from app.database.models import (
 )
 from app.errors import AppError
 from app.main import app
-from app.api.projects.responses import _project_counts
+from app.transport.http.public_v1.projects.responses import _project_counts
 from app.modules.research.infrastructure.access import research_item_policy
 from app.modules.research.infrastructure.access import research_item_visible_to
 from app.modules.research.infrastructure.repository import research_repository

@@ -5,7 +5,7 @@ import hashlib
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.api.documents.router import (
+from app.transport.http.public_v1.documents.router import (
     _library_response,
     list_library_papers,
 )

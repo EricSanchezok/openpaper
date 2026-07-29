@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.api.conversation_api import get_conversation, get_conversation_messages
-from app.api.message_api import chat_message_multipaper
+from app.transport.http.public_v1.conversations import get_conversation, get_conversation_messages
+from app.transport.http.public_v1.messages import chat_message_multipaper
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
@@ -223,7 +223,7 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         document_id=uuid.uuid4(),
     )
     monkeypatch.setattr(
-        "app.api.message_api.has_token_credits",
+        "app.transport.http.public_v1.messages.has_token_credits",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
@@ -232,17 +232,17 @@ async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
         lambda *_args, **_kwargs: conversation,
     )
     monkeypatch.setattr(
-        "app.api.message_api.conversation_policy.require_can_continue",
+        "app.transport.http.public_v1.messages.conversation_policy.require_can_continue",
         lambda *_args, **_kwargs: None,
     )
     enforce_rate_limit = MagicMock()
     acquire_concurrency = MagicMock()
     monkeypatch.setattr(
-        "app.api.message_api.enforce_rate_limit",
+        "app.transport.http.public_v1.messages.enforce_rate_limit",
         enforce_rate_limit,
     )
     monkeypatch.setattr(
-        "app.api.message_api.acquire_concurrency",
+        "app.transport.http.public_v1.messages.acquire_concurrency",
         acquire_concurrency,
     )
     http_request = Request(
@@ -332,7 +332,7 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
 
     with pytest.raises(ValueError, match="invalid message payload"):
         monkeypatch.setattr(
-            "app.api.conversation_api.serialize_messages",
+            "app.transport.http.public_v1.conversations.serialize_messages",
             lambda _messages: (_ for _ in ()).throw(
                 ValueError("invalid message payload")
             ),

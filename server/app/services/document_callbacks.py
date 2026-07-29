@@ -70,7 +70,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.api.jobs_webhooks.research import settle_jobs_usage
+from app.transport.http.internal_v1.jobs_callbacks.research import settle_jobs_usage
 
 logger = logging.getLogger(__name__)
 

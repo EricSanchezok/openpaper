@@ -8,33 +8,33 @@ from __future__ import annotations
 
 import logging
 
-from app.api.auth_api import auth_router
-from app.api.conversation_api import conversation_router
-from app.api.document_upload_api import document_upload_router
-from app.api.documents import document_router, library_router, public_document_router
-from app.api.jobs_webhooks import webhook_router as jobs_callback_router
-from app.api.library_tags_api import library_tags_router
-from app.api.message_api import message_router
-from app.api.paper_search_api import paper_search_router
-from app.api.projects.project_papers_api import project_papers_router
-from app.api.projects.projects_api import projects_router
-from app.api.projects.projects_invitation_api import (
+from app.transport.http.public_v1.auth import auth_router
+from app.transport.http.public_v1.conversations import conversation_router
+from app.transport.http.public_v1.document_uploads import document_upload_router
+from app.transport.http.public_v1.documents import document_router, library_router, public_document_router
+from app.transport.http.internal_v1.jobs_callbacks import webhook_router as jobs_callback_router
+from app.transport.http.public_v1.library_tags import library_tags_router
+from app.transport.http.public_v1.messages import message_router
+from app.transport.http.public_v1.discovery import paper_search_router
+from app.transport.http.public_v1.projects.documents import project_papers_router
+from app.transport.http.public_v1.projects.projects import projects_router
+from app.transport.http.public_v1.projects.invitations import (
     router as projects_invitation_router,
 )
-from app.api.research_api import (
+from app.transport.http.public_v1.research import (
     document_research_router,
     project_research_router,
     research_router,
 )
-from app.api.research_generation_api import (
+from app.transport.http.public_v1.research_generation import (
     document_generation_router,
     jobs_router,
     project_generation_router,
 )
-from app.api.search_api import search_router
-from app.api.subscription import subscription_router
-from app.api.subscription.webhook import router as stripe_webhook_router
-from app.api.zotero_import_api import zotero_router
+from app.transport.http.public_v1.paper_search import search_router
+from app.transport.http.public_v1.billing import subscription_router
+from app.transport.http.webhooks_v1.stripe import router as stripe_webhook_router
+from app.transport.http.public_v1.zotero import zotero_router
 from app.modules.identity.infrastructure.cloud_auth import (
     cloud_auth_router,
     cloud_user_router,

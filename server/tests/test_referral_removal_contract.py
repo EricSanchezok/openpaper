@@ -4,8 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.api.subscription import checkout
-from app.api.subscription.config import SubscriptionInterval
+from app.transport.http.public_v1.billing import checkout
+from app.transport.http.public_v1.billing.config import SubscriptionInterval
 from app.database.models import Base, Onboarding, UserProfile
 from app.main import app
 from sqlalchemy.orm import Session

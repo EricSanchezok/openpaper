@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from app.api.projects.project_papers_api import AddPaperToProjectRequest
+from app.transport.http.public_v1.projects.documents import AddPaperToProjectRequest
 from app.modules.projects.infrastructure.document_repository import (
     project_document_repository,
 )

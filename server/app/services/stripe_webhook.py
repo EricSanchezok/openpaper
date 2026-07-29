@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 import stripe
-from app.api.subscription.config import (
+from app.transport.http.public_v1.billing.config import (
     MONTHLY_PRICE_ID,
     STRIPE_WEBHOOK_SECRET,
     YEARLY_PRICE_ID,

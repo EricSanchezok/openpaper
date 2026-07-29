@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.main import app
-from app.api.documents.router import _document_response
+from app.transport.http.public_v1.documents.router import _document_response
 from app.database.models import Document
 from app.modules.jobs.application.contracts import (
     PDFProcessingResult,
