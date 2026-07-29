@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.database.telemetry import track_event
-from app.modules.billing.infrastructure.quotas import can_user_upload_paper
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroImportError,
     ZoteroImportItemResult,
@@ -31,7 +30,6 @@ from app.bootstrap.adapters.zotero_workflow import (
     sync_batch,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
 from sqlalchemy.orm import Session
 
 
@@ -192,22 +190,6 @@ class DefaultZoteroGateway:
                 for row, title in rows
             ]
         )
-
-
-class BillingZoteroImportCapacity:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def require(self, *, actor: Actor) -> None:
-        allowed, reason = can_user_upload_paper(self._db, actor)
-        if not allowed:
-            raise AppError(
-                code="paper_quota_exceeded",
-                message=reason or "Upload limit reached",
-                status_code=403,
-            )
-
-
 class PostHogZoteroEvents:
     def __init__(self, db: Session) -> None:
         self._db = db

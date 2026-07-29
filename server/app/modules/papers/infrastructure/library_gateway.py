@@ -5,9 +5,6 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.helpers.s3 import s3_service
-from app.modules.billing.infrastructure.quotas import (
-    require_library_document_capacity,
-)
 from app.modules.papers.application.contracts.documents import (
     DocumentResponse,
     LibraryPaperResponse,
@@ -17,7 +14,6 @@ from app.modules.papers.application.contracts.documents import (
 from app.modules.papers.application.library import PublicShare
 from app.modules.papers.infrastructure.models import Document, LibraryPaper
 from app.modules.papers.infrastructure.repository import document_repository
-from app.shared.application import Actor
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -165,18 +161,3 @@ class SqlAlchemyPaperLibraryGateway:
             document_id=document_id,
             user_id=user_id,
         ).id
-
-
-class BillingLibraryCapacity:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def require(self, *, actor: Actor, document_id: UUID) -> None:
-        document = self._db.get(Document, document_id)
-        if document is None:
-            raise RuntimeError("shared_document_disappeared")
-        require_library_document_capacity(
-            self._db,
-            user=actor,
-            document=document,
-        )

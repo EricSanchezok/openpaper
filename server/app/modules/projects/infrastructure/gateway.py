@@ -8,7 +8,6 @@ from app.database.models import AuthUser, Project, ProjectInvitation
 from app.database.telemetry import track_event
 from app.helpers.email import send_project_invite_email
 from app.helpers.s3 import s3_service
-from app.modules.billing.infrastructure.quotas import can_user_create_project
 from app.modules.papers.infrastructure.upload_repository import (
     upload_reservation_repository,
 )
@@ -39,7 +38,6 @@ from app.modules.projects.infrastructure.repository import (
     project_repository,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError
 from sqlalchemy.orm import Session
 
 
@@ -469,22 +467,6 @@ class SqlAlchemyProjectGateway:
             project_id=project_id,
             user=actor,
         )
-
-
-class BillingProjectCapacity:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def require_create(self, *, actor: Actor) -> None:
-        can_create, _reason = can_user_create_project(self._db, actor)
-        if not can_create:
-            raise AppError(
-                code="project_quota_exceeded",
-                message="Project creation limit reached",
-                status_code=403,
-            )
-
-
 class PostHogProjectEvents:
     def __init__(self, db: Session) -> None:
         self._db = db

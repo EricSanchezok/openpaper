@@ -1,4 +1,4 @@
-"""Persistence and metadata-provider adapter for citation resolution."""
+"""Cross-module persistence and provider adapter for citation resolution."""
 
 from __future__ import annotations
 

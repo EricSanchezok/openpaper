@@ -74,12 +74,10 @@ from app.modules.papers.application.citations import ResolveCitation
 from app.modules.papers.application.library import PaperLibrary
 from app.modules.papers.infrastructure.details import SqlAlchemyPaperDetails
 from app.modules.papers.infrastructure.library_gateway import (
-    BillingLibraryCapacity,
     SqlAlchemyPaperLibraryGateway,
 )
 from app.modules.projects.application.projects import Projects
 from app.modules.projects.infrastructure.gateway import (
-    BillingProjectCapacity,
     EmailProjectInvitationNotifier,
     PostHogProjectEvents,
     SqlAlchemyProjectGateway,
@@ -118,9 +116,13 @@ from app.modules.papers.application.topics import PaperTopics
 from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
 from app.modules.integrations.zotero.application.zotero import Zotero
 from app.modules.integrations.zotero.infrastructure.application_gateway import (
-    BillingZoteroImportCapacity,
     DefaultZoteroGateway,
     PostHogZoteroEvents,
+)
+from app.bootstrap.adapters.billing_capacity import (
+    BillingLibraryCapacity,
+    BillingProjectCapacity,
+    BillingZoteroImportCapacity,
 )
 from sqlalchemy.orm import Session
 
@@ -243,7 +245,7 @@ def build_paper_details(*, db: Session) -> GetPaperDetails:
 def build_citation_resolver(*, db: Session) -> ResolveCitation:
     # Lazy because the optional agentic metadata recovery path imports Agent
     # tool definitions, which themselves delegate through this container.
-    from app.modules.papers.infrastructure.citation_gateway import (
+    from app.bootstrap.adapters.citation_metadata import (
         DefaultCitationMetadataGateway,
     )
 
