@@ -31,21 +31,15 @@ def test_worker_has_no_referral_task_or_queue() -> None:
     assert "user_processing" not in worker_script
 
 
-def test_pdf_task_budget_reserves_time_after_foreground_parsing() -> None:
+def test_pdf_task_budget_reserves_time_after_mineru_retries() -> None:
     worker_script = (
         Path(__file__).parents[1] / "scripts" / "start_worker.sh"
     ).read_text(encoding="utf-8")
 
     task_routes = celery_app.conf.task_routes
     assert task_routes
-    assert task_routes["upgrade_pdf_parser"] == {"queue": "pdf_processing"}
+    assert "upgrade_pdf_parser" not in task_routes
     assert upload_and_process_file.soft_time_limit == 1200
     assert upload_and_process_file.time_limit == 1260
     assert "--soft-time-limit=900" in worker_script
     assert "--time-limit=960" in worker_script
-
-
-def test_parser_upgrade_is_dispatched_only_through_the_registered_queue() -> None:
-    task_routes = celery_app.conf.task_routes
-
-    assert task_routes["upgrade_pdf_parser"] == {"queue": "pdf_processing"}

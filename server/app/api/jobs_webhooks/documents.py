@@ -8,7 +8,6 @@ from app.database.database import get_db
 from app.schemas.jobs import (
     JobCallbackIdentity,
     JobClaimResponse,
-    PdfParserUpgradeWebhookData,
     PdfProcessingWebhookData,
     StorageDeleteCallback,
 )
@@ -62,19 +61,6 @@ async def handle_paper_processing_webhook(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     return await document_callbacks.handle_paper_processing_webhook(
-        job_id,
-        webhook_data,
-        db,
-    )
-
-
-@document_webhook_router.post("/jobs/{job_id}/pdf-upgrade")
-def handle_paper_parser_upgrade_webhook(
-    job_id: uuid.UUID,
-    webhook_data: PdfParserUpgradeWebhookData,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    return document_callbacks.handle_paper_parser_upgrade_webhook(
         job_id,
         webhook_data,
         db,

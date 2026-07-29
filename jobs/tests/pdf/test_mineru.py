@@ -492,7 +492,8 @@ def test_transient_error_carries_safe_structured_diagnostics() -> None:
     )
     with pytest.raises(ParserTransientError) as captured:
         asyncio.run(
-            client.parse_existing(
+            client.parse_file(
+                b"%PDF-test",
                 data_id="job-1",
             )
         )

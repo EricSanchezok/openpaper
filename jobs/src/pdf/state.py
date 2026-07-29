@@ -57,10 +57,6 @@ class ParserTaskState(Protocol):
 
     async def mark_uploaded(self, job_id: str) -> MinerUBatchCheckpoint: ...
 
-    async def get_source_key(self, job_id: str) -> str | None: ...
-
-    async def save_source_key(self, job_id: str, source_key: str) -> None: ...
-
     async def clear(self, job_id: str) -> None: ...
 
     async def acquire_submit_lock(self, job_id: str) -> str | None: ...
@@ -111,10 +107,6 @@ class ParserStateStore:
     def _lock_key(job_id: str) -> str:
         return f"scholens:pdf-parse:{job_id}:submit-lock"
 
-    @staticmethod
-    def _source_key(job_id: str) -> str:
-        return f"scholens:pdf-parse:{job_id}:source"
-
     async def get_checkpoint(self, job_id: str) -> MinerUBatchCheckpoint | None:
         try:
             value = await self._redis.get(self._checkpoint_key(job_id))
@@ -164,27 +156,9 @@ class ParserStateStore:
         await self.save_checkpoint(job_id, uploaded)
         return uploaded
 
-    async def get_source_key(self, job_id: str) -> str | None:
-        try:
-            value = await self._redis.get(self._source_key(job_id))
-        except RedisError as exc:
-            raise ParserTransientError("PDF parser state is unavailable") from exc
-        return str(value) if value else None
-
-    async def save_source_key(self, job_id: str, source_key: str) -> None:
-        try:
-            await self._redis.set(
-                self._source_key(job_id),
-                source_key,
-                ex=STATE_TTL_SECONDS,
-            )
-        except RedisError as exc:
-            raise ParserTransientError("Could not persist PDF source state") from exc
-
     async def clear(self, job_id: str) -> None:
         try:
             await self._redis.delete(self._checkpoint_key(job_id))
-            await self._redis.delete(self._source_key(job_id))
         except RedisError as exc:
             raise ParserTransientError("Could not clear MinerU batch state") from exc
 

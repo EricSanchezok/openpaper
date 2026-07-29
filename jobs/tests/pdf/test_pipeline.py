@@ -9,18 +9,14 @@ from src.pdf.mineru import MinerUConfig
 from src.pdf.models import (
     LocalPDFAnalysis,
     ParsedDocument,
-    ParserBackend,
     ParserConfigurationError,
     ParserContentError,
-    ParserQuality,
     ParserTransientError,
 )
 from src.pdf.pipeline import (
     _select_document,
     process_pdf_file,
-    upgrade_pdf_from_checkpoint,
 )
-from src.pdf.state import MinerUBatchCheckpoint
 from src.schemas import PDFProcessingResult, PaperMetadataExtraction
 
 
@@ -49,9 +45,9 @@ def _usable_local_analysis() -> LocalPDFAnalysis:
     )
 
 
-def test_transient_mineru_failure_uses_text_only_fallback() -> None:
+def test_exhausted_mineru_retry_budget_uses_text_only_fallback() -> None:
     document = _select_document(
-        ParserTransientError("cdn unavailable"),
+        ParserTransientError("archive download deadline expired"),
         _usable_local_analysis(),
         job_id="job-1",
     )
@@ -65,6 +61,16 @@ def test_configuration_failure_is_not_hidden_by_fallback() -> None:
     with pytest.raises(ParserConfigurationError):
         _select_document(
             ParserConfigurationError("bad token"),
+            _usable_local_analysis(),
+            job_id="job-1",
+        )
+
+
+def test_unexpected_mineru_failure_is_not_hidden_by_fallback() -> None:
+    unexpected = RuntimeError("implementation defect")
+    with pytest.raises(RuntimeError, match="implementation defect"):
+        _select_document(
+            unexpected,
             _usable_local_analysis(),
             job_id="job-1",
         )
@@ -152,7 +158,7 @@ def test_development_pipeline_persists_fallback_and_runs_metadata(
     assert f"documents/{'a' * 64}/canonical.md" in uploaded_names
 
 
-def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
+def test_transient_fallback_is_final_after_mineru_budget_expires(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     document = pymupdf.open()
@@ -169,27 +175,9 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
     pdf_bytes = document.tobytes()
     document.close()
 
-    class MemoryState:
-        cleared = False
-
-        async def get_checkpoint(self, _job_id: str) -> MinerUBatchCheckpoint | None:
-            return MinerUBatchCheckpoint(
-                batch_id="running-mineru-batch",
-                upload_url="https://upload.example/paper.pdf",
-                uploaded=True,
-            )
-
-        async def save_source_key(self, _job_id: str, _source_key: str) -> None:
-            return None
-
-        async def clear(self, _job_id: str) -> None:
-            self.cleared = True
-
-    state = MemoryState()
-
     class FailingMinerUClient:
         def __init__(self, _config: MinerUConfig) -> None:
-            self.state_store = state
+            pass
 
         async def parse_file(
             self,
@@ -247,80 +235,4 @@ def test_transient_fallback_preserves_checkpoint_for_automatic_upgrade(
 
     assert result.success
     assert result.parser_quality == "text_only"
-    assert result.parser_upgrade_pending is True
-    assert state.cleared is False
-
-
-def test_upgrade_resumes_checkpoint_and_uses_idempotent_artifact_keys(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    markdown = "MinerU full content " * 100
-    parsed = ParsedDocument(
-        markdown=markdown,
-        page_offset_map={1: [0, len(markdown)]},
-        backend=ParserBackend.MINERU,
-        quality=ParserQuality.FULL,
-        parser_version="mineru-v4/vlm",
-        archive_bytes=b"zip-audit-artifact",
-    )
-    uploaded: list[tuple[str, str]] = []
-
-    class UpgradeMinerUClient:
-        def __init__(self, _config: MinerUConfig) -> None:
-            self.state_store = self
-
-        async def get_source_key(self, _job_id: str) -> str | None:
-            return f"documents/{'c' * 64}/source.pdf"
-
-        async def get_checkpoint(self, _job_id: str) -> MinerUBatchCheckpoint | None:
-            return MinerUBatchCheckpoint(
-                batch_id="batch-1",
-                upload_url="https://upload.example/paper.pdf",
-                uploaded=False,
-            )
-
-        async def parse_existing(
-            self,
-            *,
-            data_id: str,
-            pdf_bytes: bytes | None = None,
-        ) -> ParsedDocument:
-            assert data_id == "job-1"
-            assert pdf_bytes == b"pdf-source"
-            return parsed
-
-        async def close(self) -> None:
-            return None
-
-    def upload_to_key(_payload: bytes, key: str, content_type: str) -> str:
-        uploaded.append((key, content_type))
-        return key
-
-    monkeypatch.setattr(
-        MinerUConfig,
-        "from_env",
-        classmethod(lambda _cls: _mineru_config()),
-    )
-    monkeypatch.setattr("src.pdf.pipeline.MinerUClient", UpgradeMinerUClient)
-    monkeypatch.setattr(
-        "src.pdf.pipeline.s3_service.upload_bytes_to_key",
-        upload_to_key,
-    )
-    monkeypatch.setattr(
-        "src.pdf.pipeline.s3_service.download_file_to_bytes",
-        lambda _key: b"pdf-source",
-    )
-
-    result = asyncio.run(upgrade_pdf_from_checkpoint("job-1"))
-
-    assert result.parser_quality == "full"
-    assert result.parser_warning_code is None
-    assert result.parser_markdown_s3_key == f"documents/{'c' * 64}/canonical.md"
-    assert result.parser_archive_s3_key == (f"documents/{'c' * 64}/mineru-result.zip")
-    assert sorted(uploaded) == [
-        (
-            f"documents/{'c' * 64}/canonical.md",
-            "text/markdown; charset=utf-8",
-        ),
-        (f"documents/{'c' * 64}/mineru-result.zip", "application/zip"),
-    ]
+    assert "parser_upgrade_pending" not in result.model_dump()

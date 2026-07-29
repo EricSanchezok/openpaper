@@ -77,7 +77,7 @@ class ParserError(Exception):
 
 
 class ParserTransientError(ParserError):
-    """A temporary provider or network failure that may use local fallback."""
+    """A provider or network failure retried until the parsing budget expires."""
 
     def __init__(
         self,

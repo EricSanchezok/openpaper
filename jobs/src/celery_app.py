@@ -30,7 +30,6 @@ celery_app.conf.update(
     result_expires=3600,  # Results expire after 1 hour
     task_routes={
         "upload_and_process_file": {"queue": "pdf_processing"},
-        "upgrade_pdf_parser": {"queue": "pdf_processing"},
         "postprocess_pdf": {"queue": "pdf_processing"},
         "collect_document": {"queue": "storage_gc"},
         "delete_storage_objects": {"queue": "storage_gc"},

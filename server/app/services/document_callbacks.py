@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 
 from app.repositories.messages import MessageCreate, message_repository
-from app.helpers.postgres import sanitize_for_postgres
 from app.repositories.upload_reservations import upload_reservation_repository
 from app.database.crud.user_repository import user_repository
 from app.database.crud.zotero_crud import zotero_crud
@@ -40,7 +39,6 @@ from app.schemas.documents import DocumentUpdate
 from app.schemas.jobs import (
     JobCallbackIdentity,
     JobClaimResponse,
-    PdfParserUpgradeWebhookData,
     PDFProcessingResult,
     PdfProcessingWebhookData,
     StorageDeleteCallback,
@@ -81,41 +79,6 @@ def _complete_pdf_job(
         result=result.model_dump(mode="json"),
     )
     return changed
-
-
-def _enqueue_parser_upgrade(
-    db: Session,
-    *,
-    ingestion_job_id: uuid.UUID,
-    document_id: uuid.UUID,
-) -> uuid.UUID:
-    """Persist MinerU continuation before publishing it to the worker."""
-    upgrade_job_id = uuid.uuid4()
-    base_url = get_webhook_base_url().rstrip("/")
-    job_repository.enqueue(
-        db,
-        request=EnqueueJob(
-            operation=JobOperation.PDF_PARSER_UPGRADE,
-            requested_by_id=None,
-            document_id=document_id,
-            idempotency_key=f"pdf-parser-upgrade:{ingestion_job_id}",
-            payload={
-                "checkpoint_job_id": str(ingestion_job_id),
-                "document_id": str(document_id),
-            },
-            task_name="upgrade_pdf_parser",
-            queue="pdf_processing",
-            task_kwargs={
-                "job_id": str(ingestion_job_id),
-                "webhook_url": (
-                    f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/pdf-upgrade"
-                ),
-                "claim_url": (f"{base_url}/api/webhooks/jobs/{upgrade_job_id}/claim"),
-            },
-            job_id=upgrade_job_id,
-        ),
-    )
-    return upgrade_job_id
 
 
 def _enqueue_pdf_postprocess(
@@ -605,15 +568,6 @@ async def handle_paper_processing_webhook(
                 )
                 if finalized:
                     _complete_pdf_job(db, job_id=job.id, result=result)
-                    if (
-                        result.parser_upgrade_pending
-                        and durable_job.document_id is not None
-                    ):
-                        _enqueue_parser_upgrade(
-                            db,
-                            ingestion_job_id=job.id,
-                            document_id=durable_job.document_id,
-                        )
                     db.commit()
                     track_event(
                         "zotero_paper_processed",
@@ -788,13 +742,6 @@ async def handle_paper_processing_webhook(
             )
             if paper is not None:
                 db.commit()
-                if result.parser_upgrade_pending:
-                    _enqueue_parser_upgrade(
-                        db,
-                        ingestion_job_id=uuid.UUID(job_id),
-                        document_id=uuid.UUID(str(paper.id)),
-                    )
-                    db.commit()
 
             if paper:
                 _enqueue_pdf_postprocess(
@@ -822,15 +769,6 @@ async def handle_paper_processing_webhook(
                 )
                 if salvaged:
                     _complete_pdf_job(db, job_id=job.id, result=result)
-                    if (
-                        result.parser_upgrade_pending
-                        and durable_job.document_id is not None
-                    ):
-                        _enqueue_parser_upgrade(
-                            db,
-                            ingestion_job_id=job.id,
-                            document_id=durable_job.document_id,
-                        )
                     db.commit()
                     return {
                         "status": "webhook processed - zotero salvage",
@@ -842,119 +780,6 @@ async def handle_paper_processing_webhook(
             )
 
     return {"status": "webhook processed"}
-
-
-def handle_paper_parser_upgrade_webhook(
-    job_id: uuid.UUID,
-    webhook_data: PdfParserUpgradeWebhookData,
-    db: Session,
-) -> dict[str, object]:
-    """Atomically replace a completed text-only parse with MinerU output."""
-    job = job_repository.require(db, job_id=job_id)
-    if job.operation != JobOperation.PDF_PARSER_UPGRADE.value:
-        raise AppError(
-            code="job_operation_mismatch",
-            message="Job operation does not match callback",
-            status_code=409,
-        )
-    checkpoint_job_id = str(job.payload.get("checkpoint_job_id", ""))
-    if webhook_data.result.job_id != checkpoint_job_id:
-        raise AppError(
-            code="parser_upgrade_job_mismatch",
-            message="Parser upgrade checkpoint does not match",
-            status_code=422,
-        )
-    if webhook_data.task_id != str(job_id):
-        raise AppError(
-            code="parser_upgrade_task_mismatch",
-            message="Parser upgrade task does not match",
-            status_code=422,
-        )
-    document_id = job.document_id
-    if document_id is None:
-        raise AppError(
-            code="parser_upgrade_document_missing",
-            message="Parser upgrade document is unavailable",
-            status_code=409,
-        )
-
-    upgrade_lock = AdvisoryLock(
-        engine,
-        namespace=AdvisoryLockNamespace.PAPER_PROCESSING_WEBHOOK,
-        key=str(document_id),
-    )
-    if not upgrade_lock.acquire():
-        raise AppError(
-            code="paper_update_in_progress",
-            message="Another parser update is already in progress",
-            status_code=409,
-        )
-
-    with callback_transaction(
-        db,
-        operation="pdf_parser_upgrade",
-        context={"job_id": str(job_id), "document_id": str(document_id)},
-        lock=upgrade_lock,
-    ):
-        paper = db.get(Document, document_id)
-        if paper is None:
-            raise AppError(
-                code="paper_not_found",
-                message="Paper not found",
-                status_code=404,
-            )
-        if paper.parser_quality == "full":
-            job_repository.complete(
-                db,
-                job_id=job_id,
-                result=webhook_data.result.model_dump(mode="json"),
-            )
-            db.commit()
-            return {
-                "status": "parser upgrade already applied",
-                "paper_id": str(paper.id),
-            }
-        if paper.parser_quality != "text_only":
-            raise AppError(
-                code="paper_not_text_only",
-                message="Only text-only papers can be upgraded",
-                status_code=409,
-            )
-
-        result = webhook_data.result
-        paper.raw_content = str(sanitize_for_postgres(result.raw_content))
-        paper.page_offset_map = result.page_offset_map
-        paper.parser_markdown_s3_key = result.parser_markdown_s3_key
-        paper.parser_archive_s3_key = result.parser_archive_s3_key
-        paper.parser_backend = result.parser_backend
-        paper.parser_quality = result.parser_quality
-        paper.parser_version = result.parser_version
-        paper.parser_warning_code = None
-
-        document_search_repository.replace_passage_index(
-            db,
-            document_id=uuid.UUID(str(paper.id)),
-            raw_content=paper.raw_content,
-        )
-        job_repository.complete(
-            db,
-            job_id=job_id,
-            result=result.model_dump(mode="json"),
-        )
-        db.commit()
-        logger.info(
-            "Applied MinerU parser upgrade",
-            extra={
-                "job_id": str(job_id),
-                "paper_id": str(paper.id),
-                "task_id": webhook_data.task_id,
-                "phase": "parser_upgrade",
-            },
-        )
-        return {
-            "status": "parser upgrade applied",
-            "paper_id": str(paper.id),
-        }
 
 
 def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:

@@ -21,7 +21,6 @@ from src.pdf.models import (
 )
 from src.s3_service import s3_service
 from src.schemas import (
-    PDFParserUpgradeResult,
     PDFProcessingResult,
     PaperMetadataExtraction,
 )
@@ -60,17 +59,16 @@ def _select_document(
         return mineru_result
     if isinstance(mineru_result, (ParserConfigurationError, ParserSecurityError)):
         raise mineru_result
-    if mineru_result is not None:
-        diagnostics = (
-            mineru_result.diagnostic_fields()
-            if isinstance(mineru_result, ParserTransientError)
-            else {"exception_type": type(mineru_result).__name__}
-        )
+    if isinstance(mineru_result, (ParserContentError, ParserTransientError)):
+        diagnostics = mineru_result.diagnostic_fields()
         logger.warning(
-            "MinerU parsing degraded; using local text extraction; diagnostics=%s",
+            "MinerU parsing reached its terminal fallback boundary; "
+            "using local text extraction; diagnostics=%s",
             diagnostics,
             extra={"job_id": job_id, **diagnostics},
         )
+    elif mineru_result is not None:
+        raise mineru_result
     if isinstance(local_result, BaseException):
         if isinstance(local_result, ParserContentError):
             raise local_result
@@ -127,7 +125,6 @@ async def process_pdf_file(
     job_id: str,
     status_callback: Callable[[str], None],
     skip_metadata_extraction: bool = False,
-    mineru_deadline: float | None = None,
 ) -> PDFProcessingResult:
     start_time = datetime.now(timezone.utc)
     mineru_client: MinerUClient | None = None
@@ -141,12 +138,10 @@ async def process_pdf_file(
         if config is not None:
             status_callback("Parsing PDF with MinerU")
             mineru_client = MinerUClient(config)
-            await mineru_client.state_store.save_source_key(job_id, s3_object_key)
             mineru_task = asyncio.create_task(
                 mineru_client.parse_file(
                     pdf_bytes,
                     data_id=job_id,
-                    deadline=mineru_deadline,
                 )
             )
         else:
@@ -173,16 +168,7 @@ async def process_pdf_file(
             job_id=job_id,
         )
         if document.quality == "text_only":
-            status_callback("Using local text extraction")
-
-        parser_upgrade_pending = False
-        if (
-            isinstance(mineru_result, ParserTransientError)
-            and mineru_client is not None
-        ):
-            parser_upgrade_pending = (
-                await mineru_client.state_store.get_checkpoint(job_id) is not None
-            )
+            status_callback("MinerU unavailable; using final text-only fallback")
 
         preview_object_key = await _upload_preview(
             parsed_local,
@@ -225,7 +211,6 @@ async def process_pdf_file(
             parser_quality=document.quality.value,
             parser_version=document.parser_version,
             parser_warning_code=document.warning_code,
-            parser_upgrade_pending=parser_upgrade_pending,
             job_id=job_id,
             raw_content=document.markdown,
             page_offset_map=document.page_offset_map,
@@ -242,54 +227,3 @@ async def process_pdf_file(
     finally:
         if mineru_client is not None:
             await mineru_client.close()
-
-
-async def upgrade_pdf_from_checkpoint(job_id: str) -> PDFParserUpgradeResult:
-    """Resume MinerU and build an idempotent full-quality replacement payload."""
-    config = MinerUConfig.from_env()
-    if config is None:
-        raise ParserConfigurationError(
-            "MinerU is not configured for parser upgrades",
-            phase="configuration",
-        )
-    client = MinerUClient(config)
-    try:
-        source_s3_key = await client.state_store.get_source_key(job_id)
-        if source_s3_key is None:
-            raise ParserContentError(
-                "Parser checkpoint has no canonical source key",
-                phase="checkpoint",
-            )
-        checkpoint = await client.state_store.get_checkpoint(job_id)
-        if checkpoint is None:
-            raise ParserContentError(
-                "MinerU batch checkpoint is missing",
-                phase="checkpoint",
-            )
-        pdf_bytes = (
-            await asyncio.to_thread(
-                s3_service.download_file_to_bytes,
-                source_s3_key,
-            )
-            if not checkpoint.uploaded
-            else None
-        )
-        document = await client.parse_existing(
-            data_id=job_id,
-            pdf_bytes=pdf_bytes,
-        )
-        document_sha256 = _document_sha256_from_source_key(source_s3_key)
-        markdown_key, archive_key = await _upload_full_parser_artifacts(
-            document,
-            document_sha256=document_sha256,
-        )
-        return PDFParserUpgradeResult(
-            job_id=job_id,
-            raw_content=document.markdown,
-            page_offset_map=document.page_offset_map,
-            parser_markdown_s3_key=markdown_key,
-            parser_archive_s3_key=archive_key,
-            parser_version=document.parser_version,
-        )
-    finally:
-        await client.close()
