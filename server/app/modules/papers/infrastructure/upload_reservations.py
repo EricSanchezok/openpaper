@@ -240,6 +240,7 @@ def reserve_upload(
     input_size_bytes: int,
     original_filename: str | None,
     content_sha256: str,
+    idempotency_key: str | None = None,
 ) -> UploadReservation:
     """Authorize once and persist the destination and quota owner before hand-off."""
     if input_size_bytes <= 0:
@@ -269,6 +270,32 @@ def reserve_upload(
                 status_code=404,
             )
         owner_id = project.owner_id
+
+    lock_account_resource_quota(db, user_id=owner_id)
+    durable_idempotency_key = (
+        f"pdf-ingestion:{requester.id}:{project_id or 'library'}:{idempotency_key}"
+        if idempotency_key is not None
+        else None
+    )
+    if durable_idempotency_key is not None:
+        existing_job = job_repository.find_by_idempotency_key(
+            db,
+            idempotency_key=durable_idempotency_key,
+        )
+        if existing_job is not None:
+            same_request = (
+                existing_job.requested_by_id == requester.id
+                and existing_job.project_id == project_id
+                and existing_job.payload.get("content_sha256") == content_sha256
+            )
+            existing_reservation = db.get(UploadReservation, existing_job.id)
+            if not same_request or existing_reservation is None:
+                raise AppError(
+                    code="idempotency_key_reused",
+                    message="The idempotency key was already used for another request",
+                    status_code=409,
+                )
+            return existing_reservation
 
     existing_document_id = db.scalar(
         select(Document.id).where(Document.sha256 == content_sha256)
@@ -304,7 +331,6 @@ def reserve_upload(
             status_code=409,
         )
 
-    lock_account_resource_quota(db, user_id=owner_id)
     cleanup_plan = reap_stale_uploads(db, quota_owner_id=owner_id)
     if _has_active_duplicate_reservation(
         db,
@@ -388,7 +414,7 @@ def reserve_upload(
             operation=JobOperation.PDF_PROCESS,
             requested_by_id=requester.id,
             project_id=project_id,
-            idempotency_key=f"pdf-reservation:{job_id}",
+            idempotency_key=durable_idempotency_key or f"pdf-reservation:{job_id}",
             payload={
                 "content_sha256": content_sha256,
                 "original_filename": original_filename,

@@ -19,11 +19,10 @@ import {
 	X,
 } from "lucide-react";
 import {
-	HighlightResult,
 	MessageScopeItem,
 	PaperItem,
 	Project,
-	SearchResults,
+	ResearchSearchResults,
 } from "@/lib/schema";
 import { fetchFromApi } from "@/lib/api";
 import {
@@ -38,7 +37,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Highlight search needs at least this many chars (the /search/papers minimum).
+// Research search needs at least this many characters.
 const HIGHLIGHT_SEARCH_MIN_CHARS = 2;
 const HIGHLIGHT_SEARCH_DEBOUNCE_MS = 250;
 
@@ -230,8 +229,8 @@ export function useMentionAutocomplete({
 		[selection.highlights],
 	);
 
-	// Highlights aren't a client-side list, so we search /search/papers for them
-	// (debounced + abortable), flattening each paper's matching highlights.
+	// Highlights use their own Research search capability so paper search remains
+	// algorithm-neutral and limited to paper metadata and parsed text.
 	const [highlightItems, setHighlightItems] = useState<MentionEntity[]>([]);
 	useEffect(() => {
 		const q = query.trim();
@@ -242,8 +241,8 @@ export function useMentionAutocomplete({
 		const controller = new AbortController();
 		const timer = setTimeout(async () => {
 			try {
-				const res: SearchResults = await fetchFromApi(
-					"/search/papers",
+				const res: ResearchSearchResults = await fetchFromApi(
+					"/search/research",
 					{
 						method: "POST",
 						body: JSON.stringify({ query: q, limit: 5 }),
@@ -251,41 +250,19 @@ export function useMentionAutocomplete({
 					},
 				);
 				if (controller.signal.aborted) return;
-				// A highlight can match on its own text or on one of its
-				// annotations; surface it either way, deduped by highlight id.
-				const flattened: MentionEntity[] = [];
-				const seen = new Set<string>();
-				for (const paper of res?.papers || []) {
-					// Group the paper's matching annotations by their highlight so
-					// each surfaced highlight can carry its notes.
-					const notesByHighlight = new Map<string, string[]>();
-					for (const a of paper.annotations || []) {
-						if (!a.highlight || !a.content) continue;
-						const arr = notesByHighlight.get(a.highlight.id) || [];
-						arr.push(a.content);
-						notesByHighlight.set(a.highlight.id, arr);
-					}
-					const pushHighlight = (h: HighlightResult, matchContext?: string) => {
-						if (!h || seen.has(h.id)) return;
-						seen.add(h.id);
-						flattened.push({
-							kind: "highlight",
-							id: h.id,
-							label: h.raw_text,
-							sublabel: paper.title || undefined,
-							documentId: paper.document_id,
-							annotations: notesByHighlight.get(h.id),
-							matchContext,
-						});
-					};
-					// Highlights whose own text matched have no extra context; a
-					// highlight surfaced via an annotation shows that annotation.
-					for (const h of paper.highlights || []) pushHighlight(h);
-					for (const a of paper.annotations || []) {
-						pushHighlight(a.highlight, a.content);
-					}
-				}
-				setHighlightItems(flattened.slice(0, MAX_PER_SECTION));
+				const normalizedQuery = q.toLocaleLowerCase();
+				const highlights: MentionEntity[] = (res?.items || []).map((item) => ({
+					kind: "highlight",
+					id: item.id,
+					label: item.quote_text,
+					sublabel: item.document_title || undefined,
+					documentId: item.document_id,
+					annotations: item.matching_comments.map((comment) => comment.content),
+					matchContext: item.quote_text.toLocaleLowerCase().includes(normalizedQuery)
+						? undefined
+						: item.matching_comments[0]?.content,
+				}));
+				setHighlightItems(highlights.slice(0, MAX_PER_SECTION));
 			} catch (err) {
 				if (err instanceof Error && err.name === "AbortError") return;
 				setHighlightItems([]);

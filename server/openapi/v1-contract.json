@@ -58,6 +58,7 @@
     "/api/v1/paper-ingestions/uploads": ["post"],
     "/api/v1/paper-ingestions/urls": ["post"],
     "/api/v1/papers/{document_id}": ["get"],
+    "/api/v1/papers/{document_id}/content": ["get"],
     "/api/v1/papers/{document_id}/audio-overviews": ["post"],
     "/api/v1/papers/{document_id}/download-url": ["get"],
     "/api/v1/papers/{document_id}/highlight-threads": ["get", "post"],
@@ -84,6 +85,7 @@
     "/api/v1/research-items/{item_id}": ["delete", "patch"],
     "/api/v1/search/papers": ["post"],
     "/api/v1/search/papers/stats": ["get"],
+    "/api/v1/search/research": ["post"],
     "/api/v1/shares/{share_token}": ["get"],
     "/api/v1/shares/{share_token}/collect": ["post"],
     "/webhooks/v1/stripe": ["post"]

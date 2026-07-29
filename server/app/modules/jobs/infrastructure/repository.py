@@ -43,6 +43,16 @@ class EnqueueJob(CreateJob):
 
 class JobRepository:
     @staticmethod
+    def find_by_idempotency_key(
+        db: Session,
+        *,
+        idempotency_key: str,
+    ) -> DurableJob | None:
+        return db.scalar(
+            select(DurableJob).where(DurableJob.idempotency_key == idempotency_key)
+        )
+
+    @staticmethod
     def list_for_requester(
         db: Session,
         *,

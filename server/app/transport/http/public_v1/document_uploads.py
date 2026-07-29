@@ -1,66 +1,35 @@
-"""
-Document Upload API - Microservice Integration
+"""HTTP adapter for the shared PDF-ingestion application capability."""
 
-This module handles PDF upload and processing by integrating with a separate
-PDF processing microservice. The architecture is:
-
-1. Client uploads PDF to this API
-2. API creates a UploadReservation record with status 'pending'
-3. API submits the PDF to the separate jobs service via Celery/HTTP
-4. Jobs service processes PDF (S3 upload, metadata extraction, preview generation)
-5. Jobs service sends results back via webhook
-6. Webhook handler updates UploadReservation status and creates Document record
-
-The client can poll the job status using the same job_id throughout the process.
-"""
-
-from starlette.concurrency import run_in_threadpool
+from __future__ import annotations
 
 import logging
-import hashlib
-from pathlib import PurePosixPath
-from urllib.parse import unquote, urlparse
+from typing import Annotated
 from uuid import UUID
 
-from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.modules.papers.infrastructure.upload_repository import (
-    upload_reservation_repository,
-)
+from app.bootstrap.providers import build_paper_ingestion, build_pdf_url_source
 from app.database.database import get_db
-from app.shared.domain import AppError
-from app.helpers.ai_limits import (
-    AILimitExceeded,
-    acquire_concurrency,
-    enforce_rate_limit,
-)
-from app.helpers.parser import (
-    MAX_UPLOAD_SIZE_MB,
-    validate_pdf_content,
-    validate_url_and_fetch_pdf,
-)
-from app.shared.application import Actor
+from app.helpers.parser import MAX_UPLOAD_SIZE_MB
 from app.modules.papers.application.contracts.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
 )
-from app.modules.papers.infrastructure.submission import dispatch_reserved_document
-from app.modules.papers.infrastructure.upload_reservations import reserve_upload
-from dotenv import load_dotenv
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Request,
-    UploadFile,
-)
+from app.shared.application import Actor
+from app.shared.domain import AppError
+from app.transport.http.public_v1.auth_dependencies import get_required_user
+from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 from sqlalchemy.orm import Session
 
-load_dotenv()
-
 logger = logging.getLogger(__name__)
-
-# Create API router with prefix
 document_upload_router = APIRouter()
+
+IdempotencyHeader = Annotated[
+    str | None,
+    Header(alias="Idempotency-Key", min_length=1, max_length=200),
+]
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 @document_upload_router.post(
@@ -69,76 +38,21 @@ document_upload_router = APIRouter()
     status_code=202,
 )
 async def upload_pdf_from_url(
-    request: UploadFromUrlRequest,
-    http_request: Request,
+    payload: UploadFromUrlRequest,
+    request: Request,
+    idempotency_key: IdempotencyHeader = None,
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
-    """
-    Upload a document from a given URL, rather than the raw file.
-    """
-    try:
-        await enforce_rate_limit(
-            user_id=int(current_user.id),
-            ip_address=http_request.client.host if http_request.client else "unknown",
-            feature="upload",
-        )
-    except AILimitExceeded as exc:
-        raise AppError(
-            code=exc.code,
-            message="Upload rate limit exceeded",
-            status_code=429,
-        ) from None
-
-    # Validate the URL and fetch PDF content
-    url = str(request.url)
-    is_valid, pdf_bytes, error_message = await run_in_threadpool(
-        validate_url_and_fetch_pdf,
-        url,
-    )
-    if not is_valid:
-        raise AppError(
-            code="invalid_pdf_url",
-            message=error_message or "The URL did not return a valid PDF",
-            status_code=400,
-        )
-
-    filename = PurePosixPath(unquote(urlparse(url).path)).name or "downloaded-paper.pdf"
-    paper_upload_job = reserve_upload(
-        db,
-        requester=current_user,
+    return await build_paper_ingestion(db=db).from_url(
+        actor=current_user,
+        url=str(payload.url),
+        source=build_pdf_url_source(),
         project_id=project_id,
-        input_size_bytes=len(pdf_bytes),
-        original_filename=filename,
-        content_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
+        idempotency_key=idempotency_key,
+        ip_address=_client_ip(request),
     )
-    try:
-        await acquire_concurrency(
-            user_id=int(current_user.id),
-            category="background",
-            operation_id=str(paper_upload_job.id),
-        )
-    except AILimitExceeded as exc:
-        upload_reservation_repository.mark_as_failed(
-            db=db,
-            job_id=str(paper_upload_job.id),
-            user=current_user,
-            error_code=exc.code,
-        )
-        raise AppError(
-            code=exc.code,
-            message="Too many background jobs are already running",
-            status_code=429,
-        ) from None
-
-    await dispatch_reserved_document(
-        pdf_bytes=pdf_bytes,
-        upload_job=paper_upload_job,
-        user=current_user,
-        db=db,
-    )
-    return UploadAcceptedResponse(job_id=paper_upload_job.id)
 
 
 @document_upload_router.post(
@@ -149,25 +63,11 @@ async def upload_pdf_from_url(
 async def upload_pdf(
     request: Request,
     file: UploadFile = File(...),
+    idempotency_key: IdempotencyHeader = None,
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
-    """
-    Upload a PDF file
-    """
-    try:
-        await enforce_rate_limit(
-            user_id=int(current_user.id),
-            ip_address=request.client.host if request.client else "unknown",
-            feature="upload",
-        )
-    except AILimitExceeded as exc:
-        raise AppError(
-            code=exc.code,
-            message="Upload rate limit exceeded",
-            status_code=429,
-        ) from None
     max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     declared_size = request.headers.get("content-length")
     if declared_size and (
@@ -185,12 +85,10 @@ async def upload_pdf(
             status_code=400,
         )
 
-    # Starlette spools multipart files, but an explicit running cap prevents an
-    # unbounded application-level read when Content-Length is absent or false.
     try:
         chunks: list[bytes] = []
         total = 0
-        while chunk := await file.read(65536):
+        while chunk := await file.read(65_536):
             total += len(chunk)
             if total > max_bytes:
                 raise AppError(
@@ -199,60 +97,20 @@ async def upload_pdf(
                     status_code=413,
                 )
             chunks.append(chunk)
-        file_contents = b"".join(chunks)
-        filename = file.filename
+        content = b"".join(chunks)
     except (OSError, RuntimeError):
         logger.exception("Error reading uploaded file")
         raise AppError(
             code="upload_read_failed",
             message="The uploaded file could not be read",
             status_code=400,
-        )
-
-    # Validate PDF content
-    is_valid, error_message = await run_in_threadpool(
-        validate_pdf_content,
-        file_contents,
-        "upload",
-    )
-    if not is_valid:
-        raise AppError(
-            code="invalid_pdf",
-            message=error_message or "The uploaded file is not a valid PDF",
-            status_code=400,
-        )
-
-    paper_upload_job = reserve_upload(
-        db,
-        requester=current_user,
-        project_id=project_id,
-        input_size_bytes=len(file_contents),
-        original_filename=str(filename) if filename else None,
-        content_sha256=hashlib.sha256(file_contents).hexdigest(),
-    )
-    try:
-        await acquire_concurrency(
-            user_id=int(current_user.id),
-            category="background",
-            operation_id=str(paper_upload_job.id),
-        )
-    except AILimitExceeded as exc:
-        upload_reservation_repository.mark_as_failed(
-            db=db,
-            job_id=str(paper_upload_job.id),
-            user=current_user,
-            error_code=exc.code,
-        )
-        raise AppError(
-            code=exc.code,
-            message="Too many background jobs are already running",
-            status_code=429,
         ) from None
 
-    await dispatch_reserved_document(
-        pdf_bytes=file_contents,
-        upload_job=paper_upload_job,
-        user=current_user,
-        db=db,
+    return await build_paper_ingestion(db=db).from_bytes(
+        actor=current_user,
+        content=content,
+        filename=file.filename,
+        project_id=project_id,
+        idempotency_key=idempotency_key,
+        ip_address=_client_ip(request),
     )
-    return UploadAcceptedResponse(job_id=paper_upload_job.id)

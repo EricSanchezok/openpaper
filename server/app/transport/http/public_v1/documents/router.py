@@ -6,11 +6,12 @@ from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import LibraryPaper
 from app.shared.domain import AppError
-from app.helpers.s3 import DEFAULT_SIGNED_URL_TTL_SECONDS, s3_service
+from app.helpers.s3 import s3_service
 from app.modules.papers.infrastructure.access import require_document_access
 from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.papers.application.contracts.documents import (
     DocumentFileUrlResponse,
+    DocumentContentResponse,
     DocumentResponse,
     CollectPublicPaperResponse,
     LibraryPaperListResponse,
@@ -20,6 +21,7 @@ from app.modules.papers.application.contracts.documents import (
     PublicPaperOwnerResponse,
     PublicPaperResponse,
 )
+from app.bootstrap.providers import build_paper_content, build_paper_download
 from app.shared.application import Actor
 from app.modules.billing.infrastructure.quotas import require_library_document_capacity
 from fastapi import APIRouter, Depends, Response, status
@@ -207,6 +209,29 @@ def get_document(
 
 
 @document_router.get(
+    "/{document_id}/content",
+    response_model=DocumentContentResponse,
+)
+def get_document_content(
+    document_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: Actor = Depends(get_required_user),
+) -> DocumentContentResponse:
+    paper = build_paper_content(db=db).read(
+        actor=current_user,
+        document_id=document_id,
+        project_id=project_id,
+    )
+    return DocumentContentResponse(
+        document_id=paper.document_id,
+        title=paper.title,
+        abstract=paper.abstract,
+        content=paper.raw_content,
+    )
+
+
+@document_router.get(
     "/{document_id}/download-url",
     response_model=DocumentFileUrlResponse,
 )
@@ -216,23 +241,10 @@ def get_document_file_url(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> DocumentFileUrlResponse:
-    access = require_document_access(
-        db,
+    return build_paper_download(db=db)(
+        actor=current_user,
         document_id=document_id,
-        user_id=current_user.id,
         project_id=project_id,
-    )
-    try:
-        file_url = s3_service.generate_presigned_url(access.document.s3_object_key)
-    except RuntimeError as exc:
-        raise AppError(
-            code="document_file_url_unavailable",
-            message="The document file is temporarily unavailable",
-            status_code=503,
-        ) from exc
-    return DocumentFileUrlResponse(
-        file_url=file_url,
-        expires_in_seconds=DEFAULT_SIGNED_URL_TTL_SECONDS,
     )
 
 

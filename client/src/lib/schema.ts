@@ -417,16 +417,41 @@ export interface PaperResult {
     publish_date: string | null;
     created_at: string;
     last_accessed_at: string;
-    highlights: HighlightResult[];
-    annotations: AnnotationResult[];
     preview_url: string | null;
+    matched_fields: string[];
+    snippets: Array<{
+        text: string;
+        start_line: number | null;
+        end_line: number | null;
+    }>;
 }
 
 export interface SearchResults {
-    papers: PaperResult[];
-    total_papers: number;
-    total_highlights: number;
-    total_annotations: number;
+    items: PaperResult[];
+    total: number;
+    next_cursor: string | null;
+}
+
+export interface ResearchSearchResults {
+    items: Array<{
+        id: string;
+        document_id: string;
+        document_title: string | null;
+        quote_text: string;
+        page_number: number | null;
+        start_offset: number | null;
+        end_offset: number | null;
+        role: string;
+        created_at: string;
+        matching_comments: Array<{
+            id: string;
+            content: string;
+            role: string;
+            created_at: string;
+        }>;
+    }>;
+    total: number;
+    next_cursor: string | null;
 }
 
 export interface JobStatusResponse {

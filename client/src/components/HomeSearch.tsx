@@ -2,17 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, FileText, FolderKanban, Command, Loader2, Highlighter, ChevronDown, ChevronUp, MessageSquareText } from "lucide-react";
+import { Search, FileText, FolderKanban, Command, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { fetchFromApi } from "@/lib/api";
 import { PaperResult, SearchResults } from "@/lib/schema";
 import { useProjects } from "@/hooks/useProjects";
-
-// Helper to check if text contains search term
-const textMatchesSearch = (text: string | null | undefined, searchTerm: string): boolean => {
-    if (!text) return false;
-    return text.toLowerCase().includes(searchTerm.toLowerCase());
-};
 
 // Helper to highlight search terms in text
 const highlightSearchTerm = (text: string, searchTerm: string): React.ReactNode => {
@@ -41,7 +35,6 @@ export function HomeSearch() {
     const [hasSearched, setHasSearched] = useState(false);
     const [papers, setPapers] = useState<PaperResult[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
-    const [expandedDocumentId, setExpandedDocumentId] = useState<string | null>(null);
     const { projects: allProjects } = useProjects();
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -156,9 +149,7 @@ export function HomeSearch() {
                 // Check if this request was aborted
                 if (controller.signal.aborted) return;
 
-                // Keep full PaperResult to access highlights and annotations
-                setPapers(searchResponse?.papers || []);
-                setExpandedDocumentId(null);
+                setPapers(searchResponse?.items || []);
                 setHasSearched(true);
                 setIsLoading(false);
             } catch (error) {
@@ -292,128 +283,32 @@ export function HomeSearch() {
                                     </p>
                                     {papers.map((paper, idx) => {
                                         const itemIndex = filteredProjects.length + idx;
-                                        // Find matching highlights
-                                        const matchingHighlights = paper.highlights?.filter(h =>
-                                            textMatchesSearch(h.raw_text, query)
-                                        ) || [];
-                                        const matchingAnnotations = paper.annotations?.filter(a =>
-                                            textMatchesSearch(a.content, query)
-                                        ) || [];
-                                        const hasMatches = matchingHighlights.length > 0 || matchingAnnotations.length > 0;
-                                        const isExpanded = expandedDocumentId === paper.document_id;
+                                        const snippet = paper.snippets?.[0];
 
                                         return (
-                                            <div key={paper.document_id} className="mb-1">
-                                                <button
-                                                    data-index={itemIndex}
-                                                    onClick={() => handleSelect("paper", paper.document_id)}
-                                                    onMouseEnter={() => setSelectedIndex(itemIndex)}
-                                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${selectedIndex === itemIndex ? "bg-accent" : "hover:bg-accent"}`}
-                                                >
-                                                    <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="font-medium truncate">{paper.title || "Untitled Paper"}</p>
-                                                        {paper.authors && paper.authors.length > 0 && (
-                                                            <p className="text-sm text-muted-foreground truncate">
-                                                                {paper.authors.slice(0, 2).join(", ")}
-                                                                {paper.authors.length > 2 && " et al."}
-                                                            </p>
-                                                        )}
-                                                        {/* Match indicator */}
-                                                        {hasMatches && (
-                                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                                                {matchingHighlights.length > 0 && (
-                                                                    <span className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
-                                                                        <Highlighter className="h-3 w-3" />
-                                                                        <span>{matchingHighlights.length} highlight{matchingHighlights.length !== 1 ? 's' : ''}</span>
-                                                                    </span>
-                                                                )}
-                                                                {matchingAnnotations.length > 0 && (
-                                                                    <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                                                                        <MessageSquareText className="h-3 w-3" />
-                                                                        <span>{matchingAnnotations.length} note{matchingAnnotations.length !== 1 ? 's' : ''}</span>
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    {/* Expand/collapse button for matches */}
-                                                    {hasMatches && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setExpandedDocumentId(isExpanded ? null : paper.document_id);
-                                                            }}
-                                                            className="p-1 hover:bg-accent rounded"
-                                                        >
-                                                            {isExpanded ? (
-                                                                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                                                            ) : (
-                                                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                                            )}
-                                                        </button>
+                                            <button
+                                                key={paper.document_id}
+                                                data-index={itemIndex}
+                                                onClick={() => handleSelect("paper", paper.document_id)}
+                                                onMouseEnter={() => setSelectedIndex(itemIndex)}
+                                                className={`mb-1 w-full flex items-start gap-3 px-3 py-2 rounded-lg text-left transition-colors ${selectedIndex === itemIndex ? "bg-accent" : "hover:bg-accent"}`}
+                                            >
+                                                <FileText className="h-4 w-4 text-blue-500 mt-1 flex-shrink-0" />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-medium truncate">{paper.title || "Untitled Paper"}</p>
+                                                    {paper.authors && paper.authors.length > 0 && (
+                                                        <p className="text-sm text-muted-foreground truncate">
+                                                            {paper.authors.slice(0, 2).join(", ")}
+                                                            {paper.authors.length > 2 && " et al."}
+                                                        </p>
                                                     )}
-                                                </button>
-
-                                                {/* Expanded matching highlights */}
-                                                {hasMatches && isExpanded && (
-                                                    <div className="ml-10 mr-3 mb-2 space-y-2">
-                                                        {matchingHighlights.slice(0, 3).map((highlight) => (
-                                                            <button
-                                                                key={highlight.id}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setIsOpen(false);
-                                                                    setQuery("");
-                                                                    router.push(`/paper/${paper.document_id}?rsf=annotations`);
-                                                                }}
-                                                                className="w-full p-2 text-sm border-l-2 border-yellow-400 bg-yellow-50/50 dark:bg-yellow-950/20 rounded-r text-left hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
-                                                            >
-                                                                <div className="flex items-start gap-2">
-                                                                    <Highlighter className="h-3 w-3 text-yellow-600 mt-0.5 flex-shrink-0" />
-                                                                    <p className="line-clamp-2">
-                                                                        {highlightSearchTerm(highlight.raw_text, query)}
-                                                                    </p>
-                                                                </div>
-                                                                {highlight.page_number && (
-                                                                    <p className="text-xs text-muted-foreground mt-1 ml-5">
-                                                                        Page {highlight.page_number}
-                                                                    </p>
-                                                                )}
-                                                            </button>
-                                                        ))}
-                                                        {matchingHighlights.length > 3 && (
-                                                            <p className="text-xs text-muted-foreground ml-5">
-                                                                +{matchingHighlights.length - 3} more
-                                                            </p>
-                                                        )}
-                                                        {matchingAnnotations.slice(0, 3).map((annotation) => (
-                                                            <button
-                                                                key={annotation.id}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setIsOpen(false);
-                                                                    setQuery("");
-                                                                    router.push(`/paper/${paper.document_id}?rsf=annotations`);
-                                                                }}
-                                                                className="w-full p-2 text-sm border-l-2 border-blue-400 bg-blue-50/50 dark:bg-blue-950/20 rounded-r text-left hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                                                            >
-                                                                <div className="flex items-start gap-2">
-                                                                    <MessageSquareText className="h-3 w-3 text-blue-600 mt-0.5 flex-shrink-0" />
-                                                                    <p className="line-clamp-2">
-                                                                        {highlightSearchTerm(annotation.content, query)}
-                                                                    </p>
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                        {matchingAnnotations.length > 3 && (
-                                                            <p className="text-xs text-muted-foreground ml-5">
-                                                                +{matchingAnnotations.length - 3} more
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    {snippet && (
+                                                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                                                            {highlightSearchTerm(snippet.text, query)}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </button>
                                         );
                                     })}
                                 </div>

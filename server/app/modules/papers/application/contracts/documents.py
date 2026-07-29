@@ -149,3 +149,10 @@ class CollectPublicPaperResponse(BaseModel):
 class DocumentFileUrlResponse(BaseModel):
     file_url: str
     expires_in_seconds: int
+
+
+class DocumentContentResponse(BaseModel):
+    document_id: UUID
+    title: str | None
+    abstract: str | None
+    content: str | None

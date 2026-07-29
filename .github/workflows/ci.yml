@@ -200,6 +200,7 @@ jobs:
           SCHOLENS_MIGRATION_DATABASE_URL: postgresql://migrator:password@postgres.example.invalid/sanchezcloud
           SCHOLENS_AUTH_JWT_SECRET: fixture-secret-at-least-thirty-two-bytes
           SCHOLENS_ADMIN_SESSION_SECRET: fixture-admin-session-secret-at-least-thirty-two-bytes
+          SCHOLENS_PAPER_SEARCH_CURSOR_SECRET: fixture-search-cursor-secret-at-least-thirty-two-bytes
           SCHOLENS_RABBITMQ_PASSWORD: fixture-rabbit-password
           SCHOLENS_REDIS_PASSWORD: fixture-redis-password
           SCHOLENS_ALIYUN_DM_ACCESS_KEY_ID: fixture
@@ -476,6 +477,126 @@ jobs:
                ))::int
              );
              ROLLBACK;"
+
+          PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U scholens_app -d sanchezcloud \
+            -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO auth.users (email, password_hash)
+               VALUES
+                 ('ci-search-owner@example.com', 'fixture'),
+                 ('ci-search-collaborator@example.com', 'fixture'),
+                 ('ci-search-outsider@example.com', 'fixture');
+             INSERT INTO scholens.documents
+               (id, sha256, original_filename, mime_type, size_bytes,
+                s3_object_key, title, raw_content, processing_status,
+                created_by_id)
+               VALUES
+                 (
+                   '10000000-0000-0000-0000-000000000001',
+                   repeat('1', 64), 'title.pdf', 'application/pdf', 100,
+                   'documents/title/source.pdf', 'Neural retrieval systems',
+                   'metadata-only fixture', 'completed',
+                   (SELECT id FROM auth.users
+                    WHERE email = 'ci-search-owner@example.com')
+                 ),
+                 (
+                   '10000000-0000-0000-0000-000000000002',
+                   repeat('2', 64), 'body.pdf', 'application/pdf', 100,
+                   'documents/body/source.pdf', 'Body match',
+                   'neural retrieval appears in this body', 'completed',
+                   (SELECT id FROM auth.users
+                    WHERE email = 'ci-search-owner@example.com')
+                 ),
+                 (
+                   '10000000-0000-0000-0000-000000000003',
+                   repeat('3', 64), 'project.pdf', 'application/pdf', 100,
+                   'documents/project/source.pdf', 'Project neural retrieval',
+                   'project-only fixture', 'completed',
+                   (SELECT id FROM auth.users
+                    WHERE email = 'ci-search-owner@example.com')
+                 ),
+                 (
+                   '10000000-0000-0000-0000-000000000004',
+                   repeat('4', 64), 'hidden.pdf', 'application/pdf', 100,
+                   'documents/hidden/source.pdf', 'Hidden neural retrieval',
+                   'must remain inaccessible', 'completed',
+                   (SELECT id FROM auth.users
+                    WHERE email = 'ci-search-owner@example.com')
+                 );
+             INSERT INTO scholens.library_papers
+               (id, user_id, document_id)
+               VALUES
+                 (
+                   '10000000-0000-0000-0000-000000000021',
+                   (SELECT id FROM auth.users
+                    WHERE email = 'ci-search-owner@example.com'),
+                   '10000000-0000-0000-0000-000000000001'
+                 ),
+                 (
+                   '10000000-0000-0000-0000-000000000022',
+                   (SELECT id FROM auth.users
+                    WHERE email = 'ci-search-owner@example.com'),
+                   '10000000-0000-0000-0000-000000000002'
+                 );
+             INSERT INTO scholens.document_passages
+               (document_id, start_line, end_line, content)
+               VALUES
+                 (
+                   '10000000-0000-0000-0000-000000000002',
+                   40, 44, 'neural retrieval appears in this body'
+                 ),
+                 (
+                   '10000000-0000-0000-0000-000000000003',
+                   10, 14, 'project neural retrieval passage'
+                 );
+             INSERT INTO scholens.projects
+               (id, title, description, owner_id)
+               VALUES (
+                 '10000000-0000-0000-0000-000000000010',
+                 'Search integration project', 'fixture',
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-search-owner@example.com')
+               );
+             INSERT INTO scholens.project_collaborators
+               (id, project_id, user_id, can_edit_project,
+                can_manage_papers, can_manage_collaborators)
+               VALUES (
+                 '10000000-0000-0000-0000-000000000011',
+                 '10000000-0000-0000-0000-000000000010',
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-search-collaborator@example.com'),
+                 true, true, false
+               );
+             INSERT INTO scholens.project_papers
+               (id, document_id, project_id, added_by_id)
+               VALUES (
+                 '10000000-0000-0000-0000-000000000012',
+                 '10000000-0000-0000-0000-000000000003',
+                 '10000000-0000-0000-0000-000000000010',
+                 (SELECT id FROM auth.users
+                  WHERE email = 'ci-search-owner@example.com')
+               );"
+
+          docker run --rm --network host \
+            -e DATABASE_URL="postgresql+psycopg2://scholens_app:${APP_PASSWORD}@127.0.0.1:5432/sanchezcloud" \
+            scholens-api:ci python -m app.scripts.verify_paper_search
+
+          PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U scholens_app -d sanchezcloud \
+            -v ON_ERROR_STOP=1 -c \
+            "DELETE FROM scholens.projects
+               WHERE id = '10000000-0000-0000-0000-000000000010';
+             DELETE FROM scholens.library_papers
+               WHERE id IN (
+                 '10000000-0000-0000-0000-000000000021',
+                 '10000000-0000-0000-0000-000000000022'
+               );
+             DELETE FROM scholens.documents
+               WHERE id BETWEEN
+                 '10000000-0000-0000-0000-000000000001'
+                 AND '10000000-0000-0000-0000-000000000004';"
+          PGPASSWORD="$PGPASSWORD" psql -h 127.0.0.1 -U postgres -d sanchezcloud \
+            -v ON_ERROR_STOP=1 -c \
+            "DELETE FROM auth.users
+               WHERE email LIKE 'ci-search-%@example.invalid';"
 
           if PGPASSWORD="$APP_PASSWORD" psql -h 127.0.0.1 -U scholens_app -d sanchezcloud \
             -v ON_ERROR_STOP=1 -c "CREATE TABLE public.app_must_not_create (id integer)"; then

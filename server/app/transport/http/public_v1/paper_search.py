@@ -1,5 +1,8 @@
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.bootstrap.providers import build_paper_search
+from app.bootstrap.providers import (
+    build_paper_search,
+    build_project_document_visibility,
+)
 from app.bootstrap.settings import AppSettings
 from app.database.database import get_db
 from app.database.telemetry import track_event
@@ -44,6 +47,7 @@ async def search_knowledge_base_endpoint(
     results = SearchPapers(
         build_paper_search(backend=settings.paper_search_backend, db=db),
         SearchCursorCodec(settings.paper_search_cursor_secret),
+        build_project_document_visibility(db=db),
     )(
         actor=current_user,
         request=request,
@@ -53,9 +57,7 @@ async def search_knowledge_base_endpoint(
         user_id=str(current_user.id),
         properties={
             "query": request.query,
-            "total_papers": results.total_papers,
-            "total_highlights": results.total_highlights,
-            "total_annotations": results.total_annotations,
+            "total": results.total,
             "limit": request.limit,
             "has_cursor": request.cursor is not None,
         },
@@ -77,5 +79,6 @@ async def get_search_stats(
     """
     settings: AppSettings = request.app.state.settings
     return GetPaperSearchStats(
-        build_paper_search(backend=settings.paper_search_backend, db=db)
+        build_paper_search(backend=settings.paper_search_backend, db=db),
+        build_project_document_visibility(db=db),
     )(actor=current_user)

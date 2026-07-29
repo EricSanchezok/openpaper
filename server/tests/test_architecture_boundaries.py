@@ -69,6 +69,22 @@ def test_repositories_never_commit_the_callers_transaction() -> None:
     assert violations == []
 
 
+def test_paper_agent_and_mcp_adapters_share_application_capabilities() -> None:
+    agent = APP_ROOT / "transport" / "agent" / "paper_tools.py"
+    mcp = APP_ROOT / "transport" / "mcp" / "papers.py"
+    combined_imports = _imports(agent) | _imports(mcp)
+
+    assert {
+        "app.modules.papers.application.content",
+        "app.modules.papers.application.search",
+    } <= combined_imports
+    assert all(".infrastructure" not in imported for imported in _imports(agent))
+    for imported in _imports(mcp):
+        assert ".infrastructure" not in imported
+        assert not imported.startswith("app.transport.http")
+        assert imported != "requests"
+
+
 def test_only_versioned_public_routes_are_exposed() -> None:
     paths = set(app.openapi()["paths"])
     public_business_paths = {path for path in paths if path.startswith("/api/")}

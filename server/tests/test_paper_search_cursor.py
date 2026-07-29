@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from typing import Callable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from app.modules.papers.application.contracts.search import (
@@ -11,6 +11,9 @@ from app.modules.papers.application.contracts.search import (
     PaperSearchStats,
 )
 from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
+from app.modules.projects.application.document_visibility import (
+    ListAccessibleProjectDocuments,
+)
 from app.shared.application import Actor
 from app.shared.domain import AppError
 
@@ -35,8 +38,6 @@ def _paper() -> PaperSearchResult:
         publish_date=None,
         created_at=now,
         last_accessed_at=now,
-        highlights=[],
-        annotations=[],
     )
 
 
@@ -52,19 +53,36 @@ class _SearchBackend:
     ) -> PaperSearchResponse:
         self.requests.append(request)
         return PaperSearchResponse(
-            papers=[_paper()],
-            total_papers=2,
-            total_highlights=0,
-            total_annotations=0,
+            items=[_paper()],
+            total=2,
         )
 
-    def stats(self, *, actor: Actor) -> PaperSearchStats:
+    def stats(
+        self,
+        *,
+        actor: Actor,
+        accessible_project_document_ids: tuple[UUID, ...],
+    ) -> PaperSearchStats:
         raise AssertionError("stats is not used by this test")
+
+
+class _ProjectDocuments:
+    def list_accessible_document_ids(
+        self,
+        *,
+        actor: Actor,
+        project_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        return ()
 
 
 def test_search_cursor_round_trip_uses_backend_neutral_offset() -> None:
     backend = _SearchBackend()
-    search = SearchPapers(backend, SearchCursorCodec("x" * 32))
+    search = SearchPapers(
+        backend,
+        SearchCursorCodec("x" * 32),
+        ListAccessibleProjectDocuments(_ProjectDocuments()),
+    )
 
     first_page = search(
         actor=_actor(),
@@ -101,12 +119,12 @@ def test_search_cursor_rejects_tampering_and_query_reuse(
     query: str,
 ) -> None:
     codec = SearchCursorCodec("x" * 32)
-    cursor = codec.encode(query="graph retrieval", offset=10)
+    cursor = codec.encode(fingerprint="graph retrieval", offset=10)
 
     with pytest.raises(AppError) as error:
         codec.decode(
             cursor=cursor_mutation(cursor),
-            query=query,
+            fingerprint=query,
         )
 
     assert error.value.code == "search_cursor_expired"

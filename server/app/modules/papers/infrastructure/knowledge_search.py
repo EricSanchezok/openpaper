@@ -1,265 +1,133 @@
-"""Library search over canonical documents and visible research threads."""
+"""PostgreSQL FTS adapter for canonical papers and parsed passages."""
 
+from __future__ import annotations
+
+from collections import defaultdict
 from uuid import UUID
 
-from app.database.models import (
-    AnnotationComment,
-    Document,
-    HighlightThread,
-    LibraryPaper,
-    ResearchItem,
-    ResearchItemKind,
-    ResearchScopeType,
-)
 from app.helpers.s3 import s3_service
 from app.modules.papers.application.contracts.search import (
-    AnnotationSearchResult,
-    HighlightSearchResult,
     PaperSearchQuery,
     PaperSearchResponse,
     PaperSearchResult,
+    PaperSearchScope,
+    PaperSearchSnippet,
+    PaperSearchSort,
     PaperSearchStats,
 )
-from app.shared.application import Actor
-from app.modules.projects.infrastructure.models import (
-    Project,
-    ProjectCollaborator,
-    ProjectPaper,
+from app.modules.papers.infrastructure.models import (
+    Document,
+    DocumentPassage,
+    LibraryPaper,
 )
-from sqlalchemy import ColumnElement, Select, and_, func, or_, select
+from app.shared.application import Actor
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 
-def _visible_research(user_id: int) -> ColumnElement[bool]:
-    return or_(
-        ResearchItem.is_shared.is_(True),
-        ResearchItem.created_by_id == user_id,
+def _visibility_condition(
+    *,
+    actor: Actor,
+    scope: PaperSearchScope,
+    project_document_ids: tuple[UUID, ...],
+) -> ColumnElement[bool]:
+    in_library = LibraryPaper.user_id == actor.id
+    in_projects = Document.id.in_(project_document_ids)
+    if scope is PaperSearchScope.LIBRARY:
+        return in_library
+    if scope is PaperSearchScope.PROJECTS:
+        return in_projects
+    return or_(in_library, in_projects)
+
+
+def _matching_fields(document: Document, query: str, *, has_passage: bool) -> list[str]:
+    needle = query.casefold()
+    fields: list[str] = []
+    candidates = (
+        ("title", document.title),
+        ("authors", " ".join(document.authors or [])),
+        ("keywords", " ".join(document.keywords or [])),
+        ("abstract", document.abstract),
     )
+    for name, value in candidates:
+        if value and needle in value.casefold():
+            fields.append(name)
+    if has_passage or (
+        document.raw_content and needle in document.raw_content.casefold()
+    ):
+        fields.append("body")
+    return fields
 
 
-def _accessible_project_documents(user_id: int) -> Select[tuple[UUID]]:
-    return (
-        select(ProjectPaper.document_id)
-        .join(Project, Project.id == ProjectPaper.project_id)
-        .outerjoin(
-            ProjectCollaborator,
-            and_(
-                ProjectCollaborator.project_id == Project.id,
-                ProjectCollaborator.user_id == user_id,
-            ),
-        )
-        .where(
-            or_(
-                Project.owner_id == user_id,
-                ProjectCollaborator.user_id == user_id,
+def _fallback_snippet(document: Document, query: str) -> PaperSearchSnippet | None:
+    if not document.raw_content:
+        return None
+    lines = document.raw_content.splitlines()
+    needle = query.casefold()
+    for index, line in enumerate(lines):
+        if needle in line.casefold():
+            start = max(index - 1, 0)
+            end = min(index + 2, len(lines))
+            return PaperSearchSnippet(
+                text="\n".join(lines[start:end])[:1_200],
+                start_line=start + 1,
+                end_line=end,
             )
-        )
-    )
+    return None
 
 
-def search_knowledge_base(
+def _matching_passages(
     db: Session,
-    user: Actor,
-    query: str,
-    limit: int = 50,
-    offset: int = 0,
-) -> PaperSearchResponse:
-    search_pattern = f"%{query.lower()}%"
-    text_query = func.websearch_to_tsquery("pg_catalog.english", query)
-    matching_highlight_documents = (
-        select(ResearchItem.document_id)
-        .join(
-            HighlightThread,
-            HighlightThread.research_item_id == ResearchItem.id,
+    *,
+    document_ids: list[UUID],
+    text_query: object,
+) -> dict[UUID, list[PaperSearchSnippet]]:
+    if not document_ids:
+        return {}
+    passage_rank = func.ts_rank_cd(DocumentPassage.ts_vector, text_query)
+    ranked = (
+        select(
+            DocumentPassage.document_id.label("document_id"),
+            DocumentPassage.start_line.label("start_line"),
+            DocumentPassage.end_line.label("end_line"),
+            DocumentPassage.content.label("content"),
+            func.row_number()
+            .over(
+                partition_by=DocumentPassage.document_id,
+                order_by=(passage_rank.desc(), DocumentPassage.start_line),
+            )
+            .label("position"),
         )
         .where(
-            ResearchItem.scope_type == ResearchScopeType.DOCUMENT.value,
-            _visible_research(user.id),
-            func.lower(HighlightThread.quote_text).like(search_pattern),
+            DocumentPassage.document_id.in_(document_ids),
+            DocumentPassage.ts_vector.op("@@")(text_query),
         )
+        .subquery()
     )
-    matching_comment_documents = (
-        select(ResearchItem.document_id)
-        .join(
-            AnnotationComment,
-            AnnotationComment.thread_id == ResearchItem.id,
+    rows = db.execute(
+        select(
+            ranked.c.document_id,
+            ranked.c.start_line,
+            ranked.c.end_line,
+            ranked.c.content,
         )
-        .where(
-            ResearchItem.scope_type == ResearchScopeType.DOCUMENT.value,
-            _visible_research(user.id),
-            func.lower(AnnotationComment.content).like(search_pattern),
-        )
-    )
-    paper_statement = (
-        select(Document)
-        .outerjoin(
-            LibraryPaper,
-            and_(
-                LibraryPaper.document_id == Document.id,
-                LibraryPaper.user_id == user.id,
-            ),
-        )
-        .where(
-            or_(
-                LibraryPaper.user_id == user.id,
-                Document.id.in_(_accessible_project_documents(user.id)),
-            ),
-            or_(
-                Document.ts_vector.op("@@")(text_query),
-                Document.id.in_(matching_highlight_documents),
-                Document.id.in_(matching_comment_documents),
-            ),
-        )
-        .order_by(
-            func.ts_rank_cd(Document.ts_vector, text_query).desc(),
-            LibraryPaper.last_accessed_at.desc().nullslast(),
-            Document.id,
-        )
-    )
-    total_papers = int(
-        db.scalar(
-            select(func.count()).select_from(paper_statement.order_by(None).subquery())
-        )
-        or 0
-    )
-    papers = list(db.scalars(paper_statement.offset(offset).limit(limit)).all())
-    document_ids = [paper.id for paper in papers]
-    library_by_document = {
-        entry.document_id: entry
-        for entry in db.scalars(
-            select(LibraryPaper).where(
-                LibraryPaper.user_id == user.id,
-                LibraryPaper.document_id.in_(document_ids),
-            )
-        ).all()
-    }
-
-    highlight_rows = (
-        db.execute(
-            select(ResearchItem, HighlightThread)
-            .join(
-                HighlightThread,
-                HighlightThread.research_item_id == ResearchItem.id,
-            )
-            .where(
-                ResearchItem.document_id.in_(document_ids),
-                _visible_research(user.id),
-                func.lower(HighlightThread.quote_text).like(search_pattern),
-            )
-            .order_by(ResearchItem.created_at.desc())
-        ).all()
-        if document_ids
-        else []
-    )
-    comment_rows = (
-        db.execute(
-            select(ResearchItem, HighlightThread, AnnotationComment)
-            .join(
-                HighlightThread,
-                HighlightThread.research_item_id == ResearchItem.id,
-            )
-            .join(
-                AnnotationComment,
-                AnnotationComment.thread_id == ResearchItem.id,
-            )
-            .where(
-                ResearchItem.document_id.in_(document_ids),
-                _visible_research(user.id),
-                func.lower(AnnotationComment.content).like(search_pattern),
-            )
-            .order_by(AnnotationComment.created_at.desc())
-        ).all()
-        if document_ids
-        else []
-    )
-
-    highlights_by_document: dict[
-        object, list[tuple[ResearchItem, HighlightThread]]
-    ] = {}
-    for item, thread in highlight_rows:
-        highlights_by_document.setdefault(item.document_id, []).append((item, thread))
-    comments_by_document: dict[
-        object,
-        list[tuple[ResearchItem, HighlightThread, AnnotationComment]],
-    ] = {}
-    for item, thread, comment in comment_rows:
-        comments_by_document.setdefault(item.document_id, []).append(
-            (item, thread, comment)
-        )
-
-    results: list[PaperSearchResult] = []
-    total_highlights = 0
-    total_annotations = 0
-    for paper in papers:
-        highlight_results = [
-            HighlightSearchResult(
-                id=str(item.id),
-                raw_text=thread.quote_text,
-                start_offset=thread.start_offset,
-                end_offset=thread.end_offset,
-                page_number=thread.page_number,
-                role=thread.role,
-                created_at=item.created_at,
-            )
-            for item, thread in highlights_by_document.get(paper.id, [])
-        ]
-        annotation_results = [
-            AnnotationSearchResult(
-                id=str(comment.id),
-                content=comment.content,
-                role=comment.role,
-                created_at=comment.created_at,
-                highlight=HighlightSearchResult(
-                    id=str(item.id),
-                    raw_text=thread.quote_text,
-                    start_offset=thread.start_offset,
-                    end_offset=thread.end_offset,
-                    page_number=thread.page_number,
-                    role=thread.role,
-                    created_at=item.created_at,
-                ),
-            )
-            for item, thread, comment in comments_by_document.get(paper.id, [])
-        ]
-        library_paper = library_by_document.get(paper.id)
-        results.append(
-            PaperSearchResult(
-                document_id=paper.id,
-                title=paper.title,
-                authors=paper.authors,
-                abstract=paper.abstract,
-                status=library_paper.status
-                if library_paper
-                else paper.processing_status,
-                publish_date=paper.publish_date,
-                created_at=paper.created_at,
-                last_accessed_at=(
-                    library_paper.last_accessed_at
-                    if library_paper
-                    else paper.created_at
-                ),
-                highlights=highlight_results,
-                annotations=annotation_results,
-                preview_url=(
-                    s3_service.generate_presigned_url(paper.preview_s3_key)
-                    if paper.preview_s3_key
-                    else None
-                ),
+        .where(ranked.c.position <= 3)
+        .order_by(ranked.c.document_id, ranked.c.position)
+    ).all()
+    snippets: defaultdict[UUID, list[PaperSearchSnippet]] = defaultdict(list)
+    for document_id, start_line, end_line, content in rows:
+        snippets[document_id].append(
+            PaperSearchSnippet(
+                text=content[:1_200],
+                start_line=start_line,
+                end_line=end_line,
             )
         )
-        total_highlights += len(highlight_results)
-        total_annotations += len(annotation_results)
-
-    return PaperSearchResponse(
-        papers=results,
-        total_papers=total_papers,
-        total_highlights=total_highlights,
-        total_annotations=total_annotations,
-    )
+    return dict(snippets)
 
 
 class PostgresPaperSearch:
-    """PostgreSQL implementation; callers depend only on PaperSearchPort."""
+    """Replaceable FTS implementation behind the PaperSearchPort."""
 
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -270,50 +138,129 @@ class PostgresPaperSearch:
         actor: Actor,
         request: PaperSearchQuery,
     ) -> PaperSearchResponse:
-        return search_knowledge_base(
+        text_query = func.websearch_to_tsquery("pg_catalog.english", request.query)
+        visibility = _visibility_condition(
+            actor=actor,
+            scope=request.scope,
+            project_document_ids=request.accessible_project_document_ids,
+        )
+        statement = (
+            select(Document, LibraryPaper)
+            .outerjoin(
+                LibraryPaper,
+                and_(
+                    LibraryPaper.document_id == Document.id,
+                    LibraryPaper.user_id == actor.id,
+                ),
+            )
+            .where(
+                visibility,
+                Document.ts_vector.op("@@")(text_query),
+            )
+        )
+        if request.filters.published_from is not None:
+            statement = statement.where(
+                Document.publish_date >= request.filters.published_from
+            )
+        if request.filters.published_to is not None:
+            statement = statement.where(
+                Document.publish_date <= request.filters.published_to
+            )
+        if request.filters.document_ids is not None:
+            statement = statement.where(Document.id.in_(request.filters.document_ids))
+
+        rank = func.ts_rank_cd(Document.ts_vector, text_query)
+        if request.sort is PaperSearchSort.RECENT:
+            statement = statement.order_by(
+                Document.created_at.desc(),
+                Document.id,
+            )
+        else:
+            statement = statement.order_by(
+                rank.desc(),
+                LibraryPaper.last_accessed_at.desc().nullslast(),
+                Document.id,
+            )
+
+        total = int(
+            self._db.scalar(
+                select(func.count()).select_from(statement.order_by(None).subquery())
+            )
+            or 0
+        )
+        rows = self._db.execute(
+            statement.offset(request.offset).limit(request.limit)
+        ).all()
+        document_ids = [document.id for document, _entry in rows]
+        passages = _matching_passages(
             self._db,
-            user=actor,
-            query=request.query,
-            limit=request.limit,
-            offset=request.offset,
+            document_ids=document_ids,
+            text_query=text_query,
         )
 
-    def stats(self, *, actor: Actor) -> PaperSearchStats:
-        total_papers = int(
+        items: list[PaperSearchResult] = []
+        for document, library_entry in rows:
+            snippets = passages.get(document.id, [])
+            if not snippets:
+                fallback = _fallback_snippet(document, request.query)
+                if fallback is not None:
+                    snippets = [fallback]
+            items.append(
+                PaperSearchResult(
+                    document_id=document.id,
+                    title=document.title,
+                    authors=document.authors,
+                    abstract=document.abstract,
+                    status=(
+                        library_entry.status
+                        if library_entry is not None
+                        else document.processing_status
+                    ),
+                    publish_date=document.publish_date,
+                    created_at=document.created_at,
+                    last_accessed_at=(
+                        library_entry.last_accessed_at
+                        if library_entry is not None
+                        else document.created_at
+                    ),
+                    preview_url=(
+                        s3_service.generate_presigned_url(document.preview_s3_key)
+                        if document.preview_s3_key
+                        else None
+                    ),
+                    matched_fields=_matching_fields(
+                        document,
+                        request.query,
+                        has_passage=bool(snippets),
+                    ),
+                    snippets=snippets,
+                )
+            )
+        return PaperSearchResponse(items=items, total=total)
+
+    def stats(
+        self,
+        *,
+        actor: Actor,
+        accessible_project_document_ids: tuple[UUID, ...],
+    ) -> PaperSearchStats:
+        total = int(
             self._db.scalar(
-                select(func.count(Document.id)).where(
+                select(func.count(Document.id.distinct()))
+                .outerjoin(
+                    LibraryPaper,
+                    and_(
+                        LibraryPaper.document_id == Document.id,
+                        LibraryPaper.user_id == actor.id,
+                    ),
+                )
+                .where(
                     or_(
-                        Document.id.in_(
-                            select(LibraryPaper.document_id).where(
-                                LibraryPaper.user_id == actor.id
-                            )
-                        ),
-                        Document.id.in_(_accessible_project_documents(actor.id)),
+                        LibraryPaper.user_id == actor.id,
+                        Document.id.in_(accessible_project_document_ids),
                     )
                 )
             )
             or 0
         )
-        total_highlights = int(
-            self._db.scalar(
-                select(func.count(ResearchItem.id)).where(
-                    ResearchItem.created_by_id == actor.id,
-                    ResearchItem.kind == ResearchItemKind.HIGHLIGHT_THREAD.value,
-                )
-            )
-            or 0
-        )
-        total_annotations = int(
-            self._db.scalar(
-                select(func.count(AnnotationComment.id)).where(
-                    AnnotationComment.created_by_id == actor.id
-                )
-            )
-            or 0
-        )
-        return PaperSearchStats(
-            total_papers=total_papers,
-            total_highlights=total_highlights,
-            total_annotations=total_annotations,
-            searchable_items=total_papers + total_highlights + total_annotations,
-        )
+        return PaperSearchStats(total_papers=total, searchable_items=total)

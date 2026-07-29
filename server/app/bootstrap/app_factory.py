@@ -38,6 +38,7 @@ from app.transport.http.public_v1.research_generation import (
     project_generation_router,
 )
 from app.transport.http.public_v1.paper_search import search_router
+from app.transport.http.public_v1.research_search import research_search_router
 from app.transport.http.public_v1.billing import subscription_router
 from app.transport.http.webhooks_v1.stripe import router as stripe_webhook_router
 from app.transport.http.public_v1.zotero import zotero_router
@@ -93,6 +94,7 @@ def _public_router() -> APIRouter:
     router.include_router(projects_invitation_router)
     router.include_router(paper_search_router, prefix="/discovery/papers")
     router.include_router(search_router, prefix="/search/papers")
+    router.include_router(research_search_router, prefix="/search/research")
     router.include_router(document_upload_router, prefix="/paper-ingestions")
     router.include_router(document_research_router, prefix="/papers")
     router.include_router(project_research_router, prefix="/projects")

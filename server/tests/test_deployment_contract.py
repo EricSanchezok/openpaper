@@ -114,6 +114,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         "MOSS_API_KEY",
         "MOSS_MAX_AUDIO_BYTES",
         "JOBS_WEBHOOK_SIGNING_SECRET",
+        "PAPER_SEARCH_CURSOR_SECRET",
         "NEXT_PUBLIC_API_URL",
     ):
         assert f"{variable}=" in catalog
@@ -130,10 +131,12 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "SCHOLENS_MOSS_API_KEY=" in runtime
     assert "SCHOLENS_MOSS_MAX_AUDIO_BYTES=" in runtime
     assert "SCHOLENS_JOBS_WEBHOOK_SIGNING_SECRET=" in runtime
+    assert "SCHOLENS_PAPER_SEARCH_CURSOR_SECRET=" in runtime
     assert "ANYSEARCH_MCP_URL:" in compose
     assert "SCHOLIGHT_MCP_URL:" in compose
     assert "MOSS_MAX_AUDIO_BYTES:" in compose
     assert "DEEPSEEK_STRUCTURED_RETRIES:" in compose
+    assert "PAPER_SEARCH_CURSOR_SECRET:" in compose
     for legacy_variable in (
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
