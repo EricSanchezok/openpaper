@@ -1,5 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-    ?? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
+import { apiUrl } from "./api-config";
 
 const REFRESH_LOCK = "scholens-auth-refresh";
 const CHANNEL_NAME = "scholens-auth";
@@ -36,7 +35,7 @@ export function clearSession(announce = true): void {
 }
 
 async function rotateRefreshToken(): Promise<string> {
-    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+    const response = await fetch(apiUrl("/auth/refresh"), {
         method: "POST",
         credentials: "include",
     });

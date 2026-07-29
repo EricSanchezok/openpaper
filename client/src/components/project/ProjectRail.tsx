@@ -55,7 +55,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
 
     const handleUnlink = async () => {
         try {
-            await fetchFromApi(`/api/projects/${projectId}/papers/${paper.id}`, {
+            await fetchFromApi(`/projects/${projectId}/papers/${paper.id}`, {
                 method: "DELETE",
             });
             toast.success("Paper removed from project.");

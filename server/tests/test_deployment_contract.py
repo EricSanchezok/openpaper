@@ -192,9 +192,10 @@ def test_environment_catalog_covers_code_and_compose_references() -> None:
 def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     versions = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))
 
-    assert len(versions) == 2
+    assert len(versions) == 3
     baseline = versions[0].read_text(encoding="utf-8")
     identifier_migration = versions[1].read_text(encoding="utf-8")
+    search_migration = versions[2].read_text(encoding="utf-8")
     assert "down_revision: str | None = None" in baseline
     assert "scholens.document_content_trigger" in baseline
     assert "scholens.paper_passages_tsvector_trigger" in baseline
@@ -203,7 +204,10 @@ def test_migration_chain_preserves_non_orm_search_triggers() -> None:
     assert 'down_revision: str | None = "a21f80661812"' in identifier_migration
     assert "document_passages_tsvector_trigger" in identifier_migration
     assert "document_passages_tsvectorupdate" in identifier_migration
-    assert "discover_searches" not in baseline + identifier_migration
+    assert 'down_revision: str | None = "d9079f37cdb1"' in search_migration
+    for field in ("title", "authors", "keywords", "abstract", "raw_content"):
+        assert f"NEW.{field}" in search_migration
+    assert "discover_searches" not in baseline + identifier_migration + search_migration
 
 
 def test_global_discovery_surfaces_are_absent_from_client_sources() -> None:

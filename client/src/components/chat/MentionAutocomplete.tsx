@@ -38,7 +38,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Highlight search needs at least this many chars (the /search/local minimum).
+// Highlight search needs at least this many chars (the /search/papers minimum).
 const HIGHLIGHT_SEARCH_MIN_CHARS = 2;
 const HIGHLIGHT_SEARCH_DEBOUNCE_MS = 250;
 
@@ -230,7 +230,7 @@ export function useMentionAutocomplete({
 		[selection.highlights],
 	);
 
-	// Highlights aren't a client-side list, so we search /search/local for them
+	// Highlights aren't a client-side list, so we search /search/papers for them
 	// (debounced + abortable), flattening each paper's matching highlights.
 	const [highlightItems, setHighlightItems] = useState<MentionEntity[]>([]);
 	useEffect(() => {
@@ -243,8 +243,12 @@ export function useMentionAutocomplete({
 		const timer = setTimeout(async () => {
 			try {
 				const res: SearchResults = await fetchFromApi(
-					`/api/search/local?q=${encodeURIComponent(q)}&limit=5`,
-					{ signal: controller.signal },
+					"/search/papers",
+					{
+						method: "POST",
+						body: JSON.stringify({ query: q, limit: 5 }),
+						signal: controller.signal,
+					},
 				);
 				if (controller.signal.aborted) return;
 				// A highlight can match on its own text or on one of its
@@ -269,7 +273,7 @@ export function useMentionAutocomplete({
 							id: h.id,
 							label: h.raw_text,
 							sublabel: paper.title || undefined,
-							documentId: paper.id,
+							documentId: paper.document_id,
 							annotations: notesByHighlight.get(h.id),
 							matchContext,
 						});

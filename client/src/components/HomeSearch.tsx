@@ -65,7 +65,7 @@ export function HomeSearch() {
     const selectableItems = useMemo((): SelectableItem[] => {
         const items: SelectableItem[] = [];
         filteredProjects.forEach((p) => items.push({ type: "project", id: p.id }));
-        papers.forEach((p) => items.push({ type: "paper", id: p.id }));
+        papers.forEach((p) => items.push({ type: "paper", id: p.document_id }));
         // Always include "Ask knowledge base" option when there's a query
         if (query.trim()) {
             items.push({ type: "ask" });
@@ -145,8 +145,12 @@ export function HomeSearch() {
             try {
                 // Search papers
                 const searchResponse: SearchResults = await fetchFromApi(
-                    `/api/search/local?q=${encodeURIComponent(query)}&limit=5`,
-                    { signal: controller.signal }
+                    "/search/papers",
+                    {
+                        method: "POST",
+                        body: JSON.stringify({ query, limit: 5 }),
+                        signal: controller.signal,
+                    },
                 );
 
                 // Check if this request was aborted
@@ -296,13 +300,13 @@ export function HomeSearch() {
                                             textMatchesSearch(a.content, query)
                                         ) || [];
                                         const hasMatches = matchingHighlights.length > 0 || matchingAnnotations.length > 0;
-                                        const isExpanded = expandedDocumentId === paper.id;
+                                        const isExpanded = expandedDocumentId === paper.document_id;
 
                                         return (
-                                            <div key={paper.id} className="mb-1">
+                                            <div key={paper.document_id} className="mb-1">
                                                 <button
                                                     data-index={itemIndex}
-                                                    onClick={() => handleSelect("paper", paper.id)}
+                                                    onClick={() => handleSelect("paper", paper.document_id)}
                                                     onMouseEnter={() => setSelectedIndex(itemIndex)}
                                                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${selectedIndex === itemIndex ? "bg-accent" : "hover:bg-accent"}`}
                                                 >
@@ -338,7 +342,7 @@ export function HomeSearch() {
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setExpandedDocumentId(isExpanded ? null : paper.id);
+                                                                setExpandedDocumentId(isExpanded ? null : paper.document_id);
                                                             }}
                                                             className="p-1 hover:bg-accent rounded"
                                                         >
@@ -361,7 +365,7 @@ export function HomeSearch() {
                                                                     e.stopPropagation();
                                                                     setIsOpen(false);
                                                                     setQuery("");
-                                                                    router.push(`/paper/${paper.id}?rsf=annotations`);
+                                                                    router.push(`/paper/${paper.document_id}?rsf=annotations`);
                                                                 }}
                                                                 className="w-full p-2 text-sm border-l-2 border-yellow-400 bg-yellow-50/50 dark:bg-yellow-950/20 rounded-r text-left hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
                                                             >
@@ -390,7 +394,7 @@ export function HomeSearch() {
                                                                     e.stopPropagation();
                                                                     setIsOpen(false);
                                                                     setQuery("");
-                                                                    router.push(`/paper/${paper.id}?rsf=annotations`);
+                                                                    router.push(`/paper/${paper.document_id}?rsf=annotations`);
                                                                 }}
                                                                 className="w-full p-2 text-sm border-l-2 border-blue-400 bg-blue-50/50 dark:bg-blue-950/20 rounded-r text-left hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                                                             >

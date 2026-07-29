@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
 
     const loadUser = useCallback(async (): Promise<User> => {
-        const currentUser = (await fetchFromApi("/api/me")) as User;
+        const currentUser = (await fetchFromApi("/me")) as User;
         setUser(currentUser);
         setError(null);
         return currentUser;
@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(true);
         setError(null);
         try {
-            const tokens = (await fetchFromApi("/api/auth/login", {
+            const tokens = (await fetchFromApi("/auth/login", {
                 method: "POST",
                 body: JSON.stringify({ email, password }),
             })) as TokenResponse;
@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const register = useCallback(
         async (email: string, password: string, displayName: string): Promise<string> => {
-            const response = await fetchFromApi("/api/auth/register", {
+            const response = await fetchFromApi("/auth/register", {
                 method: "POST",
                 body: JSON.stringify({ email, password, display_name: displayName }),
             });
@@ -152,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const updateProfile = useCallback(async (displayName: string): Promise<User> => {
-        await fetchFromApi("/api/user/profile", {
+        await fetchFromApi("/me/profile", {
             method: "PUT",
             body: JSON.stringify({ display_name: displayName }),
         });
@@ -162,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const logout = useCallback(async () => {
         setLoading(true);
         try {
-            await fetchFromApi("/api/auth/logout", { method: "POST" });
+            await fetchFromApi("/auth/logout", { method: "POST" });
         } catch {
             // Clear memory even if the server cookie cannot be reached.
         } finally {
@@ -179,11 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error,
         login,
         register,
-        verifyEmail: (token) => messageAction("/api/auth/verify-email", { token }),
-        resendVerification: (email) => messageAction("/api/auth/resend-verification", { email }),
-        forgotPassword: (email) => messageAction("/api/auth/forgot-password", { email }),
+        verifyEmail: (token) => messageAction("/auth/verify-email", { token }),
+        resendVerification: (email) => messageAction("/auth/resend-verification", { email }),
+        forgotPassword: (email) => messageAction("/auth/forgot-password", { email }),
         resetPassword: (token, newPassword) =>
-            messageAction("/api/auth/reset-password", { token, new_password: newPassword }),
+            messageAction("/auth/reset-password", { token, new_password: newPassword }),
         updateProfile,
         refreshUser: loadUser,
         logout,

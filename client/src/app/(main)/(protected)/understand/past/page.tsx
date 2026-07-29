@@ -28,7 +28,7 @@ export default function PastConversationsPage() {
         setLoading(true);
         try {
             const response = await fetchFromApi(
-                `/api/conversations?archived=${archived}&limit=100`,
+                `/conversations?archived=${archived}&limit=100`,
             ) as ConversationListResponse;
             setConversations(response.items);
         } finally {
@@ -44,7 +44,7 @@ export default function PastConversationsPage() {
         conversation: Conversation,
         nextArchived: boolean,
     ) => {
-        await fetchFromApi(`/api/conversations/${conversation.id}`, {
+        await fetchFromApi(`/conversations/${conversation.id}`, {
             method: "PATCH",
             body: JSON.stringify({ archived: nextArchived }),
         });
@@ -55,7 +55,7 @@ export default function PastConversationsPage() {
 
     const remove = async (conversation: Conversation) => {
         if (!window.confirm(`Delete “${conversation.title}”?`)) return;
-        await fetchFromApi(`/api/conversations/${conversation.id}`, {
+        await fetchFromApi(`/conversations/${conversation.id}`, {
             method: "DELETE",
         });
         setConversations((current) =>

@@ -239,8 +239,8 @@ def test_citation_snapshot_is_strictly_validated_before_persistence() -> None:
 def test_research_api_exposes_only_the_new_typed_routes() -> None:
     paths = app.openapi()["paths"]
     expected = {
-        "/api/v1/documents/{document_id}/research-items",
-        "/api/v1/documents/{document_id}/highlight-threads",
+        "/api/v1/papers/{document_id}/research-items",
+        "/api/v1/papers/{document_id}/highlight-threads",
         "/api/v1/highlight-threads/{thread_id}",
         "/api/v1/highlight-threads/{thread_id}/comments",
         "/api/v1/annotation-comments/{comment_id}",
@@ -278,7 +278,7 @@ def test_project_summary_counts_only_research_visible_to_the_requester() -> None
 
 
 def test_clean_baseline_contains_typed_research_constraints() -> None:
-    baseline = next((ROOT / "server" / "migrations" / "versions").glob("*.py"))
+    baseline = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))[0]
     source = baseline.read_text(encoding="utf-8")
     for table_or_constraint in (
         "research_items",

@@ -244,7 +244,7 @@ export function LibraryTable({
 
 	const handleRemoveTag = async (documentId: string, tagId: string) => {
 		try {
-			await fetchFromApi(`/api/library/papers/by-document/${documentId}/tags/${tagId}`, {
+			await fetchFromApi(`/library/papers/${documentId}/tags/${tagId}`, {
 				method: "DELETE",
 			});
 			// Don't need to send a toast for success - can be noisy.

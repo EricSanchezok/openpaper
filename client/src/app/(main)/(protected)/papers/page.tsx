@@ -107,7 +107,7 @@ function PapersPageContent() {
     const refetchPendingJobs = useCallback(async () => {
         try {
             const response = await fetchFromApi(
-                "/api/jobs?operation=pdf_process&active=true",
+                "/jobs?operation=pdf_process&active=true",
             );
             if (!response?.items?.length) return;
             setPendingJobs(response.items.map((job: {
@@ -144,10 +144,10 @@ function PapersPageContent() {
 
     const deletePaper = async (documentId: string) => {
         const entry = papers?.find((paper) => paper.id === documentId);
-        if (!entry?.library_paper_id) {
+        if (!entry) {
             throw new Error("Library reference is missing");
         }
-        await fetchFromApi(`/api/library/papers/${entry.library_paper_id}`, {
+        await fetchFromApi(`/library/papers/${entry.id}`, {
             method: "DELETE",
         });
         // Optimistically drop the paper from the SWR cache that LibraryTable
@@ -179,14 +179,14 @@ function PapersPageContent() {
         const documentIds = papersForNewProject.map(p => p.id);
 
         try {
-            const project = await fetchFromApi("/api/projects", {
+            const project = await fetchFromApi("/projects", {
                 method: "POST",
                 body: JSON.stringify({ title, description }),
             });
             toast.success("Project created successfully!");
 
             if (documentIds.length > 0) {
-                await fetchFromApi(`/api/projects/${project.id}/papers`, {
+                await fetchFromApi(`/projects/${project.id}/papers`, {
                     method: 'POST',
                     body: JSON.stringify({ document_ids: documentIds })
                 });

@@ -42,7 +42,7 @@ export function useConversationHistory({
 		setIsLoadingMoreMessages(true);
 		try {
 			const response = (await fetchFromApi(
-				`/api/conversations/${conversationId}/messages?page=${page}&page_size=50`,
+				`/conversations/${conversationId}/messages?page=${page}&page_size=50`,
 				{ method: "GET" },
 			)) as MessagePageResponse;
 			const fetchedMessages = response.items.map((message) => ({
@@ -86,7 +86,7 @@ export function useConversationHistory({
 				let id: string | null = initialConversationId ?? null;
 				if (id) {
 					const detail = await fetchFromApi(
-						`/api/conversations/${id}`,
+						`/conversations/${id}`,
 					) as Conversation;
 					if (!cancelled) {
 						setConversationId(id);
@@ -95,7 +95,7 @@ export function useConversationHistory({
 					return;
 				}
 				const existing = (await fetchFromApi(
-					"/api/conversations?limit=100",
+					"/conversations?limit=100",
 					{ method: "GET" },
 				)) as ConversationListResponse;
 				id = existing.items.find(
@@ -105,7 +105,7 @@ export function useConversationHistory({
 				)?.id ?? null;
 				if (id) {
 					const detail = await fetchFromApi(
-						`/api/conversations/${id}`,
+						`/conversations/${id}`,
 					) as Conversation;
 					if (!cancelled) {
 						setConversationId(id);
@@ -115,7 +115,7 @@ export function useConversationHistory({
 				}
 				try {
 					const created = (await fetchFromApi(
-						"/api/conversations",
+						"/conversations",
 						{
 							method: "POST",
 							body: JSON.stringify({

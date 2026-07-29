@@ -172,7 +172,7 @@ export function ScholensOnboarding() {
 				reading_frequency: values.readingFrequency,
 			};
 
-			await fetchFromApi("/api/onboarding", {
+			await fetchFromApi("/me/onboarding", {
 				method: "POST",
 				body: JSON.stringify(payload),
 			});

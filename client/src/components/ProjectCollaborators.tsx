@@ -83,13 +83,13 @@ export function ProjectCollaborators({
     const load = useCallback(async () => {
         try {
             const loadedCollaborators = await fetchFromApi(
-                `/api/projects/${project.id}/members`,
+                `/projects/${project.id}/members`,
             ) as Collaborator[];
             setCollaborators(loadedCollaborators);
             setHasCollaborators?.(loadedCollaborators.length > 1);
             if (canManage) {
                 const loadedInvitations = await fetchFromApi(
-                    `/api/projects/${project.id}/invitations`,
+                    `/projects/${project.id}/invitations`,
                 ) as ProjectInvitation[];
                 setInvitations(loadedInvitations);
             } else {
@@ -116,7 +116,7 @@ export function ProjectCollaborators({
         };
         try {
             const updated = await fetchFromApi(
-                `/api/projects/${project.id}/members/${member.user_id}`,
+                `/projects/${project.id}/members/${member.user_id}`,
                 {
                     method: "PATCH",
                     body: JSON.stringify(permissions),
@@ -140,7 +140,7 @@ export function ProjectCollaborators({
     const removeMember = async (member: Collaborator) => {
         try {
             await fetchFromApi(
-                `/api/projects/${project.id}/members/${member.user_id}`,
+                `/projects/${project.id}/members/${member.user_id}`,
                 { method: "DELETE" },
             );
             setCollaborators((current) =>
@@ -161,7 +161,7 @@ export function ProjectCollaborators({
         if (!transferTarget) return;
         setSaving(true);
         try {
-            await fetchFromApi(`/api/projects/${project.id}/transfer`, {
+            await fetchFromApi(`/projects/${project.id}/transfer`, {
                 method: "POST",
                 body: JSON.stringify({ new_owner_id: transferTarget.user_id }),
             });
@@ -188,7 +188,7 @@ export function ProjectCollaborators({
         setSaving(true);
         try {
             const invitation = await fetchFromApi(
-                `/api/projects/${project.id}/invitations`,
+                `/projects/${project.id}/invitations`,
                 {
                     method: "POST",
                     body: JSON.stringify({
@@ -216,7 +216,7 @@ export function ProjectCollaborators({
     const revokeInvitation = async (invitationId: string) => {
         try {
             await fetchFromApi(
-                `/api/projects/${project.id}/invitations/${invitationId}`,
+                `/projects/${project.id}/invitations/${invitationId}`,
                 { method: "DELETE" },
             );
             setInvitations((current) =>

@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { fetchFromApi } from "@/lib/api";
 import { SubscriptionData, UseSubscriptionReturn } from "@/lib/schema";
 
-const SUBSCRIPTION_USAGE_KEY = "/api/subscription/usage";
+const SUBSCRIPTION_USAGE_KEY = "/billing/usage";
 
 async function fetchSubscriptionUsage(): Promise<SubscriptionData> {
     return fetchFromApi(SUBSCRIPTION_USAGE_KEY);

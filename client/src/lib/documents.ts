@@ -108,7 +108,7 @@ export async function fetchLibraryPaperByDocument(
     documentId: string,
 ): Promise<LibraryPaper> {
     return await fetchFromApi(
-        `/api/library/papers/by-document/${documentId}`,
+        `/library/papers/${documentId}`,
     ) as LibraryPaper;
 }
 
@@ -116,12 +116,12 @@ export async function fetchPaperData(documentId: string): Promise<PaperData> {
     const [entry, file] = await Promise.all([
         fetchLibraryPaperByDocument(documentId),
         fetchFromApi(
-            `/api/documents/${documentId}/file-url`,
+            `/papers/${documentId}/download-url`,
         ) as Promise<DocumentFileUrlResponse>,
     ]);
     const metadata = resolvedMetadata(entry);
     return {
-        library_paper_id: entry.id,
+        document_id: entry.document.id,
         filename: entry.document.original_filename,
         file_url: file.file_url,
         ...metadata,
@@ -140,11 +140,12 @@ export async function fetchPaperData(documentId: string): Promise<PaperData> {
 
 export async function fetchPublicPaper(shareToken: string): Promise<SharedPaper> {
     const response = await fetchFromApi(
-        `/api/public/papers/${encodeURIComponent(shareToken)}`,
+        `/shares/${encodeURIComponent(shareToken)}`,
     ) as PublicPaperResponse;
     const document = response.document;
     return {
         paper: {
+            document_id: document.id,
             filename: document.original_filename,
             file_url: response.file_url,
             authors: document.authors ?? [],
@@ -173,7 +174,6 @@ export function libraryPaperToPaperItem(entry: LibraryPaper): PaperItem {
     const overrides = entry.metadata_overrides;
     return {
         id: document.id,
-        library_paper_id: entry.id,
         title: overrides.title ?? document.title ?? document.original_filename,
         abstract: overrides.abstract ?? document.abstract ?? undefined,
         authors: overrides.authors ?? document.authors ?? undefined,
@@ -198,7 +198,7 @@ export function libraryPaperToPaperItem(entry: LibraryPaper): PaperItem {
 
 export async function fetchLibraryPapers(): Promise<PaperItem[]> {
     const response = await fetchFromApi(
-        "/api/library/papers",
+        "/library/papers",
     ) as LibraryPaperList;
     return response.items
         .filter((entry) => entry.document.processing_status === "completed")
@@ -220,7 +220,7 @@ export async function fetchRelevantPapers(limit = 3): Promise<PaperItem[]> {
 export async function fetchUploadJobStatus(
     jobId: string,
 ): Promise<PaperUploadJobStatusResponse> {
-    const job = await fetchFromApi(`/api/jobs/${jobId}`) as DurableJob;
+    const job = await fetchFromApi(`/jobs/${jobId}`) as DurableJob;
     return {
         job_id: job.id,
         status: job.status,

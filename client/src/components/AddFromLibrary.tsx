@@ -32,7 +32,7 @@ export default function AddFromLibrary({ projectId, onPapersAdded, projectDocume
 
         const documentIds = papers.map(p => p.id);
 
-        fetchFromApi(`/api/projects/${projectId}/papers`, {
+        fetchFromApi(`/projects/${projectId}/papers`, {
             method: 'POST',
             body: JSON.stringify({ document_ids: documentIds })
         })

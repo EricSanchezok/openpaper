@@ -121,7 +121,7 @@ async def get_project_papers(
     callers (e.g. the project overview page) just need paper metadata, and
     generating URLs for every paper is expensive on cache expiry. Callers
     that need a URL for a single paper should use the
-    ``/{project_id}/{document_id}/file-url`` endpoint instead.
+    ``/{project_id}/papers/{document_id}/download-url`` endpoint instead.
     """
     papers = project_document_repository.get_papers_metadata_by_project_id(
         db, project_id=project_id, user=current_user
@@ -195,7 +195,7 @@ async def get_project_pending_jobs(
 
 
 @project_papers_router.get(
-    "/{project_id}/papers/{document_id}/file-url",
+    "/{project_id}/papers/{document_id}/download-url",
     response_model=ProjectPaperFileUrlResponse,
 )
 async def get_project_paper_file_url(

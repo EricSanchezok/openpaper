@@ -80,7 +80,7 @@ export function QuickActions({ onUploadComplete, onProjectCreated, onUploadStart
 
     const handleCreateProject = async (title: string, description: string) => {
         try {
-            const response = await fetchFromApi("/api/projects", {
+            const response = await fetchFromApi("/projects", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title, description }),

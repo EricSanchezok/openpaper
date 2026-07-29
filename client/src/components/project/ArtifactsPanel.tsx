@@ -81,7 +81,7 @@ function ResearchItemCard({
 }) {
     const deleteItem = async () => {
         try {
-            await fetchFromApi(`/api/research-items/${item.id}`, {
+            await fetchFromApi(`/research-items/${item.id}`, {
                 method: "DELETE",
             });
             onDeleted();
@@ -209,8 +209,8 @@ export function ArtifactsPanel() {
     const refresh = useCallback(async () => {
         try {
             const [researchResponse, jobResponse] = await Promise.all([
-                fetchFromApi(`/api/projects/${projectId}/research-items`),
-                fetchFromApi(`/api/jobs?project_id=${projectId}&active=true`),
+                fetchFromApi(`/projects/${projectId}/research-items`),
+                fetchFromApi(`/jobs?project_id=${projectId}&active=true`),
             ]);
             setItems(researchResponse.items ?? []);
             setJobs(jobResponse.items ?? []);
@@ -236,7 +236,7 @@ export function ArtifactsPanel() {
         }
         setSubmitting(true);
         try {
-            await fetchFromApi(`/api/projects/${projectId}/audio-overviews`, {
+            await fetchFromApi(`/projects/${projectId}/audio-overviews`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -260,7 +260,7 @@ export function ArtifactsPanel() {
         setTableDialogOpen(false);
         setSubmitting(true);
         try {
-            await fetchFromApi(`/api/projects/${projectId}/data-tables`, {
+            await fetchFromApi(`/projects/${projectId}/data-tables`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

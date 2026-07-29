@@ -240,13 +240,13 @@ class DocumentRepository:
         self,
         db: Session,
         *,
-        library_paper_id: uuid.UUID,
+        document_id: uuid.UUID,
         user_id: int,
         request: LibraryPaperUpdateRequest,
     ) -> LibraryPaper:
-        entry = self.require_library_paper(
+        entry = self.require_library_paper_by_document(
             db,
-            library_paper_id=library_paper_id,
+            document_id=document_id,
             user_id=user_id,
             for_update=True,
         )
@@ -266,12 +266,12 @@ class DocumentRepository:
         self,
         db: Session,
         *,
-        library_paper_id: uuid.UUID,
+        document_id: uuid.UUID,
         user_id: int,
     ) -> None:
-        entry = self.require_library_paper(
+        entry = self.require_library_paper_by_document(
             db,
-            library_paper_id=library_paper_id,
+            document_id=document_id,
             user_id=user_id,
             for_update=True,
         )
@@ -287,12 +287,12 @@ class DocumentRepository:
         self,
         db: Session,
         *,
-        library_paper_id: uuid.UUID,
+        document_id: uuid.UUID,
         user_id: int,
     ) -> str:
-        entry = self.require_library_paper(
+        entry = self.require_library_paper_by_document(
             db,
-            library_paper_id=library_paper_id,
+            document_id=document_id,
             user_id=user_id,
             for_update=True,
         )
@@ -306,12 +306,12 @@ class DocumentRepository:
         self,
         db: Session,
         *,
-        library_paper_id: uuid.UUID,
+        document_id: uuid.UUID,
         user_id: int,
     ) -> None:
-        entry = self.require_library_paper(
+        entry = self.require_library_paper_by_document(
             db,
-            library_paper_id=library_paper_id,
+            document_id=document_id,
             user_id=user_id,
             for_update=True,
         )

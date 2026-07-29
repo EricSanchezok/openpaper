@@ -524,11 +524,8 @@ export default function PaperView() {
         if (!id || !paperData || isSharing) return;
         setIsSharing(true);
         try {
-            if (!paperData.library_paper_id) {
-                throw new Error("Library paper is unavailable");
-            }
             const response = await fetchFromApi(
-                `/api/library/papers/${paperData.library_paper_id}/share`,
+                `/library/papers/${id}/share`,
                 {
                 method: 'POST',
                 },
@@ -546,10 +543,10 @@ export default function PaperView() {
     }, [id, paperData, isSharing]);
 
     const handleUnshare = useCallback(async () => {
-        if (!id || !paperData?.library_paper_id || !paperData.is_public || isSharing) return;
+        if (!id || !paperData?.is_public || isSharing) return;
         setIsSharing(true);
         try {
-            await fetchFromApi(`/api/library/papers/${paperData.library_paper_id}/share`, {
+            await fetchFromApi(`/library/papers/${id}/share`, {
                 method: 'DELETE',
             });
             setPaperData(prev => prev ? { ...prev, share_id: null, is_public: false } : null);
@@ -564,8 +561,8 @@ export default function PaperView() {
 
     const handleStatusChange = useCallback((status: PaperStatus) => {
         try {
-            if (!paperData?.library_paper_id) return;
-            fetchFromApi(`/api/library/papers/${paperData.library_paper_id}`, {
+            if (!paperData) return;
+            fetchFromApi(`/library/papers/${id}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ status }),
             });

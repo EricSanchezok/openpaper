@@ -3,15 +3,13 @@ import {
     getAccessToken,
     refreshAccessToken,
 } from "./auth-session";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-    ?? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
+import { apiUrl } from "./api-config";
 
 async function requestWithAuth(endpoint: string, options: RequestInit): Promise<Response> {
     const token = getAccessToken();
     const headers = new Headers(options.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await fetch(apiUrl(endpoint), {
         ...options,
         headers,
         credentials: "include",
@@ -23,7 +21,7 @@ async function requestWithAuth(endpoint: string, options: RequestInit): Promise<
         const refreshedToken = await refreshAccessToken();
         const retryHeaders = new Headers(options.headers);
         retryHeaders.set("Authorization", `Bearer ${refreshedToken}`);
-        return fetch(`${API_BASE_URL}${endpoint}`, {
+        return fetch(apiUrl(endpoint), {
             ...options,
             headers: retryHeaders,
             credentials: "include",
@@ -126,7 +124,7 @@ export async function fetchStreamFromApi(
 }
 
 export async function getProjectsForPaper(documentId: string) {
-    return fetchFromApi(`/api/projects/papers/from/${documentId}`);
+    return fetchFromApi(`/projects/papers/from/${documentId}`);
 }
 
 /**
@@ -140,7 +138,7 @@ export async function getProjectPaperFileUrl(
     documentId: string,
 ): Promise<string | null> {
     const response = await fetchFromApi(
-        `/api/projects/${projectId}/papers/${documentId}/file-url`,
+        `/projects/${projectId}/papers/${documentId}/download-url`,
     );
     return response?.file_url ?? null;
 }
@@ -151,6 +149,6 @@ export async function getProjectPaperFileUrl(
  * canonical document payload.
  */
 export async function getPaperFileUrl(documentId: string): Promise<string | null> {
-    const response = await fetchFromApi(`/api/documents/${documentId}/file-url`);
+    const response = await fetchFromApi(`/papers/${documentId}/download-url`);
     return response?.file_url ?? null;
 }

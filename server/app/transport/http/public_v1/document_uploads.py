@@ -64,7 +64,7 @@ document_upload_router = APIRouter()
 
 
 @document_upload_router.post(
-    "/from-url",
+    "/urls",
     response_model=UploadAcceptedResponse,
     status_code=202,
 )
@@ -142,7 +142,7 @@ async def upload_pdf_from_url(
 
 
 @document_upload_router.post(
-    "",
+    "/uploads",
     response_model=UploadAcceptedResponse,
     status_code=202,
 )

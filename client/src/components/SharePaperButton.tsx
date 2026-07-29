@@ -52,11 +52,8 @@ export function SharePaperButton() {
         setIsSharing(true);
         try {
             const current = paperData ?? await fetchDocumentPaperData(documentId);
-            if (!current.library_paper_id) {
-                throw new Error("Library paper is unavailable");
-            }
             const response = await fetchFromApi(
-                `/api/library/papers/${current.library_paper_id}/share`,
+                `/library/papers/${documentId}/share`,
                 { method: 'POST' },
             );
             if (paperData) {
@@ -76,10 +73,7 @@ export function SharePaperButton() {
         if (!documentId || !paperData || !paperData.is_public || isSharing) return;
         setIsSharing(true);
         try {
-            if (!paperData.library_paper_id) {
-                throw new Error("Library paper is unavailable");
-            }
-            await fetchFromApi(`/api/library/papers/${paperData.library_paper_id}/share`, {
+            await fetchFromApi(`/library/papers/${documentId}/share`, {
                 method: 'DELETE',
             });
             setPaperData(prev => prev ? { ...prev, share_id: null, is_public: false } : null);

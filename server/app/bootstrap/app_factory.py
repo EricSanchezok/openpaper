@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from app.transport.http.public_v1.auth import auth_router
+from app.transport.http.public_v1.auth import auth_router, zotero_oauth_router
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
 from app.transport.http.public_v1.documents import document_router, library_router, public_document_router
@@ -71,27 +71,32 @@ def _public_router() -> APIRouter:
     router.include_router(cloud_auth_router, prefix="/auth", tags=["auth"])
     router.include_router(cloud_user_router, prefix="/me", tags=["user"])
     router.include_router(auth_router, prefix="/auth")
+    router.include_router(
+        zotero_oauth_router,
+        prefix="/integrations/zotero/oauth",
+        tags=["zotero"],
+    )
     router.include_router(conversation_router, prefix="/conversations")
     router.include_router(library_router, prefix="/library")
     router.include_router(library_tags_router, prefix="/library")
-    router.include_router(document_router, prefix="/documents")
-    router.include_router(public_document_router, prefix="/public")
-    router.include_router(message_router, prefix="/message")
+    router.include_router(document_router, prefix="/papers")
+    router.include_router(public_document_router, prefix="/shares")
+    router.include_router(message_router, prefix="/assistant")
     router.include_router(projects_router, prefix="/projects")
     router.include_router(project_papers_router, prefix="/projects")
     router.include_router(projects_invitation_router)
-    router.include_router(paper_search_router, prefix="/search/global")
-    router.include_router(search_router, prefix="/search/local")
-    router.include_router(document_upload_router, prefix="/documents/uploads")
-    router.include_router(document_research_router, prefix="/documents")
+    router.include_router(paper_search_router, prefix="/discovery/papers")
+    router.include_router(search_router, prefix="/search/papers")
+    router.include_router(document_upload_router, prefix="/paper-ingestions")
+    router.include_router(document_research_router, prefix="/papers")
     router.include_router(project_research_router, prefix="/projects")
     router.include_router(research_router)
-    router.include_router(document_generation_router, prefix="/documents")
+    router.include_router(document_generation_router, prefix="/papers")
     router.include_router(project_generation_router, prefix="/projects")
     router.include_router(jobs_router, prefix="/jobs")
-    router.include_router(subscription_router, prefix="/subscription")
+    router.include_router(subscription_router, prefix="/billing")
     router.include_router(onboarding_router, prefix="/me/onboarding")
-    router.include_router(zotero_router, prefix="/zotero")
+    router.include_router(zotero_router, prefix="/integrations/zotero")
     return router
 
 
@@ -108,6 +113,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             Exception: unhandled_error_handler,
         },
     )
+    application.state.settings = runtime_settings
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[runtime_settings.client_domain],

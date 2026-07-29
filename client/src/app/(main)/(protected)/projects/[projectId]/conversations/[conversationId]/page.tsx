@@ -166,9 +166,9 @@ function ProjectConversationPageContent() {
     const fetchMessages = useCallback(async (id: string) => {
         try {
             const [detail, response] = await Promise.all([
-                fetchFromApi(`/api/conversations/${id}`) as Promise<Conversation>,
+                fetchFromApi(`/conversations/${id}`) as Promise<Conversation>,
                 fetchFromApi(
-                    `/api/conversations/${id}/messages?page=1&page_size=100`,
+                    `/conversations/${id}/messages?page=1&page_size=100`,
                 ),
             ]);
             if (response?.items) {
@@ -336,7 +336,7 @@ function ProjectConversationPageContent() {
         }
 
         try {
-            const stream = await fetchStreamFromApi('/api/message/chat/everything', {
+            const stream = await fetchStreamFromApi('/assistant/chat/everything', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

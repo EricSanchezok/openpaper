@@ -77,7 +77,7 @@ def assign_library_tags(
 
 
 @library_tags_router.delete(
-    "/papers/by-document/{document_id}/tags/{tag_id}",
+    "/papers/{document_id}/tags/{tag_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remove_library_tag_assignment(

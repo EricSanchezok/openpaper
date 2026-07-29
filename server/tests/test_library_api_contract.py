@@ -97,13 +97,13 @@ def test_share_token_is_rotated_and_only_its_hash_is_persisted() -> None:
 
     first = document_repository.rotate_public_share(
         db,
-        library_paper_id=entry.id,
+        document_id=entry.document_id,
         user_id=entry.user_id,
     )
     first_hash = entry.share_token_hash
     second = document_repository.rotate_public_share(
         db,
-        library_paper_id=entry.id,
+        document_id=entry.document_id,
         user_id=entry.user_id,
     )
 
@@ -123,7 +123,7 @@ def test_revoking_share_removes_the_only_public_credential() -> None:
 
     document_repository.revoke_public_share(
         db,
-        library_paper_id=entry.id,
+        document_id=entry.document_id,
         user_id=entry.user_id,
     )
 
@@ -134,11 +134,11 @@ def test_revoking_share_removes_the_only_public_credential() -> None:
 def test_library_tag_api_uses_library_document_boundaries() -> None:
     paths = app.openapi()["paths"]
 
-    assert "/api/v1/documents/uploads" in paths
-    assert "/api/v1/documents/uploads/from-url" in paths
+    assert "/api/v1/paper-ingestions/uploads" in paths
+    assert "/api/v1/paper-ingestions/urls" in paths
     assert "/api/v1/library/tags" in paths
     assert "/api/v1/library/tags/assignments" in paths
-    assert "/api/v1/library/papers/by-document/{document_id}/tags/{tag_id}" in paths
+    assert "/api/v1/library/papers/{document_id}/tags/{tag_id}" in paths
     assert not any(path.startswith("/api/v1/paper/tag") for path in paths)
     assert not any(path.startswith("/api/v1/paper/upload") for path in paths)
 

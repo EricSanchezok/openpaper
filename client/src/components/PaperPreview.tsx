@@ -216,10 +216,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const updateField = async (fields: Partial<PaperItem>) => {
         try {
-            if (!paper.library_paper_id) {
-                throw new Error("Library paper is unavailable");
-            }
-            await fetchFromApi(`/api/library/papers/${paper.library_paper_id}`, {
+            await fetchFromApi(`/library/papers/${paper.id}`, {
                 method: "PATCH",
                 body: JSON.stringify({ metadata_overrides: fields }),
             });
@@ -236,7 +233,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
 
     const handleRemoveTag = async (tagId: string) => {
         try {
-            await fetchFromApi(`/api/library/papers/by-document/${paper.id}/tags/${tagId}`, {
+            await fetchFromApi(`/library/papers/${paper.id}/tags/${tagId}`, {
                 method: "DELETE",
             });
             const updatedPaper = {

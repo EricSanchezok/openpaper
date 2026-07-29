@@ -243,15 +243,12 @@ export const copyToClipboard = (text: string, styleName: string) => {
 
 // Function to handle status changes
 export const handleStatusChange = async <T extends PaperBase>(
-    paper: T & { library_paper_id?: string },
+    paper: T,
     status: PaperStatus,
     setPaper: (documentId: string, paper: T) => void
 ): Promise<void> => {
     try {
-        if (!paper.library_paper_id) {
-            throw new Error("Library paper is unavailable");
-        }
-        await fetchFromApi(`/api/library/papers/${paper.library_paper_id}`, {
+        await fetchFromApi(`/library/papers/${paper.id}`, {
             method: 'PATCH',
             body: JSON.stringify({ status }),
         });

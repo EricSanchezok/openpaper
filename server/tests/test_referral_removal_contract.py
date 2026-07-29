@@ -27,7 +27,7 @@ def test_referral_routes_and_persistence_are_absent() -> None:
 
 
 def test_initial_baseline_contains_no_referral_schema() -> None:
-    baseline = next((ROOT / "server" / "migrations" / "versions").glob("*.py"))
+    baseline = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))[0]
     source = baseline.read_text(encoding="utf-8").lower()
 
     assert "referral_codes" not in source

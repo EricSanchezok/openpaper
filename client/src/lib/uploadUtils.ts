@@ -43,8 +43,8 @@ const uploadFile = async (file: File, projectId?: string): Promise<MinimalJob> =
     formData.append("file", file)
 
     const endpoint = projectId
-        ? `/api/documents/uploads?project_id=${projectId}`
-        : "/api/documents/uploads";
+        ? `/paper-ingestions/uploads?project_id=${projectId}`
+        : "/paper-ingestions/uploads";
 
     const res: PdfUploadResponse = await fetchFromApi(endpoint, {
         method: "POST",
@@ -77,7 +77,7 @@ export const uploadFromUrl = async (url: string, projectId?: string): Promise<Mi
         ? { url, project_id: projectId }
         : { url };
 
-    const res: PdfUploadResponse = await fetchFromApi("/api/documents/uploads/from-url", {
+    const res: PdfUploadResponse = await fetchFromApi("/paper-ingestions/urls", {
         method: "POST",
         body: JSON.stringify(body),
         headers: {

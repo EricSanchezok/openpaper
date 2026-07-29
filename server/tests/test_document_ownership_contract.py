@@ -78,7 +78,7 @@ def test_metadata_and_baseline_expose_only_canonical_ownership_tables() -> None:
     }
     assert ("user_id", "document_id") in unique_columns
 
-    baseline = next((ROOT / "server" / "migrations" / "versions").glob("*.py"))
+    baseline = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))[0]
     source = baseline.read_text(encoding="utf-8")
     assert '"documents"' in source
     assert '"library_papers"' in source

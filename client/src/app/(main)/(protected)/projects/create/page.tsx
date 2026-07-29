@@ -22,7 +22,7 @@ export default function CreateProjectPage() {
 		setError(null);
 
 		try {
-			const project = await fetchFromApi("/api/projects", {
+			const project = await fetchFromApi("/projects", {
 				method: "POST",
 				body: JSON.stringify({ title, description }),
 			});

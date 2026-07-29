@@ -37,7 +37,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 
 	const deleteProject = async () => {
 		try {
-			const response = await fetchFromApi(`/api/projects/${project.id}`, {
+			const response = await fetchFromApi(`/projects/${project.id}`, {
 				method: 'DELETE',
 			});
 			if (response) {
@@ -54,7 +54,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 
 	const handleUpdateProject = async () => {
 		try {
-			const response = await fetchFromApi(`/api/projects/${project.id}`, {
+			const response = await fetchFromApi(`/projects/${project.id}`, {
 				method: 'PATCH',
 				headers: {
 					'Content-Type': 'application/json',
@@ -95,7 +95,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 
 	const exitProject = async () => {
 		try {
-			const response = await fetchFromApi(`/api/projects/${project.id}/leave`, {
+			const response = await fetchFromApi(`/projects/${project.id}/leave`, {
 				method: 'POST',
 			});
 			if (response) {

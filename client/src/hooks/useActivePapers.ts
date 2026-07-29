@@ -2,7 +2,7 @@ import useSWR, { mutate as globalMutate } from "swr";
 import { PaperItem } from "@/lib/schema";
 import { fetchLibraryPapers } from "@/lib/documents";
 
-export const ACTIVE_PAPERS_KEY = "/api/library/papers";
+export const ACTIVE_PAPERS_KEY = "/library/papers";
 
 async function fetchActivePapers(): Promise<PaperItem[]> {
 	const papers = await fetchLibraryPapers();

@@ -132,9 +132,9 @@ function UnderstandPageContent() {
     const fetchMessages = useCallback(async (id: string) => {
         try {
             const [detail, response] = await Promise.all([
-                fetchFromApi(`/api/conversations/${id}`) as Promise<Conversation>,
+                fetchFromApi(`/conversations/${id}`) as Promise<Conversation>,
                 fetchFromApi(
-                    `/api/conversations/${id}/messages?page=1&page_size=100`,
+                    `/conversations/${id}/messages?page=1&page_size=100`,
                 ),
             ]);
             if (response?.items) {
@@ -271,7 +271,7 @@ function UnderstandPageContent() {
 
         if (!currentConversationId) {
             try {
-                const newConversationResponse = await fetchFromApi('/api/conversations', {
+                const newConversationResponse = await fetchFromApi('/conversations', {
                     method: 'POST',
                     body: JSON.stringify({ scope_type: 'global' }),
                 });
@@ -309,7 +309,7 @@ function UnderstandPageContent() {
         }
 
         try {
-            const stream = await fetchStreamFromApi('/api/message/chat/everything', {
+            const stream = await fetchStreamFromApi('/assistant/chat/everything', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

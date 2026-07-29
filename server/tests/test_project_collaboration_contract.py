@@ -414,14 +414,14 @@ def test_document_and_library_api_expose_canonical_asset_boundaries() -> None:
     paths = app.openapi()["paths"]
 
     assert "/api/v1/library/papers" in paths
-    assert "/api/v1/library/papers/{library_paper_id}" in paths
-    assert "/api/v1/library/papers/by-document/{document_id}" in paths
-    assert "/api/v1/library/papers/{library_paper_id}/share" in paths
-    assert "/api/v1/documents/{document_id}" in paths
-    assert "/api/v1/documents/{document_id}/file-url" in paths
-    assert "/api/v1/documents/{document_id}/research-items" in paths
-    assert "/api/v1/public/papers/{share_token}" in paths
-    assert "/api/v1/public/papers/{share_token}/collect" in paths
+    assert "/api/v1/library/papers/{document_id}" in paths
+    assert "/api/v1/library/papers/{document_id}/share" in paths
+    assert "/api/v1/papers/{document_id}" in paths
+    assert "/api/v1/papers/{document_id}/download-url" in paths
+    assert "/api/v1/papers/{document_id}/research-items" in paths
+    assert "/api/v1/shares/{share_token}" in paths
+    assert "/api/v1/shares/{share_token}/collect" in paths
+    assert not any("{library_paper_id}" in path for path in paths)
     assert "/api/v1/paper" not in paths
 
 
@@ -444,7 +444,7 @@ def test_metadata_and_baseline_have_only_the_new_project_tables() -> None:
     assert expected <= tables
     assert removed.isdisjoint(tables)
 
-    baseline = next((ROOT / "server" / "migrations" / "versions").glob("*.py"))
+    baseline = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))[0]
     source = baseline.read_text(encoding="utf-8")
     for table_name in expected:
         assert f'"{table_name.removeprefix("scholens.")}"' in source

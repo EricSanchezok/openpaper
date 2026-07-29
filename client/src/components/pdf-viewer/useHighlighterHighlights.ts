@@ -44,7 +44,7 @@ export function useHighlighterHighlights(
 	const fetchHighlights = useCallback(async () => {
 		try {
 			const response = await fetchFromApi(
-				`/api/documents/${documentId}/highlight-threads`,
+				`/papers/${documentId}/highlight-threads`,
 				{
 					method: "GET",
 					headers: {
@@ -111,7 +111,7 @@ export function useHighlighterHighlights(
 
 		try {
 			const item = await fetchFromApi(
-				`/api/documents/${documentId}/highlight-threads`,
+				`/papers/${documentId}/highlight-threads`,
 				{
 				method: "POST",
 				headers: {
@@ -130,7 +130,7 @@ export function useHighlighterHighlights(
 	// Remove highlight from server
 	const removeHighlightFromServer = async (highlight: PaperHighlight) => {
 		try {
-			await fetchFromApi(`/api/highlight-threads/${highlight.id}`, {
+			await fetchFromApi(`/highlight-threads/${highlight.id}`, {
 				method: "DELETE",
 				headers: {
 					"Content-Type": "application/json",
@@ -145,7 +145,7 @@ export function useHighlighterHighlights(
 					throw new Error("highlight_delete_cancelled");
 				}
 				await fetchFromApi(
-					`/api/highlight-threads/${highlight.id}?confirm_delete_replies=true`,
+					`/highlight-threads/${highlight.id}?confirm_delete_replies=true`,
 					{ method: "DELETE" },
 				);
 			});

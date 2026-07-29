@@ -79,7 +79,7 @@ export default function ProjectPage() {
 
         setIsSubmitting(true);
         try {
-            const newConversation = await fetchFromApi("/api/conversations", {
+            const newConversation = await fetchFromApi("/conversations", {
                 method: "POST",
                 body: JSON.stringify({
                     title: "New conversation",

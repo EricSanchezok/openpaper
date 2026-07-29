@@ -201,7 +201,7 @@ export function SidePanelContent({
 
         async function fetchCapabilities() {
             try {
-                const response = await fetchFromApi(`/api/message/capabilities`);
+                const response = await fetchFromApi(`/assistant/capabilities`);
                 if (Array.isArray(response.reasoning_levels)) {
                     setReasoningCapabilities(response.reasoning_levels);
                 }
@@ -363,7 +363,7 @@ export function SidePanelContent({
         };
 
         try {
-            const stream = await fetchStreamFromApi('/api/message/chat/paper', {
+            const stream = await fetchStreamFromApi('/assistant/chat/paper', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

@@ -73,7 +73,7 @@ export function ImportPaperButton() {
 
         try {
             const response = await fetchFromApi(
-                `/api/public/papers/${encodeURIComponent(shareId)}/collect`,
+                `/shares/${encodeURIComponent(shareId)}/collect`,
                 {
                 method: 'POST',
                 },

@@ -35,7 +35,7 @@ export default function CheckoutSheet({ open, onOpenChange, interval, planName, 
         setIsLoading(true);
         setError(null);
 
-        return fetchFromApi(`/api/subscription/create-checkout-session?interval=${interval}`, {
+        return fetchFromApi(`/billing/create-checkout-session?interval=${interval}`, {
             method: "POST",
         })
             .then((data) => {

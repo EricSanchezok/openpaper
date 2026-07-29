@@ -104,18 +104,18 @@ def list_library_papers(
 
 
 @library_router.patch(
-    "/papers/{library_paper_id}",
+    "/papers/{document_id}",
     response_model=LibraryPaperResponse,
 )
 def update_library_paper(
-    library_paper_id: uuid.UUID,
+    document_id: uuid.UUID,
     request: LibraryPaperUpdateRequest,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperResponse:
     entry = document_repository.update_library_paper(
         db,
-        library_paper_id=library_paper_id,
+        document_id=document_id,
         user_id=current_user.id,
         request=request,
     )
@@ -123,7 +123,7 @@ def update_library_paper(
 
 
 @library_router.get(
-    "/papers/by-document/{document_id}",
+    "/papers/{document_id}",
     response_model=LibraryPaperResponse,
 )
 def get_library_paper_by_document(
@@ -140,51 +140,51 @@ def get_library_paper_by_document(
 
 
 @library_router.post(
-    "/papers/{library_paper_id}/share",
+    "/papers/{document_id}/share",
     response_model=LibraryPaperShareResponse,
 )
 def share_library_paper(
-    library_paper_id: uuid.UUID,
+    document_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> LibraryPaperShareResponse:
     token = document_repository.rotate_public_share(
         db,
-        library_paper_id=library_paper_id,
+        document_id=document_id,
         user_id=current_user.id,
     )
     return LibraryPaperShareResponse(share_token=token, is_public=True)
 
 
 @library_router.delete(
-    "/papers/{library_paper_id}/share",
+    "/papers/{document_id}/share",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def unshare_library_paper(
-    library_paper_id: uuid.UUID,
+    document_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
     document_repository.revoke_public_share(
         db,
-        library_paper_id=library_paper_id,
+        document_id=document_id,
         user_id=current_user.id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @library_router.delete(
-    "/papers/{library_paper_id}",
+    "/papers/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_library_paper(
-    library_paper_id: uuid.UUID,
+    document_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
     document_repository.delete_library_paper(
         db,
-        library_paper_id=library_paper_id,
+        document_id=document_id,
         user_id=current_user.id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -207,7 +207,7 @@ def get_document(
 
 
 @document_router.get(
-    "/{document_id}/file-url",
+    "/{document_id}/download-url",
     response_model=DocumentFileUrlResponse,
 )
 def get_document_file_url(
@@ -237,7 +237,7 @@ def get_document_file_url(
 
 
 @public_document_router.get(
-    "/papers/{share_token}",
+    "/{share_token}",
     response_model=PublicPaperResponse,
 )
 def get_public_paper(
@@ -264,7 +264,7 @@ def get_public_paper(
 
 
 @public_document_router.post(
-    "/papers/{share_token}/collect",
+    "/{share_token}/collect",
     response_model=CollectPublicPaperResponse,
 )
 def collect_public_paper(
@@ -295,7 +295,6 @@ def collect_public_paper(
         document_id=shared.document.id,
         user_id=current_user.id,
     )
-    db.commit()
     entry = document_repository.require_library_paper_by_document(
         db,
         document_id=shared.document.id,

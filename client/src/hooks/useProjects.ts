@@ -20,7 +20,7 @@ export function useProjects(): UseProjectsResult {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetchFromApi("/api/projects");
+            const response = await fetchFromApi("/projects");
             setProjects(response || []);
         } catch (err) {
             setError(err instanceof Error ? err : new Error("Failed to fetch projects"));
@@ -63,7 +63,7 @@ export function useProject(projectId?: string): UseProjectResult {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetchFromApi(`/api/projects/${projectId}`);
+            const response = await fetchFromApi(`/projects/${projectId}`);
             setProject(response);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch project ${projectId}`));
@@ -122,7 +122,7 @@ export function useProjectPapers(
         setError(null);
         try {
             const query = loadUrls ? "?load_urls=true" : "";
-            const response = await fetchFromApi(`/api/projects/${projectId}/papers${query}`);
+            const response = await fetchFromApi(`/projects/${projectId}/papers${query}`);
             setPapers(response.papers || []);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch papers for project ${projectId}`));
@@ -171,7 +171,7 @@ export function useProjectConversations(projectId?: string): UseProjectConversat
         setError(null);
         try {
             const response = await fetchFromApi(
-                "/api/conversations?limit=100",
+                "/conversations?limit=100",
             ) as ConversationListResponse;
             setConversations(
                 response.items.filter(

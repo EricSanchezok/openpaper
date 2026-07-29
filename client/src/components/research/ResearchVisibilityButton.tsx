@@ -45,7 +45,7 @@ export function ResearchVisibilityButton({
         const nextShared = !shared;
         setIsSaving(true);
         try {
-            await fetchFromApi(`/api/research-items/${outputId}`, {
+            await fetchFromApi(`/research-items/${outputId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ shared: nextShared }),

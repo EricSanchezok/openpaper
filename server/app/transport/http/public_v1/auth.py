@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter()
+zotero_oauth_router = APIRouter()
 client_domain = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
 
 
@@ -67,7 +68,7 @@ async def block_user(
     return {"success": True, "message": f"User {action} successfully"}
 
 
-@auth_router.get("/zotero/connect", response_model=ZoteroConnectResponse)
+@zotero_oauth_router.get("/connect", response_model=ZoteroConnectResponse)
 async def zotero_connect(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
@@ -92,7 +93,7 @@ async def zotero_connect(
     )
 
 
-@auth_router.get("/zotero/callback", response_class=RedirectResponse)
+@zotero_oauth_router.get("/callback", response_class=RedirectResponse)
 async def zotero_callback(
     oauth_token: str = Query(...),
     oauth_verifier: str = Query(...),
@@ -132,7 +133,7 @@ async def zotero_callback(
     )
 
 
-@auth_router.get("/zotero/status", response_model=ZoteroStatusResponse)
+@zotero_oauth_router.get("/status", response_model=ZoteroStatusResponse)
 async def zotero_status(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),
@@ -150,7 +151,7 @@ async def zotero_status(
     )
 
 
-@auth_router.delete("/zotero/disconnect", response_model=ZoteroDisconnectResponse)
+@zotero_oauth_router.delete("/disconnect", response_model=ZoteroDisconnectResponse)
 async def zotero_disconnect(
     current_user: Actor = Depends(get_required_user),
     db: Session = Depends(get_db),

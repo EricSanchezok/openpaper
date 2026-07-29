@@ -10,7 +10,7 @@ export interface ReferenceCitation {
 }
 
 export interface PaperData {
-    library_paper_id?: string;
+    document_id: string;
     filename: string;
     file_url: string;
     authors: string[];
@@ -409,7 +409,7 @@ export interface AnnotationResult {
 }
 
 export interface PaperResult {
-    id: string;
+    document_id: string;
     title: string | null;
     authors: string[] | null;
     abstract: string | null;
@@ -455,7 +455,6 @@ export interface PaperTag {
 
 export interface PaperItem {
     id: string
-    library_paper_id?: string
     title: string
     abstract?: string
     authors?: string[]

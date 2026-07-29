@@ -85,7 +85,7 @@ function CitationGraphContent() {
 
         try {
             const response: OpenAlexMatchResponse = await fetchFromApi(
-                `/api/search/global/match?doi=${encodeURIComponent(doi)}`,
+                `/discovery/papers/match?doi=${encodeURIComponent(doi)}`,
                 { method: "POST" }
             );
 
@@ -114,7 +114,7 @@ function CitationGraphContent() {
 
         try {
             const response: OpenAlexResponse = await fetchFromApi(
-                `/api/search/global/author?author_id=${encodeURIComponent(authorId)}`
+                `/discovery/papers/author?author_id=${encodeURIComponent(authorId)}`
             );
 
             setAuthorData(response);

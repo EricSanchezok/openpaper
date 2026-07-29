@@ -25,7 +25,7 @@ async function mockSharedPaper(page: Page) {
 			headers: { "access-control-allow-origin": "*" },
 		}),
 	);
-	await page.route(/\/api\/public\/papers\/e2e-paper$/, (route) =>
+	await page.route(/\/api\/v1\/shares\/e2e-paper$/, (route) =>
 		route.fulfill({
 			headers: {
 				"access-control-allow-credentials": "true",

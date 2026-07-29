@@ -32,9 +32,9 @@ export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
     const refresh = useCallback(async () => {
         try {
             const [researchResponse, jobResponse] = await Promise.all([
-                fetchFromApi(`/api/documents/${document_id}/research-items`),
+                fetchFromApi(`/papers/${document_id}/research-items`),
                 fetchFromApi(
-                    `/api/jobs?document_id=${document_id}&operation=audio_generate&active=true`,
+                    `/jobs?document_id=${document_id}&operation=audio_generate&active=true`,
                 ),
             ]);
             setItems(
@@ -61,7 +61,7 @@ export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
     const create = async () => {
         setSubmitting(true);
         try {
-            await fetchFromApi(`/api/documents/${document_id}/audio-overviews`, {
+            await fetchFromApi(`/papers/${document_id}/audio-overviews`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

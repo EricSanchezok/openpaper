@@ -41,7 +41,7 @@ export function EditProjectDialog({ open, onOpenChange }: EditProjectDialogProps
     const handleUpdateProject = async () => {
         if (!project) return;
         try {
-            const response = await fetchFromApi(`/api/projects/${project.id}`, {
+            const response = await fetchFromApi(`/projects/${project.id}`, {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",

@@ -24,7 +24,7 @@ export default function ProjectInvitationPage() {
         const accept = async () => {
             try {
                 await fetchFromApi(
-                    `/api/project-invitations/${encodeURIComponent(params.token)}/accept`,
+                    `/project-invitations/${encodeURIComponent(params.token)}/accept`,
                     { method: "POST" },
                 );
                 setState("accepted");

@@ -71,7 +71,7 @@ function ConversationActions({
     onChanged: (conversation: Conversation | string) => void;
 }) {
     const patch = async (body: Record<string, unknown>) => {
-        const updated = await fetchFromApi(`/api/conversations/${conversation.id}`, {
+        const updated = await fetchFromApi(`/conversations/${conversation.id}`, {
             method: "PATCH",
             body: JSON.stringify(body),
         }) as Conversation;
@@ -80,7 +80,7 @@ function ConversationActions({
 
     const move = async (scopeType: "global" | "project", scopeId?: string) => {
         const updated = await fetchFromApi(
-            `/api/conversations/${conversation.id}/scope`,
+            `/conversations/${conversation.id}/scope`,
             {
                 method: "PUT",
                 body: JSON.stringify({
@@ -101,7 +101,7 @@ function ConversationActions({
 
     const remove = async () => {
         if (!window.confirm(`Delete “${conversation.title}”?`)) return;
-        await fetchFromApi(`/api/conversations/${conversation.id}`, {
+        await fetchFromApi(`/conversations/${conversation.id}`, {
             method: "DELETE",
         });
         onChanged(conversation.id);

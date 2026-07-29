@@ -35,8 +35,8 @@ export function AppSidebar() {
         const fetchData = async () => {
             try {
                 const [conversationsResponse, projectsResponse] = await Promise.all([
-                    fetchFromApi("/api/conversations?limit=100"),
-                    fetchFromApi("/api/projects"),
+                    fetchFromApi("/conversations?limit=100"),
+                    fetchFromApi("/projects"),
                 ]);
 
                 setEverythingConversations(

@@ -2,7 +2,7 @@ import useSWR from 'swr';
 import { PaperItem } from '@/lib/schema';
 import { fetchLibraryPapers } from '@/lib/documents';
 
-const LIBRARY_PAPERS_KEY = "/api/library/papers";
+const LIBRARY_PAPERS_KEY = "/library/papers";
 
 export function usePapers() {
 	const { data, error, isLoading, mutate } = useSWR<PaperItem[]>(

@@ -966,14 +966,9 @@ async def _import_one_paper(
         # an orphan with no content (the import row's FK is ON DELETE SET NULL).
         if created_document_id:
             try:
-                entry = document_repository.require_library_paper_by_document(
-                    db,
-                    document_id=UUID(str(created_document_id)),
-                    user_id=user.id,
-                )
                 document_repository.delete_library_paper(
                     db,
-                    library_paper_id=entry.id,
+                    document_id=UUID(str(created_document_id)),
                     user_id=user.id,
                 )
             except Exception as cleanup_err:
