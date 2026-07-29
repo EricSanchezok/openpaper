@@ -71,6 +71,21 @@ from app.modules.projects.infrastructure.gateway import (
     PostHogProjectEvents,
     SqlAlchemyProjectGateway,
 )
+from app.modules.research.application.items import ResearchItems
+from app.modules.research.infrastructure.item_gateway import (
+    SqlAlchemyResearchItemGateway,
+)
+from app.modules.jobs.application.jobs import Jobs
+from app.modules.jobs.infrastructure.application_gateway import (
+    SqlAlchemyJobsGateway,
+)
+from app.modules.research.application.generation import (
+    GenerationDocuments,
+    ResearchGeneration,
+)
+from app.modules.research.infrastructure.generation import (
+    DefaultGenerationCapacity,
+)
 from sqlalchemy.orm import Session
 
 
@@ -177,4 +192,24 @@ def build_projects(*, db: Session) -> Projects:
         events=PostHogProjectEvents(db),
         invitations=EmailProjectInvitationNotifier(),
         signer=S3PaperDownloadSigner(),
+    )
+
+
+def build_research_items(*, db: Session) -> ResearchItems:
+    return ResearchItems(SqlAlchemyResearchItemGateway(db))
+
+
+def build_jobs(*, db: Session) -> Jobs:
+    return Jobs(SqlAlchemyJobsGateway(db))
+
+
+def build_research_generation(*, db: Session) -> ResearchGeneration:
+    project_documents = build_project_document_visibility(db=db)
+    return ResearchGeneration(
+        documents=GenerationDocuments(
+            content=build_paper_content(db=db),
+            project_documents=project_documents,
+        ),
+        jobs=SqlAlchemyJobsGateway(db),
+        capacity=DefaultGenerationCapacity(db),
     )

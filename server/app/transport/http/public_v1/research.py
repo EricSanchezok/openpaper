@@ -1,16 +1,11 @@
-"""Public API for typed, scope-aware research items."""
+"""HTTP adapters for typed, scope-aware Research items."""
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.bootstrap.container import build_research_items
 from app.database.database import get_db
-from app.database.models import ResearchItemKind
-from app.modules.research.infrastructure.repository import (
-    HighlightThreadCreate,
-    research_repository,
-)
 from app.modules.research.application.contracts import (
     AnnotationCommentResponse,
     CreateAnnotationCommentRequest,
@@ -24,25 +19,13 @@ from app.modules.research.application.contracts import (
     UpdateHighlightThreadRequest,
 )
 from app.shared.application import Actor
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 document_research_router = APIRouter()
 project_research_router = APIRouter()
 research_router = APIRouter()
-
-
-def _serialize(
-    db: Session,
-    *,
-    item: object,
-    user_id: int,
-) -> ResearchItemResponse:
-    from app.database.models import ResearchItem
-
-    if not isinstance(item, ResearchItem):
-        raise TypeError("expected ResearchItem")
-    return research_repository.serialize(db, item=item, user_id=user_id)
 
 
 @document_research_router.get(
@@ -54,13 +37,9 @@ def list_document_research_items(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
-    items = research_repository.list_for_document(
-        db,
+    return build_research_items(db=db).list_document(
+        actor=current_user,
         document_id=document_id,
-        user_id=current_user.id,
-    )
-    return ResearchItemListResponse(
-        items=[_serialize(db, item=item, user_id=current_user.id) for item in items]
     )
 
 
@@ -73,13 +52,9 @@ def list_project_research_items(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
-    items = research_repository.list_for_project(
-        db,
+    return build_research_items(db=db).list_project(
+        actor=current_user,
         project_id=project_id,
-        user_id=current_user.id,
-    )
-    return ResearchItemListResponse(
-        items=[_serialize(db, item=item, user_id=current_user.id) for item in items]
     )
 
 
@@ -92,14 +67,10 @@ def list_highlight_threads(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemListResponse:
-    items = research_repository.list_for_document(
-        db,
+    return build_research_items(db=db).list_document(
+        actor=current_user,
         document_id=document_id,
-        user_id=current_user.id,
-        kind=ResearchItemKind.HIGHLIGHT_THREAD,
-    )
-    return ResearchItemListResponse(
-        items=[_serialize(db, item=item, user_id=current_user.id) for item in items]
+        highlights_only=True,
     )
 
 
@@ -114,21 +85,11 @@ def create_highlight_thread(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
-    item = research_repository.create_highlight_thread(
-        db,
+    return build_research_items(db=db).create_highlight(
+        actor=current_user,
         document_id=document_id,
-        user_id=current_user.id,
-        create=HighlightThreadCreate(
-            quote_text=request.quote_text,
-            page_number=request.page_number,
-            start_offset=request.start_offset,
-            end_offset=request.end_offset,
-            position=request.position,
-            color=request.color,
-            is_shared=request.shared,
-        ),
+        request=request,
     )
-    return _serialize(db, item=item, user_id=current_user.id)
 
 
 @research_router.patch(
@@ -141,14 +102,11 @@ def update_highlight_thread(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
-    values = request.model_dump(exclude_unset=True)
-    item = research_repository.update_highlight_thread(
-        db,
+    return build_research_items(db=db).update_highlight(
+        actor=current_user,
         thread_id=thread_id,
-        user_id=current_user.id,
-        values=values,
+        request=request,
     )
-    return _serialize(db, item=item, user_id=current_user.id)
 
 
 @research_router.delete(
@@ -161,13 +119,11 @@ def delete_highlight_thread(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> DeleteResearchItemResponse:
-    research_repository.delete_item(
-        db,
-        item_id=thread_id,
-        user_id=current_user.id,
-        confirm_delete_replies=request.confirm_delete_replies,
+    return build_research_items(db=db).delete_highlight(
+        actor=current_user,
+        thread_id=thread_id,
+        request=request,
     )
-    return DeleteResearchItemResponse()
 
 
 @research_router.post(
@@ -181,16 +137,10 @@ def create_annotation_comment(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> AnnotationCommentResponse:
-    comment = research_repository.add_comment(
-        db,
+    return build_research_items(db=db).create_comment(
+        actor=current_user,
         thread_id=thread_id,
-        user_id=current_user.id,
-        content=request.content,
-    )
-    return research_repository.serialize_comment(
-        comment,
-        user_id=current_user.id,
-        has_scope_access=True,
+        request=request,
     )
 
 
@@ -204,16 +154,10 @@ def update_annotation_comment(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> AnnotationCommentResponse:
-    comment = research_repository.update_comment(
-        db,
+    return build_research_items(db=db).update_comment(
+        actor=current_user,
         comment_id=comment_id,
-        user_id=current_user.id,
-        content=request.content,
-    )
-    return research_repository.serialize_comment(
-        comment,
-        user_id=current_user.id,
-        has_scope_access=True,
+        request=request,
     )
 
 
@@ -226,10 +170,9 @@ def delete_annotation_comment(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> Response:
-    research_repository.delete_comment(
-        db,
+    build_research_items(db=db).delete_comment(
+        actor=current_user,
         comment_id=comment_id,
-        user_id=current_user.id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -244,13 +187,11 @@ def update_research_item(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> ResearchItemResponse:
-    item = research_repository.set_visibility(
-        db,
+    return build_research_items(db=db).set_visibility(
+        actor=current_user,
         item_id=item_id,
-        user_id=current_user.id,
-        shared=request.shared,
+        request=request,
     )
-    return _serialize(db, item=item, user_id=current_user.id)
 
 
 @research_router.delete(
@@ -262,9 +203,7 @@ def delete_research_item(
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> DeleteResearchItemResponse:
-    research_repository.delete_item(
-        db,
+    return build_research_items(db=db).delete_item(
+        actor=current_user,
         item_id=item_id,
-        user_id=current_user.id,
     )
-    return DeleteResearchItemResponse()

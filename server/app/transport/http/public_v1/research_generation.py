@@ -1,16 +1,11 @@
-"""Durable generation endpoints for typed research outputs."""
+"""HTTP adapters for durable Research generation and Jobs queries."""
 
 from __future__ import annotations
 
-import uuid
+from uuid import UUID
 
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.bootstrap.container import build_jobs, build_research_generation
 from app.database.database import get_db
-from app.database.models import JobOperation, JobStatus
-from app.shared.domain import AppError
-from app.modules.papers.infrastructure.access import require_document_access
-from app.modules.projects.infrastructure.access import require_project_access
-from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.jobs.application.contracts import (
     CreateAudioOverviewRequest,
     CreateDataTableRequest,
@@ -19,11 +14,8 @@ from app.modules.jobs.application.contracts import (
     JobResponse,
 )
 from app.shared.application import Actor
-from app.modules.research.infrastructure.generation import (
-    enqueue_audio_generation,
-    enqueue_data_table_generation,
-    list_project_generation_documents,
-)
+from app.shared.domain.enums import JobOperation
+from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.orm import Session
 
@@ -32,12 +24,8 @@ project_generation_router = APIRouter()
 jobs_router = APIRouter()
 
 
-def _job_response(job: object) -> JobResponse:
-    from app.database.models import DurableJob
-
-    if not isinstance(job, DurableJob):
-        raise TypeError("expected DurableJob")
-    return JobResponse.model_validate(job, from_attributes=True)
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 @document_generation_router.post(
@@ -46,25 +34,17 @@ def _job_response(job: object) -> JobResponse:
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_document_audio_overview(
-    document_id: uuid.UUID,
+    document_id: UUID,
     request: CreateAudioOverviewRequest,
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
-    access = require_document_access(
-        db,
+    return await build_research_generation(db=db).document_audio(
+        actor=current_user,
+        client_ip=_client_ip(http_request),
         document_id=document_id,
-        user_id=current_user.id,
-    )
-    return await enqueue_audio_generation(
-        db=db,
-        user=current_user,
-        ip_address=http_request.client.host if http_request.client else "unknown",
-        scope_type="document",
-        scope_id=document_id,
-        documents=[access.document],
         request=request,
         idempotency_key=idempotency_key,
     )
@@ -76,28 +56,17 @@ async def create_document_audio_overview(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_project_audio_overview(
-    project_id: uuid.UUID,
+    project_id: UUID,
     request: CreateAudioOverviewRequest,
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
-    require_project_access(db, project_id=project_id, user_id=current_user.id)
-    documents = list_project_generation_documents(db, project_id=project_id)
-    if not documents:
-        raise AppError(
-            code="project_has_no_papers",
-            message="Add at least one paper before generating audio",
-            status_code=409,
-        )
-    return await enqueue_audio_generation(
-        db=db,
-        user=current_user,
-        ip_address=http_request.client.host if http_request.client else "unknown",
-        scope_type="project",
-        scope_id=project_id,
-        documents=documents,
+    return await build_research_generation(db=db).project_audio(
+        actor=current_user,
+        client_ip=_client_ip(http_request),
+        project_id=project_id,
         request=request,
         idempotency_key=idempotency_key,
     )
@@ -105,36 +74,29 @@ async def create_project_audio_overview(
 
 @jobs_router.get("", response_model=JobListResponse)
 def list_jobs(
-    project_id: uuid.UUID | None = None,
-    document_id: uuid.UUID | None = None,
+    project_id: UUID | None = None,
+    document_id: UUID | None = None,
     operation: JobOperation | None = None,
     active: bool = False,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> JobListResponse:
-    jobs = job_repository.list_for_requester(
-        db,
-        requested_by_id=current_user.id,
+    return build_jobs(db=db).list(
+        actor=current_user,
         project_id=project_id,
         document_id=document_id,
         operation=operation,
-        statuses=(JobStatus.PENDING, JobStatus.RUNNING) if active else None,
+        active=active,
     )
-    return JobListResponse(items=[_job_response(job) for job in jobs])
 
 
 @jobs_router.get("/{job_id}", response_model=JobResponse)
 def get_job(
-    job_id: uuid.UUID,
+    job_id: UUID,
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> JobResponse:
-    job = job_repository.require_for_requester(
-        db,
-        job_id=job_id,
-        requested_by_id=current_user.id,
-    )
-    return _job_response(job)
+    return build_jobs(db=db).get(actor=current_user, job_id=job_id)
 
 
 @project_generation_router.post(
@@ -143,28 +105,17 @@ def get_job(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_project_data_table(
-    project_id: uuid.UUID,
+    project_id: UUID,
     request: CreateDataTableRequest,
     http_request: Request,
     idempotency_key: str | None = Header(default=None, max_length=128),
     db: Session = Depends(get_db),
     current_user: Actor = Depends(get_required_user),
 ) -> CreateJobResponse:
-    require_project_access(db, project_id=project_id, user_id=current_user.id)
-    documents = list_project_generation_documents(db, project_id=project_id)
-    if not documents:
-        raise AppError(
-            code="project_has_no_papers",
-            message="Add at least one paper before generating a data table",
-            status_code=409,
-        )
-
-    return await enqueue_data_table_generation(
-        db=db,
-        user=current_user,
-        ip_address=http_request.client.host if http_request.client else "unknown",
+    return await build_research_generation(db=db).project_data_table(
+        actor=current_user,
+        client_ip=_client_ip(http_request),
         project_id=project_id,
-        documents=documents,
         request=request,
         idempotency_key=idempotency_key,
     )

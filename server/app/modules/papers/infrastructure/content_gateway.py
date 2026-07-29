@@ -31,8 +31,10 @@ class SqlAlchemyPaperContentGateway:
             return None
         return AccessiblePaperContent(
             document_id=document.id,
+            original_filename=document.original_filename,
             title=document.title,
             abstract=document.abstract,
             raw_content=document.raw_content,
             storage_key=document.s3_object_key,
+            parser_markdown_storage_key=document.parser_markdown_s3_key,
         )

@@ -17,10 +17,12 @@ from app.shared.domain import AppError
 @dataclass(frozen=True)
 class AccessiblePaperContent:
     document_id: UUID
+    original_filename: str
     title: str | None
     abstract: str | None
     raw_content: str | None
     storage_key: str
+    parser_markdown_storage_key: str | None
 
 
 class PaperContentPort(Protocol):
