@@ -1,4 +1,4 @@
-"""Authorization and lifecycle state for private conversations."""
+"""Cross-module authorization state for private conversations."""
 
 from __future__ import annotations
 

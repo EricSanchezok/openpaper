@@ -12,8 +12,8 @@ from app.modules.conversations.infrastructure.message_repository import (
 from app.database.models import Conversation, Message
 from app.shared.domain import AppError
 from app.main import app
-from app.modules.conversations.infrastructure.repository import conversation_repository
-from app.modules.conversations.infrastructure.application_gateway import (
+from app.bootstrap.adapters.conversation_repository import conversation_repository
+from app.bootstrap.adapters.conversation_lifecycle import (
     SqlAlchemyConversationGateway,
 )
 from app.modules.conversations.application.contracts.conversations import (
@@ -173,7 +173,7 @@ def test_paper_conversation_scope_is_immutable(
     db = MagicMock(spec=Session)
     db.scalar.return_value = conversation
     monkeypatch.setattr(
-        "app.modules.conversations.infrastructure.repository.conversation_policy.require_can_continue",
+        "app.bootstrap.adapters.conversation_repository.conversation_policy.require_can_continue",
         lambda *_args, **_kwargs: None,
     )
 
@@ -324,7 +324,7 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
 
     with pytest.raises(ValueError, match="invalid message payload"):
         monkeypatch.setattr(
-            "app.modules.conversations.infrastructure.application_gateway.serialize_messages",
+            "app.bootstrap.adapters.conversation_lifecycle.serialize_messages",
             lambda _messages: (_ for _ in ()).throw(
                 ValueError("invalid message payload")
             ),

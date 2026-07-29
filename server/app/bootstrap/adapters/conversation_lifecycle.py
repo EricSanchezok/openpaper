@@ -19,7 +19,7 @@ from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.modules.conversations.infrastructure.presenters import serialize_messages
-from app.modules.conversations.infrastructure.repository import conversation_repository
+from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.shared.application import Actor
 from app.shared.domain.enums import ConversationScopeType
 from sqlalchemy.orm import Session

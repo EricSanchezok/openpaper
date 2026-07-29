@@ -13,7 +13,7 @@ from app.llm.prompts import (
     RENAME_CONVERSATION_USER_MESSAGE,
 )
 from app.llm.backend import TextContent
-from app.modules.conversations.infrastructure.repository import conversation_repository
+from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.modules.conversations.application.contracts.conversations import (
     ConversationUpdateRequest,
 )

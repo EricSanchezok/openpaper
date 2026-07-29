@@ -39,7 +39,7 @@ from app.helpers.celery_config import get_webhook_base_url
 from app.modules.billing.infrastructure.quotas import can_user_auto_sync_zotero
 from app.modules.papers.infrastructure.garbage_collection import collect_document_if_due
 from app.llm.citation_handler import CitationHandler
-from app.modules.conversations.infrastructure.repository import conversation_repository
+from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.modules.papers.infrastructure.search_repository import (
     document_search_repository,
 )

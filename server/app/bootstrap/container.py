@@ -101,7 +101,7 @@ from app.modules.research.infrastructure.generation import (
 )
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.conversations.application.chat import ConversationChat
-from app.modules.conversations.infrastructure.application_gateway import (
+from app.bootstrap.adapters.conversation_lifecycle import (
     LlmConversationTitleGenerator,
     PostHogConversationEvents,
     SqlAlchemyConversationGateway,
