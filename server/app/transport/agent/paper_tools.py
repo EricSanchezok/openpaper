@@ -1,20 +1,19 @@
-import re
 import uuid
 from logging import getLogger
 from time import time
 
-from app.database.models import Document
-from app.modules.papers.infrastructure.search_repository import (
-    document_search_repository,
-)
-from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.projects.infrastructure.document_repository import (
-    project_document_repository,
+from app.modules.papers.application.content import PaperContentCapabilities
+from app.modules.papers.infrastructure.content_gateway import (
+    SqlAlchemyPaperContentGateway,
 )
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
 logger = getLogger(__name__)
+
+
+def _content_capabilities(db: Session) -> PaperContentCapabilities:
+    return PaperContentCapabilities(SqlAlchemyPaperContentGateway(db))
 
 
 def _ensure_paper_in_scope(
@@ -138,22 +137,11 @@ def read_file(
     Read the content of a file associated with a paper.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper: Document | None = None
-    if project_id:
-        paper = project_document_repository.get_paper_by_project(
-            db,
-            document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id),
-            user=current_user,
-        )
-    else:
-        paper = document_repository.find_accessible(
-            db, document_id=document_id, user=current_user
-        )
-
-    if not paper:
-        raise ValueError("Paper not found or access denied")
-
+    paper = _content_capabilities(db).read(
+        actor=current_user,
+        document_id=uuid.UUID(document_id),
+        project_id=uuid.UUID(project_id) if project_id else None,
+    )
     file_content = paper.raw_content
     if not file_content:
         raise ValueError("File content not found")
@@ -174,39 +162,12 @@ def search_file(
     Returns matching lines with line numbers.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper: Document | None = None
-    if project_id:
-        paper = project_document_repository.get_paper_by_project(
-            db,
-            document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id),
-            user=current_user,
-        )
-    else:
-        paper = document_repository.find_accessible(
-            db, document_id=document_id, user=current_user
-        )
-
-    if not paper:
-        raise ValueError("Paper not found or access denied")
-
-    file_content = paper.raw_content
-    if not file_content:
-        raise ValueError("File content not found")
-
-    # Regex search implementation with line numbers
-    lines = file_content.splitlines()
-    results = []
-
-    try:
-        pattern = re.compile(query, re.IGNORECASE)
-        for line_num, line in enumerate(lines, 1):
-            if pattern.search(line):
-                results.append(f"{line_num}: {line}")
-    except re.error as e:
-        raise ValueError(f"Invalid regex pattern: {e}")
-
-    return results
+    return _content_capabilities(db).search_document(
+        actor=current_user,
+        document_id=uuid.UUID(document_id),
+        query=query,
+        project_id=uuid.UUID(project_id) if project_id else None,
+    )
 
 
 def search_all_files(
@@ -225,31 +186,15 @@ def search_all_files(
     """
     start_time = time()
 
-    document_ids: list[uuid.UUID] | None = None
-    if project_id:
-        document_ids = (
-            project_document_repository.get_project_document_ids_by_project_id(
-                db, project_id=uuid.UUID(project_id), user=current_user
-            )
-        )
-        if not document_ids:
-            return {}
-
-    if restrict_to_document_ids is not None:
-        restrict_uuids = [uuid.UUID(pid) for pid in restrict_to_document_ids]
-        if document_ids is None:
-            document_ids = restrict_uuids
-        else:
-            allowed = set(restrict_uuids)
-            document_ids = [pid for pid in document_ids if pid in allowed]
-        if not document_ids:
-            return {}
-
-    matching_lines_tuples = document_search_repository.matching_lines(
-        db,
-        user_id=current_user.id,
+    matching_lines = _content_capabilities(db).search_all(
+        actor=current_user,
         query=query,
-        document_ids=document_ids,
+        project_id=uuid.UUID(project_id) if project_id else None,
+        restrict_to_document_ids=(
+            [uuid.UUID(item) for item in restrict_to_document_ids]
+            if restrict_to_document_ids is not None
+            else None
+        ),
     )
 
     end_time = time()
@@ -260,11 +205,11 @@ def search_all_files(
 
     results: dict[str, list[str]] = {}
 
-    for document_id, line_num, line in matching_lines_tuples:
-        if document_id not in results:
-            results[document_id] = []
-
-        results[document_id].append(f"{line_num}: {line}")
+    for match in matching_lines:
+        document_id = str(match.document_id)
+        results.setdefault(document_id, []).append(
+            f"{match.line_number}: {match.content}"
+        )
 
     return results
 
@@ -282,22 +227,11 @@ def view_file(
     View a specific range of lines from the file content of a paper.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper: Document | None = None
-    if project_id:
-        paper = project_document_repository.get_paper_by_project(
-            db,
-            document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id),
-            user=current_user,
-        )
-    else:
-        paper = document_repository.find_accessible(
-            db, document_id=document_id, user=current_user
-        )
-
-    if not paper:
-        raise ValueError("Paper not found or access denied")
-
+    paper = _content_capabilities(db).read(
+        actor=current_user,
+        document_id=uuid.UUID(document_id),
+        project_id=uuid.UUID(project_id) if project_id else None,
+    )
     file_content = paper.raw_content
     if not file_content:
         raise ValueError("File content not found")
@@ -326,22 +260,11 @@ def read_abstract(
     Read the abstract of a paper.
     """
     _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    paper: Document | None = None
-    if project_id:
-        paper = project_document_repository.get_paper_by_project(
-            db,
-            document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id),
-            user=current_user,
-        )
-    else:
-        paper = document_repository.find_accessible(
-            db, document_id=document_id, user=current_user
-        )
-
-    if not paper:
-        raise ValueError("Paper not found or access denied")
-
+    paper = _content_capabilities(db).read(
+        actor=current_user,
+        document_id=uuid.UUID(document_id),
+        project_id=uuid.UUID(project_id) if project_id else None,
+    )
     abstract = paper.abstract
     if not abstract:
         return f"Abstract for {paper.title} not found"

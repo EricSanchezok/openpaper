@@ -1,10 +1,9 @@
-"""Idempotent callbacks for generated audio and data-table research outputs."""
+"""Operation-specific research handlers behind the generic job callback."""
 
 from __future__ import annotations
 
 import uuid
 
-from app.database.database import get_db
 from app.database.models import (
     JobOperation,
     ResearchAudioOverview,
@@ -25,10 +24,7 @@ from app.modules.jobs.application.contracts import (
     JobClaimResponse,
     TokenUsageEventPayload,
 )
-from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-
-research_webhook_router = APIRouter()
 
 
 def settle_jobs_usage(user_id: int, events: list[TokenUsageEventPayload]) -> None:
@@ -74,14 +70,10 @@ def _validate_callback(
         )
 
 
-@research_webhook_router.post(
-    "/jobs/{job_id}/audio",
-    response_model=JobClaimResponse,
-)
 async def complete_audio_job(
     job_id: uuid.UUID,
     webhook: AudioOverviewWebhookData,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> JobClaimResponse:
     job = job_repository.require(db, job_id=job_id)
     _validate_callback(
@@ -158,14 +150,10 @@ async def complete_audio_job(
     return JobClaimResponse(claimed=changed)
 
 
-@research_webhook_router.post(
-    "/jobs/{job_id}/data-table",
-    response_model=JobClaimResponse,
-)
 async def complete_data_table_job(
     job_id: uuid.UUID,
     webhook: DataTableWebhookData,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> JobClaimResponse:
     job = job_repository.require(db, job_id=job_id)
     _validate_callback(

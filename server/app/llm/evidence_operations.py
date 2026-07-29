@@ -22,7 +22,7 @@ from app.modules.projects.infrastructure.document_repository import (
 from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
-from app.llm.citation_agent import find_citation_function, run_find_citation
+from app.transport.agent.citation import find_citation_function, run_find_citation
 from app.llm.prompts import (
     EVIDENCE_COMPACTION_PROMPT,
     EVIDENCE_GATHERING_MESSAGE,
@@ -31,7 +31,7 @@ from app.llm.prompts import (
     TOOL_RESULT_COMPACTION_PROMPT,
 )
 from app.llm.backend import TextContent
-from app.llm.tools.file_tools import (
+from app.transport.agent.paper_tools import (
     read_abstract,
     read_abstract_function,
     read_file,
@@ -43,7 +43,7 @@ from app.llm.tools.file_tools import (
     view_file,
     view_file_function,
 )
-from app.llm.tools.meta_tools import stop_function
+from app.transport.agent.meta_tools import stop_function
 from app.modules.projects.infrastructure.access import get_project_access
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.conversations.application.contracts.messages import (

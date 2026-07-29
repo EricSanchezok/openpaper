@@ -278,6 +278,9 @@ def test_caddy_contract_hides_internal_health_and_routes_same_origin_api() -> No
 
     assert "{$SCHOLENS_DOMAIN}" in caddy
     assert "respond @internal_health 404" in caddy
+    assert "handle /api/v1/*" in caddy
+    assert "handle /webhooks/v1/*" in caddy
+    assert "/internal/v1" not in caddy
     assert "reverse_proxy scholens-api:8000" in caddy
     assert "reverse_proxy scholens-client:3000" in caddy
 

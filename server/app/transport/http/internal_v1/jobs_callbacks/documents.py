@@ -1,10 +1,9 @@
-"""HTTP bindings for durable document and Zotero callbacks."""
+"""Operation-specific handlers behind the generic durable-job callback."""
 
 from __future__ import annotations
 
 import uuid
 
-from app.database.database import get_db
 from app.modules.jobs.application.contracts import (
     JobCallbackIdentity,
     JobClaimResponse,
@@ -12,53 +11,37 @@ from app.modules.jobs.application.contracts import (
     StorageDeleteCallback,
 )
 from app.modules.jobs.infrastructure import document_callbacks
-from fastapi import APIRouter, Depends, Request
+from fastapi import Request
 from sqlalchemy.orm import Session
 
-document_webhook_router = APIRouter()
-
-
-@document_webhook_router.post(
-    "/jobs/{job_id}/pdf-postprocess",
-    response_model=JobClaimResponse,
-)
 def complete_pdf_postprocess_job(
     job_id: uuid.UUID,
     callback: JobCallbackIdentity,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> JobClaimResponse:
     return document_callbacks.complete_pdf_postprocess_job(job_id, callback, db)
 
 
-@document_webhook_router.post(
-    "/jobs/{job_id}/document-gc",
-    response_model=JobClaimResponse,
-)
 def complete_document_gc_job(
     job_id: uuid.UUID,
     callback: JobCallbackIdentity,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> JobClaimResponse:
     return document_callbacks.complete_document_gc_job(job_id, callback, db)
 
 
-@document_webhook_router.post(
-    "/jobs/{job_id}/storage-delete",
-    response_model=JobClaimResponse,
-)
 def complete_storage_delete_job(
     job_id: uuid.UUID,
     callback: StorageDeleteCallback,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> JobClaimResponse:
     return document_callbacks.complete_storage_delete_job(job_id, callback, db)
 
 
-@document_webhook_router.post("/paper-processing/{job_id}")
 async def handle_paper_processing_webhook(
     job_id: str,
     webhook_data: PdfProcessingWebhookData,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> dict[str, object]:
     return await document_callbacks.handle_paper_processing_webhook(
         job_id,
@@ -67,22 +50,17 @@ async def handle_paper_processing_webhook(
     )
 
 
-@document_webhook_router.post("/internal/zotero-schedule")
 def schedule_zotero_jobs(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> dict[str, object]:
     return document_callbacks.schedule_zotero_jobs(request, db)
 
 
-@document_webhook_router.post(
-    "/jobs/{job_id}/zotero-postprocess",
-    response_model=JobClaimResponse,
-)
 async def complete_zotero_postprocess_job(
     job_id: uuid.UUID,
     callback: JobCallbackIdentity,
-    db: Session = Depends(get_db),
+    db: Session,
 ) -> JobClaimResponse:
     return await document_callbacks.complete_zotero_postprocess_job(
         job_id,

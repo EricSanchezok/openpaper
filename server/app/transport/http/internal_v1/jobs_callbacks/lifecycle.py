@@ -33,5 +33,4 @@ def heartbeat_durable_job(
     db: Session = Depends(get_db),
 ) -> JobClaimResponse:
     updated = job_repository.heartbeat(db, job_id=job_id)
-    db.commit()
     return JobClaimResponse(claimed=updated)

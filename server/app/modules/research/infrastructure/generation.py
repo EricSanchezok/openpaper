@@ -180,8 +180,8 @@ async def enqueue_audio_generation(
                 queue="audio",
                 task_kwargs={
                     "request": payload,
-                    "webhook_url": f"{base_url}/api/webhooks/jobs/{job_id}/audio",
-                    "claim_url": f"{base_url}/api/webhooks/jobs/{job_id}/claim",
+                    "webhook_url": f"{base_url}/internal/v1/jobs/{job_id}/complete",
+                    "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
                 },
                 job_id=job_id,
             ),
@@ -282,9 +282,9 @@ async def enqueue_data_table_generation(
                 task_kwargs={
                     "request": payload,
                     "webhook_url": (
-                        f"{base_url}/api/webhooks/jobs/{job_id}/data-table"
+                        f"{base_url}/internal/v1/jobs/{job_id}/complete"
                     ),
-                    "claim_url": f"{base_url}/api/webhooks/jobs/{job_id}/claim",
+                    "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
                 },
                 job_id=job_id,
             ),

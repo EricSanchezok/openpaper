@@ -21,6 +21,10 @@ class JobCallbackIdentity(BaseModel):
     task_id: UUID
 
 
+class JobFailureCallback(JobCallbackIdentity):
+    error_code: str = Field(min_length=1, max_length=128)
+
+
 class StorageDeleteCallback(JobCallbackIdentity):
     deleted_count: int
 

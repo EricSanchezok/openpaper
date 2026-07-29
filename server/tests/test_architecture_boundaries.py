@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 from app.main import app
+from app.transport.http.internal_v1.jobs_callbacks import webhook_router
+from fastapi import FastAPI
 
 ROOT = Path(__file__).parents[2]
 APP_ROOT = ROOT / "server" / "app"
@@ -59,3 +62,51 @@ def test_only_versioned_public_routes_are_exposed() -> None:
     assert all(path.startswith("/api/v1/") for path in public_business_paths)
     assert not any(path.startswith("/internal/") for path in paths)
     assert "/webhooks/v1/stripe" in paths
+
+
+def test_jobs_use_one_generic_versioned_lifecycle_surface() -> None:
+    internal = FastAPI()
+    internal.include_router(webhook_router, prefix="/internal/v1")
+    paths = set(internal.openapi()["paths"])
+
+    assert {
+        "/internal/v1/jobs/{job_id}/claim",
+        "/internal/v1/jobs/{job_id}/heartbeat",
+        "/internal/v1/jobs/{job_id}/complete",
+        "/internal/v1/jobs/{job_id}/fail",
+    } <= paths
+    operation_suffixes = {
+        "pdf-postprocess",
+        "document-gc",
+        "storage-delete",
+        "zotero-postprocess",
+        "audio",
+        "data-table",
+    }
+    assert not any(
+        path.rsplit("/", 1)[-1] in operation_suffixes for path in paths
+    )
+
+
+def test_public_openapi_surface_matches_reviewed_v1_contract() -> None:
+    specification = app.openapi()
+    actual = {
+        "info": {
+            "title": specification["info"]["title"],
+            "version": specification["info"]["version"],
+        },
+        "paths": {
+            path: sorted(
+                method
+                for method in operations
+                if method in {"get", "post", "put", "patch", "delete"}
+            )
+            for path, operations in sorted(specification["paths"].items())
+        },
+    }
+    expected = json.loads(
+        (ROOT / "server" / "openapi" / "v1-contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert actual == expected

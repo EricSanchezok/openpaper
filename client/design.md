@@ -142,7 +142,7 @@ export function useProjects() {
   const refetch = useCallback(async () => {
     setIsLoading(true); setError(null)
     try {
-      setProjects(await fetchFromApi("/api/projects") ?? [])
+      setProjects(await fetchFromApi("/projects") ?? [])
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Failed to fetch projects"))
     } finally {
@@ -162,8 +162,10 @@ consumers are interchangeable.
 
 ## 6. Data fetching
 
-**All network access goes through `src/lib/api.ts`.** Never call `fetch` directly in a
-component. Use `fetchFromApi` for JSON, `fetchStreamFromApi` for SSE/streaming.
+**All network access goes through `src/lib/api.ts`.** Callers pass unversioned
+resource paths such as `/projects`; `src/lib/api-config.ts` adds `/api/v1` in
+one place. Never call `fetch` directly in a component. Use `fetchFromApi` for
+JSON and `fetchStreamFromApi` for SSE/streaming.
 
 - Auth uses a short-lived Bearer access token in memory and a product-scoped refresh token in
   local storage. `fetchFromApi` attaches and rotates tokens; components must not manage tokens.
@@ -327,10 +329,10 @@ spinner is `Loader2` + `animate-spin`; `animate-pulse` for skeleton shimmer; `an
   belongs.
 - **Auth state** comes from `useAuth()` (`AuthProvider` in `lib/auth.tsx`). Email/password
   registration, verification, login, refresh, and password reset use the shared cloud-auth
-  endpoints under `/api/auth`. The access token stays in memory; the product-scoped refresh
+  endpoints under `/api/v1/auth`. The access token stays in memory; the product-scoped refresh
   token is stored in the host-only `scholens_refresh` Secure HttpOnly cookie and rotated under
   a browser lock. `lib/api.ts` attaches the Bearer token and retries one 401 after rotation.
-  The product-enriched identity is loaded from `/api/me`.
+  The product-enriched identity is loaded from `/api/v1/me`.
 
 **Gating — `RequireAuth` at a nested `(protected)` group.** Auth is enforced once at the
 layout level, not re-implemented per page. The wrapper lives at

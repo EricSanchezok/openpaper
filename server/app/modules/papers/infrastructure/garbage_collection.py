@@ -76,8 +76,8 @@ def schedule_document_gc(
             task_name="collect_document",
             queue="storage_gc",
             task_kwargs={
-                "callback_url": (f"{base_url}/api/webhooks/jobs/{job_id}/document-gc"),
-                "claim_url": f"{base_url}/api/webhooks/jobs/{job_id}/claim",
+                "callback_url": (f"{base_url}/internal/v1/jobs/{job_id}/complete"),
+                "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
             },
             job_id=job_id,
             available_at=document.gc_after,

@@ -8,7 +8,11 @@
 	@internal_health path /livez /livez/ /readyz /readyz/
 	respond @internal_health 404
 
-	handle /api/* {
+	handle /api/v1/* {
+		reverse_proxy scholens-api:8000
+	}
+
+	handle /webhooks/v1/* {
 		reverse_proxy scholens-api:8000
 	}
 

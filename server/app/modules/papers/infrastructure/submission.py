@@ -150,9 +150,9 @@ async def submit_reserved_document(
         kwargs={
             "s3_object_key": document.s3_object_key,
             "webhook_url": (
-                f"{base_url}/api/webhooks/paper-processing/{upload_job.id}"
+                f"{base_url}/internal/v1/jobs/{upload_job.id}/complete"
             ),
-            "claim_url": f"{base_url}/api/webhooks/jobs/{upload_job.id}/claim",
+            "claim_url": f"{base_url}/internal/v1/jobs/{upload_job.id}/claim",
             "skip_metadata_extraction": skip_metadata_extraction,
         },
     )

@@ -112,10 +112,10 @@ def _enqueue_pdf_postprocess(
             queue="pdf_processing",
             task_kwargs={
                 "callback_url": (
-                    f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/pdf-postprocess"
+                    f"{base_url}/internal/v1/jobs/{postprocess_job_id}/complete"
                 ),
                 "claim_url": (
-                    f"{base_url}/api/webhooks/jobs/{postprocess_job_id}/claim"
+                    f"{base_url}/internal/v1/jobs/{postprocess_job_id}/claim"
                 ),
             },
             job_id=postprocess_job_id,
@@ -836,9 +836,9 @@ def schedule_zotero_jobs(request: Request, db: Session) -> dict[str, object]:
                 queue="zotero_sync",
                 task_kwargs={
                     "callback_url": (
-                        f"{base_url}/api/webhooks/jobs/{job_id}/zotero-postprocess"
+                        f"{base_url}/internal/v1/jobs/{job_id}/complete"
                     ),
-                    "claim_url": f"{base_url}/api/webhooks/jobs/{job_id}/claim",
+                    "claim_url": f"{base_url}/internal/v1/jobs/{job_id}/claim",
                 },
                 job_id=job_id,
             ),
