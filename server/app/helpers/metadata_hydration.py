@@ -21,7 +21,7 @@ from app.helpers.paper_search import get_doi, get_enriched_data
 from app.helpers.parser import parse_publication_date
 from app.llm.citation_recovery import get_recovery_agent
 from app.repositories.documents import document_repository
-from app.schemas.documents import DocumentUpdate
+from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 

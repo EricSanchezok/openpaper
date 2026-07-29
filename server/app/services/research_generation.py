@@ -6,7 +6,7 @@ import uuid
 from typing import Literal
 
 from app.database.models import Document, JobOperation, ProjectPaper
-from app.shared.infrastructure.persistence import JsonValue
+from app.shared.domain import JsonValue
 from app.errors import AppError
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -17,7 +17,7 @@ from app.helpers.ai_limits import (
 from app.helpers.celery_config import get_webhook_base_url
 from app.llm.token_credits import has_token_credits
 from app.repositories.jobs import EnqueueJob, job_repository
-from app.schemas.jobs import (
+from app.modules.jobs.application.contracts import (
     AudioOverviewTaskPayload,
     AudioSourceDocumentPayload,
     CreateAudioOverviewRequest,

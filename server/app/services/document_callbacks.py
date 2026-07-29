@@ -20,7 +20,7 @@ from app.database.models import (
     ProjectPaper,
     ZoteroImportStatus,
 )
-from app.shared.infrastructure.persistence import JsonValue
+from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
@@ -34,9 +34,11 @@ from app.repositories.conversations import conversation_repository
 from app.repositories.document_search import document_search_repository
 from app.repositories.documents import document_repository
 from app.repositories.jobs import EnqueueJob, job_repository
-from app.schemas.conversations import ConversationCreateRequest
-from app.schemas.documents import DocumentUpdate
-from app.schemas.jobs import (
+from app.modules.conversations.application.contracts.conversations import (
+    ConversationCreateRequest,
+)
+from app.modules.papers.application.contracts.documents import DocumentUpdate
+from app.modules.jobs.application.contracts import (
     JobCallbackIdentity,
     JobClaimResponse,
     PDFProcessingResult,

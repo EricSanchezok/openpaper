@@ -12,7 +12,9 @@ from app.llm.prompts import (
 )
 from app.llm.backend import TextContent
 from app.repositories.conversations import conversation_repository
-from app.schemas.conversations import ConversationUpdateRequest
+from app.modules.conversations.application.contracts.conversations import (
+    ConversationUpdateRequest,
+)
 from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session

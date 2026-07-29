@@ -19,7 +19,7 @@ from app.database.telemetry import track_event
 from app.errors import AppError
 from app.modules.identity.application import BlockUserRequest
 from app.shared.application import Actor
-from app.schemas.zotero import (
+from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
     ZoteroDisconnectResponse,
     ZoteroStatusResponse,

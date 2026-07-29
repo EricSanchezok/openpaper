@@ -4,8 +4,9 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.database.models import ConversationScopeType, JsonValue, Message
-from app.schemas.research import CitationSnapshot
+from app.modules.research.application.contracts import CitationSnapshot
+from app.shared.domain import JsonValue
+from app.shared.domain.enums import ConversationScopeType
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -111,26 +112,3 @@ class ConversationMessagesResponse(BaseModel):
 
 class ConversationAutoTitleResponse(BaseModel):
     title: str
-
-
-def serialize_messages(messages: list[Message]) -> list[MessageResponse]:
-    return [
-        MessageResponse.model_validate(
-            {
-                "id": message.id,
-                "role": message.role,
-                "content": message.content,
-                "references": message.references,
-                "artifacts": [
-                    item.citation.snapshot
-                    for item in message.research_items
-                    if item.citation is not None
-                ]
-                or None,
-                "trace": message.trace,
-                "scope": message.scope,
-                "sequence": message.sequence,
-            }
-        )
-        for message in messages
-    ]

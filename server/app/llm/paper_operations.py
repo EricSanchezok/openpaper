@@ -17,8 +17,8 @@ from app.llm.prompts import (
     NORMAL_MODE_INSTRUCTIONS,
 )
 from app.llm.backend import SupplementaryContent, TextContent
-from app.schemas.message import ResponseStyle
-from app.schemas.responses import AudioOverviewForLLM
+from app.modules.conversations.application.contracts.messages import ResponseStyle
+from app.modules.papers.application.contracts.extraction import AudioOverviewForLLM
 from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session

@@ -14,7 +14,7 @@ from app.main import app
 from app.helpers.s3 import s3_service
 from app.repositories.documents import document_repository
 from app.shared.application import Actor
-from app.schemas.tags import LibraryTagAssignmentRequest
+from app.modules.papers.application.contracts.tags import LibraryTagAssignmentRequest
 from pydantic import ValidationError
 import pytest
 from sqlalchemy.orm import Session

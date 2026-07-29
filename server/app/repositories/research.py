@@ -16,12 +16,12 @@ from app.database.models import (
     Conversation,
     ConversationScopeType,
 )
-from app.shared.infrastructure.persistence import JsonValue
+from app.shared.domain import JsonValue
 from app.errors import AppError
 from app.helpers.s3 import s3_service
 from app.policies.documents import require_document_access
 from app.policies.research import research_item_policy, research_item_visible_to
-from app.schemas.research import (
+from app.modules.research.application.contracts import (
     AnnotationCommentResponse,
     AudioOverviewContent,
     CitationContent,

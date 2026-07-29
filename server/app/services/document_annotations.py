@@ -11,7 +11,7 @@ from app.helpers.parser import get_start_page_from_offset
 from app.llm.utils import find_offsets
 from app.repositories.documents import document_repository
 from app.repositories.research import HighlightThreadCreate, research_repository
-from app.schemas.responses import PaperMetadataExtraction
+from app.modules.papers.application.contracts.extraction import PaperMetadataExtraction
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 

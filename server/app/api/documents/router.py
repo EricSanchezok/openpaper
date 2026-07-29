@@ -9,7 +9,7 @@ from app.errors import AppError
 from app.helpers.s3 import DEFAULT_SIGNED_URL_TTL_SECONDS, s3_service
 from app.policies.documents import require_document_access
 from app.repositories.documents import document_repository
-from app.schemas.documents import (
+from app.modules.papers.application.contracts.documents import (
     DocumentFileUrlResponse,
     DocumentResponse,
     CollectPublicPaperResponse,

@@ -28,7 +28,7 @@ from app.helpers.citations import (
 )
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from app.llm.citation_recovery import MetadataRecoveryAgent
-from app.schemas.citation import (
+from app.modules.papers.application.contracts.citation import (
     CitationData,
     CitationMethod,
     CitationResult,

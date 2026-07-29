@@ -25,8 +25,8 @@ from app.llm.prompts import (
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
 from app.policies.projects import get_project_access
-from app.schemas.message import EvidenceCollection
-from app.schemas.responses import AudioOverviewForLLM
+from app.modules.conversations.application.contracts.messages import EvidenceCollection
+from app.modules.papers.application.contracts.extraction import AudioOverviewForLLM
 from app.shared.application import Actor
 from fastapi import Depends
 from sqlalchemy.orm import Session

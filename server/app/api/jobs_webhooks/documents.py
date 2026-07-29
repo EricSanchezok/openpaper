@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.database.database import get_db
-from app.schemas.jobs import (
+from app.modules.jobs.application.contracts import (
     JobCallbackIdentity,
     JobClaimResponse,
     PdfProcessingWebhookData,

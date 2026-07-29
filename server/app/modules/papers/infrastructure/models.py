@@ -23,7 +23,8 @@ from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.shared.infrastructure.persistence import Base, JsonValue
+from app.shared.domain import JsonValue
+from app.shared.infrastructure.persistence import Base
 from app.shared.domain.enums import DocumentProcessingStatus, PaperStatus
 
 if TYPE_CHECKING:

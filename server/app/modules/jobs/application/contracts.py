@@ -6,10 +6,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.shared.infrastructure.persistence import JsonValue
-from app.schemas.responses import ResponseCitation
-from app.schemas.responses import PaperMetadataExtraction
-from app.schemas.responses import DataTableRow
+from app.shared.domain import JsonValue
+from app.modules.papers.application.contracts.extraction import ResponseCitation
+from app.modules.papers.application.contracts.extraction import PaperMetadataExtraction
+from app.modules.papers.application.contracts.extraction import DataTableRow
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 

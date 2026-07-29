@@ -36,7 +36,7 @@ from app.llm.utils import find_offsets
 from app.repositories.documents import document_repository
 from app.repositories.library_tags import library_tag_repository
 from app.repositories.research import HighlightThreadCreate, research_repository
-from app.schemas.documents import DocumentUpdate
+from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
 from app.services.document_annotations import require_parsed_content
 from app.services.upload_reservations import reserve_upload

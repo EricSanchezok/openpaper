@@ -11,7 +11,7 @@ from app.errors import AppError
 from app.policies.documents import require_document_access
 from app.policies.projects import require_project_access
 from app.repositories.jobs import job_repository
-from app.schemas.jobs import (
+from app.modules.jobs.application.contracts import (
     CreateAudioOverviewRequest,
     CreateDataTableRequest,
     CreateJobResponse,

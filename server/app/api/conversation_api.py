@@ -10,7 +10,7 @@ from app.database.telemetry import track_event
 from app.errors import AppError
 from app.llm.conversation_operations import conversation_operations
 from app.repositories.conversations import conversation_repository
-from app.schemas.conversations import (
+from app.modules.conversations.application.contracts.conversations import (
     ConversationAutoTitleResponse,
     ConversationCreateRequest,
     ConversationDetailResponse,
@@ -19,8 +19,8 @@ from app.schemas.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
-    serialize_messages,
 )
+from app.modules.conversations.infrastructure.presenters import serialize_messages
 from app.shared.application import Actor
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session

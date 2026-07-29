@@ -11,7 +11,7 @@ from typing import Any, Iterator, Sequence, cast
 import openai
 from app.database.models import Message, ReasoningLevel
 from app.llm.token_credits import settle_token_usage
-from app.schemas.responses import (
+from app.modules.papers.application.contracts.extraction import (
     FileContent,
     SupplementaryContent,
     TextContent,

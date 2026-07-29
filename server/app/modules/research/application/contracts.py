@@ -4,10 +4,13 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from app.database.models import ResearchItemKind, ResearchScopeType
-from app.shared.infrastructure.persistence import JsonValue
-from app.schemas.citation import CitationData, CitationMethod
-from app.schemas.responses import ResponseCitation
+from app.shared.domain import JsonValue
+from app.shared.domain.enums import ResearchItemKind, ResearchScopeType
+from app.modules.papers.application.contracts.citation import (
+    CitationData,
+    CitationMethod,
+)
+from app.modules.papers.application.contracts.extraction import ResponseCitation
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 

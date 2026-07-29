@@ -13,7 +13,7 @@ from app.database.models import (
     ConversationScopeType,
     ReasoningLevel,
 )
-from app.shared.infrastructure.persistence import JsonValue
+from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.ai_limits import (
@@ -31,7 +31,7 @@ from app.policies.projects import get_project_access
 from app.policies.conversations import conversation_policy
 from app.repositories.conversations import conversation_repository
 from app.repositories.research import research_repository
-from app.schemas.message import (
+from app.modules.conversations.application.contracts.messages import (
     ChatMessageRequest,
     EvidenceCollection,
     MultiPaperChatRequest,

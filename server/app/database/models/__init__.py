@@ -1,6 +1,7 @@
 """Typed SQLAlchemy model registry for the Scholens product schema."""
 
-from app.shared.infrastructure.persistence import Base, JsonScalar, JsonValue
+from app.shared.domain import JsonScalar, JsonValue
+from app.shared.infrastructure.persistence import Base
 from app.shared.domain.enums import (
     ConversationScopeType,
     DocumentProcessingStatus,

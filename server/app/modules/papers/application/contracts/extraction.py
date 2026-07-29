@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from app.database.models import HighlightType
+from app.shared.domain.enums import HighlightType
 from pydantic import BaseModel, Field
 
 

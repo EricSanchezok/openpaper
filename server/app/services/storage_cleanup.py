@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Iterable
 
 from app.database.models import JobOperation
-from app.shared.infrastructure.persistence import JsonValue
+from app.shared.domain import JsonValue
 from app.helpers.celery_config import get_webhook_base_url
 from app.repositories.jobs import EnqueueJob, job_repository
 from sqlalchemy.orm import Session

@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from app.database.models import DocumentProcessingStatus, JsonValue, PaperStatus
-from app.schemas.responses import ResponseCitation
+from app.shared.domain import JsonValue
+from app.shared.domain.enums import DocumentProcessingStatus, PaperStatus
+from app.modules.papers.application.contracts.extraction import ResponseCitation
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 

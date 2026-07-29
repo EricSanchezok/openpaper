@@ -26,9 +26,12 @@ from app.integrations.mcp import (
 )
 from app.llm.base import BaseLLMClient
 from app.repositories.documents import document_repository
-from app.schemas.citation import CitationStep
-from app.schemas.documents import DocumentUpdate
-from app.schemas.responses import TextContent, ToolCallResult
+from app.modules.papers.application.contracts.citation import CitationStep
+from app.modules.papers.application.contracts.documents import DocumentUpdate
+from app.modules.papers.application.contracts.extraction import (
+    TextContent,
+    ToolCallResult,
+)
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 

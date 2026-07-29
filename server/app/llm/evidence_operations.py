@@ -41,8 +41,8 @@ from app.llm.tools.file_tools import (
 )
 from app.llm.tools.meta_tools import stop_function
 from app.policies.projects import get_project_access
-from app.schemas.citation import CitationResult
-from app.schemas.message import (
+from app.modules.papers.application.contracts.citation import CitationResult
+from app.modules.conversations.application.contracts.messages import (
     EvidenceCollection,
     EvidenceSummaryResponse,
     OriginalSnippet,

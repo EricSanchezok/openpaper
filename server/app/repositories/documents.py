@@ -22,7 +22,10 @@ from app.database.models import (
 from app.errors import AppError
 from app.helpers.paper_search import normalize_doi
 from app.policies.documents import get_document_access, require_document_access
-from app.schemas.documents import DocumentUpdate, LibraryPaperUpdateRequest
+from app.modules.papers.application.contracts.documents import (
+    DocumentUpdate,
+    LibraryPaperUpdateRequest,
+)
 from app.shared.application import Actor
 from sqlalchemy import select, update
 from sqlalchemy import func

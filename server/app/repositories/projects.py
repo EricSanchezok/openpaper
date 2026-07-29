@@ -21,7 +21,7 @@ from app.policies.projects import (
     require_project_access,
     require_project_permission,
 )
-from app.schemas.projects import ProjectPermissionSet
+from app.modules.projects.application.contracts import ProjectPermissionSet
 from app.services.project_lifecycle import (
     schedule_orphan_documents,
     prepare_project_deletion,

@@ -2,8 +2,11 @@ import re
 from collections.abc import Sequence
 from typing import NotRequired, TypedDict
 
-from app.schemas.message import CitationIndex, OriginalSnippet
-from app.schemas.responses import ResponseCitation
+from app.modules.conversations.application.contracts.messages import (
+    CitationIndex,
+    OriginalSnippet,
+)
+from app.modules.papers.application.contracts.extraction import ResponseCitation
 
 
 class CitationPayload(TypedDict):

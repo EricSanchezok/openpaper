@@ -8,7 +8,7 @@ from app.transport.http.public_v1.auth_dependencies import get_required_user
 from app.database.database import get_db
 from app.database.models import ResearchItemKind
 from app.repositories.research import HighlightThreadCreate, research_repository
-from app.schemas.research import (
+from app.modules.research.application.contracts import (
     AnnotationCommentResponse,
     CreateAnnotationCommentRequest,
     CreateHighlightThreadRequest,

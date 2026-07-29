@@ -21,7 +21,7 @@ from app.api.projects.responses import _project_counts
 from app.policies.research import research_item_policy
 from app.policies.research import research_item_visible_to
 from app.repositories.research import research_repository
-from app.schemas.research import (
+from app.modules.research.application.contracts import (
     CitationSnapshot,
     CreateHighlightThreadRequest,
     ResearchVisibilityRequest,

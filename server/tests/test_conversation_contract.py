@@ -10,13 +10,15 @@ from app.database.models import Conversation, Message
 from app.errors import AppError
 from app.main import app
 from app.repositories.conversations import conversation_repository
-from app.schemas.conversations import (
+from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationMoveRequest,
     ConversationUpdateRequest,
-    serialize_messages,
 )
-from app.schemas.message import MultiPaperChatRequest
+from app.modules.conversations.infrastructure.presenters import serialize_messages
+from app.modules.conversations.application.contracts.messages import (
+    MultiPaperChatRequest,
+)
 from app.repositories.messages import MessageCreate
 from app.shared.application import Actor
 from sqlalchemy.orm import Session

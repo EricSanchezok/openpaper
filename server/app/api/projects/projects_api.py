@@ -10,7 +10,7 @@ from app.database.models import (
 from app.database.telemetry import track_event
 from app.services.resource_quotas import can_user_create_project
 from app.repositories.projects import project_repository
-from app.schemas.projects import (
+from app.modules.projects.application.contracts import (
     ProjectCreateRequest,
     ProjectCollaboratorResponse,
     ProjectCollaboratorUpdateRequest,

@@ -13,7 +13,7 @@ from app.database.models import (
     JobOperation,
     JobStatus,
 )
-from app.shared.infrastructure.persistence import JsonValue
+from app.shared.domain import JsonValue
 from app.errors import AppError
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert

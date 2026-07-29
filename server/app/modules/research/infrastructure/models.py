@@ -20,7 +20,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.shared.infrastructure.persistence import Base, JsonValue
+from app.shared.domain import JsonValue
+from app.shared.infrastructure.persistence import Base
 from app.shared.domain.enums import ResearchItemKind, ResearchScopeType
 
 if TYPE_CHECKING:

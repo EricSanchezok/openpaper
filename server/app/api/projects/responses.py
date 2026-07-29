@@ -16,7 +16,7 @@ from app.database.models import (
 )
 from app.policies.projects import ProjectAccess
 from app.repositories.projects import project_repository
-from app.schemas.projects import (
+from app.modules.projects.application.contracts import (
     ProjectCapabilitiesResponse,
     ProjectMembershipResponse,
     ProjectOwnerResponse,

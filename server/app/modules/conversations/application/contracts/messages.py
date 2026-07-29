@@ -3,9 +3,9 @@ import uuid
 from enum import Enum
 from typing import Any
 
-from app.database.models import ReasoningLevel
-from app.schemas.citation import CitationResult
-from app.schemas.responses import ToolCall, ToolCallResult
+from app.shared.domain.enums import ReasoningLevel
+from app.modules.papers.application.contracts.citation import CitationResult
+from app.modules.papers.application.contracts.extraction import ToolCall, ToolCallResult
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 

@@ -7,7 +7,7 @@ from app.database.database import get_db
 from app.database.telemetry import track_event
 from app.errors import AppError
 from app.helpers.s3 import s3_service
-from app.schemas.projects import (
+from app.modules.projects.application.contracts import (
     AddPaperToProjectRequest,
     CollectPaperFromProjectRequest,
     ProjectPaperCollectedResponse,

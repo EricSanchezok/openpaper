@@ -13,7 +13,7 @@ from app.errors import AppError
 from app.policies.conversations import conversation_policy
 from app.policies.documents import get_document_access
 from app.policies.projects import get_project_access
-from app.schemas.conversations import (
+from app.modules.conversations.application.contracts.conversations import (
     ConversationCapabilitiesResponse,
     ConversationCreateRequest,
     ConversationMoveRequest,

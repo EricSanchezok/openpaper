@@ -24,7 +24,7 @@ from app.errors import AppError
 from app.main import app
 from app.policies.projects import ProjectAccess, ProjectPermissions
 from app.repositories.projects import project_repository
-from app.schemas.projects import (
+from app.modules.projects.application.contracts import (
     ProjectInvitationCreateRequest,
     ProjectPermissionSet,
 )

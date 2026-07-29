@@ -7,7 +7,7 @@ from app.database.telemetry import track_event
 from app.errors import AppError
 from app.services.resource_quotas import can_user_upload_paper
 from app.shared.application import Actor
-from app.schemas.zotero import (
+from app.modules.integrations.zotero.application.contracts import (
     ZoteroImportError,
     ZoteroImportItemResult,
     ZoteroImportRequest,

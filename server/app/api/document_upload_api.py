@@ -37,7 +37,7 @@ from app.helpers.parser import (
     validate_url_and_fetch_pdf,
 )
 from app.shared.application import Actor
-from app.schemas.uploads import (
+from app.modules.papers.application.contracts.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
 )
