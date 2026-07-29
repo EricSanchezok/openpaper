@@ -12,6 +12,9 @@ from app.bootstrap.adapters.zotero_workflow import (
     _link_zotero_item_to_existing_paper,
     import_batch,
 )
+from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
+
+_CREDENTIALS = ZoteroCredentials(user_id="1", api_key="key")
 
 
 class TestNormalizeDoi(unittest.TestCase):
@@ -218,7 +221,12 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
         mock_client_cls.return_value = client
         client.get_items_by_keys.return_value = [self._make_item("ITEM2")]
 
-        result = await import_batch(MagicMock(), user=user, item_keys=["ITEM2"])
+        result = await import_batch(
+            MagicMock(),
+            user=user,
+            item_keys=["ITEM2"],
+            credentials=_CREDENTIALS,
+        )
 
         self.assertEqual(result["skipped_already_imported"], 1)
         self.assertEqual(result["imported_count"], 0)
@@ -251,7 +259,10 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
         )
 
         result = await import_batch(
-            MagicMock(), user=user, item_keys=["ITEM1", "ITEM2"]
+            MagicMock(),
+            user=user,
+            item_keys=["ITEM1", "ITEM2"],
+            credentials=_CREDENTIALS,
         )
 
         self.assertEqual(result["imported_count"], 1)
@@ -285,7 +296,12 @@ class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineH
             items=[self._make_item("ITEM1", doi=None)],
         )
 
-        result = await import_batch(MagicMock(), user=user, item_keys=["ITEM1"])
+        result = await import_batch(
+            MagicMock(),
+            user=user,
+            item_keys=["ITEM1"],
+            credentials=_CREDENTIALS,
+        )
 
         self.assertEqual(result["imported_count"], 1)
         self.assertEqual(result["skipped_already_imported"], 0)
@@ -335,7 +351,10 @@ class TestImportBatchNoTitleDedup(
         )
 
         result = await import_batch(
-            MagicMock(), user=user, item_keys=["ITEM1", "ITEM2"]
+            MagicMock(),
+            user=user,
+            item_keys=["ITEM1", "ITEM2"],
+            credentials=_CREDENTIALS,
         )
 
         self.assertEqual(result["imported_count"], 2)
@@ -443,7 +462,10 @@ class TestImportBatchParallel(unittest.IsolatedAsyncioTestCase):
             side_effect=track_gather,
         ):
             result = await import_batch(
-                MagicMock(), user=user, item_keys=["A", "B", "C"]
+                MagicMock(),
+                user=user,
+                item_keys=["A", "B", "C"],
+                credentials=_CREDENTIALS,
             )
 
         self.assertEqual(gather_sizes, [3])

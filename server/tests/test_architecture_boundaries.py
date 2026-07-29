@@ -222,6 +222,8 @@ def test_modules_do_not_reach_into_another_modules_infrastructure() -> None:
 def test_explicit_commits_are_limited_to_owned_background_transactions() -> None:
     allowed = {
         "bootstrap/adapters/document_gc.py",
+        "bootstrap/adapters/zotero_operations.py",
+        "bootstrap/adapters/zotero_workflow.py",
         "modules/billing/infrastructure/stripe_webhook_ledger.py",
         "modules/jobs/infrastructure/dispatcher.py",
     }

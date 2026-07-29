@@ -107,6 +107,14 @@ class SqlAlchemyJobsGateway:
         )
         return job_response(job)
 
+    def fail(self, *, operation_id: UUID, error_code: str) -> JobResponse:
+        job, _changed = job_repository.fail(
+            self._db,
+            job_id=operation_id,
+            error_code=error_code,
+        )
+        return job_response(job)
+
     def list(
         self,
         *,

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
@@ -45,16 +46,9 @@ class ZoteroGateway(Protocol):
 
     def connected(self, *, user_id: int) -> bool: ...
 
+    def credentials(self, *, user_id: int) -> ZoteroCredentials | None: ...
+
     def library(self, *, actor: Actor) -> ZoteroLibraryResponse: ...
-
-    async def import_items(
-        self,
-        *,
-        actor: Actor,
-        request: ZoteroImportRequest,
-    ) -> ZoteroImportResponse: ...
-
-    async def sync(self, *, actor: Actor) -> ZoteroSyncResponse: ...
 
     def imports(
         self,
@@ -76,6 +70,19 @@ class ZoteroEvents(Protocol):
         name: str,
         properties: dict[str, object],
     ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ZoteroCredentials:
+    user_id: str
+    api_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedZoteroImport:
+    credentials: ZoteroCredentials
+    request: ZoteroImportRequest
+    reservation_id: UUID | None
 
 
 class Zotero:
@@ -118,14 +125,14 @@ class Zotero:
         self._require_connected(actor)
         return self._gateway.library(actor=actor)
 
-    async def import_items(
+    def prepare_import(
         self,
         *,
         actor: Actor,
         request: ZoteroImportRequest,
         idempotency_key: str | None,
-    ) -> ZoteroImportResponse:
-        self._require_connected(actor)
+    ) -> ZoteroImportResponse | PreparedZoteroImport:
+        credentials = self._require_credentials(actor)
         self._capacity.require(actor=actor)
 
         reservation_id = None
@@ -156,31 +163,53 @@ class Zotero:
                 assert reserved.job.result is not None
                 return ZoteroImportResponse.model_validate(reserved.job.result)
 
-        try:
-            result = await self._gateway.import_items(actor=actor, request=request)
-        except ValueError as exc:
-            raise AppError(
-                code="zotero_import_invalid",
-                message="The selected Zotero items could not be imported",
-                kind=FailureKind.INVALID_ARGUMENT,
-            ) from exc
+        return PreparedZoteroImport(
+            credentials=credentials,
+            request=request,
+            reservation_id=reservation_id,
+        )
 
+    def complete_import(
+        self,
+        *,
+        actor: Actor,
+        prepared: PreparedZoteroImport,
+        result: ZoteroImportResponse,
+    ) -> ZoteroImportResponse:
         if result.imported_count > 0:
             self._events.record(
                 actor=actor,
                 name="zotero_import_batch",
                 properties={"count": result.imported_count},
             )
-        if reservation_id is not None:
+        if prepared.reservation_id is not None:
             self._idempotency.complete(
-                operation_id=reservation_id,
+                operation_id=prepared.reservation_id,
                 result=_JSON_OBJECT.validate_python(result.model_dump(mode="json")),
             )
         return result
 
-    async def sync(self, *, actor: Actor) -> ZoteroSyncResponse:
-        self._require_connected(actor)
-        result = await self._gateway.sync(actor=actor)
+    def fail_import(
+        self,
+        *,
+        prepared: PreparedZoteroImport,
+        error_code: str,
+    ) -> None:
+        if prepared.reservation_id is not None:
+            self._idempotency.fail(
+                operation_id=prepared.reservation_id,
+                error_code=error_code,
+            )
+
+    def prepare_sync(self, *, actor: Actor) -> ZoteroCredentials:
+        return self._require_credentials(actor)
+
+    def complete_sync(
+        self,
+        *,
+        actor: Actor,
+        result: ZoteroSyncResponse,
+    ) -> ZoteroSyncResponse:
         if result.new_annotations_count > 0:
             self._events.record(
                 actor=actor,
@@ -204,3 +233,9 @@ class Zotero:
         require_zotero_connected(
             connected=self._gateway.connected(user_id=actor.id),
         )
+
+    def _require_credentials(self, actor: Actor) -> ZoteroCredentials:
+        credentials = self._gateway.credentials(user_id=actor.id)
+        require_zotero_connected(connected=credentials is not None)
+        assert credentials is not None
+        return credentials

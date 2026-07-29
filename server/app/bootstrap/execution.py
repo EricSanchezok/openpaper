@@ -12,6 +12,7 @@ from app.modules.identity.application.onboarding import FinishOnboarding
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
+from app.bootstrap.workflows.zotero import ZoteroWorkflow
 from app.shared.application import ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from fastapi import Request
@@ -70,6 +71,17 @@ def create_research_generation_workflow(
     )
 
 
+def create_zotero_workflow(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+) -> ZoteroWorkflow:
+    from app.bootstrap.adapters.zotero_operations import DefaultZoteroOperations
+
+    return ZoteroWorkflow(
+        executor=executor,
+        operations=DefaultZoteroOperations(SessionLocal),
+    )
+
+
 def get_application_executor(
     request: Request,
 ) -> ApplicationExecutor[ApplicationCapabilities]:
@@ -102,3 +114,7 @@ def get_research_generation_workflow(
         ResearchGenerationWorkflow,
         request.app.state.research_generation_workflow,
     )
+
+
+def get_zotero_workflow(request: Request) -> ZoteroWorkflow:
+    return cast(ZoteroWorkflow, request.app.state.zotero_workflow)

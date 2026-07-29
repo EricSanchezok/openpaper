@@ -6,16 +6,11 @@ from datetime import UTC, datetime
 
 from app.database.telemetry import track_event
 from app.modules.integrations.zotero.application.contracts import (
-    ZoteroImportError,
-    ZoteroImportItemResult,
-    ZoteroImportRequest,
-    ZoteroImportResponse,
     ZoteroImportStatusItem,
     ZoteroImportStatusListResponse,
     ZoteroLibraryItem,
     ZoteroLibraryResponse,
     ZoteroStatusResponse,
-    ZoteroSyncResponse,
 )
 from app.modules.integrations.zotero.infrastructure.connection_repository import (
     zotero_connection_repository,
@@ -24,11 +19,8 @@ from app.modules.integrations.zotero.infrastructure.import_repository import (
     zotero_import_repository,
 )
 from app.modules.integrations.zotero.infrastructure.oauth import zotero_auth_client
-from app.bootstrap.adapters.zotero_workflow import (
-    import_batch,
-    list_library,
-    sync_batch,
-)
+from app.bootstrap.adapters.zotero_workflow import list_library
+from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
@@ -121,37 +113,23 @@ class DefaultZoteroGateway:
             is not None
         )
 
+    def credentials(self, *, user_id: int) -> ZoteroCredentials | None:
+        connection = zotero_connection_repository.get_by_user_id(
+            self._db,
+            user_id=user_id,
+        )
+        if connection is None:
+            return None
+        return ZoteroCredentials(
+            user_id=str(connection.zotero_user_id),
+            api_key=str(connection.api_key),
+        )
+
     def library(self, *, actor: Actor) -> ZoteroLibraryResponse:
         result = list_library(self._db, user=actor)
         return ZoteroLibraryResponse(
             items=[ZoteroLibraryItem(**item) for item in result["items"]],
             remaining_slots=result["remaining_slots"],
-        )
-
-    async def import_items(
-        self,
-        *,
-        actor: Actor,
-        request: ZoteroImportRequest,
-    ) -> ZoteroImportResponse:
-        result = await import_batch(
-            self._db,
-            user=actor,
-            item_keys=request.item_keys,
-        )
-        return ZoteroImportResponse(
-            imported=[ZoteroImportItemResult(**item) for item in result["imported"]],
-            imported_count=result["imported_count"],
-            imported_via_url=result["imported_via_url"],
-            skipped_already_imported=result["skipped_already_imported"],
-            errors=[ZoteroImportError(**error) for error in result["errors"]],
-        )
-
-    async def sync(self, *, actor: Actor) -> ZoteroSyncResponse:
-        result = await sync_batch(self._db, user=actor, limit=50)
-        return ZoteroSyncResponse(
-            synced_papers_count=result["synced_papers_count"],
-            new_annotations_count=result["new_annotations_count"],
         )
 
     def imports(

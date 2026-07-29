@@ -60,6 +60,8 @@ class IdempotentOperationPort(Protocol):
         result: dict[str, JsonValue],
     ) -> JobResponse: ...
 
+    def fail(self, *, operation_id: UUID, error_code: str) -> JobResponse: ...
+
 
 class JobQueryPort(Protocol):
     def list(

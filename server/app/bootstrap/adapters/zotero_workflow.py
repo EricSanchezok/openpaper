@@ -47,6 +47,7 @@ from app.bootstrap.adapters.research_repository import (
 )
 from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
+from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
 from app.bootstrap.adapters.research_annotations import (
     require_parsed_content,
 )
@@ -630,6 +631,7 @@ async def _link_zotero_item_to_existing_paper(
         and attachment_key
         and annotations
     ):
+        db.commit()
         _sync_item(db, client=client, import_row=import_row, user=user)
 
 
@@ -856,6 +858,7 @@ async def _import_one_paper(
             import_source=ZoteroImportSource.PDF_ATTACHMENT,
             status=ZoteroImportStatus.PROCESSING,
         )
+        db.commit()
 
         (
             pdf_bytes,
@@ -874,6 +877,7 @@ async def _import_one_paper(
                     error_message=failure_reason
                     or "No PDF available from attachment or URL",
                 )
+                db.commit()
             return {
                 "status": "error",
                 "zotero_item_key": item_key,
@@ -891,6 +895,7 @@ async def _import_one_paper(
         )
         upload_job_id = str(paper_upload_job.id)
         digest = hashlib.sha256(pdf_bytes).hexdigest()
+        db.commit()
         await asyncio.to_thread(
             s3_service.upload_document_source,
             sha256=digest,
@@ -951,6 +956,7 @@ async def _import_one_paper(
                 user=user,
             )
 
+        db.commit()
         return {
             "status": "processing",
             "zotero_item_key": item_key,
@@ -961,6 +967,7 @@ async def _import_one_paper(
             "imported_via_url": import_source == ZoteroImportSource.URL,
         }
     except Exception as e:
+        db.rollback()
         logger.error(
             "Zotero import failed for item %s: %s",
             item_key,
@@ -993,6 +1000,7 @@ async def _import_one_paper(
             upload_reservation_repository.mark_as_failed(
                 db=db, job_id=upload_job_id, user=user
             )
+        db.commit()
         return {
             "status": "error",
             "zotero_item_key": item_key,
@@ -1146,6 +1154,7 @@ async def _discover_candidates_by_keys(
             )
         return candidates, deferred_links, skipped_already_imported, errors
 
+    db.commit()
     items = client.get_items_by_keys(item_keys)
 
     for item in items:
@@ -1189,6 +1198,7 @@ async def _discover_candidates_by_keys(
                 db, user_id=user.id, doi=doi
             )
             if target_paper:
+                db.commit()
                 await _link_zotero_item_to_existing_paper(
                     db,
                     client=client,
@@ -1218,6 +1228,7 @@ async def import_batch(
     *,
     user: Actor,
     item_keys: list[str],
+    credentials: ZoteroCredentials,
 ) -> dict[str, Any]:
     """
     Import the specified Zotero items by key.
@@ -1230,13 +1241,9 @@ async def import_batch(
     paper-processing webhook finalizes each paper and applies Zotero annotations as
     the worker completes. Progress is tracked via the zotero_imported_items rows.
     """
-    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
-    if not connection:
-        raise ValueError("Zotero account not connected")
-
     client = ZoteroApiClient(
-        zotero_user_id=str(connection.zotero_user_id),
-        api_key=str(connection.api_key),
+        zotero_user_id=credentials.user_id,
+        api_key=credentials.api_key,
     )
 
     (
@@ -1247,6 +1254,7 @@ async def import_batch(
     ) = await _discover_candidates_by_keys(
         db, client=client, user=user, item_keys=item_keys
     )
+    db.commit()
 
     imported: list[dict[str, Any]] = []
     imported_via_url = 0
@@ -1259,8 +1267,8 @@ async def import_batch(
                 return await _import_one_paper(
                     item,
                     user=user,
-                    zotero_user_id=str(connection.zotero_user_id),
-                    api_key=str(connection.api_key),
+                    zotero_user_id=credentials.user_id,
+                    api_key=credentials.api_key,
                 )
 
         raw_results = await asyncio.gather(
@@ -1317,6 +1325,7 @@ async def import_batch(
             )
             if not paper:
                 continue
+            db.commit()
             await _link_zotero_item_to_existing_paper(
                 db,
                 client=client,
@@ -1426,7 +1435,9 @@ def _sync_item(
     user: Actor,
 ) -> dict[str, Any]:
     document_id = import_row.document_id
-    if not document_id or not import_row.zotero_attachment_key:
+    attachment_key = import_row.zotero_attachment_key
+    zotero_item_key = import_row.zotero_item_key
+    if not document_id or not attachment_key:
         raise ValueError("Import row is missing paper or attachment key")
 
     paper = document_repository.find_accessible(
@@ -1435,7 +1446,8 @@ def _sync_item(
     if not paper:
         raise ValueError("Linked paper no longer exists")
 
-    attachment_children = client.get_children(str(import_row.zotero_attachment_key))
+    db.commit()
+    attachment_children = client.get_children(str(attachment_key))
     remote_annotations = client.get_annotations_for_attachment(attachment_children)
     existing_keys = research_repository.get_zotero_annotation_keys(
         db,
@@ -1483,7 +1495,7 @@ def _sync_item(
     )
 
     return {
-        "zotero_item_key": import_row.zotero_item_key,
+        "zotero_item_key": zotero_item_key,
         "document_id": str(document_id),
         "new_annotations_count": new_annotations_count,
     }
@@ -1493,21 +1505,19 @@ async def sync_batch(
     db: Session,
     *,
     user: Actor,
+    credentials: ZoteroCredentials,
     limit: int = 50,
 ) -> dict[str, Any]:
     """Append-only sync of new Zotero annotations for already-imported PDF papers."""
-    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
-    if not connection:
-        raise ValueError("Zotero account not connected")
-
     client = ZoteroApiClient(
-        zotero_user_id=str(connection.zotero_user_id),
-        api_key=str(connection.api_key),
+        zotero_user_id=credentials.user_id,
+        api_key=credentials.api_key,
     )
 
     syncable = zotero_import_repository.list_syncable_by_user(
         db, user_id=user.id, limit=limit
     )
+    db.commit()
 
     synced: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
@@ -1601,7 +1611,15 @@ async def auto_import_new_papers(
     if not keys_to_import:
         return {"auto_imported_count": 0, "skipped_limit_reached": True}
 
-    result = await import_batch(db, user=user, item_keys=keys_to_import)
+    result = await import_batch(
+        db,
+        user=user,
+        item_keys=keys_to_import,
+        credentials=ZoteroCredentials(
+            user_id=str(connection.zotero_user_id),
+            api_key=str(connection.api_key),
+        ),
+    )
     return {
         "auto_imported_count": result.get("imported_count", 0),
         "skipped_limit_reached": len(new_keys) > len(keys_to_import),

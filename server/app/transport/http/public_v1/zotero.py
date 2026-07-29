@@ -1,7 +1,7 @@
 """HTTP adapters for the Zotero integration."""
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import get_application_executor, get_zotero_workflow
 from app.bootstrap.settings import AppSettings
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroConnectResponse,
@@ -13,6 +13,7 @@ from app.modules.integrations.zotero.application.contracts import (
     ZoteroSyncResponse,
 )
 from app.shared.application import Actor, ApplicationExecutor
+from app.bootstrap.workflows.zotero import ZoteroWorkflow
 from app.transport.http.public_v1.auth_dependencies import get_required_user
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -105,16 +106,12 @@ async def zotero_import(
     request: ZoteroImportRequest,
     idempotency_key: str | None = Header(default=None, max_length=128),
     current_user: Actor = Depends(get_required_user),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroImportResponse:
-    return await executor.command_async(
-        lambda capabilities: capabilities.zotero.import_items(
-            actor=current_user,
-            request=request,
-            idempotency_key=idempotency_key,
-        )
+    return await workflow.import_items(
+        actor=current_user,
+        request=request,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -125,13 +122,9 @@ async def zotero_import(
 )
 async def zotero_sync(
     current_user: Actor = Depends(get_required_user),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroSyncResponse:
-    return await executor.command_async(
-        lambda capabilities: capabilities.zotero.sync(actor=current_user)
-    )
+    return await workflow.sync(actor=current_user)
 
 
 @zotero_router.get("/imports", response_model=ZoteroImportStatusListResponse)

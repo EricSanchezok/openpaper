@@ -11,6 +11,7 @@ from app.bootstrap.adapters.zotero_workflow import (
     _sync_item,
     sync_batch,
 )
+from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
 
 
 class TestZoteroAnnotationPayload(unittest.TestCase):
@@ -221,7 +222,12 @@ class TestSyncBatch(unittest.IsolatedAsyncioTestCase):
             "new_annotations_count": 2,
         }
 
-        result = await sync_batch(MagicMock(), user=MagicMock(), limit=50)
+        result = await sync_batch(
+            MagicMock(),
+            user=MagicMock(),
+            credentials=ZoteroCredentials(user_id="1", api_key="key"),
+            limit=50,
+        )
 
         self.assertEqual(result["synced_papers_count"], 1)
         self.assertEqual(result["new_annotations_count"], 2)

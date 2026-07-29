@@ -15,6 +15,7 @@ from app.modules.identity.infrastructure.users import user_repository
 from app.modules.integrations.zotero.infrastructure.connection_repository import (
     zotero_connection_repository,
 )
+from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
 from app.modules.integrations.zotero.infrastructure.import_repository import (
     zotero_import_repository,
 )
@@ -883,10 +884,8 @@ async def complete_zotero_postprocess_job(
         )
         return JobClaimResponse(claimed=True)
     current_user = actor_from_auth_user(user)
-    if (
-        not can_user_auto_sync_zotero(db, current_user)
-        or zotero_connection_repository.get_by_user_id(db, user_id=user.id) is None
-    ):
+    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
+    if not can_user_auto_sync_zotero(db, current_user) or connection is None:
         job_repository.complete(
             db,
             job_id=job_id,
@@ -899,7 +898,15 @@ async def complete_zotero_postprocess_job(
         operation="zotero_postprocess",
         context={"job_id": str(job_id), "user_id": user.id},
     ):
-        sync_result = await sync_batch(db, user=current_user, limit=50)
+        sync_result = await sync_batch(
+            db,
+            user=current_user,
+            credentials=ZoteroCredentials(
+                user_id=str(connection.zotero_user_id),
+                api_key=str(connection.api_key),
+            ),
+            limit=50,
+        )
         import_result = await auto_import_new_papers(db, user=current_user)
         synced_papers = int(sync_result.get("synced_papers_count", 0))
         annotation_count = int(sync_result.get("new_annotations_count", 0))
