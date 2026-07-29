@@ -17,7 +17,7 @@ from app.database.models import (
 )
 from app.shared.domain import AppError
 from app.main import app
-from app.modules.projects.infrastructure.presenters import _project_counts
+from app.bootstrap.adapters.project_presenters import _project_counts
 from app.modules.research.infrastructure.access import research_item_policy
 from app.modules.research.infrastructure.access import research_item_visible_to
 from app.modules.research.infrastructure.repository import research_repository

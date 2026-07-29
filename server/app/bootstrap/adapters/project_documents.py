@@ -1,3 +1,5 @@
+"""Cross-module project-document persistence adapter."""
+
 import uuid
 from datetime import datetime, timezone
 

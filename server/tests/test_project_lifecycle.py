@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from app.database.models import Document, Project
 from app.shared.domain import AppError
-from app.modules.projects.infrastructure.lifecycle import (
+from app.bootstrap.adapters.project_lifecycle import (
     ProjectDeletionPlan,
     prepare_project_deletion,
     schedule_orphan_documents,

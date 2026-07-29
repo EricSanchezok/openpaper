@@ -15,7 +15,7 @@ from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.projects.infrastructure.document_repository import (
+from app.bootstrap.adapters.project_documents import (
     project_document_repository,
 )
 from app.database.database import get_db

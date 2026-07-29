@@ -11,7 +11,7 @@ from app.database.models import Document
 from app.modules.papers.application.contracts.citation import CitationStep
 from app.modules.papers.domain.citations import CitationFields, fields_from_paper
 from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.projects.infrastructure.document_repository import (
+from app.bootstrap.adapters.project_documents import (
     project_document_repository,
 )
 from app.shared.application import Actor

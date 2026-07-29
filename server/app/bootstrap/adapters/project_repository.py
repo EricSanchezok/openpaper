@@ -1,3 +1,5 @@
+"""Cross-module Project persistence adapter."""
+
 from __future__ import annotations
 
 import hashlib
@@ -22,7 +24,7 @@ from app.modules.projects.infrastructure.access import (
     require_project_permission,
 )
 from app.modules.projects.application.contracts import ProjectPermissionSet
-from app.modules.projects.infrastructure.lifecycle import (
+from app.bootstrap.adapters.project_lifecycle import (
     schedule_orphan_documents,
     prepare_project_deletion,
     schedule_project_storage_cleanup,

@@ -29,11 +29,11 @@ from app.modules.projects.application.contracts import (
     ProjectUpdateRequest,
 )
 from app.modules.projects.application.projects import InvitationDelivery
-from app.modules.projects.infrastructure.document_repository import (
+from app.bootstrap.adapters.project_documents import (
     project_document_repository,
 )
-from app.modules.projects.infrastructure.presenters import project_response
-from app.modules.projects.infrastructure.repository import (
+from app.bootstrap.adapters.project_presenters import project_response
+from app.bootstrap.adapters.project_repository import (
     CreatedInvitation,
     project_repository,
 )

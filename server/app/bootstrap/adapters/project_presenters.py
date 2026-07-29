@@ -15,7 +15,7 @@ from app.database.models import (
     ResearchScopeType,
 )
 from app.modules.projects.infrastructure.access import ProjectAccess
-from app.modules.projects.infrastructure.repository import project_repository
+from app.bootstrap.adapters.project_repository import project_repository
 from app.modules.projects.application.contracts import (
     ProjectCapabilitiesResponse,
     ProjectMembershipResponse,

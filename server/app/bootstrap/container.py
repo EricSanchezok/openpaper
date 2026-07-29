@@ -77,7 +77,7 @@ from app.modules.papers.infrastructure.library_gateway import (
     SqlAlchemyPaperLibraryGateway,
 )
 from app.modules.projects.application.projects import Projects
-from app.modules.projects.infrastructure.gateway import (
+from app.bootstrap.adapters.project_gateway import (
     EmailProjectInvitationNotifier,
     PostHogProjectEvents,
     SqlAlchemyProjectGateway,

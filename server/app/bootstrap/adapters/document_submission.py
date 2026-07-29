@@ -7,7 +7,7 @@ import hashlib
 import logging
 import time
 
-from app.modules.projects.infrastructure.document_repository import (
+from app.bootstrap.adapters.project_documents import (
     project_document_repository,
 )
 from app.database.models import (

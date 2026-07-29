@@ -1,4 +1,4 @@
-"""Transactional Project deletion rules and storage cleanup."""
+"""Cross-module transactional Project deletion adapter."""
 
 from __future__ import annotations
 
