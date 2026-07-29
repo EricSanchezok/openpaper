@@ -117,6 +117,7 @@ class ResearchItemResponse(BaseModel):
 
 class ResearchItemListResponse(BaseModel):
     items: list[ResearchItemResponse]
+    next_cursor: str | None = None
 
 
 class ResearchVisibilityRequest(BaseModel):

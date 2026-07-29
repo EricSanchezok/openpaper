@@ -1,7 +1,7 @@
 """Identity onboarding HTTP adapter."""
 
 from app.database.database import get_db
-from app.bootstrap.providers import build_complete_onboarding
+from app.bootstrap.container import build_complete_onboarding
 from app.modules.identity.application.onboarding_contracts import (
     CreateOnboardingRequest,
     OnboardingResponse,

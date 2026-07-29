@@ -6,7 +6,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from app.bootstrap.providers import build_paper_ingestion, build_pdf_url_source
+from app.bootstrap.container import build_paper_ingestion, build_pdf_url_source
 from app.database.database import get_db
 from app.helpers.parser import MAX_UPLOAD_SIZE_MB
 from app.modules.papers.application.contracts.uploads import (

@@ -57,6 +57,7 @@ class ZoteroImportStatusItem(BaseModel):
 
 class ZoteroImportStatusListResponse(BaseModel):
     items: list[ZoteroImportStatusItem]
+    next_cursor: str | None = None
 
 
 class ZoteroSyncResponse(BaseModel):
@@ -81,4 +82,5 @@ class ZoteroLibraryItem(BaseModel):
 
 class ZoteroLibraryResponse(BaseModel):
     items: list[ZoteroLibraryItem]
+    next_cursor: str | None = None
     remaining_slots: int

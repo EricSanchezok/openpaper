@@ -121,7 +121,7 @@ class ProjectInvitationResponse(BaseModel):
 
 
 class ProjectPaperSummaryResponse(BaseModel):
-    id: UUID
+    document_id: UUID
     title: str | None
     created_at: datetime
     abstract: str | None
@@ -137,7 +137,8 @@ class ProjectPaperSummaryResponse(BaseModel):
 
 
 class ProjectPaperListResponse(BaseModel):
-    papers: list[ProjectPaperSummaryResponse]
+    items: list[ProjectPaperSummaryResponse]
+    next_cursor: str | None = None
 
 
 class ProjectPapersAddedResponse(BaseModel):
@@ -162,4 +163,5 @@ class ProjectPendingUploadResponse(BaseModel):
 
 
 class ProjectPendingUploadsResponse(BaseModel):
-    jobs: list[ProjectPendingUploadResponse]
+    items: list[ProjectPendingUploadResponse]
+    next_cursor: str | None = None

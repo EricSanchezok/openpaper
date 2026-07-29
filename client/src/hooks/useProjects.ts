@@ -123,7 +123,14 @@ export function useProjectPapers(
         try {
             const query = loadUrls ? "?load_urls=true" : "";
             const response = await fetchFromApi(`/projects/${projectId}/papers${query}`);
-            setPapers(response.papers || []);
+            setPapers(
+                (response.items || []).map(
+                    (paper: Omit<PaperItem, "id"> & { document_id: string }) => ({
+                        ...paper,
+                        id: paper.document_id,
+                    }),
+                ),
+            );
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch papers for project ${projectId}`));
             console.error(`Error fetching papers for project ${projectId}:`, err);

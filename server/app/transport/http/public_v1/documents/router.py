@@ -21,7 +21,7 @@ from app.modules.papers.application.contracts.documents import (
     PublicPaperOwnerResponse,
     PublicPaperResponse,
 )
-from app.bootstrap.providers import build_paper_content, build_paper_download
+from app.bootstrap.container import build_paper_content, build_paper_download
 from app.shared.application import Actor
 from app.modules.billing.infrastructure.quotas import require_library_document_capacity
 from fastapi import APIRouter, Depends, Response, status
@@ -40,7 +40,7 @@ def _document_response(document: object) -> DocumentResponse:
         raise TypeError("document_response_requires_document")
     return DocumentResponse.model_validate(
         {
-            "id": document.id,
+            "document_id": document.id,
             "original_filename": document.original_filename,
             "mime_type": document.mime_type,
             "size_bytes": document.size_bytes,
@@ -72,7 +72,7 @@ def _library_response(library_paper: object) -> LibraryPaperResponse:
         raise TypeError("library_response_requires_library_paper")
     return LibraryPaperResponse.model_validate(
         {
-            "id": library_paper.id,
+            "library_entry_id": library_paper.id,
             "user_id": library_paper.user_id,
             "status": library_paper.status,
             "last_accessed_at": library_paper.last_accessed_at,
@@ -294,7 +294,7 @@ def collect_public_paper(
     if existing is not None:
         return CollectPublicPaperResponse(
             document_id=shared.document.id,
-            library_paper_id=existing.id,
+            library_entry_id=existing.id,
             already_exists=True,
         )
     require_library_document_capacity(
@@ -314,6 +314,6 @@ def collect_public_paper(
     )
     return CollectPublicPaperResponse(
         document_id=shared.document.id,
-        library_paper_id=entry.id,
+        library_entry_id=entry.id,
         already_exists=False,
     )

@@ -2,7 +2,7 @@ import uuid
 from logging import getLogger
 from time import time
 
-from app.bootstrap.providers import (
+from app.bootstrap.container import (
     build_paper_content,
     build_paper_download,
     build_paper_ingestion,

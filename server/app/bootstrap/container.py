@@ -1,4 +1,10 @@
-"""Explicit infrastructure selection for replaceable application ports."""
+"""The application's single composition root.
+
+Transport adapters import builders from this module and never choose concrete
+infrastructure themselves. Keeping every adapter decision here makes storage,
+search, identity, billing, and integrations replaceable without changing an
+HTTP, Agent, or MCP contract.
+"""
 
 from __future__ import annotations
 

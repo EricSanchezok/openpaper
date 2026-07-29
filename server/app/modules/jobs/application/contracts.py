@@ -136,6 +136,7 @@ class CreateDataTableRequest(BaseModel):
 
 class JobListResponse(BaseModel):
     items: list[JobResponse]
+    next_cursor: str | None = None
 
 
 class AudioSourceDocumentPayload(BaseModel):

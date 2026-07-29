@@ -1,5 +1,5 @@
 """ASGI entry point."""
 
-from app.bootstrap import create_app
+from app.bootstrap.app_factory import create_app
 
 app = create_app()

@@ -117,8 +117,6 @@ def get_conversation_messages(
     )
     return ConversationMessagesResponse(
         items=serialize_messages(messages),
-        page=page,
-        page_size=page_size,
     )
 
 

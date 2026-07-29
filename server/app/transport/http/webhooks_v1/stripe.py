@@ -1,7 +1,7 @@
 """HTTP binding for the durable Stripe webhook processor."""
 
 from app.database.database import get_db
-from app.bootstrap.providers import build_stripe_webhook_processor
+from app.bootstrap.container import build_stripe_webhook_processor
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 

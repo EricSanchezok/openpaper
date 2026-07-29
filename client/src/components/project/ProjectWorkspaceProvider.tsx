@@ -216,8 +216,8 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
         (async () => {
             try {
                 const response = await fetchFromApi(`/projects/${projectId}/papers/pending-jobs`);
-                if (cancelled || !response?.jobs?.length) return;
-                const restoredJobs: MinimalJob[] = response.jobs.map((job: { job_id: string; title: string | null }) => ({
+                if (cancelled || !response?.items?.length) return;
+                const restoredJobs: MinimalJob[] = response.items.map((job: { job_id: string; title: string | null }) => ({
                     jobId: job.job_id,
                     fileName: job.title || "Uploading paper…",
                 }));

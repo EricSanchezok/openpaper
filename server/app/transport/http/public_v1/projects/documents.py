@@ -141,9 +141,9 @@ async def get_project_papers(
         )
 
     return ProjectPaperListResponse(
-        papers=[
+        items=[
             ProjectPaperSummaryResponse(
-                id=paper.id,
+                document_id=paper.id,
                 title=paper.title,
                 created_at=paper.created_at,
                 abstract=paper.abstract,
@@ -181,7 +181,7 @@ async def get_project_pending_jobs(
         db, project_id=project_id, user=current_user
     )
     return ProjectPendingUploadsResponse(
-        jobs=[
+        items=[
             ProjectPendingUploadResponse(
                 job_id=job.id,
                 status=job.job.status,

@@ -10,7 +10,7 @@ import type {
 import { fetchFromApi } from "@/lib/api";
 
 export interface LibraryDocument {
-    id: string;
+    document_id: string;
     original_filename: string;
     mime_type: string;
     size_bytes: number;
@@ -34,7 +34,7 @@ export interface LibraryDocument {
 }
 
 export interface LibraryPaper {
-    id: string;
+    library_entry_id: string;
     user_id: number;
     status: NonNullable<PaperItem["status"]>;
     last_accessed_at: string;
@@ -61,6 +61,7 @@ export interface LibraryPaper {
 
 export interface LibraryPaperList {
     items: LibraryPaper[];
+    next_cursor: string | null;
 }
 
 interface DocumentFileUrlResponse {
@@ -121,7 +122,7 @@ export async function fetchPaperData(documentId: string): Promise<PaperData> {
     ]);
     const metadata = resolvedMetadata(entry);
     return {
-        document_id: entry.document.id,
+        document_id: entry.document.document_id,
         filename: entry.document.original_filename,
         file_url: file.file_url,
         ...metadata,
@@ -145,7 +146,7 @@ export async function fetchPublicPaper(shareToken: string): Promise<SharedPaper>
     const document = response.document;
     return {
         paper: {
-            document_id: document.id,
+            document_id: document.document_id,
             filename: document.original_filename,
             file_url: response.file_url,
             authors: document.authors ?? [],
@@ -173,7 +174,7 @@ export function libraryPaperToPaperItem(entry: LibraryPaper): PaperItem {
     const document = entry.document;
     const overrides = entry.metadata_overrides;
     return {
-        id: document.id,
+        id: document.document_id,
         title: overrides.title ?? document.title ?? document.original_filename,
         abstract: overrides.abstract ?? document.abstract ?? undefined,
         authors: overrides.authors ?? document.authors ?? undefined,

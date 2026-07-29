@@ -1,5 +1,5 @@
 from app.transport.http.public_v1.auth_dependencies import get_required_user
-from app.bootstrap.providers import (
+from app.bootstrap.container import (
     build_paper_search,
     build_project_document_visibility,
 )

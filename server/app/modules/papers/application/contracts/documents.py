@@ -77,7 +77,7 @@ class LibraryPaperUpdateRequest(BaseModel):
 
 
 class DocumentResponse(BaseModel):
-    id: UUID
+    document_id: UUID
     original_filename: str
     mime_type: str
     size_bytes: int
@@ -107,7 +107,7 @@ class LibraryPaperTagResponse(BaseModel):
 
 
 class LibraryPaperResponse(BaseModel):
-    id: UUID
+    library_entry_id: UUID
     user_id: int
     status: PaperStatus
     last_accessed_at: datetime
@@ -122,6 +122,7 @@ class LibraryPaperResponse(BaseModel):
 
 class LibraryPaperListResponse(BaseModel):
     items: list[LibraryPaperResponse]
+    next_cursor: str | None = None
 
 
 class LibraryPaperShareResponse(BaseModel):
@@ -142,7 +143,7 @@ class PublicPaperResponse(BaseModel):
 
 class CollectPublicPaperResponse(BaseModel):
     document_id: UUID
-    library_paper_id: UUID
+    library_entry_id: UUID
     already_exists: bool
 
 

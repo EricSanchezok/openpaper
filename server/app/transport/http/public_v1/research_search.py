@@ -1,7 +1,7 @@
 """HTTP adapter for the independent Research search capability."""
 
 from app.bootstrap.settings import AppSettings
-from app.bootstrap.providers import build_research_search
+from app.bootstrap.container import build_research_search
 from app.database.database import get_db
 from app.modules.research.application.search import (
     ResearchSearchRequest,

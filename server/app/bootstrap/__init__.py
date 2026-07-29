@@ -1,5 +1,5 @@
-"""Application composition root."""
+"""Application bootstrap package.
 
-from .app_factory import create_app
-
-__all__ = ["create_app"]
+The package deliberately has no eager imports: adapters may safely import the
+composition root without triggering router construction.
+"""

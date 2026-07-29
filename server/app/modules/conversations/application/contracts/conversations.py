@@ -106,8 +106,7 @@ class MessageResponse(BaseModel):
 
 class ConversationMessagesResponse(BaseModel):
     items: list[MessageResponse]
-    page: int
-    page_size: int
+    next_cursor: str | None = None
 
 
 class ConversationAutoTitleResponse(BaseModel):

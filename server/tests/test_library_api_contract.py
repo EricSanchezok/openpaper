@@ -84,8 +84,9 @@ def test_library_response_returns_private_signed_preview(monkeypatch) -> None:
 
     response = _library_response(entry)
 
-    assert response.id == entry.id
-    assert response.document.id == entry.document_id
+    assert response.library_entry_id == entry.id
+    assert response.document.document_id == entry.document.id
+    assert response.document.document_id == entry.document_id
     assert response.preview_url == "https://signed.example.invalid/preview"
     assert response.metadata_overrides.title == "My title"
 
