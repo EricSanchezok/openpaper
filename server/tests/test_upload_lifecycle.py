@@ -86,12 +86,11 @@ def test_reaper_fails_job_and_schedules_canonical_document_gc() -> None:
         "app.modules.papers.infrastructure.garbage_collection.schedule_document_gc",
         schedule_gc,
     ):
-        plan = reap_stale_uploads(db, quota_owner_id=9, now=now)
+        reap_stale_uploads(db, quota_owner_id=9, now=now)
 
     assert durable_job.status == JobStatus.FAILED.value
     assert durable_job.completed_at == now
     assert durable_job.error_code == "upload_processing_timeout"
-    assert plan.storage_keys == ()
     assert document.processing_status == DocumentProcessingStatus.FAILED.value
     assert db.execute.call_count == 1
     db.flush.assert_called_once()
@@ -103,8 +102,7 @@ def test_reaper_is_a_noop_when_no_reservation_is_stale() -> None:
     db = MagicMock(spec=Session)
     db.scalars.return_value = _result([])
 
-    plan = reap_stale_uploads(db, quota_owner_id=9)
+    reap_stale_uploads(db, quota_owner_id=9)
 
-    assert plan.storage_keys == ()
     db.execute.assert_not_called()
     db.delete.assert_not_called()

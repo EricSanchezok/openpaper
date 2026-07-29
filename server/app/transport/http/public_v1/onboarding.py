@@ -1,16 +1,10 @@
 """Identity onboarding HTTP adapter."""
 
 from app.database.database import get_db
-from app.modules.identity.application.onboarding import CompleteOnboarding
+from app.bootstrap.providers import build_complete_onboarding
 from app.modules.identity.application.onboarding_contracts import (
     CreateOnboardingRequest,
     OnboardingResponse,
-)
-from app.modules.identity.infrastructure.onboarding_adapters import (
-    CloudAuthDisplayNameWriter,
-    EmailOnboardingNotifier,
-    PostHogOnboardingEventRecorder,
-    SqlAlchemyOnboardingWriter,
 )
 from app.shared.application import Actor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
@@ -26,10 +20,5 @@ async def complete_onboarding(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_required_user),
 ) -> OnboardingResponse:
-    handler = CompleteOnboarding(
-        writer=SqlAlchemyOnboardingWriter(db),
-        display_names=CloudAuthDisplayNameWriter(),
-        notifier=EmailOnboardingNotifier(),
-        events=PostHogOnboardingEventRecorder(db),
-    )
+    handler = build_complete_onboarding(db=db)
     return await handler.execute(actor=actor, request=request)

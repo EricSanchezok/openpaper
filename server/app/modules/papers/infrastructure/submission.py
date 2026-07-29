@@ -103,7 +103,7 @@ async def submit_reserved_document(
             job_id=durable_job.id,
             result={"document_id": str(document.id), "reused": True},
         )
-        db.commit()
+        db.flush()
         return f"reused:{document.id}"
 
     if (
@@ -120,7 +120,7 @@ async def submit_reserved_document(
                 "processing_job_id": str(document.processing_job_id),
             },
         )
-        db.commit()
+        db.flush()
         return f"reused:{document.id}"
 
     if (
@@ -154,7 +154,7 @@ async def submit_reserved_document(
             "skip_metadata_extraction": skip_metadata_extraction,
         },
     )
-    db.commit()
+    db.flush()
     return str(upload_job.id)
 
 

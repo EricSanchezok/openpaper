@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.transport.http.public_v1.billing import checkout
-from app.transport.http.public_v1.billing.config import SubscriptionInterval
+from app.modules.billing.application.contracts import SubscriptionInterval
 from app.database.models import Base, Onboarding, UserProfile
 from app.main import app
 from sqlalchemy.orm import Session

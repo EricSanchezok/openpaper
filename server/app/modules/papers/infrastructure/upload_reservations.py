@@ -33,7 +33,6 @@ from app.modules.projects.infrastructure.access import require_project_permissio
 from app.shared.application import Actor
 from app.modules.jobs.infrastructure.repository import CreateJob, job_repository
 from app.modules.papers.infrastructure.upload_lifecycle import (
-    delete_upload_storage,
     reap_stale_uploads,
 )
 from sqlalchemy import func, select, update
@@ -331,7 +330,7 @@ def reserve_upload(
             status_code=409,
         )
 
-    cleanup_plan = reap_stale_uploads(db, quota_owner_id=owner_id)
+    reap_stale_uploads(db, quota_owner_id=owner_id)
     if _has_active_duplicate_reservation(
         db,
         requester_id=requester.id,
@@ -433,7 +432,6 @@ def reserve_upload(
     )
     reservation.job = durable_job
     db.add(reservation)
-    db.commit()
+    db.flush()
     db.refresh(reservation)
-    delete_upload_storage(plan=cleanup_plan)
     return reservation

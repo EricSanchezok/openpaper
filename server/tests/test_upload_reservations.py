@@ -9,9 +9,9 @@ from app.database.models import (
     JobStatus,
     Project,
     SubscriptionPlan,
+    UploadReservation,
 )
 from app.shared.domain import AppError
-from app.modules.papers.infrastructure.upload_lifecycle import UploadCleanupPlan
 from app.modules.papers.infrastructure.upload_reservations import (
     reassign_project_quota_owner,
     reserve_upload,
@@ -49,10 +49,7 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
         ),
         patch(
             "app.modules.papers.infrastructure.upload_reservations.reap_stale_uploads",
-            return_value=UploadCleanupPlan(),
-        ),
-        patch(
-            "app.modules.papers.infrastructure.upload_reservations.delete_upload_storage"
+            return_value=None,
         ),
     )
 
@@ -86,7 +83,6 @@ def test_personal_upload_is_reserved_to_requester() -> None:
         patches[5],
         patches[6],
         patches[7],
-        patches[8] as storage_cleanup,
         patch(
             "app.modules.papers.infrastructure.upload_reservations.job_repository.create",
             return_value=durable_job,
@@ -108,8 +104,8 @@ def test_personal_upload_is_reserved_to_requester() -> None:
     assert job.job.status == JobStatus.PENDING.value
     quota_lock.assert_called_once_with(db, user_id=17)
     db.add.assert_called_once_with(job)
-    db.commit.assert_called_once()
-    storage_cleanup.assert_called_once_with(plan=UploadCleanupPlan())
+    db.flush.assert_called_once()
+    db.commit.assert_not_called()
 
 
 def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
@@ -137,7 +133,6 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         patches[5],
         patches[6],
         patches[7],
-        patches[8],
         patch(
             "app.modules.papers.infrastructure.upload_reservations.job_repository.create",
             return_value=durable_job,
@@ -179,7 +174,6 @@ def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:
         patches[5],
         patches[6],
         patches[7],
-        patches[8],
         pytest.raises(AppError) as error,
     ):
         reserve_upload(
@@ -214,7 +208,6 @@ def test_same_document_cannot_be_reserved_twice_for_one_library() -> None:
         ),
         patches[6],
         patches[7],
-        patches[8],
         pytest.raises(AppError) as error,
     ):
         reserve_upload(
@@ -246,6 +239,43 @@ def test_empty_upload_is_rejected_before_any_reservation() -> None:
 
     assert error.value.code == "empty_upload"
     db.execute.assert_not_called()
+    db.add.assert_not_called()
+
+
+def test_idempotency_key_returns_the_original_reservation() -> None:
+    requester = MagicMock(id=17)
+    existing_job = _durable_job(requester_id=17)
+    existing_job.idempotency_key = "pdf-ingestion:17:library:request-1"
+    existing_job.payload = {"content_sha256": "e" * 64}
+    reservation = UploadReservation(
+        id=existing_job.id,
+        quota_owner_id=17,
+        content_sha256="e" * 64,
+    )
+    reservation.job = existing_job
+    db = MagicMock()
+    db.get.return_value = reservation
+
+    with (
+        patch(
+            "app.modules.papers.infrastructure.upload_reservations.lock_account_resource_quota"
+        ),
+        patch(
+            "app.modules.papers.infrastructure.upload_reservations.job_repository.find_by_idempotency_key",
+            return_value=existing_job,
+        ),
+    ):
+        result = reserve_upload(
+            db,
+            requester=requester,
+            project_id=None,
+            input_size_bytes=1_024,
+            original_filename="paper.pdf",
+            content_sha256="e" * 64,
+            idempotency_key="request-1",
+        )
+
+    assert result is reservation
     db.add.assert_not_called()
 
 

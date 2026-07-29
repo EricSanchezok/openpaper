@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.database.models import (
@@ -24,11 +23,6 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_SUBMISSION_TIMEOUT = timedelta(minutes=15)
 UPLOAD_PROCESSING_TIMEOUT = timedelta(hours=2)
-
-
-@dataclass(frozen=True, slots=True)
-class UploadCleanupPlan:
-    storage_keys: tuple[str, ...] = ()
 
 
 def active_upload_freshness_clause(now: datetime) -> ColumnElement[bool]:
@@ -58,7 +52,7 @@ def reap_stale_uploads(
     *,
     quota_owner_id: int,
     now: datetime | None = None,
-) -> UploadCleanupPlan:
+) -> None:
     """Fail timed-out jobs and remove their inaccessible placeholder documents.
 
     The caller owns the transaction and must already hold the account quota
@@ -79,7 +73,7 @@ def reap_stale_uploads(
         ).all()
     )
     if not jobs:
-        return UploadCleanupPlan()
+        return
 
     for job in jobs:
         durable_job = job.job
@@ -119,10 +113,3 @@ def reap_stale_uploads(
             if durable_job.dispatch is None
             else "upload_processing_timeout"
         )
-
-    return UploadCleanupPlan()
-
-
-def delete_upload_storage(*, plan: UploadCleanupPlan) -> None:
-    """Canonical object cleanup is owned exclusively by delayed Document GC."""
-    del plan

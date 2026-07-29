@@ -31,6 +31,15 @@ from app.modules.research.application.search import (
     build_research_search_cursor,
 )
 from app.modules.research.infrastructure.search import SqlResearchSearch
+from app.modules.identity.application.onboarding import CompleteOnboarding
+from app.modules.identity.infrastructure.onboarding_adapters import (
+    CloudAuthDisplayNameWriter,
+    EmailOnboardingNotifier,
+    PostHogOnboardingEventRecorder,
+    SqlAlchemyOnboardingWriter,
+)
+from app.modules.billing.application.webhooks import ProcessStripeWebhook
+from app.modules.billing.infrastructure.webhook_adapter import StripeWebhookAdapter
 from sqlalchemy.orm import Session
 
 
@@ -87,3 +96,16 @@ def build_research_search(
         SqlResearchSearch(db),
         build_research_search_cursor(cursor_secret),
     )
+
+
+def build_complete_onboarding(*, db: Session) -> CompleteOnboarding:
+    return CompleteOnboarding(
+        writer=SqlAlchemyOnboardingWriter(db),
+        display_names=CloudAuthDisplayNameWriter(),
+        notifier=EmailOnboardingNotifier(),
+        events=PostHogOnboardingEventRecorder(db),
+    )
+
+
+def build_stripe_webhook_processor(*, db: Session) -> ProcessStripeWebhook:
+    return ProcessStripeWebhook(StripeWebhookAdapter(db))

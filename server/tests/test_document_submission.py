@@ -117,7 +117,8 @@ async def test_personal_submission_persists_identity_before_broker_publish(
         user_id=7,
     )
     upload_source.assert_called_once()
-    assert db.commit.call_count == 1
+    db.commit.assert_not_called()
+    db.flush.assert_called()
     assert add_dispatch.call_args.kwargs["job"] is upload_job.job
     assert add_dispatch.call_args.kwargs["task_name"] == "upload_and_process_file"
     task_kwargs = add_dispatch.call_args.kwargs["kwargs"]

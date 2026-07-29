@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 import stripe
-from app.transport.http.public_v1.billing.config import (
+from app.modules.billing.infrastructure.config import (
     MONTHLY_PRICE_ID,
     STRIPE_WEBHOOK_SECRET,
     YEARLY_PRICE_ID,
@@ -32,7 +32,7 @@ from app.helpers.email import (
 )
 from app.modules.billing.infrastructure.stripe_client import construct_stripe_event
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
-from fastapi import HTTPException, Request
+from app.shared.domain import AppError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -53,24 +53,23 @@ def _ignore_event(db: Session, *, event_id: str) -> dict[str, object]:
 
 
 async def process_stripe_webhook(
-    request: Request,
+    payload: bytes,
     stripe_signature: str,
     db: Session,
 ) -> dict[str, object]:
     """Handle Stripe webhook events for subscription management"""
 
     if not STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(
-            status_code=500, detail="Stripe webhook secret not configured"
+        raise AppError(
+            code="stripe_webhook_not_configured",
+            message="Stripe webhook is not configured",
+            status_code=500,
         )
 
     event_id: str | None = None
     event_lock: AdvisoryLock | None = None
     ledger_started = False
     try:
-        # Get the request body as bytes
-        payload = await request.body()
-
         # Verify the webhook signature
         try:
             event = construct_stripe_event(
@@ -78,8 +77,10 @@ async def process_stripe_webhook(
             )
         except Exception as e:
             logger.error(f"Invalid Stripe webhook signature: {e}")
-            raise HTTPException(
-                status_code=400, detail="Invalid Stripe webhook signature"
+            raise AppError(
+                code="invalid_stripe_signature",
+                message="Invalid Stripe webhook signature",
+                status_code=400,
             )
 
         # Handle the event
@@ -94,9 +95,10 @@ async def process_stripe_webhook(
             key=event_id,
         )
         if not event_lock.acquire():
-            raise HTTPException(
+            raise AppError(
+                code="stripe_webhook_in_progress",
+                message="Stripe webhook processing is already in progress",
                 status_code=409,
-                detail={"code": "stripe_webhook_in_progress"},
             )
 
         claim = begin_webhook_attempt(
@@ -659,7 +661,7 @@ async def process_stripe_webhook(
         complete_webhook(db, event_id=event_id)
         return {"success": True}
 
-    except HTTPException:
+    except AppError:
         db.rollback()
         if event_id is not None and ledger_started:
             fail_webhook(db, event_id=event_id, error_code="webhook_http_error")
@@ -669,9 +671,10 @@ async def process_stripe_webhook(
         if event_id is not None and ledger_started:
             fail_webhook(db, event_id=event_id, error_code="stripe_webhook_failed")
         logger.exception("Error processing Stripe webhook event %s", event_id)
-        raise HTTPException(
+        raise AppError(
+            code="stripe_webhook_failed",
+            message="Stripe webhook processing failed",
             status_code=500,
-            detail={"code": "stripe_webhook_failed"},
         ) from e
     finally:
         if event_lock is not None:

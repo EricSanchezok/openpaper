@@ -1,7 +1,7 @@
 import logging
 
 import stripe
-from app.transport.http.public_v1.billing.config import (
+from app.modules.billing.infrastructure.config import (
     MONTHLY_PRICE_ID,
     YEARLY_PRICE_ID,
     YOUR_DOMAIN,
