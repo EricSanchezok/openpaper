@@ -135,6 +135,7 @@ async def complete_audio_job(
             db.add(item)
     if job.requested_by_id is not None:
         settle_jobs_usage(job.requested_by_id, webhook.usage_events)
+        db.commit()
         await release_concurrency_by_id(
             user_id=job.requested_by_id,
             category="audio",
@@ -207,6 +208,7 @@ async def complete_data_table_job(
             db.add(item)
     if job.requested_by_id is not None:
         settle_jobs_usage(job.requested_by_id, webhook.usage_events)
+        db.commit()
         await release_concurrency_by_id(
             user_id=job.requested_by_id,
             category="background",

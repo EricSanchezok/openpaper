@@ -25,13 +25,9 @@ zotero_oauth_router = APIRouter()
 @zotero_oauth_router.get("/connect", response_model=ZoteroConnectResponse)
 def zotero_connect(
     current_user: Actor = Depends(get_required_user),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroConnectResponse:
-    return executor.command(
-        lambda capabilities: capabilities.zotero.connect(actor=current_user)
-    )
+    return workflow.connect(actor=current_user)
 
 
 @zotero_oauth_router.get("/callback", response_class=RedirectResponse)
@@ -39,16 +35,12 @@ def zotero_callback(
     request: Request,
     oauth_token: str = Query(...),
     oauth_verifier: str = Query(...),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> RedirectResponse:
     settings: AppSettings = request.app.state.settings
-    success = executor.command(
-        lambda capabilities: capabilities.zotero.callback(
-            oauth_token=oauth_token,
-            oauth_verifier=oauth_verifier,
-        )
+    success = workflow.callback(
+        oauth_token=oauth_token,
+        oauth_verifier=oauth_verifier,
     )
     state = "connected" if success else "error"
     return RedirectResponse(
@@ -88,13 +80,9 @@ def zotero_disconnect(
 @zotero_router.get("/library-items", response_model=ZoteroLibraryResponse)
 def zotero_library(
     current_user: Actor = Depends(get_required_user),
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroLibraryResponse:
-    return executor.query(
-        lambda capabilities: capabilities.zotero.library(actor=current_user)
-    )
+    return workflow.library(actor=current_user)
 
 
 @zotero_router.post(

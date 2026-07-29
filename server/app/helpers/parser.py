@@ -11,7 +11,6 @@ from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 
-MAX_UPLOAD_SIZE_MB = MAX_PDF_SIZE_MB
 DOCUMENT_PAGE_LIMIT = 800
 MAX_URL_REDIRECTS = 5
 URL_DOWNLOAD_TIMEOUT_SECONDS = 30
@@ -71,8 +70,8 @@ def validate_pdf_content(pdf_bytes: bytes, source: str = "upload") -> tuple[bool
     """
     try:
         # Check file size
-        if len(pdf_bytes) > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-            return False, f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)"
+        if len(pdf_bytes) > MAX_PDF_SIZE_MB * 1024 * 1024:
+            return False, f"File too large (max {MAX_PDF_SIZE_MB}MB)"
 
         # Check minimum file size (at least 1KB)
         if len(pdf_bytes) < 1024:
@@ -157,7 +156,7 @@ def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
     Returns (is_valid, pdf_bytes, error_message).
     """
     try:
-        max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        max_bytes = MAX_PDF_SIZE_MB * 1024 * 1024
         current_url = url
         with requests.Session() as session:
             session.trust_env = False
@@ -205,7 +204,7 @@ def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
                         return (
                             False,
                             b"",
-                            f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
+                            f"File too large (max {MAX_PDF_SIZE_MB}MB)",
                         )
                     if declared_size < 1024:
                         return False, b"", "File too small to be a valid PDF"
@@ -220,7 +219,7 @@ def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
                         return (
                             False,
                             b"",
-                            f"File too large (max {MAX_UPLOAD_SIZE_MB}MB)",
+                            f"File too large (max {MAX_PDF_SIZE_MB}MB)",
                         )
                     chunks.append(chunk)
                 pdf_bytes = b"".join(chunks)

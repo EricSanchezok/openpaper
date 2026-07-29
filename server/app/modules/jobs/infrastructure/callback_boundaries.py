@@ -82,11 +82,14 @@ async def pdf_ingestion_callback(
                 extra={"job_id": operation_id},
             )
             fallback_mark_failed()
+        db.commit()
         raise AppError(
             code="pdf_webhook_failed",
             message="The PDF processing result could not be applied",
             kind=FailureKind.INTERNAL,
         ) from exc
+    else:
+        db.commit()
     finally:
         lock.release()
         await release_concurrency_by_id(

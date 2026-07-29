@@ -64,6 +64,7 @@ from app.bootstrap.execution import (
     create_paper_ingestion_workflow,
     create_research_generation_workflow,
     create_zotero_workflow,
+    create_job_completion_processor,
     create_stripe_webhook_processor,
 )
 from app.bootstrap.settings import (
@@ -157,6 +158,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         create_research_generation_workflow(executor)
     )
     application.state.zotero_workflow = create_zotero_workflow(executor)
+    application.state.job_completion_processor = create_job_completion_processor()
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[runtime_settings.client_domain],

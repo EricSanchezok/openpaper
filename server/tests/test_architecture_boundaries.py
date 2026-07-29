@@ -138,6 +138,26 @@ def test_app_errors_never_embed_http_status_codes() -> None:
     assert violations == []
 
 
+def test_application_types_do_not_use_compatibility_aliases() -> None:
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Name)
+                and node.targets[0].id[:1].isupper()
+                and node.value.id[:1].isupper()
+            ):
+                violations.append(
+                    f"{path.relative_to(APP_ROOT)}:{node.lineno} aliases "
+                    f"{node.targets[0].id} to {node.value.id}"
+                )
+    assert violations == []
+
+
 def test_repositories_never_commit_the_callers_transaction() -> None:
     violations: list[str] = []
     for path in (APP_ROOT / "modules").rglob("*repository.py"):
@@ -222,8 +242,12 @@ def test_modules_do_not_reach_into_another_modules_infrastructure() -> None:
 def test_explicit_commits_are_limited_to_owned_background_transactions() -> None:
     allowed = {
         "bootstrap/adapters/document_gc.py",
+        "bootstrap/adapters/document_job_callbacks.py",
+        "bootstrap/adapters/job_completion_processor.py",
         "bootstrap/adapters/zotero_operations.py",
         "bootstrap/adapters/zotero_workflow.py",
+        "modules/jobs/infrastructure/callback_boundaries.py",
+        "modules/jobs/infrastructure/research_callbacks.py",
         "modules/billing/infrastructure/stripe_webhook_ledger.py",
         "modules/jobs/infrastructure/dispatcher.py",
     }

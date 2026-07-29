@@ -9,6 +9,9 @@ or Zotero business rules.
 HTTP / Agent / future MCP / job callback
                  |
                  v
+          ApplicationExecutor
+                 |
+                 v
         module application use case
                  |
           domain policy + ports
@@ -50,17 +53,49 @@ packages.
   protocols and public application contracts, never concrete adapters.
 - `infrastructure` implements ports. Repository methods flush but do not
   commit a caller-owned request transaction.
-- `transport` validates and translates protocols only. It resolves use cases
-  through `server/app/bootstrap/container.py`; it does not select adapters or
-  duplicate business rules.
+- `transport` validates and translates protocols only. HTTP, Agent, job, and
+  future MCP adapters receive the same `ApplicationExecutor`; they never
+  receive a SQLAlchemy `Session`, select adapters, or duplicate business
+  rules.
+- `bootstrap/capabilities.py` is the canonical session-bound application
+  surface. `bootstrap/container.py` is the only composition root that selects
+  concrete adapters.
 - Cross-module work is coordinated through application ports/facades and
   wired in the composition root. ORM relationship imports used only under
   `TYPE_CHECKING` are mapping metadata, not business dependencies.
 
-The request-scoped unit of work commits once after a successful response and
-rolls back on failure. Provider ledgers, the durable outbox dispatcher, and
-garbage collection own independent background transactions because they must
-record progress across external calls.
+`ApplicationExecutor.query` closes without committing.
+`ApplicationExecutor.command` and `command_async` commit exactly once after a
+successful operation and roll back on failure. Nested executor operations are
+rejected.
+
+External I/O must not run inside an open database transaction. Workflows use:
+
+```text
+command: prepare/reserve
+        -> commit
+external call or stream
+        ->
+command: complete
+failure -> command: fail/release
+```
+
+Chat streaming, paper ingestion, Research generation, onboarding, Stripe, and
+Zotero import/sync follow this shape. Agent and MCP paper tools obtain a fresh
+short operation for every tool call rather than retaining a session for the
+life of a conversation.
+
+Only progress-owning infrastructure may commit independently. The executable
+architecture whitelist currently contains the Stripe webhook ledger, durable
+outbox dispatcher, document garbage collection, durable job-completion
+processors, and Zotero remote workflow. These owners may checkpoint before
+releasing an external lease or continuing a remote workflow. Repositories
+themselves never commit.
+
+Domain concepts have one canonical type name. Compatibility assignments such
+as `OldAccess = NewAccessDecision` are forbidden by an architecture test; a
+distinct projection type is allowed only when it carries genuinely different
+data or responsibility.
 
 ## Replaceable search
 
@@ -79,8 +114,11 @@ change.
    idempotency behavior without HTTP.
 3. Add or replace infrastructure adapters and wire them in
    `bootstrap/container.py`.
-4. Keep every protocol adapter thin and delegate to the same use case.
-5. Update the OpenAPI snapshot and add an end-to-end contract test when the
+4. Expose the use case on `ApplicationCapabilities`; use a workflow only when
+   external I/O requires explicit prepare/complete phases.
+5. Keep every protocol adapter thin and delegate to the same capability or
+   workflow. A future MCP tool must not call repositories or HTTP routes.
+6. Update the OpenAPI snapshot and add an end-to-end contract test when the
    public surface changes.
 
 This boundary also applies when identity, Zotero, billing, or a future product

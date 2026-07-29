@@ -513,6 +513,7 @@ async def handle_paper_processing_webhook(
             job_id,
             durable_job.status,
         )
+        db.commit()
         await release_concurrency_by_id(
             user_id=int(user.id),
             category="background",

@@ -4,6 +4,8 @@ import uuid
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import get_job_completion_processor
+from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
 from app.modules.jobs.application.contracts import (
     JobClaimResponse,
     JobFailureCallback,
@@ -18,16 +20,9 @@ terminal_router = APIRouter()
 async def complete_job(
     job_id: uuid.UUID,
     payload: dict[str, object],
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    processor: JobCompletionProcessor = Depends(get_job_completion_processor),
 ) -> object:
-    return await executor.command_async(
-        lambda capabilities: capabilities.job_callbacks.complete(
-            job_id=job_id,
-            payload=payload,
-        )
-    )
+    return await processor.complete(job_id=job_id, payload=payload)
 
 
 @terminal_router.post(

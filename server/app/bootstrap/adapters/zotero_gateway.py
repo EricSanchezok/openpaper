@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC
 
 from app.database.telemetry import track_event
 from app.modules.integrations.zotero.application.contracts import (
     ZoteroImportStatusItem,
     ZoteroImportStatusListResponse,
-    ZoteroLibraryItem,
-    ZoteroLibraryResponse,
     ZoteroStatusResponse,
 )
 from app.modules.integrations.zotero.infrastructure.connection_repository import (
@@ -18,9 +16,12 @@ from app.modules.integrations.zotero.infrastructure.connection_repository import
 from app.modules.integrations.zotero.infrastructure.import_repository import (
     zotero_import_repository,
 )
-from app.modules.integrations.zotero.infrastructure.oauth import zotero_auth_client
-from app.bootstrap.adapters.zotero_workflow import list_library
-from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
+from app.modules.integrations.zotero.application.zotero import (
+    PreparedZoteroCallback,
+    ZoteroAccessToken,
+    ZoteroCredentials,
+    ZoteroRequestToken,
+)
 from app.shared.application import Actor
 from sqlalchemy.orm import Session
 
@@ -29,10 +30,12 @@ class DefaultZoteroGateway:
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def begin_oauth(self, *, user_id: int) -> str | None:
-        request_token = zotero_auth_client.get_request_token()
-        if request_token is None:
-            return None
+    def save_oauth_request(
+        self,
+        *,
+        user_id: int,
+        request_token: ZoteroRequestToken,
+    ) -> None:
         zotero_connection_repository.delete_pending_for_user(
             db=self._db,
             user_id=user_id,
@@ -40,47 +43,64 @@ class DefaultZoteroGateway:
         zotero_connection_repository.create_pending(
             db=self._db,
             user_id=user_id,
-            oauth_token=request_token.oauth_token,
-            oauth_token_secret=request_token.oauth_token_secret,
+            oauth_token=request_token.token,
+            oauth_token_secret=request_token.secret,
         )
-        return zotero_auth_client.get_authorize_url(request_token.oauth_token)
 
-    def complete_oauth(self, *, oauth_token: str, oauth_verifier: str) -> bool:
+    def oauth_callback(
+        self,
+        *,
+        oauth_token: str,
+    ) -> PreparedZoteroCallback | None:
         pending = zotero_connection_repository.get_pending_by_token(
             db=self._db,
             oauth_token=oauth_token,
         )
         if pending is None or pending.user_id is None:
-            return False
+            return None
         expires_at = pending.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
-        if expires_at < datetime.now(UTC):
+        return PreparedZoteroCallback(
+            user_id=pending.user_id,
+            request_token=ZoteroRequestToken(
+                token=oauth_token,
+                secret=pending.oauth_token_secret,
+            ),
+            expires_at=expires_at,
+        )
+
+    def discard_oauth_callback(self, *, oauth_token: str) -> None:
+        pending = zotero_connection_repository.get_pending_by_token(
+            db=self._db,
+            oauth_token=oauth_token,
+        )
+        if pending is not None:
             zotero_connection_repository.delete_pending(
                 db=self._db,
                 pending=pending,
             )
-            return False
-        access_token = zotero_auth_client.get_access_token(
-            request_token=oauth_token,
-            request_token_secret=pending.oauth_token_secret,
-            verifier=oauth_verifier,
-        )
-        if access_token is None:
-            return False
+
+    def save_connection(
+        self,
+        *,
+        callback: PreparedZoteroCallback,
+        access_token: ZoteroAccessToken,
+    ) -> None:
         zotero_connection_repository.upsert_connection(
             db=self._db,
-            user_id=pending.user_id,
-            zotero_user_id=access_token.zotero_user_id,
+            user_id=callback.user_id,
+            zotero_user_id=access_token.user_id,
             api_key=access_token.api_key,
         )
-        zotero_connection_repository.delete_pending(db=self._db, pending=pending)
+        self.discard_oauth_callback(
+            oauth_token=callback.request_token.token,
+        )
         track_event(
             "zotero_connected",
-            user_id=str(pending.user_id),
+            user_id=str(callback.user_id),
             db=self._db,
         )
-        return True
 
     def status(self, *, user_id: int) -> ZoteroStatusResponse:
         connection = zotero_connection_repository.get_by_user_id(
@@ -123,13 +143,6 @@ class DefaultZoteroGateway:
         return ZoteroCredentials(
             user_id=str(connection.zotero_user_id),
             api_key=str(connection.api_key),
-        )
-
-    def library(self, *, actor: Actor) -> ZoteroLibraryResponse:
-        result = list_library(self._db, user=actor)
-        return ZoteroLibraryResponse(
-            items=[ZoteroLibraryItem(**item) for item in result["items"]],
-            remaining_slots=result["remaining_slots"],
         )
 
     def imports(

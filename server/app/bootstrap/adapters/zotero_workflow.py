@@ -1014,6 +1014,7 @@ def list_library(
     db: Session,
     *,
     user: Actor,
+    credentials: ZoteroCredentials,
     limit: int = 100,
 ) -> dict[str, Any]:
     """
@@ -1022,18 +1023,15 @@ def list_library(
     Returns up to `limit` items sorted by dateModified (Zotero default), each
     annotated with an `already_imported` flag.
     """
-    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
-    if not connection:
-        raise ValueError("Zotero account not connected")
-
     client = ZoteroApiClient(
-        zotero_user_id=str(connection.zotero_user_id),
-        api_key=str(connection.api_key),
+        zotero_user_id=credentials.user_id,
+        api_key=credentials.api_key,
     )
 
     items: list[dict[str, Any]] = []
     page_size = 25
     start = 0
+    db.commit()
     while len(items) < limit:
         batch = client.get_top_importable_items(limit=page_size, start=start)
         if not batch:
@@ -1578,7 +1576,16 @@ async def auto_import_new_papers(
         )
         return {"auto_imported_count": 0, "skipped_limit_reached": False}
 
-    library = list_library(db, user=user, limit=100)
+    credentials = ZoteroCredentials(
+        user_id=str(connection.zotero_user_id),
+        api_key=str(connection.api_key),
+    )
+    library = list_library(
+        db,
+        user=user,
+        credentials=credentials,
+        limit=100,
+    )
     candidate_items = [
         item for item in library["items"] if not item["already_imported"]
     ]
@@ -1615,10 +1622,7 @@ async def auto_import_new_papers(
         db,
         user=user,
         item_keys=keys_to_import,
-        credentials=ZoteroCredentials(
-            user_id=str(connection.zotero_user_id),
-            api_key=str(connection.api_key),
-        ),
+        credentials=credentials,
     )
     return {
         "auto_imported_count": result.get("imported_count", 0),

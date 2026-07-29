@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -11,7 +12,6 @@ from app.modules.integrations.zotero.application.contracts import (
     ZoteroImportRequest,
     ZoteroImportResponse,
     ZoteroImportStatusListResponse,
-    ZoteroLibraryResponse,
     ZoteroStatusResponse,
     ZoteroSyncResponse,
 )
@@ -28,7 +28,7 @@ from app.modules.integrations.zotero.domain import (
     require_zotero_connected,
 )
 from app.shared.application import Actor
-from app.shared.domain import AppError, JsonValue, FailureKind
+from app.shared.domain import JsonValue
 from app.shared.domain.enums import JobOperation, JobStatus
 from pydantic import TypeAdapter
 
@@ -36,9 +36,27 @@ _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 
 
 class ZoteroGateway(Protocol):
-    def begin_oauth(self, *, user_id: int) -> str | None: ...
+    def save_oauth_request(
+        self,
+        *,
+        user_id: int,
+        request_token: ZoteroRequestToken,
+    ) -> None: ...
 
-    def complete_oauth(self, *, oauth_token: str, oauth_verifier: str) -> bool: ...
+    def oauth_callback(
+        self,
+        *,
+        oauth_token: str,
+    ) -> PreparedZoteroCallback | None: ...
+
+    def discard_oauth_callback(self, *, oauth_token: str) -> None: ...
+
+    def save_connection(
+        self,
+        *,
+        callback: PreparedZoteroCallback,
+        access_token: ZoteroAccessToken,
+    ) -> None: ...
 
     def status(self, *, user_id: int) -> ZoteroStatusResponse: ...
 
@@ -47,8 +65,6 @@ class ZoteroGateway(Protocol):
     def connected(self, *, user_id: int) -> bool: ...
 
     def credentials(self, *, user_id: int) -> ZoteroCredentials | None: ...
-
-    def library(self, *, actor: Actor) -> ZoteroLibraryResponse: ...
 
     def imports(
         self,
@@ -79,6 +95,25 @@ class ZoteroCredentials:
 
 
 @dataclass(frozen=True, slots=True)
+class ZoteroRequestToken:
+    token: str
+    secret: str
+
+
+@dataclass(frozen=True, slots=True)
+class ZoteroAccessToken:
+    user_id: str
+    api_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedZoteroCallback:
+    user_id: int
+    request_token: ZoteroRequestToken
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedZoteroImport:
     credentials: ZoteroCredentials
     request: ZoteroImportRequest
@@ -99,21 +134,46 @@ class Zotero:
         self._events = events
         self._idempotency = idempotency
 
-    def connect(self, *, actor: Actor) -> ZoteroConnectResponse:
-        auth_url = self._gateway.begin_oauth(user_id=actor.id)
-        if auth_url is None:
-            raise AppError(
-                code="zotero_connection_failed",
-                message="Zotero authorization is temporarily unavailable",
-                kind=FailureKind.DEPENDENCY_FAILURE,
-            )
+    def save_oauth_request(
+        self,
+        *,
+        actor: Actor,
+        request_token: ZoteroRequestToken,
+        auth_url: str,
+    ) -> ZoteroConnectResponse:
+        self._gateway.save_oauth_request(
+            user_id=actor.id,
+            request_token=request_token,
+        )
         return ZoteroConnectResponse(auth_url=auth_url)
 
-    def callback(self, *, oauth_token: str, oauth_verifier: str) -> bool:
-        return self._gateway.complete_oauth(
+    def prepare_oauth_callback(
+        self,
+        *,
+        oauth_token: str,
+        now: datetime,
+    ) -> PreparedZoteroCallback | None:
+        callback = self._gateway.oauth_callback(
             oauth_token=oauth_token,
-            oauth_verifier=oauth_verifier,
         )
+        if callback is None:
+            return None
+        if callback.expires_at < now:
+            self._gateway.discard_oauth_callback(oauth_token=oauth_token)
+            return None
+        return callback
+
+    def complete_oauth_callback(
+        self,
+        *,
+        callback: PreparedZoteroCallback,
+        access_token: ZoteroAccessToken,
+    ) -> bool:
+        self._gateway.save_connection(
+            callback=callback,
+            access_token=access_token,
+        )
+        return True
 
     def status(self, *, actor: Actor) -> ZoteroStatusResponse:
         return self._gateway.status(user_id=actor.id)
@@ -121,9 +181,8 @@ class Zotero:
     def disconnect(self, *, actor: Actor) -> None:
         self._gateway.disconnect(user_id=actor.id)
 
-    def library(self, *, actor: Actor) -> ZoteroLibraryResponse:
-        self._require_connected(actor)
-        return self._gateway.library(actor=actor)
+    def prepare_library(self, *, actor: Actor) -> ZoteroCredentials:
+        return self._require_credentials(actor)
 
     def prepare_import(
         self,

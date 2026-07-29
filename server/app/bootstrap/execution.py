@@ -13,6 +13,7 @@ from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.bootstrap.workflows.zotero import ZoteroWorkflow
+from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
 from app.shared.application import ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from fastapi import Request
@@ -82,6 +83,10 @@ def create_zotero_workflow(
     )
 
 
+def create_job_completion_processor() -> JobCompletionProcessor:
+    return JobCompletionProcessor(SessionLocal)
+
+
 def get_application_executor(
     request: Request,
 ) -> ApplicationExecutor[ApplicationCapabilities]:
@@ -118,3 +123,10 @@ def get_research_generation_workflow(
 
 def get_zotero_workflow(request: Request) -> ZoteroWorkflow:
     return cast(ZoteroWorkflow, request.app.state.zotero_workflow)
+
+
+def get_job_completion_processor(request: Request) -> JobCompletionProcessor:
+    return cast(
+        JobCompletionProcessor,
+        request.app.state.job_completion_processor,
+    )
