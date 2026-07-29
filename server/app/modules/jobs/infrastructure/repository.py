@@ -15,11 +15,15 @@ from app.database.models import (
 )
 from app.shared.domain import JsonValue
 from app.shared.domain import AppError
+from app.modules.jobs.domain import (
+    DEFAULT_JOB_LEASE,
+    can_complete_job,
+    can_fail_job,
+    can_recover_job,
+)
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
-
-DEFAULT_JOB_LEASE = timedelta(hours=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +253,12 @@ class JobRepository:
             ).all()
         )
         for job in expired_jobs:
+            if not can_recover_job(
+                JobStatus(job.status),
+                lease_expires_at=job.lease_expires_at,
+                now=now,
+            ):
+                raise RuntimeError("selected_job_is_not_recoverable")
             job.status = JobStatus.PENDING.value
             job.lease_expires_at = None
             job.progress_message = "Recovered after worker lease expired"
@@ -278,9 +288,7 @@ class JobRepository:
                 message="Job not found",
                 status_code=404,
             )
-        if job.status == JobStatus.COMPLETED.value:
-            return job, False
-        if job.status == JobStatus.CANCELLED.value:
+        if not can_complete_job(JobStatus(job.status)):
             return job, False
         job.status = JobStatus.COMPLETED.value
         job.result = result
@@ -307,7 +315,7 @@ class JobRepository:
                 message="Job not found",
                 status_code=404,
             )
-        if job.status in (JobStatus.COMPLETED.value, JobStatus.CANCELLED.value):
+        if not can_fail_job(JobStatus(job.status)):
             return job, False
         job.status = JobStatus.FAILED.value
         job.result = result

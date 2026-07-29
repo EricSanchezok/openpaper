@@ -18,6 +18,14 @@ from app.modules.jobs.application.jobs import (
     IdempotentOperationPort,
     ReserveOperationCommand,
 )
+from app.modules.integrations.zotero.domain import (
+    ImportReservationAction,
+    ImportReservationFacts,
+    canonical_import_payload,
+    decide_import_reservation,
+    import_idempotency_key,
+    require_zotero_connected,
+)
 from app.shared.application import Actor
 from app.shared.domain import AppError, JsonValue
 from app.shared.domain.enums import JobOperation, JobStatus
@@ -123,35 +131,30 @@ class Zotero:
         reservation_id = None
         if idempotency_key:
             reservation_id = uuid4()
-            request_payload = _JSON_OBJECT.validate_python(
-                {"item_keys": sorted(request.item_keys)}
-            )
+            request_payload = canonical_import_payload(request.item_keys)
             reserved = self._idempotency.reserve(
                 command=ReserveOperationCommand(
                     operation_id=reservation_id,
                     operation=JobOperation.ZOTERO_IMPORT,
                     requested_by_id=actor.id,
-                    idempotency_key=(f"zotero-import:{actor.id}:{idempotency_key}"),
+                    idempotency_key=import_idempotency_key(
+                        actor_id=actor.id,
+                        request_key=idempotency_key,
+                    ),
                     payload=request_payload,
                 )
             )
-            if reserved.payload != request_payload:
-                raise AppError(
-                    code="idempotency_key_reused",
-                    message="The Idempotency-Key was already used for another request",
-                    status_code=409,
+            action = decide_import_reservation(
+                ImportReservationFacts(
+                    created=reserved.created,
+                    payload_matches=reserved.payload == request_payload,
+                    status=JobStatus(reserved.job.status),
+                    result=reserved.job.result,
                 )
-            if not reserved.created:
-                if (
-                    reserved.job.status == JobStatus.COMPLETED.value
-                    and reserved.job.result is not None
-                ):
-                    return ZoteroImportResponse.model_validate(reserved.job.result)
-                raise AppError(
-                    code="idempotency_request_in_progress",
-                    message="The original request is still in progress",
-                    status_code=409,
-                )
+            )
+            if action is ImportReservationAction.REPLAY:
+                assert reserved.job.result is not None
+                return ZoteroImportResponse.model_validate(reserved.job.result)
 
         try:
             result = await self._gateway.import_items(actor=actor, request=request)
@@ -198,9 +201,6 @@ class Zotero:
         return self._gateway.imports(user_id=actor.id, item_keys=item_keys)
 
     def _require_connected(self, actor: Actor) -> None:
-        if not self._gateway.connected(user_id=actor.id):
-            raise AppError(
-                code="zotero_not_connected",
-                message="Connect a Zotero account before using this feature",
-                status_code=400,
-            )
+        require_zotero_connected(
+            connected=self._gateway.connected(user_id=actor.id),
+        )

@@ -12,6 +12,24 @@ from app.modules.billing.domain import (
     require_account_document_capacity,
     require_project_paper_capacity,
 )
+from app.modules.identity.domain import (
+    AccountAccessFacts,
+    require_administrator,
+    require_product_access,
+)
+from app.modules.integrations.zotero.domain import (
+    ImportReservationAction,
+    ImportReservationFacts,
+    canonical_import_payload,
+    decide_import_reservation,
+)
+from app.modules.jobs.domain import (
+    can_claim_job,
+    can_complete_job,
+    can_fail_job,
+    can_heartbeat_job,
+    is_terminal_job,
+)
 from app.modules.conversations.domain import (
     ConversationAccessFacts,
     evaluate_conversation_access,
@@ -40,6 +58,7 @@ from app.shared.domain import AppError, FailureKind
 from app.shared.domain.enums import (
     ConversationScopeType,
     DocumentProcessingStatus,
+    JobStatus,
     ResearchScopeType,
     SubscriptionPlan,
     SubscriptionStatus,
@@ -132,6 +151,84 @@ def test_document_processing_state_machine(
     assert can_begin_processing(state) is can_begin
     assert can_complete_processing(state) is can_complete
     assert can_fail_processing(state) is can_fail
+
+
+@pytest.mark.parametrize(
+    ("state", "complete", "fail", "heartbeat", "terminal"),
+    [
+        (JobStatus.PENDING, True, True, False, False),
+        (JobStatus.RUNNING, True, True, True, False),
+        (JobStatus.COMPLETED, False, False, False, True),
+        (JobStatus.FAILED, False, False, False, True),
+        (JobStatus.CANCELLED, False, False, False, True),
+    ],
+)
+def test_job_terminal_states_are_irreversible(
+    state: JobStatus,
+    complete: bool,
+    fail: bool,
+    heartbeat: bool,
+    terminal: bool,
+) -> None:
+    assert can_complete_job(state) is complete
+    assert can_fail_job(state) is fail
+    assert can_heartbeat_job(state) is heartbeat
+    assert is_terminal_job(state) is terminal
+
+
+def test_job_claim_allows_pending_or_expired_running_jobs() -> None:
+    now = datetime.now(UTC)
+    assert can_claim_job(JobStatus.PENDING, lease_expires_at=None, now=now)
+    assert can_claim_job(
+        JobStatus.RUNNING,
+        lease_expires_at=now - timedelta(seconds=1),
+        now=now,
+    )
+    assert not can_claim_job(
+        JobStatus.RUNNING,
+        lease_expires_at=now + timedelta(seconds=1),
+        now=now,
+    )
+
+
+def test_zotero_import_policy_canonicalizes_and_replays_completed_results() -> None:
+    payload = canonical_import_payload(["B", "A"])
+    assert payload == {"item_keys": ["A", "B"]}
+    action = decide_import_reservation(
+        ImportReservationFacts(
+            created=False,
+            payload_matches=True,
+            status=JobStatus.COMPLETED,
+            result={"imported_count": 2},
+        )
+    )
+    assert action is ImportReservationAction.REPLAY
+
+
+def test_zotero_import_policy_rejects_reused_key_with_different_payload() -> None:
+    with pytest.raises(AppError) as error:
+        decide_import_reservation(
+            ImportReservationFacts(
+                created=False,
+                payload_matches=False,
+                status=JobStatus.PENDING,
+                result=None,
+            )
+        )
+    assert error.value.code == "idempotency_key_reused"
+
+
+def test_identity_domain_separates_product_access_from_cloud_auth() -> None:
+    suspended = AccountAccessFacts("active", is_blocked=True, is_admin=False)
+    with pytest.raises(AppError) as suspended_error:
+        require_product_access(suspended)
+    assert suspended_error.value.code == "identity_suspended"
+
+    with pytest.raises(AppError) as admin_error:
+        require_administrator(
+            AccountAccessFacts("active", is_blocked=False, is_admin=False)
+        )
+    assert admin_error.value.code == "admin_required"
 
 
 @pytest.mark.parametrize(

@@ -42,6 +42,23 @@ def test_duplicate_completion_cannot_apply_side_effects_twice() -> None:
     db.flush.assert_not_called()
 
 
+def test_failed_job_is_terminal_and_cannot_complete_later() -> None:
+    job = _job(status=JobStatus.FAILED)
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = job
+
+    returned, changed = job_repository.complete(
+        db,
+        job_id=job.id,
+        result={"late": True},
+    )
+
+    assert returned is job
+    assert changed is False
+    assert job.status == JobStatus.FAILED.value
+    db.flush.assert_not_called()
+
+
 def test_expired_worker_lease_requeues_the_existing_dispatch() -> None:
     job = _job(status=JobStatus.RUNNING)
     job.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)

@@ -9,6 +9,11 @@ from app.modules.identity.application.contracts import (
     SetUserBlockedRequest,
     SetUserBlockedResponse,
 )
+from app.modules.identity.domain import (
+    AccountAccessFacts,
+    require_administrator,
+    require_product_access,
+)
 from app.shared.application import Actor
 from app.shared.domain import AppError
 
@@ -46,12 +51,12 @@ class Identity:
 
     def resolve_actor(self, identity: AuthenticatedIdentity) -> Actor:
         profile = self._gateway.profile(user_id=identity.id)
-        if profile.is_blocked:
-            raise AppError(
-                code="identity_suspended",
-                message="Scholens access is suspended",
-                status_code=403,
-            )
+        facts = AccountAccessFacts(
+            status=identity.status,
+            is_blocked=profile.is_blocked,
+            is_admin=profile.is_admin,
+        )
+        require_product_access(facts)
         return Actor(
             id=identity.id,
             email=identity.email,
@@ -61,7 +66,7 @@ class Identity:
             locale=profile.locale,
             is_admin=profile.is_admin,
             is_blocked=profile.is_blocked,
-            is_active=True,
+            is_active=facts.is_active,
         )
 
     def set_blocked(
@@ -71,12 +76,13 @@ class Identity:
         user_id: int,
         request: SetUserBlockedRequest,
     ) -> SetUserBlockedResponse:
-        if not actor.is_admin:
-            raise AppError(
-                code="admin_required",
-                message="Administrator access is required",
-                status_code=403,
+        require_administrator(
+            AccountAccessFacts(
+                status=actor.status,
+                is_blocked=actor.is_blocked,
+                is_admin=actor.is_admin,
             )
+        )
         target_email = self._gateway.set_blocked(
             user_id=user_id,
             blocked=request.blocked,
