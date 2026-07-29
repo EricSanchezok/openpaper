@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from app.database.database import SessionLocal
 from app.database.models import Document
-from app.helpers.citations import bibliographic_gaps, fields_from_paper
+from app.modules.papers.domain.citations import bibliographic_gaps, fields_from_paper
 from app.helpers.metadata_hydration import hydrate_paper_metadata
 from sqlalchemy import select
 from sqlalchemy.orm import Session

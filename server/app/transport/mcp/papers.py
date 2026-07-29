@@ -17,6 +17,8 @@ from app.modules.papers.application.contracts.search import (
 from app.modules.papers.application.search import SearchPapers
 from app.modules.papers.application.downloads import GetPaperDownload
 from app.modules.papers.application.contracts.documents import DocumentFileUrlResponse
+from app.modules.papers.application.citations import ResolveCitation
+from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.papers.application.ingestion import IngestPaper, PdfUrlSource
 from app.modules.papers.application.contracts.uploads import UploadAcceptedResponse
 from app.shared.application import Actor
@@ -32,6 +34,7 @@ class McpPaperTools:
         download: GetPaperDownload,
         ingestion: IngestPaper,
         url_source: PdfUrlSource,
+        citations: ResolveCitation,
     ) -> None:
         self._actor = actor
         self._content = content
@@ -39,6 +42,7 @@ class McpPaperTools:
         self._download = download
         self._ingestion = ingestion
         self._url_source = url_source
+        self._citations = citations
 
     def read_document(
         self,
@@ -87,4 +91,18 @@ class McpPaperTools:
             project_id=project_id,
             idempotency_key=idempotency_key,
             ip_address="mcp",
+        )
+
+    def resolve_citation(
+        self,
+        *,
+        document_id: UUID,
+        style: str = "APA",
+        project_id: UUID | None = None,
+    ) -> CitationResult:
+        return self._citations(
+            actor=self._actor,
+            document_id=document_id,
+            style=style,
+            project_id=project_id,
         )

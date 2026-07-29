@@ -54,6 +54,7 @@
     "/api/v1/paper-ingestions/uploads": ["post"],
     "/api/v1/paper-ingestions/urls": ["post"],
     "/api/v1/papers/{document_id}": ["get"],
+    "/api/v1/papers/{document_id}/citation": ["get"],
     "/api/v1/papers/{document_id}/content": ["get"],
     "/api/v1/papers/{document_id}/audio-overviews": ["post"],
     "/api/v1/papers/{document_id}/download-url": ["get"],

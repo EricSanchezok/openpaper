@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.database.models import Document
-from app.helpers.citations import bibliographic_gaps, fields_from_paper
+from app.modules.papers.domain.citations import bibliographic_gaps, fields_from_paper
 from app.helpers.paper_search import get_doi, get_enriched_data
 from app.helpers.parser import parse_publication_date
 from app.llm.citation_recovery import get_recovery_agent

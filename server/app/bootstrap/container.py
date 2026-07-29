@@ -70,6 +70,7 @@ from app.modules.papers.infrastructure.discovery import (
     SqlDiscoveryDocumentGateway,
 )
 from app.modules.papers.application.details import GetPaperDetails
+from app.modules.papers.application.citations import ResolveCitation
 from app.modules.papers.application.library import PaperLibrary
 from app.modules.papers.infrastructure.details import SqlAlchemyPaperDetails
 from app.modules.papers.infrastructure.library_gateway import (
@@ -231,6 +232,16 @@ def build_paper_details(*, db: Session) -> GetPaperDetails:
         SqlAlchemyPaperDetails(db),
         build_project_document_visibility(db=db),
     )
+
+
+def build_citation_resolver(*, db: Session) -> ResolveCitation:
+    # Lazy because the optional agentic metadata recovery path imports Agent
+    # tool definitions, which themselves delegate through this container.
+    from app.modules.papers.infrastructure.citation_gateway import (
+        DefaultCitationMetadataGateway,
+    )
+
+    return ResolveCitation(DefaultCitationMetadataGateway(db))
 
 
 def build_projects(*, db: Session) -> Projects:

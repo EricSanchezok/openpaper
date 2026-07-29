@@ -1,4 +1,4 @@
-"""Citation metadata helpers (server side).
+"""Citation metadata rules shared by every inbound paper adapter.
 
 The server does NOT render citation strings — the client owns the citation
 templates (client/src/components/utils/paperUtils.ts) and renders an interactive

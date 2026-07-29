@@ -17,7 +17,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.database.models import Document
-from app.helpers.citations import CitationFields, bibliographic_gaps, fields_from_paper
+from app.modules.papers.domain.citations import (
+    CitationFields,
+    bibliographic_gaps,
+    fields_from_paper,
+)
 from app.helpers.paper_search import extract_doi_from_url
 from app.helpers.parser import parse_publication_date
 from app.modules.conversations.infrastructure.mcp_client import (

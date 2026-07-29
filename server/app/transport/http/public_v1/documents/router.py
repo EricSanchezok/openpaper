@@ -6,10 +6,12 @@ from uuid import UUID
 
 from app.bootstrap.container import (
     build_paper_content,
+    build_citation_resolver,
     build_paper_details,
     build_paper_download,
     build_paper_library,
 )
+from app.modules.papers.application.contracts.citation import CitationResult
 from app.database.database import get_db
 from app.modules.papers.application.contracts.documents import (
     CollectPublicPaperResponse,
@@ -169,6 +171,25 @@ def get_document_file_url(
     return build_paper_download(db=db)(
         actor=current_user,
         document_id=document_id,
+        project_id=project_id,
+    )
+
+
+@document_router.get(
+    "/{document_id}/citation",
+    response_model=CitationResult,
+)
+def get_document_citation(
+    document_id: UUID,
+    style: str = "APA",
+    project_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: Actor = Depends(get_required_user),
+) -> CitationResult:
+    return build_citation_resolver(db=db)(
+        actor=current_user,
+        document_id=document_id,
+        style=style,
         project_id=project_id,
     )
 
