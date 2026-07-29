@@ -20,7 +20,7 @@ from app.shared.domain import JsonValue
 from app.shared.domain import AppError
 from app.helpers.s3 import s3_service
 from app.modules.papers.infrastructure.access import require_document_access
-from app.modules.research.infrastructure.access import (
+from app.bootstrap.adapters.research_access import (
     research_item_policy,
     research_item_visible_to,
 )

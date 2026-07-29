@@ -36,7 +36,7 @@ from app.modules.research.application.search import (
     SearchResearch,
     build_research_search_cursor,
 )
-from app.modules.research.infrastructure.search import SqlResearchSearch
+from app.bootstrap.adapters.research_search import SqlResearchSearch
 from app.modules.identity.application.onboarding import CompleteOnboarding
 from app.modules.identity.infrastructure.onboarding_adapters import (
     CloudAuthDisplayNameWriter,
@@ -83,7 +83,7 @@ from app.bootstrap.adapters.project_gateway import (
     SqlAlchemyProjectGateway,
 )
 from app.modules.research.application.items import ResearchItems
-from app.modules.research.infrastructure.item_gateway import (
+from app.bootstrap.adapters.research_items import (
     SqlAlchemyResearchItemGateway,
 )
 from app.modules.jobs.application.jobs import Jobs

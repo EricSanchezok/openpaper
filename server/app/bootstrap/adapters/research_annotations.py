@@ -10,7 +10,7 @@ from app.database.models import RoleType
 from app.helpers.parser import get_start_page_from_offset
 from app.llm.utils import find_offsets
 from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.research.infrastructure.repository import (
+from app.bootstrap.adapters.research_repository import (
     HighlightThreadCreate,
     research_repository,
 )

@@ -8,7 +8,7 @@ from app.modules.research.application.search import (
     ResearchSearchResponse,
     ResearchSearchResult,
 )
-from app.modules.research.infrastructure.access import research_item_visible_to
+from app.bootstrap.adapters.research_access import research_item_visible_to
 from app.modules.research.infrastructure.models import (
     AnnotationComment,
     HighlightThread,

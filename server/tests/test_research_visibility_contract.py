@@ -18,9 +18,9 @@ from app.database.models import (
 from app.shared.domain import AppError
 from app.main import app
 from app.bootstrap.adapters.project_presenters import _project_counts
-from app.modules.research.infrastructure.access import research_item_policy
-from app.modules.research.infrastructure.access import research_item_visible_to
-from app.modules.research.infrastructure.repository import research_repository
+from app.bootstrap.adapters.research_access import research_item_policy
+from app.bootstrap.adapters.research_access import research_item_visible_to
+from app.bootstrap.adapters.research_repository import research_repository
 from app.modules.research.application.contracts import (
     CitationSnapshot,
     CreateHighlightThreadRequest,
@@ -71,7 +71,7 @@ def test_creator_is_only_manager_and_owner_has_no_override() -> None:
     item = _item(creator_id=2, shared=True)
 
     with patch(
-        "app.modules.research.infrastructure.access.get_project_access",
+        "app.bootstrap.adapters.research_access.get_project_access",
         return_value=object(),
     ):
         creator = research_item_policy.evaluate(db, item=item, user_id=2)
@@ -84,7 +84,7 @@ def test_creator_is_only_manager_and_owner_has_no_override() -> None:
 
     with (
         patch(
-            "app.modules.research.infrastructure.access.get_project_access",
+            "app.bootstrap.adapters.research_access.get_project_access",
             return_value=object(),
         ),
         pytest.raises(AppError) as exc_info,
@@ -100,7 +100,7 @@ def test_hidden_items_are_creator_only_and_creator_history_survives_access_loss(
     item = _item(creator_id=2, shared=False)
 
     with patch(
-        "app.modules.research.infrastructure.access.get_project_access",
+        "app.bootstrap.adapters.research_access.get_project_access",
         return_value=None,
     ):
         creator = research_item_policy.evaluate(db, item=item, user_id=2)

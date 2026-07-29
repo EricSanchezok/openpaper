@@ -1,4 +1,4 @@
-"""Authorization policy for every research-item kind."""
+"""Cross-module authorization policy for every research-item kind."""
 
 from __future__ import annotations
 

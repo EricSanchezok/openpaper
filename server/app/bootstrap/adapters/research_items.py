@@ -13,7 +13,7 @@ from app.modules.research.application.contracts import (
     UpdateAnnotationCommentRequest,
     UpdateHighlightThreadRequest,
 )
-from app.modules.research.infrastructure.repository import (
+from app.bootstrap.adapters.research_repository import (
     HighlightThreadCreate,
     research_repository,
 )

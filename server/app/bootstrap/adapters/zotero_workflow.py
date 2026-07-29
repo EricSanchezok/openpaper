@@ -41,13 +41,13 @@ from app.modules.integrations.zotero.infrastructure.client import ZoteroApiClien
 from app.llm.utils import find_offsets
 from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.papers.infrastructure.tag_repository import library_tag_repository
-from app.modules.research.infrastructure.repository import (
+from app.bootstrap.adapters.research_repository import (
     HighlightThreadCreate,
     research_repository,
 )
 from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.shared.application import Actor
-from app.modules.research.infrastructure.document_annotations import (
+from app.bootstrap.adapters.research_annotations import (
     require_parsed_content,
 )
 from app.modules.papers.infrastructure.upload_reservations import reserve_upload

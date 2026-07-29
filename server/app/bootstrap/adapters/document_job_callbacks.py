@@ -63,7 +63,7 @@ from app.bootstrap.adapters.zotero_workflow import (
     auto_import_new_papers,
     sync_batch,
 )
-from app.modules.research.infrastructure.document_annotations import (
+from app.bootstrap.adapters.research_annotations import (
     create_ai_highlights,
 )
 from app.modules.jobs.infrastructure.callback_boundaries import (

@@ -30,7 +30,7 @@ from app.llm.token_credits import has_token_credits, llm_usage_context
 from app.modules.projects.infrastructure.access import get_project_access
 from app.bootstrap.adapters.conversation_access import conversation_policy
 from app.bootstrap.adapters.conversation_repository import conversation_repository
-from app.modules.research.infrastructure.repository import research_repository
+from app.bootstrap.adapters.research_repository import research_repository
 from app.modules.conversations.application.contracts.messages import (
     ChatMessageRequest,
     ConversationMessageRequest,
