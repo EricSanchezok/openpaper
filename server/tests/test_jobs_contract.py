@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.main import app
-from app.transport.http.public_v1.documents.router import _document_response
+from app.modules.papers.infrastructure.library_gateway import document_response
 from app.database.models import Document
 from app.modules.jobs.application.contracts import (
     PDFProcessingResult,
@@ -95,7 +95,7 @@ def test_client_paper_contract_hides_parser_provider_details() -> None:
         parser_warning_code="text_only_fallback",
         processing_status="completed",
     )
-    result = _document_response(paper).model_dump(mode="json")
+    result = document_response(paper).model_dump(mode="json")
 
     assert "parser_backend" not in result
     assert "parser_version" not in result

@@ -18,6 +18,11 @@ class LibraryTagResponse(BaseModel):
     color: str | None
 
 
+class LibraryTagListResponse(BaseModel):
+    items: list[LibraryTagResponse]
+    next_cursor: str | None = None
+
+
 class LibraryTagAssignmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

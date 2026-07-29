@@ -24,8 +24,11 @@ export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
     useEffect(() => {
         const getTags = async () => {
             try {
-                const allTags = await fetchFromApi("/library/tags");
-                setTags(allTags);
+                const response = await fetchFromApi("/library/tags") as {
+                    items: PaperTag[];
+                    next_cursor: string | null;
+                };
+                setTags(response.items);
             } catch (error) {
                 console.error("Failed to fetch tags", error);
                 toast.error("Failed to load tags.");

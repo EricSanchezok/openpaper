@@ -5,14 +5,14 @@ import hashlib
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.transport.http.public_v1.documents.router import (
-    _library_response,
-    list_library_papers,
-)
+from app.transport.http.public_v1.documents.router import list_library_papers
 from app.database.models import Document, LibraryPaper, PaperStatus
 from app.main import app
 from app.helpers.s3 import s3_service
 from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.papers.infrastructure.library_gateway import (
+    library_paper_response,
+)
 from app.shared.application import Actor
 from app.modules.papers.application.contracts.tags import LibraryTagAssignmentRequest
 from pydantic import ValidationError
@@ -82,7 +82,7 @@ def test_library_response_returns_private_signed_preview(monkeypatch) -> None:
         lambda *_args, **_kwargs: "https://signed.example.invalid/preview",
     )
 
-    response = _library_response(entry)
+    response = library_paper_response(entry)
 
     assert response.library_entry_id == entry.id
     assert response.document.document_id == entry.document.id

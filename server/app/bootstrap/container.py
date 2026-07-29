@@ -46,6 +46,24 @@ from app.modules.identity.infrastructure.onboarding_adapters import (
 )
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.modules.billing.infrastructure.webhook_adapter import StripeWebhookAdapter
+from app.modules.papers.application.tags import LibraryTags
+from app.modules.papers.infrastructure.tag_gateway import (
+    SqlAlchemyLibraryTagGateway,
+)
+from app.modules.papers.application.discovery import DiscoverPapers
+from app.modules.papers.infrastructure.discovery import (
+    AiExternalDiscoveryRateLimiter,
+    OpenAlexPaperCatalog,
+    PostHogDiscoveryEventRecorder,
+    SqlDiscoveryDocumentGateway,
+)
+from app.modules.papers.application.details import GetPaperDetails
+from app.modules.papers.application.library import PaperLibrary
+from app.modules.papers.infrastructure.details import SqlAlchemyPaperDetails
+from app.modules.papers.infrastructure.library_gateway import (
+    BillingLibraryCapacity,
+    SqlAlchemyPaperLibraryGateway,
+)
 from sqlalchemy.orm import Session
 
 
@@ -115,3 +133,31 @@ def build_complete_onboarding(*, db: Session) -> CompleteOnboarding:
 
 def build_stripe_webhook_processor(*, db: Session) -> ProcessStripeWebhook:
     return ProcessStripeWebhook(StripeWebhookAdapter(db))
+
+
+def build_library_tags(*, db: Session) -> LibraryTags:
+    return LibraryTags(SqlAlchemyLibraryTagGateway(db))
+
+
+def build_paper_discovery(*, db: Session) -> DiscoverPapers:
+    return DiscoverPapers(
+        catalog=OpenAlexPaperCatalog(),
+        documents=SqlDiscoveryDocumentGateway(db),
+        rate_limiter=AiExternalDiscoveryRateLimiter(),
+        events=PostHogDiscoveryEventRecorder(db),
+    )
+
+
+def build_paper_library(*, db: Session) -> PaperLibrary:
+    return PaperLibrary(
+        gateway=SqlAlchemyPaperLibraryGateway(db),
+        capacity=BillingLibraryCapacity(db),
+        signer=S3PaperDownloadSigner(),
+    )
+
+
+def build_paper_details(*, db: Session) -> GetPaperDetails:
+    return GetPaperDetails(
+        SqlAlchemyPaperDetails(db),
+        build_project_document_visibility(db=db),
+    )
