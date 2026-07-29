@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
 from app.modules.papers.application.contracts.uploads import UploadAcceptedResponse
+from app.modules.papers.domain import normalize_idempotency_key
 from app.shared.application import Actor
 from app.shared.domain import AppError
-
-MAX_PDF_SIZE_MB = 30
-MAX_PDF_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +131,7 @@ class IngestPaper:
             project_id=project_id,
             content=content,
             filename=filename,
-            idempotency_key=_normalize_idempotency_key(idempotency_key),
+            idempotency_key=normalize_idempotency_key(idempotency_key),
         )
         if reservation.replayed:
             return UploadAcceptedResponse(job_id=reservation.job_id)
@@ -153,20 +150,3 @@ class IngestPaper:
             content=content,
         )
         return UploadAcceptedResponse(job_id=reservation.job_id)
-
-
-def content_sha256(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
-
-
-def _normalize_idempotency_key(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized or len(normalized) > 200:
-        raise AppError(
-            code="invalid_idempotency_key",
-            message="Idempotency-Key must contain between 1 and 200 characters",
-            status_code=400,
-        )
-    return normalized

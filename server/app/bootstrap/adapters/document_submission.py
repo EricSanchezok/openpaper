@@ -16,6 +16,7 @@ from app.database.models import (
 )
 from app.database.telemetry import track_event
 from app.helpers.s3 import document_source_key, s3_service
+from app.modules.papers.domain import can_begin_processing
 from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.jobs.infrastructure.repository import job_repository
 from app.shared.application import Actor
@@ -122,6 +123,11 @@ async def submit_reserved_document(
         )
         db.flush()
         return f"reused:{document.id}"
+
+    if not canonical.created and not can_begin_processing(
+        DocumentProcessingStatus(document.processing_status)
+    ):
+        raise RuntimeError("document_processing_transition_rejected")
 
     if (
         not canonical.created

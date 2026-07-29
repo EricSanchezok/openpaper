@@ -19,11 +19,13 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.shared.domain import AppError
-from app.modules.billing.infrastructure.quotas import (
+from app.modules.billing.domain import (
     KB_SIZE_KEY,
     PAPER_UPLOAD_KEY,
     PROJECTS_KEY,
     PROJECT_PAPERS_KEY,
+)
+from app.modules.billing.infrastructure.quotas import (
     get_plan_limits,
     get_quota_user,
     get_user_subscription_plan,

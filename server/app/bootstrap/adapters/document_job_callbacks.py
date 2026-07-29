@@ -44,6 +44,10 @@ from app.modules.papers.infrastructure.search_repository import (
     document_search_repository,
 )
 from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.papers.domain import (
+    can_complete_processing,
+    can_fail_processing,
+)
 from app.modules.jobs.infrastructure.repository import EnqueueJob, job_repository
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
@@ -249,7 +253,13 @@ def handle_failed_upload(
         document = db.scalar(
             select(Document).where(Document.id == document_id).with_for_update()
         )
-        if document is not None and document.processing_job_id == job.id:
+        if (
+            document is not None
+            and document.processing_job_id == job.id
+            and can_fail_processing(
+                DocumentProcessingStatus(document.processing_status)
+            )
+        ):
             document.processing_status = DocumentProcessingStatus.FAILED.value
             document.parser_warning_code = "processing_failed"
         if job.reference_created:
@@ -633,6 +643,10 @@ async def handle_paper_processing_webhook(
                     message="Paper not found",
                     status_code=404,
                 )
+            if not can_complete_processing(
+                DocumentProcessingStatus(existing_paper.processing_status)
+            ):
+                raise RuntimeError("document_completion_transition_rejected")
             paper = document_repository.update_canonical(
                 db,
                 update=DocumentUpdate(

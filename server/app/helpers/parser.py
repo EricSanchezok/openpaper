@@ -6,7 +6,7 @@ from datetime import datetime
 from urllib.parse import urljoin, urlsplit
 
 import requests
-from app.modules.papers.application.ingestion import MAX_PDF_SIZE_MB
+from app.modules.papers.domain import MAX_PDF_SIZE_MB
 from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)

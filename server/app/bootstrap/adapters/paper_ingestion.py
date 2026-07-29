@@ -17,8 +17,8 @@ from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.papers.application.ingestion import (
     FetchedPdf,
     IngestionReservation,
-    content_sha256,
 )
+from app.modules.papers.domain import content_sha256, durable_ingestion_key
 from app.bootstrap.adapters.document_submission import dispatch_reserved_document
 from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
@@ -106,10 +106,10 @@ class SqlPaperIngestionGateway:
         filename: str | None,
         idempotency_key: str | None,
     ) -> IngestionReservation:
-        durable_key = (
-            f"pdf-ingestion:{actor.id}:{project_id or 'library'}:{idempotency_key}"
-            if idempotency_key is not None
-            else None
+        durable_key = durable_ingestion_key(
+            actor_id=actor.id,
+            project_id=project_id,
+            idempotency_key=idempotency_key,
         )
         replayed = (
             durable_key is not None

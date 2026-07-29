@@ -15,6 +15,7 @@ from app.database.models import (
     UploadReservation,
     ProjectPaper,
 )
+from app.modules.papers.domain import can_fail_processing
 from sqlalchemy import and_, delete, exists, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -104,7 +105,13 @@ def reap_stale_uploads(
                 .where(Document.id == durable_job.document_id)
                 .with_for_update()
             )
-            if document is not None and document.processing_job_id == job.id:
+            if (
+                document is not None
+                and document.processing_job_id == job.id
+                and can_fail_processing(
+                    DocumentProcessingStatus(document.processing_status)
+                )
+            ):
                 document.processing_status = DocumentProcessingStatus.FAILED.value
         durable_job.status = JobStatus.FAILED.value
         durable_job.completed_at = current_time

@@ -10,6 +10,17 @@ from app.modules.billing.infrastructure.usage_repository import (
 from app.modules.billing.infrastructure.subscription_repository import (
     subscription_repository,
 )
+from app.modules.billing.domain import (
+    AccountCapacityFacts,
+    SubscriptionFacts,
+    effective_plan,
+    entitlements_for,
+    paper_upload_denial,
+    project_creation_denial,
+    remaining,
+    require_account_document_capacity,
+    require_project_paper_capacity,
+)
 from app.database.models import (
     AuthUser,
     Document,
@@ -26,34 +37,6 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-PAPER_UPLOAD_KEY = "paper_uploads"
-KB_SIZE_KEY = "knowledge_base_size"
-TOKEN_CREDITS_KEY = "token_credits_weekly"
-PROJECTS_KEY = "projects"
-PROJECT_PAPERS_KEY = "project_papers"
-
-# Define subscription plan limits
-SUBSCRIPTION_LIMITS: dict[SubscriptionPlan, dict[str, int]] = {
-    SubscriptionPlan.BASIC: {
-        PAPER_UPLOAD_KEY: 10,
-        KB_SIZE_KEY: 200 * 1024,  # 200 MB in KB
-        TOKEN_CREDITS_KEY: 3_000_000,
-        PROJECTS_KEY: 2,
-        PROJECT_PAPERS_KEY: 50,
-    },
-    SubscriptionPlan.RESEARCHER: {
-        PAPER_UPLOAD_KEY: 500,
-        KB_SIZE_KEY: 3 * 1024 * 1024,  # 3 GB in KB
-        TOKEN_CREDITS_KEY: 100_000_000,
-        PROJECTS_KEY: 100,
-        PROJECT_PAPERS_KEY: 120,
-    },
-}
-PLAN_LABELS = {
-    SubscriptionPlan.BASIC: "Basic",
-    SubscriptionPlan.RESEARCHER: "Researcher",
-}
-
 
 def get_user_subscription_plan(db: Session, user: Actor) -> SubscriptionPlan:
     """
@@ -62,27 +45,21 @@ def get_user_subscription_plan(db: Session, user: Actor) -> SubscriptionPlan:
     """
     subscription = subscription_repository.get_by_user_id(db, user.id)
 
-    if not subscription:
-        return SubscriptionPlan.BASIC
-
-    # Check if subscription is active and not expired
-    if (
-        subscription.current_period_end
-        and subscription.current_period_end > datetime.now(timezone.utc)
-    ):
-        if subscription.status in [
-            SubscriptionStatus.ACTIVE,
-            SubscriptionStatus.TRIALING,
-        ]:
-            return SubscriptionPlan(subscription.plan)
-
-    # If subscription is expired or inactive, return BASIC
-    return SubscriptionPlan.BASIC
+    facts = (
+        SubscriptionFacts(
+            plan=SubscriptionPlan(subscription.plan),
+            status=SubscriptionStatus(subscription.status),
+            current_period_end=subscription.current_period_end,
+        )
+        if subscription is not None
+        else None
+    )
+    return effective_plan(facts, now=datetime.now(timezone.utc))
 
 
 def get_plan_limits(plan: SubscriptionPlan) -> dict[str, int]:
     """Get the limits for a specific subscription plan."""
-    return SUBSCRIPTION_LIMITS.get(plan, SUBSCRIPTION_LIMITS[SubscriptionPlan.BASIC])
+    return entitlements_for(plan).as_limits()
 
 
 def lock_account_resource_quota(db: Session, *, user_id: int) -> None:
@@ -124,33 +101,21 @@ def _require_incremental_account_capacity(
 
     owner = get_quota_user(db, user_id=owner_id)
     plan = get_user_subscription_plan(db, owner)
-    limits = get_plan_limits(plan)
     current_count = resource_usage_repository.completed_reference_count(
         db, user_id=owner.id
     )
-    if current_count + len(documents) > limits[PAPER_UPLOAD_KEY]:
-        raise AppError(
-            code=(
-                "project_owner_quota_exceeded"
-                if project_owner
-                else "paper_quota_exceeded"
-            ),
-            message="The account's paper limit would be exceeded",
-            status_code=403,
-        )
-
     current_size = resource_usage_repository.completed_storage_kb(db, user_id=owner.id)
     added_size = sum((document.size_bytes + 1023) // 1024 for document in documents)
-    if current_size + added_size > limits[KB_SIZE_KEY]:
-        raise AppError(
-            code=(
-                "project_owner_quota_exceeded"
-                if project_owner
-                else "storage_quota_exceeded"
-            ),
-            message="The account's storage limit would be exceeded",
-            status_code=403,
-        )
+    require_account_document_capacity(
+        plan,
+        AccountCapacityFacts(
+            current_documents=current_count,
+            current_storage_kb=current_size,
+            added_documents=len(documents),
+            added_storage_kb=added_size,
+            project_owner=project_owner,
+        ),
+    )
 
 
 def require_project_document_capacity(
@@ -166,8 +131,6 @@ def require_project_document_capacity(
     lock_account_resource_quota(db, user_id=owner_id)
     owner = get_quota_user(db, user_id=owner_id)
     plan = get_user_subscription_plan(db, owner)
-    limits = get_plan_limits(plan)
-
     current_project_count = int(
         db.scalar(
             select(func.count(ProjectPaper.id)).where(
@@ -176,12 +139,11 @@ def require_project_document_capacity(
         )
         or 0
     )
-    if current_project_count + len(documents) > limits[PROJECT_PAPERS_KEY]:
-        raise AppError(
-            code="project_paper_quota_exceeded",
-            message="The Project's paper limit would be exceeded",
-            status_code=403,
-        )
+    require_project_paper_capacity(
+        plan,
+        current_documents=current_project_count,
+        added_documents=len(documents),
+    )
 
     _require_incremental_account_capacity(
         db,
@@ -214,12 +176,11 @@ def get_remaining_paper_upload_slots(db: Session, user: Actor) -> int:
     upload limit, so there is no unlimited case to special-case.
     """
     plan = get_user_subscription_plan(db, user)
-    limits = get_plan_limits(plan)
-    paper_limit = limits[PAPER_UPLOAD_KEY]
+    paper_limit = entitlements_for(plan).paper_uploads
     current_paper_count = resource_usage_repository.completed_reference_count(
         db, user_id=user.id
     )
-    return max(0, int(paper_limit) - current_paper_count)
+    return remaining(paper_limit, current_paper_count)
 
 
 def can_user_upload_paper(db: Session, user: Actor) -> tuple[bool, str | None]:
@@ -230,15 +191,12 @@ def can_user_upload_paper(db: Session, user: Actor) -> tuple[bool, str | None]:
         Whether the action is allowed and an optional user-facing reason.
     """
     plan = get_user_subscription_plan(db, user)
-    limits = get_plan_limits(plan)
-
     current_paper_count = resource_usage_repository.completed_reference_count(
         db, user_id=user.id
     )
-    paper_limit = limits[PAPER_UPLOAD_KEY]
-
-    # If the user has reached their paper upload limit
-    if current_paper_count >= paper_limit:
+    denial = paper_upload_denial(plan, current_documents=current_paper_count)
+    if denial is not None:
+        paper_limit = entitlements_for(plan).paper_uploads
         track_event(
             "action_blocked_limit_reached",
             user_id=str(user.id),
@@ -252,7 +210,7 @@ def can_user_upload_paper(db: Session, user: Actor) -> tuple[bool, str | None]:
         )
         return (
             False,
-            f"You have reached your paper upload limit ({paper_limit} papers) for the {PLAN_LABELS[plan]} plan. Please upgrade your subscription to upload more papers, or delete existing papers to free up space.",
+            denial,
         )
 
     return True, None
@@ -266,16 +224,13 @@ def can_user_create_project(db: Session, user: Actor) -> tuple[bool, str | None]
         Whether the action is allowed and an optional user-facing reason.
     """
     plan = get_user_subscription_plan(db, user)
-    limits = get_plan_limits(plan)
-
     current_project_count = int(
         db.scalar(select(func.count(Project.id)).where(Project.owner_id == user.id))
         or 0
     )
-    project_limit = limits[PROJECTS_KEY]
-
-    # If the user has reached their project limit
-    if current_project_count >= project_limit:
+    denial = project_creation_denial(plan, current_projects=current_project_count)
+    if denial is not None:
+        project_limit = entitlements_for(plan).projects
         track_event(
             "action_blocked_limit_reached",
             user_id=str(user.id),
@@ -289,7 +244,7 @@ def can_user_create_project(db: Session, user: Actor) -> tuple[bool, str | None]
         )
         return (
             False,
-            f"You have reached your project limit ({project_limit} projects) for the {PLAN_LABELS[plan]} plan. Please upgrade your subscription to create more projects.",
+            denial,
         )
 
     return True, None
@@ -297,7 +252,7 @@ def can_user_create_project(db: Session, user: Actor) -> tuple[bool, str | None]
 
 def can_user_auto_sync_zotero(db: Session, user: Actor) -> bool:
     """Return True if the user's plan allows automatic Zotero sync (Researcher only)."""
-    return get_user_subscription_plan(db, user) == SubscriptionPlan.RESEARCHER
+    return entitlements_for(get_user_subscription_plan(db, user)).zotero_auto_sync
 
 
 def get_user_usage_info(db: Session, user: Actor) -> dict[str, object]:
@@ -305,37 +260,41 @@ def get_user_usage_info(db: Session, user: Actor) -> dict[str, object]:
     from app.llm.token_credits import token_quota_status
 
     plan = get_user_subscription_plan(db, user)
-    limits = get_plan_limits(plan)
+    limits = entitlements_for(plan)
     current_paper_count = resource_usage_repository.completed_reference_count(
         db, user_id=user.id
     )
-    paper_limit = limits[PAPER_UPLOAD_KEY]
+    paper_limit = limits.paper_uploads
     total_size = resource_usage_repository.completed_storage_kb(db, user_id=user.id)
-    total_size_allowed = limits[KB_SIZE_KEY]
+    total_size_allowed = limits.knowledge_base_size_kb
     current_project_count = int(
         db.scalar(select(func.count(Project.id)).where(Project.owner_id == user.id))
         or 0
     )
-    project_limit = limits[PROJECTS_KEY]
+    project_limit = limits.projects
     token_limit, token_used, token_remaining, token_overage = token_quota_status(
         db, user=user
     )
 
     return {
         "plan": plan.value,
-        "limits": {**limits},
+        "limits": limits.as_limits(),
         "usage": {
             "paper_uploads": current_paper_count,
-            "paper_uploads_remaining": max(0, int(paper_limit) - current_paper_count),
+            "paper_uploads_remaining": remaining(
+                paper_limit,
+                current_paper_count,
+            ),
             "knowledge_base_size": total_size,
-            "knowledge_base_size_remaining": max(
-                0, int(total_size_allowed) - total_size
+            "knowledge_base_size_remaining": remaining(
+                total_size_allowed,
+                total_size,
             ),
             "token_credits_weekly": token_limit,
             "token_credits_used": token_used,
             "token_credits_remaining": token_remaining,
             "token_credits_overage": token_overage,
             "projects": current_project_count,
-            "projects_remaining": max(0, int(project_limit) - current_project_count),
+            "projects_remaining": remaining(project_limit, current_project_count),
         },
     }

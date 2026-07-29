@@ -10,24 +10,20 @@ from app.database.models import (
     ProjectCollaborator,
     ProjectPaper,
 )
+from app.modules.papers.domain import (
+    DocumentAccessDecision,
+    classify_document_access,
+)
 from app.shared.domain import AppError
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 
 @dataclass(frozen=True, slots=True)
-class DocumentAccess:
+class ResolvedDocumentAccess:
     document: Document
     library_paper: LibraryPaper | None
-    project_id: uuid.UUID | None
-
-    @property
-    def is_in_library(self) -> bool:
-        return self.library_paper is not None
-
-    @property
-    def is_project_only(self) -> bool:
-        return self.library_paper is None and self.project_id is not None
+    decision: DocumentAccessDecision
 
 
 def get_library_paper(
@@ -77,37 +73,32 @@ def get_document_access(
     document_id: uuid.UUID,
     user_id: int,
     project_id: uuid.UUID | None = None,
-) -> DocumentAccess | None:
+) -> ResolvedDocumentAccess | None:
     library_paper = get_library_paper(
         db,
         document_id=document_id,
         user_id=user_id,
     )
-    if library_paper is not None and project_id is None:
-        document = db.get(Document, document_id)
-        if document is None:
-            return None
-        return DocumentAccess(
-            document=document,
-            library_paper=library_paper,
-            project_id=None,
-        )
-
     accessible_project_id = _accessible_project_id(
         db,
         document_id=document_id,
         user_id=user_id,
         project_id=project_id,
     )
-    if accessible_project_id is None:
+    decision = classify_document_access(
+        has_library_entry=library_paper is not None,
+        accessible_project_id=accessible_project_id,
+        project_was_requested=project_id is not None,
+    )
+    if decision is None:
         return None
     document = db.get(Document, document_id)
     if document is None:
         return None
-    return DocumentAccess(
+    return ResolvedDocumentAccess(
         document=document,
         library_paper=library_paper,
-        project_id=accessible_project_id,
+        decision=decision,
     )
 
 
@@ -117,7 +108,7 @@ def require_document_access(
     document_id: uuid.UUID,
     user_id: int,
     project_id: uuid.UUID | None = None,
-) -> DocumentAccess:
+) -> ResolvedDocumentAccess:
     access = get_document_access(
         db,
         document_id=document_id,
