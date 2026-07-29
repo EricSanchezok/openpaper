@@ -21,14 +21,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.infrastructure.persistence import Base, JsonValue
-from .enums import ResearchItemKind, ResearchScopeType
+from app.shared.domain.enums import ResearchItemKind, ResearchScopeType
 
 if TYPE_CHECKING:
-    from .conversations import Message
-    from .documents import Document
+    from app.modules.conversations.infrastructure.models import Message
+    from app.modules.papers.infrastructure.models import Document
     from app.modules.identity.infrastructure.models import AuthUser
-    from .jobs import DurableJob
-    from .projects import Project
+    from app.modules.jobs.infrastructure.models import DurableJob
+    from app.modules.projects.infrastructure.models import Project
 
 
 class ResearchItem(Base):

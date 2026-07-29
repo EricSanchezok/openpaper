@@ -1,7 +1,7 @@
 """Typed SQLAlchemy model registry for the Scholens product schema."""
 
 from app.shared.infrastructure.persistence import Base, JsonScalar, JsonValue
-from .enums import (
+from app.shared.domain.enums import (
     ConversationScopeType,
     DocumentProcessingStatus,
     HighlightType,
@@ -20,10 +20,19 @@ from .enums import (
     ZoteroImportStatus,
 )
 from app.modules.identity.infrastructure.models import AuthUser, UserProfile
-from .jobs import DurableJob, JobDispatch, JobsWebhookNonce
-from .integrations import ZoteroConnection, ZoteroImportedItem, ZoteroOAuthPending
-from .conversations import Conversation, Message
-from .documents import (
+from app.modules.identity.infrastructure.onboarding_model import Onboarding
+from app.modules.jobs.infrastructure.models import (
+    DurableJob,
+    JobDispatch,
+    JobsWebhookNonce,
+)
+from app.modules.integrations.zotero.infrastructure.models import (
+    ZoteroConnection,
+    ZoteroImportedItem,
+    ZoteroOAuthPending,
+)
+from app.modules.conversations.infrastructure.models import Conversation, Message
+from app.modules.papers.infrastructure.models import (
     LibraryPaper,
     LibraryPaperTag,
     Document,
@@ -31,9 +40,17 @@ from .documents import (
     PaperTag,
     UploadReservation,
 )
-from .usage import TokenUsageEvent, TokenWeeklyUsage
-from .projects import Project, ProjectCollaborator, ProjectInvitation, ProjectPaper
-from .research import (
+from app.modules.billing.infrastructure.usage_models import (
+    TokenUsageEvent,
+    TokenWeeklyUsage,
+)
+from app.modules.projects.infrastructure.models import (
+    Project,
+    ProjectCollaborator,
+    ProjectInvitation,
+    ProjectPaper,
+)
+from app.modules.research.infrastructure.models import (
     AnnotationComment,
     CitationOutput,
     HighlightThread,
@@ -41,11 +58,7 @@ from .research import (
     ResearchDataTable,
     ResearchItem,
 )
-from .commerce import (
-    Onboarding,
-    StripeWebhookEvent,
-    Subscription,
-)
+from app.modules.billing.infrastructure.models import StripeWebhookEvent, Subscription
 
 __all__ = [
     "AuthUser",

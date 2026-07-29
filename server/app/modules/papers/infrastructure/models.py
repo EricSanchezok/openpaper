@@ -24,13 +24,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.shared.infrastructure.persistence import Base, JsonValue
-from .enums import DocumentProcessingStatus, PaperStatus
+from app.shared.domain.enums import DocumentProcessingStatus, PaperStatus
 
 if TYPE_CHECKING:
     from app.modules.identity.infrastructure.models import AuthUser
-    from .jobs import DurableJob
-    from .conversations import Conversation
-    from .projects import ProjectPaper
+    from app.modules.jobs.infrastructure.models import DurableJob
+    from app.modules.conversations.infrastructure.models import Conversation
+    from app.modules.projects.infrastructure.models import ProjectPaper
 
 
 class UploadReservation(Base):

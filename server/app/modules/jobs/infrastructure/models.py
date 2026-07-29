@@ -23,12 +23,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.shared.infrastructure.persistence import Base, JsonValue
-from .enums import JobDispatchStatus, JobStatus
+from app.shared.domain.enums import JobDispatchStatus, JobStatus
 
 if TYPE_CHECKING:
-    from .documents import Document
+    from app.modules.papers.infrastructure.models import Document
     from app.modules.identity.infrastructure.models import AuthUser
-    from .projects import Project
+    from app.modules.projects.infrastructure.models import Project
 
 
 class DurableJob(Base):

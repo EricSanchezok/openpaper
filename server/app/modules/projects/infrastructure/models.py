@@ -22,8 +22,8 @@ from sqlalchemy.sql import func
 from app.shared.infrastructure.persistence import Base
 
 if TYPE_CHECKING:
-    from .conversations import Conversation
-    from .documents import Document
+    from app.modules.conversations.infrastructure.models import Conversation
+    from app.modules.papers.infrastructure.models import Document
     from app.modules.identity.infrastructure.models import AuthUser
 
 

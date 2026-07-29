@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.infrastructure.persistence import Base, JsonValue
-from .enums import ZoteroImportStatus
+from app.shared.domain.enums import ZoteroImportStatus
 
 if TYPE_CHECKING:
     from app.modules.identity.infrastructure.models import AuthUser

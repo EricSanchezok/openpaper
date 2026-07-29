@@ -10,20 +10,24 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.shared.infrastructure.persistence import Base
 
 if TYPE_CHECKING:
-    from app.database.models.commerce import Onboarding, Subscription
-    from app.database.models.conversations import Conversation
-    from app.database.models.documents import (
+    from app.modules.billing.infrastructure.models import Subscription
+    from app.modules.identity.infrastructure.onboarding_model import Onboarding
+    from app.modules.conversations.infrastructure.models import Conversation
+    from app.modules.papers.infrastructure.models import (
         LibraryPaper,
         Document,
         PaperTag,
     )
-    from app.database.models.projects import (
+    from app.modules.projects.infrastructure.models import (
         Project,
         ProjectCollaborator,
         ProjectInvitation,
     )
-    from app.database.models.research import AnnotationComment, ResearchItem
-    from app.database.models.integrations import (
+    from app.modules.research.infrastructure.models import (
+        AnnotationComment,
+        ResearchItem,
+    )
+    from app.modules.integrations.zotero.infrastructure.models import (
         ZoteroConnection,
         ZoteroImportedItem,
         ZoteroOAuthPending,

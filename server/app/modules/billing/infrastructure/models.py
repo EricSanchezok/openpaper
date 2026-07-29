@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.infrastructure.persistence import Base
-from .enums import (
+from app.shared.domain.enums import (
     SubscriptionPlan,
     SubscriptionStatus,
     StripeWebhookEventStatus,
@@ -105,31 +105,3 @@ class StripeWebhookEvent(Base):
             name="ck_stripe_webhook_events_status",
         ),
     )
-
-
-class Onboarding(Base):
-    __tablename__ = "onboarding"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False
-    )
-    # Basic user information
-    name: Mapped[str | None] = mapped_column(String, nullable=True)
-    email: Mapped[str | None] = mapped_column(String, nullable=True)
-    company: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    # Research fields (stored as comma-separated string)
-    research_fields: Mapped[str | None] = mapped_column(String, nullable=True)
-    research_fields_other: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    # Job titles (stored as comma-separated string)
-    job_titles: Mapped[str | None] = mapped_column(String, nullable=True)
-    job_titles_other: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    # Reading frequency
-    reading_frequency: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    user: Mapped["AuthUser"] = relationship("AuthUser", back_populates="onboarding")
