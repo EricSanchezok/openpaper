@@ -68,3 +68,5 @@ neurips.md
 *.tex
 build_*tex.sh
 *.sty
+
+docs/blueprints
