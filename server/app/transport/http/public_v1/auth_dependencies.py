@@ -30,7 +30,7 @@ async def get_current_user(
         status=cloud_user.status,
         email_verified=cloud_user.email_verified,
     )
-    return executor.query(
+    return executor.command(
         lambda capabilities: capabilities.identity.resolve_actor(
             identity,
         )

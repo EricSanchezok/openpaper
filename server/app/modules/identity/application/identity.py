@@ -34,8 +34,20 @@ class IdentityProfile:
     is_blocked: bool
 
 
+@dataclass(frozen=True, slots=True)
+class LocalIdentity:
+    id: int
+    email: str
+    display_name: str | None
+    status: str
+    email_verified: bool
+    profile: IdentityProfile
+
+
 class IdentityGateway(Protocol):
-    def profile(self, *, user_id: int) -> IdentityProfile: ...
+    def ensure_profile(self, *, user_id: int) -> IdentityProfile: ...
+
+    def local_identity(self, *, user_id: int) -> LocalIdentity | None: ...
 
     def set_blocked(
         self,
@@ -50,19 +62,55 @@ class Identity:
         self._gateway = gateway
 
     def resolve_actor(self, identity: AuthenticatedIdentity) -> Actor:
-        profile = self._gateway.profile(user_id=identity.id)
-        facts = AccountAccessFacts(
+        profile = self._gateway.ensure_profile(user_id=identity.id)
+        return self._actor(
+            user_id=identity.id,
+            email=identity.email,
+            display_name=identity.display_name,
             status=identity.status,
+            email_verified=identity.email_verified,
+            profile=profile,
+        )
+
+    def resolve_actor_by_user_id(self, user_id: int) -> Actor:
+        identity = self._gateway.local_identity(user_id=user_id)
+        if identity is None:
+            raise AppError(
+                code="identity_profile_incomplete",
+                message="The local identity profile is unavailable",
+                kind=FailureKind.NOT_FOUND,
+            )
+        return self._actor(
+            user_id=identity.id,
+            email=identity.email,
+            display_name=identity.display_name,
+            status=identity.status,
+            email_verified=identity.email_verified,
+            profile=identity.profile,
+        )
+
+    @staticmethod
+    def _actor(
+        *,
+        user_id: int,
+        email: str,
+        display_name: str | None,
+        status: str,
+        email_verified: bool,
+        profile: IdentityProfile,
+    ) -> Actor:
+        facts = AccountAccessFacts(
+            status=status,
             is_blocked=profile.is_blocked,
             is_admin=profile.is_admin,
         )
         require_product_access(facts)
         return Actor(
-            id=identity.id,
-            email=identity.email,
-            display_name=identity.display_name,
-            status=identity.status,
-            email_verified=identity.email_verified,
+            id=user_id,
+            email=email,
+            display_name=display_name,
+            status=status,
+            email_verified=email_verified,
             locale=profile.locale,
             is_admin=profile.is_admin,
             is_blocked=profile.is_blocked,

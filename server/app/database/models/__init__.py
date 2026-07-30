@@ -21,6 +21,7 @@ from app.shared.domain.enums import (
     ZoteroImportStatus,
 )
 from app.modules.identity.infrastructure.models import AuthUser, UserProfile
+from app.modules.access_keys.infrastructure.models import AccessKey
 from app.modules.identity.infrastructure.onboarding_model import Onboarding
 from app.modules.jobs.infrastructure.models import (
     DurableJob,
@@ -69,6 +70,7 @@ from app.database.models.tool_invocation import ToolInvocation
 
 __all__ = [
     "AuthUser",
+    "AccessKey",
     "Base",
     "ConversationScopeType",
     "DocumentProcessingStatus",

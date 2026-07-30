@@ -51,6 +51,8 @@
     "/api/v1/library/tags": ["get", "post"],
     "/api/v1/library/tags/assignments": ["post"],
     "/api/v1/me": ["get"],
+    "/api/v1/me/access-keys": ["get", "post"],
+    "/api/v1/me/access-keys/{access_key_id}": ["delete", "patch"],
     "/api/v1/me/onboarding": ["put"],
     "/api/v1/me/profile": ["get", "patch", "put"],
     "/api/v1/paper-ingestions/uploads": ["post"],

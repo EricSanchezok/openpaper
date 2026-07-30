@@ -12,6 +12,7 @@ from app.transport.http.public_v1.auth import (
     admin_router,
     topics_router,
 )
+from app.transport.http.public_v1.access_keys import access_keys_router
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
 from app.transport.http.public_v1.documents import (
@@ -132,6 +133,11 @@ def _public_router() -> APIRouter:
     router.include_router(jobs_router, prefix="/jobs")
     router.include_router(subscription_router, prefix="/billing")
     router.include_router(onboarding_router, prefix="/me/onboarding")
+    router.include_router(
+        access_keys_router,
+        prefix="/me/access-keys",
+        tags=["access-keys"],
+    )
     router.include_router(zotero_router, prefix="/integrations/zotero")
     return router
 

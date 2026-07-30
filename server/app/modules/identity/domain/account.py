@@ -25,6 +25,12 @@ def require_product_access(facts: AccountAccessFacts) -> None:
             message="Scholens access is suspended",
             kind=FailureKind.PERMISSION_DENIED,
         )
+    if facts.status != "active":
+        raise AppError(
+            code="identity_inactive",
+            message="The Scholens account is not active",
+            kind=FailureKind.PERMISSION_DENIED,
+        )
 
 
 def require_administrator(facts: AccountAccessFacts) -> None:

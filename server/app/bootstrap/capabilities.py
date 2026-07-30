@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import cached_property
 
 from app.bootstrap.container import (
+    build_access_keys,
     build_billing,
     build_citation_resolver,
     build_conversation_chat_data,
@@ -33,6 +34,7 @@ from app.bootstrap.container import (
 from app.bootstrap.settings import AppSettings
 from app.bootstrap.adapters.tool_invocations import SqlAlchemyToolInvocationGateway
 from app.modules.billing.application.billing import Billing
+from app.modules.access_keys.application.access_keys import AccessKeys
 from app.modules.conversations.application.chat import ConversationChatData
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.identity.application.identity import Identity
@@ -73,6 +75,13 @@ class ApplicationCapabilities:
     @cached_property
     def identity(self) -> Identity:
         return build_identity(db=self._session)
+
+    @cached_property
+    def access_keys(self) -> AccessKeys:
+        return build_access_keys(
+            db=self._session,
+            cursor_secret=self._settings.paper_search_cursor_secret,
+        )
 
     @cached_property
     def tool_invocations(self) -> ToolInvocationGateway:

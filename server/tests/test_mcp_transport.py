@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, cast
+from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
+from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, WorkspacePermission
 from app.tooling import (
@@ -20,13 +22,15 @@ from app.tooling import (
 )
 from app.tooling.workspace import build_workspace_tool_catalog
 from app.transport.mcp.server import build_mcp_transport
-from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from mcp.server.transport_security import TransportSecuritySettings
 import pytest
 from pydantic import BaseModel, ConfigDict
 from starlette.applications import Starlette
 from starlette.routing import Route
+
+ACCESS_KEY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+ACCESS_KEY_SECRET = "sk_scholens_" + "a" * 43
 
 
 class RecordingDispatcher:
@@ -78,11 +82,21 @@ def _actor() -> Actor:
 def _application(
     catalog: ToolCatalog[Any],
     dispatcher: object,
+    *,
+    permissions: frozenset[WorkspacePermission] = frozenset(WorkspacePermission),
 ) -> Starlette:
-    async def authenticate(token: str) -> Actor:
-        if token != "active-token":
-            raise HTTPException(status_code=401, detail="Session revoked or expired")
-        return _actor()
+    async def authenticate(token: str) -> AuthenticatedAccessKey:
+        if token != ACCESS_KEY_SECRET:
+            raise AppError(
+                kind=FailureKind.UNAUTHENTICATED,
+                code="invalid_access_key",
+                message="The access key is invalid",
+            )
+        return AuthenticatedAccessKey(
+            access_key_id=ACCESS_KEY_ID,
+            actor=_actor(),
+            permissions=permissions,
+        )
 
     manager, endpoint = build_mcp_transport(
         catalog=cast(ToolCatalog[ApplicationCapabilities], catalog),
@@ -119,7 +133,7 @@ def _transport() -> tuple[Starlette, RecordingDispatcher]:
 
 async def _initialize(client: AsyncClient) -> dict[str, str]:
     headers = {
-        "authorization": "Bearer active-token",
+        "authorization": f"Bearer {ACCESS_KEY_SECRET}",
         "accept": "application/json, text/event-stream",
         "content-type": "application/json",
     }
@@ -149,7 +163,7 @@ async def _initialize(client: AsyncClient) -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_mcp_requires_an_active_bearer_session() -> None:
+async def test_mcp_requires_a_valid_scholens_access_key() -> None:
     application, _ = _transport()
     async with application.router.lifespan_context(application):
         async with AsyncClient(
@@ -159,12 +173,14 @@ async def test_mcp_requires_an_active_bearer_session() -> None:
             missing = await client.post("/mcp", json={})
             revoked = await client.post(
                 "/mcp",
-                headers={"authorization": "Bearer revoked-token"},
+                headers={"authorization": "Bearer cloud-auth-access-token"},
                 json={},
             )
 
     assert missing.status_code == 401
     assert revoked.status_code == 401
+    assert missing.json()["error"]["code"] == "invalid_access_key"
+    assert revoked.json()["error"]["code"] == "invalid_access_key"
 
 
 @pytest.mark.asyncio
@@ -216,6 +232,43 @@ async def test_mcp_lists_catalog_tools_and_dispatches_with_bound_actor() -> None
     assert context.paper_collection.kind == "library"
     assert context.anchor_document_id is None
     assert access.permissions == frozenset(WorkspacePermission)
+    assert context.invocation_id.startswith("mcp:")
+    assert len(context.invocation_id) == 68
+    assert ACCESS_KEY_SECRET not in context.invocation_id
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_list_uses_access_key_permission_snapshot() -> None:
+    catalog = build_workspace_tool_catalog(
+        ingestion=cast(PaperIngestionWorkflow, object())
+    )
+    application = _application(
+        catalog,
+        RecordingDispatcher(),
+        permissions=frozenset({WorkspacePermission.READ}),
+    )
+    async with application.router.lifespan_context(application):
+        async with AsyncClient(
+            transport=ASGITransport(app=application),
+            base_url="http://testserver",
+        ) as client:
+            headers = await _initialize(client)
+            response = await client.post(
+                "/mcp",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "list-tools",
+                    "method": "tools/list",
+                    "params": {},
+                },
+            )
+
+    tool_names = {tool["name"] for tool in response.json()["result"]["tools"]}
+    assert "search_papers" in tool_names
+    assert "create_project" not in tool_names
+    assert "delete_project" not in tool_names
+    assert "finish_tool_use" not in tool_names
 
 
 @pytest.mark.asyncio

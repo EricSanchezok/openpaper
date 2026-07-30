@@ -5,6 +5,11 @@ import {
 } from "./auth-session";
 import { apiUrl } from "./api-config";
 import type {
+    AccessKeyCreateRequest,
+    AccessKeyCreateResponse,
+    AccessKeyListResponse,
+    AccessKeyResponse,
+    AccessKeyUpdateRequest,
     Project,
     ProjectListResponse,
 } from "./schema";
@@ -161,4 +166,49 @@ export async function getProjectPaperFileUrl(
 export async function getPaperFileUrl(documentId: string): Promise<string | null> {
     const response = await fetchFromApi<{ file_url: string | null }>(`/papers/${documentId}/download-url`);
     return response?.file_url ?? null;
+}
+
+export async function listAccessKeys({
+    limit = 20,
+    cursor,
+}: {
+    limit?: number;
+    cursor?: string | null;
+} = {}): Promise<AccessKeyListResponse> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) {
+        params.set("cursor", cursor);
+    }
+    return fetchFromApi<AccessKeyListResponse>(
+        `/me/access-keys?${params.toString()}`,
+    );
+}
+
+export async function createAccessKey(
+    request: AccessKeyCreateRequest,
+): Promise<AccessKeyCreateResponse> {
+    return fetchFromApi<AccessKeyCreateResponse>("/me/access-keys", {
+        method: "POST",
+        body: JSON.stringify(request),
+    });
+}
+
+export async function updateAccessKey(
+    accessKeyId: string,
+    request: AccessKeyUpdateRequest,
+): Promise<AccessKeyResponse> {
+    return fetchFromApi<AccessKeyResponse>(
+        `/me/access-keys/${encodeURIComponent(accessKeyId)}`,
+        {
+            method: "PATCH",
+            body: JSON.stringify(request),
+        },
+    );
+}
+
+export async function revokeAccessKey(accessKeyId: string): Promise<void> {
+    await fetchFromApi<void>(
+        `/me/access-keys/${encodeURIComponent(accessKeyId)}`,
+        { method: "DELETE" },
+    );
 }

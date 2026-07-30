@@ -115,6 +115,12 @@ from app.modules.identity.application.identity import Identity
 from app.modules.identity.infrastructure.application_gateway import (
     SqlAlchemyIdentityGateway,
 )
+from app.modules.access_keys.application.access_keys import AccessKeys
+from app.modules.access_keys.infrastructure import (
+    SecureAccessKeySecrets,
+    SqlAlchemyAccessKeyGateway,
+)
+from app.shared.infrastructure import SystemClock
 from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
 from app.modules.papers.application.topics import PaperTopics
 from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
@@ -395,6 +401,20 @@ def build_conversation_chat_data(*, db: Session) -> ConversationChatData:
 
 def build_identity(*, db: Session) -> Identity:
     return Identity(SqlAlchemyIdentityGateway(db))
+
+
+def build_access_keys(*, db: Session, cursor_secret: str) -> AccessKeys:
+    return AccessKeys(
+        gateway=SqlAlchemyAccessKeyGateway(db),
+        secrets=SecureAccessKeySecrets(),
+        actors=build_identity(db=db),
+        clock=SystemClock(),
+        cursors=SignedCursorCodec(
+            cursor_secret,
+            revision="access-keys-v1",
+            error_code="access_key_cursor_invalid",
+        ),
+    )
 
 
 def build_paper_topics(*, db: Session) -> PaperTopics:

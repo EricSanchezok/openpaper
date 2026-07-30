@@ -10,18 +10,15 @@ from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
 from app.llm.conversation_agent import ConversationAgentRuntime
 from app.database.database import SessionLocal
+from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.modules.conversations.application.chat import ConversationChat
-from app.modules.identity.application import AuthenticatedIdentity
-from app.modules.identity.infrastructure.cloud_auth import (
-    authenticate_cloud_access_token,
-)
 from app.modules.identity.application.onboarding import FinishOnboarding
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.bootstrap.workflows.zotero import ZoteroWorkflow
 from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from app.tooling import ToolCatalog, ToolDispatcher
 from app.transport.mcp.server import (
@@ -82,18 +79,10 @@ def create_mcp_transport(
     dispatcher: ToolDispatcher[ApplicationCapabilities],
     executor: ApplicationExecutor[ApplicationCapabilities],
 ) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
-    async def authenticate(token: str) -> Actor:
-        cloud_user = await authenticate_cloud_access_token(token)
-        identity = AuthenticatedIdentity(
-            id=cloud_user.id,
-            email=cloud_user.email,
-            display_name=cloud_user.display_name,
-            status=cloud_user.status,
-            email_verified=cloud_user.email_verified,
-        )
+    async def authenticate(token: str) -> AuthenticatedAccessKey:
         return await asyncio.to_thread(
-            executor.query,
-            lambda capabilities: capabilities.identity.resolve_actor(identity),
+            executor.command,
+            lambda capabilities: capabilities.access_keys.authenticate(token),
         )
 
     public_url = urlsplit(settings.client_domain)

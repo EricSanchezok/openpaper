@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-import json
-import hashlib
 import logging
+import json
+import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import cast
 
 import mcp.types as mcp_types
 from app.bootstrap.capabilities import ApplicationCapabilities
+from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
-from app.shared.application import Actor
-from app.shared.domain import (
-    WORKSPACE_PERMISSION_ORDER,
-    AppError,
-    FailureKind,
-    JsonValue,
-)
+from app.shared.domain import AppError, FailureKind, JsonValue
 from app.tooling import ToolAccess, ToolCallContext, ToolCatalog, ToolDispatcher
 from app.tooling.workspace import MCP_TOOL_PROFILE
-from fastapi import HTTPException
+from app.transport.mcp.references import (
+    mcp_invocation_id,
+    validate_mcp_session_id,
+)
 from mcp.server import Server
 from mcp.server.lowlevel.server import request_ctx
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
@@ -30,20 +28,22 @@ from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
-McpAuthenticator = Callable[[str], Awaitable[Actor]]
+McpAuthenticator = Callable[[str], Awaitable[AuthenticatedAccessKey]]
 ListToolsHandler = Callable[[], Awaitable[list[mcp_types.Tool]]]
 CallToolHandler = Callable[
     [str, dict[str, object]],
     Awaitable[mcp_types.CallToolResult],
 ]
 
-_actor_context: ContextVar[Actor | None] = ContextVar("mcp_actor", default=None)
-_tool_access_context: ContextVar[ToolAccess | None] = ContextVar(
-    "mcp_tool_access",
+_authenticated_context: ContextVar[AuthenticatedAccessKey | None] = ContextVar(
+    "mcp_authenticated_access_key",
     default=None,
 )
 _client_ip_context: ContextVar[str] = ContextVar("mcp_client_ip", default="mcp")
-_session_context: ContextVar[str] = ContextVar("mcp_session", default="anonymous")
+_session_context: ContextVar[str | None] = ContextVar(
+    "mcp_session",
+    default=None,
+)
 
 
 def _error_result(
@@ -95,7 +95,7 @@ def _outcome_payload(
 
 
 class AuthenticatedMcpApplication:
-    """Resolve one active Scholens actor before entering the MCP protocol."""
+    """Authenticate one Scholens AccessKey before entering the MCP protocol."""
 
     def __init__(
         self,
@@ -114,54 +114,42 @@ class AuthenticatedMcpApplication:
         authorization = headers.get("authorization", "")
         scheme, _, token = authorization.partition(" ")
         if scheme.casefold() != "bearer" or not token:
-            await self._send_auth_error(
-                send,
-                status_code=401,
-                message="Not authenticated",
-            )
+            await self._send_auth_error(send, status_code=401)
             return
 
         try:
-            actor = await self._authenticate(token)
-        except HTTPException as exc:
-            await self._send_auth_error(
-                send,
-                status_code=exc.status_code,
-                message=str(exc.detail),
-            )
-            return
+            authenticated = await self._authenticate(token)
         except AppError as exc:
-            status_code = {
-                FailureKind.UNAUTHENTICATED: 401,
-                FailureKind.PERMISSION_DENIED: 403,
-                FailureKind.UNAVAILABLE: 503,
-            }.get(exc.kind, 403)
             await self._send_auth_error(
                 send,
-                status_code=status_code,
-                message=exc.message,
+                status_code=(
+                    503
+                    if exc.kind
+                    in {
+                        FailureKind.DEPENDENCY_FAILURE,
+                        FailureKind.UNAVAILABLE,
+                    }
+                    else 401
+                ),
             )
             return
         except Exception:
             logger.exception("MCP authentication failed")
-            await self._send_auth_error(
-                send,
-                status_code=503,
-                message="Authentication service unavailable",
-            )
+            await self._send_auth_error(send, status_code=503)
             return
 
         client = scope.get("client")
         client_ip = str(client[0]) if client else "mcp"
-        session_id = headers.get("mcp-session-id") or headers.get("x-request-id")
-        session_id = session_id or hashlib.sha256(token.encode()).hexdigest()[:32]
-        actor_token = _actor_context.set(actor)
-        access_token = _tool_access_context.set(
-            ToolAccess(
-                profile_name=MCP_TOOL_PROFILE,
-                permissions=frozenset(WORKSPACE_PERMISSION_ORDER),
-            )
-        )
+        session_id = headers.get("mcp-session-id")
+        if session_id is not None:
+            try:
+                session_id = validate_mcp_session_id(session_id)
+            except ValueError:
+                await self._send_session_error(send)
+                return
+        else:
+            session_id = str(uuid.uuid4())
+        authenticated_token = _authenticated_context.set(authenticated)
         client_token = _client_ip_context.set(client_ip)
         session_token = _session_context.set(session_id)
         try:
@@ -169,18 +157,27 @@ class AuthenticatedMcpApplication:
         finally:
             _session_context.reset(session_token)
             _client_ip_context.reset(client_token)
-            _tool_access_context.reset(access_token)
-            _actor_context.reset(actor_token)
+            _authenticated_context.reset(authenticated_token)
 
     @staticmethod
     async def _send_auth_error(
         send: Send,
         *,
         status_code: int,
-        message: str,
     ) -> None:
+        unavailable = status_code == 503
+        code = (
+            "access_key_authentication_unavailable"
+            if unavailable
+            else "invalid_access_key"
+        )
+        message = (
+            "Access key authentication is temporarily unavailable"
+            if unavailable
+            else "The access key is invalid"
+        )
         body = json.dumps(
-            {"error": {"code": "mcp_authentication_failed", "message": message}},
+            {"error": {"code": code, "message": message}},
             separators=(",", ":"),
         ).encode()
         await send(
@@ -190,6 +187,29 @@ class AuthenticatedMcpApplication:
                 "headers": [
                     (b"content-type", b"application/json"),
                     (b"www-authenticate", b"Bearer"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+    @staticmethod
+    async def _send_session_error(send: Send) -> None:
+        body = json.dumps(
+            {
+                "error": {
+                    "code": "mcp_session_invalid",
+                    "message": "The MCP session ID is invalid",
+                }
+            },
+            separators=(",", ":"),
+        ).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 400,
+                "headers": [
+                    (b"content-type", b"application/json"),
                     (b"content-length", str(len(body)).encode()),
                 ],
             }
@@ -216,9 +236,13 @@ def build_mcp_transport(
 
     @register_list_tools()
     async def list_tools() -> list[mcp_types.Tool]:
-        access = _tool_access_context.get()
-        if access is None:
+        authenticated = _authenticated_context.get()
+        if authenticated is None:
             return []
+        access = ToolAccess(
+            profile_name=MCP_TOOL_PROFILE,
+            permissions=authenticated.permissions,
+        )
         return [
             mcp_types.Tool(
                 name=definition.name,
@@ -238,22 +262,36 @@ def build_mcp_transport(
         name: str,
         arguments: dict[str, object],
     ) -> mcp_types.CallToolResult:
-        actor = _actor_context.get()
-        access = _tool_access_context.get()
-        if actor is None or access is None:
+        authenticated = _authenticated_context.get()
+        if authenticated is None:
             return _error_result(
                 kind=FailureKind.UNAUTHENTICATED,
                 code="mcp_authentication_required",
                 message="Authentication is required",
             )
+        access = ToolAccess(
+            profile_name=MCP_TOOL_PROFILE,
+            permissions=authenticated.permissions,
+        )
         current_request = request_ctx.get()
-        invocation_id = f"mcp:{_session_context.get()}:{current_request.request_id}"
+        session_id = _session_context.get()
+        if session_id is None:
+            return _error_result(
+                kind=FailureKind.UNAUTHENTICATED,
+                code="mcp_authentication_required",
+                message="Authentication is required",
+            )
+        invocation_id = mcp_invocation_id(
+            access_key_id=authenticated.access_key_id,
+            session_id=session_id,
+            request_id=current_request.request_id,
+        )
         try:
             outcome = await dispatcher.dispatch(
                 name=name,
                 raw_arguments=arguments,
                 context=ToolCallContext(
-                    actor=actor,
+                    actor=authenticated.actor,
                     paper_collection=LibraryPaperCollection(),
                     anchor_document_id=None,
                     source="mcp",

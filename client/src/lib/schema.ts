@@ -215,6 +215,40 @@ export interface JobListResponse {
     next_cursor: string | null;
 }
 
+export type AccessKeyStatus = 'active' | 'expired' | 'revoked';
+
+export interface AccessKeyResponse {
+    id: string;
+    name: string;
+    key_prefix: string;
+    permissions: WorkspacePermission[];
+    status: AccessKeyStatus;
+    expires_at: string | null;
+    last_used_at: string | null;
+    created_at: string;
+}
+
+export interface AccessKeyListResponse {
+    items: AccessKeyResponse[];
+    next_cursor: string | null;
+}
+
+export interface AccessKeyCreateRequest {
+    name: string;
+    permissions: WorkspacePermission[];
+    expires_at?: string;
+}
+
+export interface AccessKeyCreateResponse {
+    access_key: AccessKeyResponse;
+    secret: string;
+}
+
+export interface AccessKeyUpdateRequest {
+    name?: string;
+    permissions?: WorkspacePermission[];
+}
+
 export interface ResearchItemListResponse {
     items: ResearchItem[];
     next_cursor: string | null;
