@@ -88,7 +88,7 @@ export interface MessageTrace {
 // Denormalized snapshot of an @-mention attached to a user message, frozen at
 // send time so it renders even if the paper/project is later renamed/deleted.
 export interface MessageScopeItem {
-    kind: 'paper' | 'project' | 'highlight';
+    kind: 'library' | 'paper' | 'project' | 'highlight';
     id: string;
     title: string;
     // For highlight mentions: the parent paper, so the pill can link to it
@@ -276,7 +276,12 @@ export interface Conversation {
         delete: boolean;
         send: boolean;
     };
+    paper_context?: ConversationPaperContext;
 }
+
+export type ConversationPaperContext =
+    | { kind: 'library' }
+    | { kind: 'selection'; project_ids: string[]; document_ids: string[] };
 
 export interface ConversationListResponse {
     items: Conversation[];

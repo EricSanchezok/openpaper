@@ -14,19 +14,19 @@ import {
 } from '@/lib/schema';
 import { useAuth } from '@/lib/auth';
 import { useProjectWorkspace } from '@/components/project/ProjectWorkspaceProvider';
+import { useProjects } from '@/hooks/useProjects';
 import { PaperItem } from "@/lib/schema";
 import { toast } from "sonner";
 import { ConversationView } from '@/components/ConversationView';
 import {
     MentionSelection,
     EMPTY_MENTION_SELECTION,
-    mentionSelectionIsEmpty,
     selectionToScopeItems,
 } from '@/components/chat/MentionAutocomplete';
 
 interface ChatRequestBody {
     user_query: string;
-    mentioned_document_ids?: string[];
+    mentioned_highlight_ids?: string[];
     reasoning_level: "standard" | "deep";
 }
 
@@ -51,17 +51,22 @@ function ProjectConversationPageContent() {
     // Shared workspace data + reader panel — papers open beside the chat.
     const {
         papers: projectPapers,
+        project,
         isPapersLoading,
         conversations,
         openDocument,
-        openDocumentIds,
         refreshPaperUrl,
         setCrumb,
         collapseArtifacts,
     } = useProjectWorkspace();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [conversation, setConversation] = useState<Conversation | null>(null);
-    const [mentionSelection, setMentionSelection] = useState<MentionSelection>(EMPTY_MENTION_SELECTION);
+    const [mentionSelection, setMentionSelection] = useState<MentionSelection>({
+        ...EMPTY_MENTION_SELECTION,
+        projectIds: [projectId],
+    });
+    const [libraryContext, setLibraryContext] = useState(false);
+    const { projects } = useProjects();
 
     const papers = useMemo(
         () =>
@@ -105,25 +110,6 @@ function ProjectConversationPageContent() {
         setCrumb(conversationName || 'Chat');
         return () => setCrumb(null);
     }, [conversationName, setCrumb]);
-
-    // Chat scope mirrors the reader tabs: papers open in the reader join the
-    // @-mention scope; closing a tab removes them. Diffing against the previous
-    // tab set preserves mentions the user typed by hand.
-    const prevOpenDocumentIdsRef = useRef<string[]>([]);
-    useEffect(() => {
-        const prev = prevOpenDocumentIdsRef.current;
-        const added = openDocumentIds.filter((id) => !prev.includes(id));
-        const removed = prev.filter((id) => !openDocumentIds.includes(id));
-        prevOpenDocumentIdsRef.current = openDocumentIds;
-        if (added.length === 0 && removed.length === 0) return;
-        setMentionSelection((sel) => ({
-            ...sel,
-            documentIds: [
-                ...sel.documentIds.filter((id) => !removed.includes(id)),
-                ...added.filter((id) => !sel.documentIds.includes(id)),
-            ],
-        }));
-    }, [openDocumentIds]);
 
     useEffect(() => {
         const TOKEN_CREDIT_TOAST_KEY = "token_credit_limit_toast_shown";
@@ -174,6 +160,17 @@ function ProjectConversationPageContent() {
             if (response?.items) {
                 setMessages(response.items);
                 setConversation(detail);
+                if (detail.paper_context?.kind === 'selection') {
+                    setLibraryContext(false);
+                    setMentionSelection({
+                        projectIds: detail.paper_context.project_ids,
+                        documentIds: detail.paper_context.document_ids,
+                        highlights: [],
+                    });
+                } else {
+                    setLibraryContext(true);
+                    setMentionSelection(EMPTY_MENTION_SELECTION);
+                }
                 setConversationId(id);
                 setIsCentered(false);
             }
@@ -196,7 +193,7 @@ function ProjectConversationPageContent() {
         if (user) {
             const pendingQuery = localStorage.getItem(`pending-query-${conversationIdFromUrl}`);
             if (pendingQuery) {
-                // Apply any @-mention scope carried over from the project page.
+                // Apply the initial context selection carried over from the project page.
                 const pendingMentionsRaw = localStorage.getItem(`pending-mentions-${conversationIdFromUrl}`);
                 // If mentions were carried over, wait for project papers to load so
                 // their titles resolve — otherwise they persist as "Untitled paper".
@@ -211,9 +208,13 @@ function ProjectConversationPageContent() {
                 let pendingMentions: MentionSelection | undefined;
                 if (pendingMentionsRaw) {
                     try {
-                        const documentIds = JSON.parse(pendingMentionsRaw);
-                        if (Array.isArray(documentIds) && documentIds.length > 0) {
-                            pendingMentions = { documentIds, projectIds: [], highlights: [] };
+                        const selection = JSON.parse(pendingMentionsRaw) as MentionSelection;
+                        if (
+                            Array.isArray(selection.documentIds)
+                            && Array.isArray(selection.projectIds)
+                            && Array.isArray(selection.highlights)
+                        ) {
+                            pendingMentions = selection;
                         }
                     } catch {
                         // ignore malformed pending mentions
@@ -302,19 +303,27 @@ function ProjectConversationPageContent() {
         // Get the artifacts panel out of the way so the reply is front-and-center.
         collapseArtifacts();
 
-        // Snapshot @-mention scope for this send, then clear it from the input.
+        // Paper/project context persists; highlights remain the only per-turn input.
         const submittedMentions = mentionsOverride ?? mentionSelection;
+        if (mentionsOverride) {
+            setMentionSelection(submittedMentions);
+        }
         const userMessage: ChatMessage = {
             role: 'user',
             content: query,
-            scope: mentionSelectionIsEmpty(submittedMentions)
-                ? undefined
-                : selectionToScopeItems(submittedMentions, papers, []),
+            scope: [
+                ...(libraryContext
+                    ? [{ kind: 'library' as const, id: 'library', title: 'Library' }]
+                    : []),
+                ...selectionToScopeItems(
+                    submittedMentions,
+                    papers,
+                    projects,
+                ),
+            ],
         };
         setMessages(prev => [...prev, userMessage]);
-        // Reset to the reader-tab scope (not empty): papers open in the reader
-        // stay in scope until their tabs close; hand-typed mentions are one-shot.
-        setMentionSelection({ ...EMPTY_MENTION_SELECTION, documentIds: [...openDocumentIds] });
+        setMentionSelection((selection) => ({ ...selection, highlights: [] }));
 
         if (!message) {
             setCurrentMessage('');
@@ -330,11 +339,25 @@ function ProjectConversationPageContent() {
             user_query: query,
             reasoning_level: reasoningLevel,
         };
-        if (submittedMentions.documentIds.length > 0) {
-            requestBody.mentioned_document_ids = submittedMentions.documentIds;
+        if (submittedMentions.highlights.length > 0) {
+            requestBody.mentioned_highlight_ids = submittedMentions.highlights.map(
+                (highlight) => highlight.id,
+            );
         }
 
         try {
+            await fetchFromApi(`/conversations/${encodeURIComponent(conversationId)}/context`, {
+                method: 'PUT',
+                body: JSON.stringify(
+                    libraryContext
+                        ? { kind: 'library' }
+                        : {
+                            kind: 'selection',
+                            project_ids: submittedMentions.projectIds,
+                            document_ids: submittedMentions.documentIds,
+                        },
+                ),
+            });
             const stream = await fetchStreamFromApi(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -511,6 +534,7 @@ function ProjectConversationPageContent() {
 
             setMessages(prev => prev.slice(0, -1));
             setCurrentMessage(query);
+            setMentionSelection(submittedMentions);
             setError(`Streaming error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsStreaming(false);
@@ -526,10 +550,12 @@ function ProjectConversationPageContent() {
         conversationId,
         currentMessage,
         isStreaming,
+        libraryContext,
         mentionSelection,
-        openDocumentIds,
         papers,
+        project,
         projectId,
+        projects,
         reasoningLevel,
         refetchSubscription,
         router,
@@ -576,8 +602,30 @@ function ProjectConversationPageContent() {
                     onRefreshPaperUrl={refreshPaperUrl}
                     onOpenDocumentExternal={openDocument}
                     mentionSelection={mentionSelection}
-                    onMentionSelectionChange={setMentionSelection}
-                    mentionPapersOnly
+                    onMentionSelectionChange={(selection) => {
+                        if (selection.documentIds.length > 0 || selection.projectIds.length > 0) {
+                            setLibraryContext(false);
+                        }
+                        setMentionSelection(selection);
+                    }}
+                    libraryContext={libraryContext}
+                    onLibraryContextChange={(selected) => {
+                        setLibraryContext(selected);
+                        if (selected) {
+                            setMentionSelection((selection) => ({
+                                ...EMPTY_MENTION_SELECTION,
+                                highlights: selection.highlights,
+                            }));
+                        } else {
+                            setMentionSelection((selection) => ({
+                                ...EMPTY_MENTION_SELECTION,
+                                projectIds: [projectId],
+                                highlights: selection.highlights,
+                            }));
+                        }
+                    }}
+                    projects={projects}
+                    lockedProjectIds={libraryContext ? [] : [projectId]}
                 />
             </div>
         </div>

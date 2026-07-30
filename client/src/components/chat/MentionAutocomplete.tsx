@@ -15,6 +15,7 @@ import {
 	FileText,
 	FolderOpen,
 	Highlighter,
+	Library,
 	MessageSquareText,
 	X,
 } from "lucide-react";
@@ -48,7 +49,7 @@ const MAX_PER_SECTION = 5;
 // input never grows past one row of context.
 const PILL_COLLAPSE_THRESHOLD = 3;
 
-export type MentionKind = "paper" | "project" | "highlight";
+export type MentionKind = "library" | "paper" | "project" | "highlight";
 
 export interface MentionEntity {
 	kind: MentionKind;
@@ -62,6 +63,7 @@ export interface MentionEntity {
 	// Why this suggestion matched, when it's not obvious from the label — e.g. a
 	// highlight surfaced because one of its annotations matched the query.
 	matchContext?: string;
+	locked?: boolean;
 }
 
 export interface MentionSelection {
@@ -87,6 +89,7 @@ export function mentionSelectionIsEmpty(selection: MentionSelection): boolean {
 }
 
 export function entityIcon(kind: MentionKind) {
+	if (kind === "library") return Library;
 	if (kind === "project") return FolderOpen;
 	if (kind === "highlight") return Highlighter;
 	return FileText;
@@ -200,6 +203,9 @@ interface UseMentionAutocompleteArgs {
 	textareaRef: RefObject<HTMLTextAreaElement | null>;
 	// Project chat scopes mentions to papers only, so highlight search is off.
 	enableHighlights?: boolean;
+	enableProjects?: boolean;
+	lockedDocumentIds?: string[];
+	lockedProjectIds?: string[];
 }
 
 export function useMentionAutocomplete({
@@ -211,6 +217,9 @@ export function useMentionAutocomplete({
 	onSelectionChange,
 	textareaRef,
 	enableHighlights = true,
+	enableProjects = true,
+	lockedDocumentIds = [],
+	lockedProjectIds = [],
 }: UseMentionAutocompleteArgs) {
 	const [token, setToken] = useState<{ start: number; query: string } | null>(null);
 	const [activeIndex, setActiveIndex] = useState(0);
@@ -227,6 +236,14 @@ export function useMentionAutocomplete({
 	const selectedHighlightIds = useMemo(
 		() => new Set(selection.highlights.map((h) => h.id)),
 		[selection.highlights],
+	);
+	const lockedDocuments = useMemo(
+		() => new Set(lockedDocumentIds),
+		[lockedDocumentIds],
+	);
+	const lockedProjects = useMemo(
+		() => new Set(lockedProjectIds),
+		[lockedProjectIds],
 	);
 
 	// Highlights use their own Research search capability so paper search remains
@@ -286,7 +303,7 @@ export function useMentionAutocomplete({
 			.slice(0, MAX_PER_SECTION)
 			.map(paperToEntity);
 
-		const projectItems = projects
+		const projectItems = (enableProjects ? projects : [])
 			.filter((p) => !selectedProjectIds.has(p.id) && matches(p.title || ""))
 			.slice(0, MAX_PER_SECTION)
 			.map(projectToEntity);
@@ -304,6 +321,7 @@ export function useMentionAutocomplete({
 		selectedDocumentIds,
 		selectedProjectIds,
 		selectedHighlightIds,
+		enableProjects,
 	]);
 
 	const isOpen = token !== null && items.length > 0;
@@ -430,12 +448,17 @@ export function useMentionAutocomplete({
 
 	const removeMention = useCallback(
 		(kind: MentionKind, id: string) => {
+			if (kind === "library") {
+				return;
+			}
 			if (kind === "paper") {
+				if (lockedDocuments.has(id)) return;
 				onSelectionChange({
 					...selection,
 					documentIds: selection.documentIds.filter((p) => p !== id),
 				});
 			} else if (kind === "project") {
+				if (lockedProjects.has(id)) return;
 				onSelectionChange({
 					...selection,
 					projectIds: selection.projectIds.filter((p) => p !== id),
@@ -447,7 +470,7 @@ export function useMentionAutocomplete({
 				});
 			}
 		},
-		[selection, onSelectionChange],
+		[selection, onSelectionChange, lockedDocuments, lockedProjects],
 	);
 
 	// Resolve selected ids back to entities for the chips row. Papers/projects
@@ -459,18 +482,18 @@ export function useMentionAutocomplete({
 			...selection.documentIds.map((id) => {
 				const p = paperById.get(id);
 				return p
-					? paperToEntity(p)
-					: { kind: "paper" as const, id, label: "Paper" };
+					? { ...paperToEntity(p), locked: lockedDocuments.has(id) }
+					: { kind: "paper" as const, id, label: "Paper", locked: lockedDocuments.has(id) };
 			}),
 			...selection.projectIds.map((id) => {
 				const p = projectById.get(id);
 				return p
-					? projectToEntity(p)
-					: { kind: "project" as const, id, label: "Project" };
+					? { ...projectToEntity(p), locked: lockedProjects.has(id) }
+					: { kind: "project" as const, id, label: "Project", locked: lockedProjects.has(id) };
 			}),
 			...selection.highlights,
 		];
-	}, [selection, papers, projects]);
+	}, [selection, papers, projects, lockedDocuments, lockedProjects]);
 
 	return {
 		isOpen,
@@ -720,7 +743,9 @@ export function MentionContextBar({
 							entity={entity}
 							href={linkable ? entityHref(entity) : undefined}
 							onRemove={
-								onRemove ? () => onRemove(entity.kind, entity.id) : undefined
+								onRemove && !entity.locked
+									? () => onRemove(entity.kind, entity.id)
+									: undefined
 							}
 						/>
 					))}
@@ -772,7 +797,7 @@ export function MentionContextBar({
 								) : (
 									rowInner
 								)}
-								{onRemove && (
+								{onRemove && !entity.locked && (
 									<button
 										type="button"
 										onClick={() => onRemove(entity.kind, entity.id)}

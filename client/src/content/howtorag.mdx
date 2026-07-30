@@ -37,7 +37,7 @@ changing the client API.
 ```ascii
 +----------------+      +-------------------------------------------------+      +-------------------+
 |      User      |----->|               Server                            |----->|        LLM        |
-+----------------+      |         (multi_paper_operations.py)             |      +-------------------+
++----------------+      |           (conversation_agent.py)               |      +-------------------+
         ^               |                                                 |              ^
         |               |    1. gather_evidence(question)                 |              |
         |               |       - Iteratively calls LLM with tools:       |              |
@@ -46,7 +46,7 @@ changing the client API.
         |               |         - ...                                   |
         |               |       - Compacts evidence if it gets too large  |
         |               |                                                 |
-        |               |    2. chat_with_papers(question, evidence)      |
+        |               |    2. stream_answer(question, evidence)         |
         |               |       - Sends evidence and question to LLM      |--------------+
         |               |       - Streams response back to user           |              |
         |               |       - Parses citations from response          |              |

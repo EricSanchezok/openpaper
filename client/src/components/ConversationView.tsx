@@ -74,6 +74,10 @@ interface ConversationViewProps {
 	projects?: Project[];
 	mentionSelection?: MentionSelection;
 	onMentionSelectionChange?: (selection: MentionSelection) => void;
+	libraryContext?: boolean;
+	onLibraryContextChange?: (selected: boolean) => void;
+	lockedDocumentIds?: string[];
+	lockedProjectIds?: string[];
 	// Project chat scopes mentions to papers only (no projects/highlights).
 	mentionPapersOnly?: boolean;
 }
@@ -111,6 +115,10 @@ export const ConversationView = ({
 	projects = [],
 	mentionSelection = EMPTY_MENTION_SELECTION,
 	onMentionSelectionChange,
+	libraryContext = false,
+	onLibraryContextChange,
+	lockedDocumentIds = [],
+	lockedProjectIds = [],
 	mentionPapersOnly = false,
 }: ConversationViewProps) => {
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -527,6 +535,10 @@ export const ConversationView = ({
 							papersOnly={mentionPapersOnly}
 							selection={mentionSelection}
 							onSelectionChange={onMentionSelectionChange}
+							librarySelected={libraryContext}
+							onLibrarySelectedChange={onLibraryContextChange}
+							lockedDocumentIds={lockedDocumentIds}
+							lockedProjectIds={lockedProjectIds}
 							placeholder={isCentered ? "Look for a specific citation. Find a relevant paper. Collate evidence across your library." : "Ask a follow-up"}
 							disabled={isStreaming || (!isPapersLoading && papers.length === 0) || tokenCreditLimitReached || !canSend}
 							sendDisabled={!currentMessage.trim()}

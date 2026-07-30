@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, BookOpen, Library, MessageCircle, UploadCloud } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { fetchFromApi } from "@/lib/api";
@@ -15,6 +15,7 @@ import {
 import { AnimatedGradientText } from "@/components/magicui/animated-gradient-text";
 import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
+import { useProjects } from "@/hooks/useProjects";
 import type { Conversation } from "@/lib/schema";
 
 // Project home is the new-chat surface: a centered composer over the project's
@@ -31,12 +32,15 @@ export default function ProjectPage() {
         conversations,
         isConversationsLoading,
         openAddPapers,
-        openDocumentIds,
     } = useProjectWorkspace();
 
     const [error, setError] = useState<string | null>(null);
     const [newQuery, setNewQuery] = useState("");
-    const [mentionSelection, setMentionSelection] = useState<MentionSelection>(EMPTY_MENTION_SELECTION);
+    const { projects: allProjects } = useProjects();
+    const [mentionSelection, setMentionSelection] = useState<MentionSelection>({
+        ...EMPTY_MENTION_SELECTION,
+        projectIds: [projectId],
+    });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { subscription } = useSubscription();
 
@@ -56,25 +60,6 @@ export default function ProjectPage() {
         }
     }, [aiDisabled, router]);
 
-    // Chat scope mirrors the reader tabs: papers open in the reader join the
-    // @-mention scope; closing a tab removes them. Diffing against the previous
-    // tab set preserves mentions the user typed by hand.
-    const prevOpenDocumentIdsRef = useRef<string[]>([]);
-    useEffect(() => {
-        const prev = prevOpenDocumentIdsRef.current;
-        const added = openDocumentIds.filter((id) => !prev.includes(id));
-        const removed = prev.filter((id) => !openDocumentIds.includes(id));
-        prevOpenDocumentIdsRef.current = openDocumentIds;
-        if (added.length === 0 && removed.length === 0) return;
-        setMentionSelection((sel) => ({
-            ...sel,
-            documentIds: [
-                ...sel.documentIds.filter((id) => !removed.includes(id)),
-                ...added.filter((id) => !sel.documentIds.includes(id)),
-            ],
-        }));
-    }, [openDocumentIds]);
-
     const handleNewQuery = async () => {
         if (!newQuery.trim()) return;
 
@@ -86,17 +71,18 @@ export default function ProjectPage() {
                     title: "New conversation",
                     scope_type: "project",
                     scope_id: projectId,
+                    paper_context: {
+                        kind: "selection",
+                        project_ids: [projectId],
+                        document_ids: mentionSelection.documentIds,
+                    },
                 }),
             });
             localStorage.setItem(`pending-query-${newConversation.id}`, newQuery);
-            // Carry the @-mention scope (project chat is papers-only) to the new
-            // conversation so it's applied to the first message.
-            if (mentionSelection.documentIds.length > 0) {
-                localStorage.setItem(
-                    `pending-mentions-${newConversation.id}`,
-                    JSON.stringify(mentionSelection.documentIds),
-                );
-            }
+            localStorage.setItem(
+                `pending-mentions-${newConversation.id}`,
+                JSON.stringify(mentionSelection),
+            );
             router.push(`/projects/${projectId}/conversations/${newConversation.id}`);
         } catch (err) {
             setError("Failed to create a new conversation. Please try again.");
@@ -205,9 +191,10 @@ export default function ProjectPage() {
                             onValueChange={setNewQuery}
                             onSubmit={handleNewQuery}
                             papers={papers}
-                            papersOnly
+                            projects={allProjects}
                             selection={mentionSelection}
                             onSelectionChange={setMentionSelection}
+                            lockedProjectIds={[projectId]}
                             placeholder={aiDisabled ? "You have used this week's Token Credits. Upgrade your plan to continue." : "Ask a question about your papers, analyze findings, or explore new ideas..."}
                             disabled={aiDisabled || isSubmitting}
                             sendDisabled={!newQuery.trim()}

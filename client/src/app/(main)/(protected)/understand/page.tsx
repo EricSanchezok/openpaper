@@ -10,7 +10,6 @@ import { useProjects } from '@/hooks/useProjects';
 import {
     MentionSelection,
     EMPTY_MENTION_SELECTION,
-    mentionSelectionIsEmpty,
     selectionToScopeItems,
 } from '@/components/chat/MentionAutocomplete';
 
@@ -28,8 +27,6 @@ import { useAuth } from '@/lib/auth';
 
 interface ChatRequestBody {
     user_query: string;
-    mentioned_document_ids?: string[];
-    mentioned_project_ids?: string[];
     mentioned_highlight_ids?: string[];
     reasoning_level: "standard" | "deep";
 }
@@ -56,6 +53,7 @@ function UnderstandPageContent() {
     const { papers: fetchedPapers, isLoading: isPapersLoading, error: papersError } = usePapers();
     const { projects } = useProjects();
     const [mentionSelection, setMentionSelection] = useState<MentionSelection>(EMPTY_MENTION_SELECTION);
+    const [libraryContext, setLibraryContext] = useState(true);
 
     const papers = useMemo(() => {
         if (!fetchedPapers) return [];
@@ -139,6 +137,17 @@ function UnderstandPageContent() {
             ]);
             if (response?.items) {
                 setConversation(detail);
+                if (detail.paper_context?.kind === 'selection') {
+                    setLibraryContext(false);
+                    setMentionSelection({
+                        projectIds: detail.paper_context.project_ids,
+                        documentIds: detail.paper_context.document_ids,
+                        highlights: [],
+                    });
+                } else {
+                    setLibraryContext(true);
+                    setMentionSelection(EMPTY_MENTION_SELECTION);
+                }
                 setMessages(response.items);
                 setConversationId(id);
                 setIsCentered(false);
@@ -248,18 +257,21 @@ function UnderstandPageContent() {
             || (conversation && !conversation.capabilities.send)
         ) return;
 
-        // Snapshot @-mention scope for this send, then clear it from the input.
+        // Highlights are per-turn attachments; paper/project context persists.
         const submittedMentions = mentionSelection;
         const userMessage: ChatMessage = {
             role: 'user',
             content: currentMessage,
-            scope: mentionSelectionIsEmpty(submittedMentions)
-                ? undefined
-                : selectionToScopeItems(submittedMentions, papers, projects),
+            scope: [
+                ...(libraryContext
+                    ? [{ kind: 'library' as const, id: 'library', title: 'Library' }]
+                    : []),
+                ...selectionToScopeItems(submittedMentions, papers, projects),
+            ],
         };
         setMessages(prev => [...prev, userMessage]);
         setCurrentMessage('');
-        setMentionSelection(EMPTY_MENTION_SELECTION);
+        setMentionSelection((selection) => ({ ...selection, highlights: [] }));
 
         setIsStreaming(true);
         setStreamingChunks([]);
@@ -273,16 +285,27 @@ function UnderstandPageContent() {
             try {
                 const newConversationResponse = await fetchFromApi<Conversation>('/conversations', {
                     method: 'POST',
-                    body: JSON.stringify({ scope_type: 'global' }),
+                    body: JSON.stringify({
+                        scope_type: 'global',
+                        paper_context: libraryContext
+                            ? { kind: 'library' }
+                            : {
+                                kind: 'selection',
+                                project_ids: submittedMentions.projectIds,
+                                document_ids: submittedMentions.documentIds,
+                            },
+                    }),
                 });
                 currentConversationId = newConversationResponse.id;
                 setConversationId(currentConversationId);
+                setConversation(newConversationResponse);
                 window.history.pushState(null, '', `/understand?id=${currentConversationId}`);
             } catch (error) {
                 console.error('Error creating conversation:', error);
                 toast.error("Failed to start a new conversation.");
                 setMessages(prev => prev.slice(0, -1));
                 setCurrentMessage(userMessage.content);
+                setMentionSelection(submittedMentions);
                 setIsStreaming(false);
                 setError('Failed to start a new conversation.');
                 return;
@@ -296,21 +319,27 @@ function UnderstandPageContent() {
             user_query: userMessage.content,
             reasoning_level: reasoningLevel,
         };
-        if (!mentionSelectionIsEmpty(submittedMentions)) {
-            if (submittedMentions.documentIds.length > 0) {
-                requestBody.mentioned_document_ids = submittedMentions.documentIds;
-            }
-            if (submittedMentions.projectIds.length > 0) {
-                requestBody.mentioned_project_ids = submittedMentions.projectIds;
-            }
-            if (submittedMentions.highlights.length > 0) {
-                requestBody.mentioned_highlight_ids = submittedMentions.highlights.map(
-                    (h) => h.id,
-                );
-            }
+        if (submittedMentions.highlights.length > 0) {
+            requestBody.mentioned_highlight_ids = submittedMentions.highlights.map(
+                (h) => h.id,
+            );
         }
 
         try {
+            if (conversationId) {
+                await fetchFromApi(`/conversations/${encodeURIComponent(currentConversationId)}/context`, {
+                    method: 'PUT',
+                    body: JSON.stringify(
+                        libraryContext
+                            ? { kind: 'library' }
+                            : {
+                                kind: 'selection',
+                                project_ids: submittedMentions.projectIds,
+                                document_ids: submittedMentions.documentIds,
+                            },
+                    ),
+                });
+            }
             const stream = await fetchStreamFromApi(`/conversations/${encodeURIComponent(currentConversationId)}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -399,6 +428,7 @@ function UnderstandPageContent() {
             toast.error("An error occurred while processing your request.");
             setMessages(prev => prev.slice(0, -1));
             setCurrentMessage(userMessage.content);
+            setMentionSelection(submittedMentions);
             setError('An error occurred while processing your request.');
         } finally {
             setIsStreaming(false);
@@ -410,7 +440,10 @@ function UnderstandPageContent() {
         conversationId,
         currentMessage,
         isStreaming,
+        libraryContext,
         mentionSelection,
+        papers,
+        projects,
         reasoningLevel,
     ]);
 
@@ -481,7 +514,29 @@ function UnderstandPageContent() {
                 onRefreshPaperUrl={refreshPaperUrl}
                 projects={projects}
                 mentionSelection={mentionSelection}
-                onMentionSelectionChange={setMentionSelection}
+                onMentionSelectionChange={(selection) => {
+                    if (selection.documentIds.length > 0 || selection.projectIds.length > 0) {
+                        setLibraryContext(false);
+                    }
+                    setMentionSelection(selection);
+                }}
+                libraryContext={libraryContext}
+                onLibraryContextChange={(selected) => {
+                    if (
+                        !selected
+                        && mentionSelection.documentIds.length === 0
+                        && mentionSelection.projectIds.length === 0
+                    ) {
+                        return;
+                    }
+                    setLibraryContext(selected);
+                    if (selected) {
+                        setMentionSelection((selection) => ({
+                            ...EMPTY_MENTION_SELECTION,
+                            highlights: selection.highlights,
+                        }));
+                    }
+                }}
             />
         </div>
     );

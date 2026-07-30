@@ -182,6 +182,7 @@ export function useConversationHistory({
 		messages,
 		messagesContainerRef,
 		scrollToLatestMessage,
+		setConversation,
 		setMessages,
 	};
 }

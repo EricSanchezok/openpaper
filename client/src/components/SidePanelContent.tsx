@@ -17,6 +17,7 @@ import {
     Sparkle,
     Check,
     Route,
+    Library,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -154,6 +155,7 @@ export function SidePanelContent({
         messages,
         messagesContainerRef,
         scrollToLatestMessage,
+        setConversation,
         setMessages,
     } = useConversationHistory({
         documentId: id,
@@ -1026,6 +1028,39 @@ export function SidePanelContent({
                                             />
                                             <div className="flex flex-row justify-between gap-2">
                                                 <div className="flex flex-row gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant={conversation?.paper_context?.kind === 'library' ? 'secondary' : 'ghost'}
+                                                        className="w-fit gap-1.5 text-sm"
+                                                        title="Use entire library"
+                                                        disabled={isStreaming || !conversationId}
+                                                        onClick={async () => {
+                                                            if (!conversationId) return;
+                                                            const useLibrary = conversation?.paper_context?.kind !== 'library';
+                                                            const paperContext = await fetchFromApi<import("@/lib/schema").ConversationPaperContext>(
+                                                                `/conversations/${encodeURIComponent(conversationId)}/context`,
+                                                                {
+                                                                    method: 'PUT',
+                                                                    body: JSON.stringify(
+                                                                        useLibrary
+                                                                            ? { kind: 'library' }
+                                                                            : {
+                                                                                kind: 'selection',
+                                                                                project_ids: [],
+                                                                                document_ids: [id],
+                                                                            },
+                                                                    ),
+                                                                },
+                                                            );
+                                                            setConversation((current) => current
+                                                                ? { ...current, paper_context: paperContext }
+                                                                : current,
+                                                            );
+                                                        }}
+                                                    >
+                                                        <Library className="h-4 w-4 text-secondary-foreground" />
+                                                        <span className="text-xs text-secondary-foreground">Library</span>
+                                                    </Button>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
                                                             <Button

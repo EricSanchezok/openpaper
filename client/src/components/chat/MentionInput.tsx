@@ -1,7 +1,7 @@
 "use client";
 
 import { RefObject, useRef } from "react";
-import { AtSign, Loader, Send } from "lucide-react";
+import { AtSign, Library, Loader, Send } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { PaperItem, Project } from "@/lib/schema";
@@ -24,6 +24,10 @@ interface MentionInputProps {
 	selection?: MentionSelection;
 	// Providing this enables @-mentions; omit it for a plain input.
 	onSelectionChange?: (selection: MentionSelection) => void;
+	librarySelected?: boolean;
+	onLibrarySelectedChange?: (selected: boolean) => void;
+	lockedDocumentIds?: string[];
+	lockedProjectIds?: string[];
 	placeholder?: string;
 	disabled?: boolean;
 	// Extra condition to disable just the send button (e.g. empty input).
@@ -49,6 +53,10 @@ export function MentionInput({
 	papersOnly = false,
 	selection = EMPTY_MENTION_SELECTION,
 	onSelectionChange,
+	librarySelected = false,
+	onLibrarySelectedChange,
+	lockedDocumentIds = [],
+	lockedProjectIds = [],
 	placeholder,
 	disabled = false,
 	sendDisabled = false,
@@ -63,13 +71,16 @@ export function MentionInput({
 	const mentionsEnabled = !!onSelectionChange;
 	const mention = useMentionAutocomplete({
 		papers,
-		projects: papersOnly ? [] : projects,
+		projects,
 		value,
 		onValueChange,
 		selection,
 		onSelectionChange: onSelectionChange ?? (() => { }),
 		textareaRef: taRef,
 		enableHighlights: !papersOnly,
+		enableProjects: !papersOnly,
+		lockedDocumentIds,
+		lockedProjectIds,
 	});
 	const hasSelectedMentions =
 		mentionsEnabled && mention.selectedEntities.length > 0;
@@ -132,6 +143,21 @@ export function MentionInput({
 							disabled={disabled}
 						>
 							<AtSign className="w-4 h-4" />
+						</Button>
+					)}
+					{onLibrarySelectedChange && (
+						<Button
+							type="button"
+							size="sm"
+							variant={librarySelected ? "secondary" : "ghost"}
+							onClick={() => onLibrarySelectedChange(!librarySelected)}
+							title="Use entire library"
+							aria-label="Use entire library"
+							className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+							disabled={disabled}
+						>
+							<Library className="h-4 w-4" />
+							Library
 						</Button>
 					)}
 				</div>
