@@ -5,8 +5,6 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.database.models import Conversation
-from app.database.telemetry import track_event
-from app.llm.conversation_operations import conversation_operations
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationDetailResponse,
@@ -19,13 +17,12 @@ from app.modules.conversations.application.contracts.conversations import (
     PaperContext,
     MessageResponse,
 )
+from app.modules.conversations.application.conversations import ConversationChange
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.modules.conversations.infrastructure.presenters import serialize_messages
 from app.bootstrap.adapters.conversation_repository import conversation_repository
-from app.shared.application import Actor
-from app.shared.domain.enums import ConversationScopeType
 from sqlalchemy.orm import Session
 
 
@@ -129,16 +126,19 @@ class SqlAlchemyConversationGateway:
         user_id: int,
         conversation_id: UUID,
         request: ConversationUpdateRequest,
-    ) -> ConversationSummaryResponse:
-        conversation = conversation_repository.update(
+    ) -> ConversationChange[ConversationSummaryResponse]:
+        result = conversation_repository.update(
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
             request=request,
         )
-        return conversation_repository.summarize(
-            self._db,
-            conversation=conversation,
+        return ConversationChange(
+            value=conversation_repository.summarize(
+                self._db,
+                conversation=result.value,
+            ),
+            changed=result.changed,
         )
 
     def move(
@@ -147,23 +147,19 @@ class SqlAlchemyConversationGateway:
         user_id: int,
         conversation_id: UUID,
         request: ConversationMoveRequest,
-    ) -> ConversationSummaryResponse:
-        conversation = conversation_repository.move(
+    ) -> ConversationChange[ConversationSummaryResponse]:
+        result = conversation_repository.move(
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
             request=request,
         )
-        return conversation_repository.summarize(
-            self._db,
-            conversation=conversation,
-        )
-
-    def require_owned(self, *, user_id: int, conversation_id: UUID) -> None:
-        conversation_repository.require_owned(
-            self._db,
-            conversation_id=conversation_id,
-            user_id=user_id,
+        return ConversationChange(
+            value=conversation_repository.summarize(
+                self._db,
+                conversation=result.value,
+            ),
+            changed=result.changed,
         )
 
     def delete(self, *, user_id: int, conversation_id: UUID) -> None:
@@ -179,13 +175,14 @@ class SqlAlchemyConversationGateway:
         user_id: int,
         conversation_id: UUID,
         request: PaperContext,
-    ) -> PaperContext:
-        return conversation_repository.update_paper_context(
+    ) -> ConversationChange[PaperContext]:
+        result = conversation_repository.update_paper_context(
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
             request=request,
         )
+        return ConversationChange(value=result.value, changed=result.changed)
 
     def update_tool_permissions(
         self,
@@ -193,35 +190,25 @@ class SqlAlchemyConversationGateway:
         user_id: int,
         conversation_id: UUID,
         request: ConversationToolPermissionsRequest,
-    ) -> ConversationToolPermissionsResponse:
-        return conversation_repository.update_tool_permissions(
+    ) -> ConversationChange[ConversationToolPermissionsResponse]:
+        result = conversation_repository.update_tool_permissions(
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
             request=request,
         )
+        return ConversationChange(value=result.value, changed=result.changed)
 
-
-class LlmConversationTitleGenerator:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def generate(self, *, actor: Actor, conversation_id: UUID) -> str | None:
-        return conversation_operations.rename_conversation(
-            db=self._db,
-            conversation_id=str(conversation_id),
-            user=actor,
-        )
-
-
-class PostHogConversationEvents:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def created(self, *, actor: Actor, scope_type: ConversationScopeType) -> None:
-        if scope_type == ConversationScopeType.PROJECT:
-            track_event(
-                "project_conversation_created",
-                user_id=str(actor.id),
-                db=self._db,
-            )
+    def update_title(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        title: str,
+    ) -> bool:
+        return conversation_repository.update(
+            self._db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            request=ConversationUpdateRequest(title=title),
+        ).changed

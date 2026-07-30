@@ -16,8 +16,11 @@ from app.modules.projects.application.contracts import (
     ProjectTransferRequest,
     ProjectUpdateRequest,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Query, Response, status
 
 projects_router = APIRouter()
@@ -34,10 +37,12 @@ def create_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectResponse:
     return executor.command(
         lambda capabilities: capabilities.projects.create(
             actor=current_user,
+            operation=operation,
             request=request,
         )
     )
@@ -83,10 +88,12 @@ def update_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectResponse:
     return executor.command(
         lambda capabilities: capabilities.projects.update(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             request=request,
         )
@@ -100,10 +107,12 @@ def delete_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.projects.delete(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
         )
     )
@@ -141,10 +150,12 @@ def update_project_collaborator(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectCollaboratorResponse:
     return executor.command(
         lambda capabilities: capabilities.projects.update_member(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             user_id=user_id,
             request=request,
@@ -163,10 +174,12 @@ def remove_project_collaborator(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.projects.remove_member(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             user_id=user_id,
         )
@@ -181,10 +194,12 @@ def leave_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.projects.leave(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
         )
     )
@@ -199,10 +214,12 @@ def transfer_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectResponse:
     return executor.command(
         lambda capabilities: capabilities.projects.transfer(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             request=request,
         )

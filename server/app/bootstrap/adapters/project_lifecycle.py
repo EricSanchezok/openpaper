@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from app.database.models import (
@@ -19,6 +20,10 @@ from app.database.models import (
 from app.shared.domain import AppError, FailureKind
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from app.bootstrap.adapters.document_gc import ScheduledDocumentGc
+    from app.bootstrap.adapters.storage_cleanup import ScheduledStorageDeletion
 
 ACTIVE_JOB_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
 
@@ -102,14 +107,25 @@ def schedule_orphan_documents(
     db: Session,
     *,
     plan: ProjectDeletionPlan,
-) -> None:
+    origin_operation_id: UUID,
+    correlation_id: UUID,
+) -> tuple[ScheduledDocumentGc, ...]:
     """Schedule canonical cleanup after ProjectPaper cascades have been flushed."""
     from app.bootstrap.adapters.document_gc import (
         schedule_document_gc,
     )
 
+    scheduled: list[ScheduledDocumentGc] = []
     for document_id in plan.candidate_document_ids:
-        schedule_document_gc(db, document_id=document_id)
+        result = schedule_document_gc(
+            db,
+            document_id=document_id,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
+        )
+        if result is not None:
+            scheduled.append(result)
+    return tuple(scheduled)
 
 
 def schedule_project_storage_cleanup(
@@ -117,13 +133,17 @@ def schedule_project_storage_cleanup(
     *,
     project_id: UUID,
     plan: ProjectDeletionPlan,
-) -> None:
+    origin_operation_id: UUID,
+    correlation_id: UUID,
+) -> ScheduledStorageDeletion | None:
     from app.bootstrap.adapters.storage_cleanup import (
         schedule_storage_deletion,
     )
 
-    schedule_storage_deletion(
+    return schedule_storage_deletion(
         db,
         object_keys=plan.storage_keys,
         idempotency_key=f"project:{project_id}",
+        origin_operation_id=origin_operation_id,
+        correlation_id=correlation_id,
     )

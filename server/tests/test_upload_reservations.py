@@ -16,6 +16,7 @@ from app.bootstrap.adapters.upload_reservations import (
     reassign_project_quota_owner,
     reserve_upload,
 )
+from app.modules.jobs.infrastructure.repository import PersistedJob
 
 
 def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
@@ -47,7 +48,7 @@ def _quota_patches(*, active_count: int = 0, active_size_kb: int = 0):
         ),
         patch(
             "app.bootstrap.adapters.upload_reservations.reap_stale_uploads",
-            return_value=None,
+            return_value=(),
         ),
     )
 
@@ -57,6 +58,8 @@ def _durable_job(*, requester_id: int, project_id=None) -> DurableJob:
     return DurableJob(
         id=job_id,
         operation=JobOperation.PDF_PROCESS.value,
+        correlation_id=uuid4(),
+        origin_operation_id=uuid4(),
         requested_by_id=requester_id,
         project_id=project_id,
         idempotency_key=f"pdf-reservation:{job_id}",
@@ -83,18 +86,21 @@ def test_personal_upload_is_reserved_to_requester() -> None:
         patches[7],
         patch(
             "app.bootstrap.adapters.upload_reservations.job_repository.create",
-            return_value=durable_job,
+            return_value=PersistedJob(job=durable_job, created=True),
         ),
     ):
-        job = reserve_upload(
+        result = reserve_upload(
             db,
             requester=requester,
+            origin_operation_id=uuid4(),
+            correlation_id=uuid4(),
             project_id=None,
             input_size_bytes=1_025,
             original_filename="paper.pdf",
             content_sha256="a" * 64,
         )
 
+    job = result.reservation
     assert job.job.requested_by_id == 17
     assert job.quota_owner_id == 17
     assert job.job.project_id is None
@@ -133,18 +139,21 @@ def test_project_upload_is_billed_to_owner_not_collaborator() -> None:
         patches[7],
         patch(
             "app.bootstrap.adapters.upload_reservations.job_repository.create",
-            return_value=durable_job,
+            return_value=PersistedJob(job=durable_job, created=True),
         ),
     ):
-        job = reserve_upload(
+        result = reserve_upload(
             db,
             requester=requester,
+            origin_operation_id=uuid4(),
+            correlation_id=uuid4(),
             project_id=project_id,
             input_size_bytes=4_096,
             original_filename="shared.pdf",
             content_sha256="b" * 64,
         )
 
+    job = result.reservation
     permission.assert_called_once_with(
         db,
         project_id=project_id,
@@ -177,6 +186,8 @@ def test_active_reservations_prevent_concurrent_paper_quota_bypass() -> None:
         reserve_upload(
             db,
             requester=requester,
+            origin_operation_id=uuid4(),
+            correlation_id=uuid4(),
             project_id=None,
             input_size_bytes=1_024,
             original_filename="paper.pdf",
@@ -211,6 +222,8 @@ def test_same_document_cannot_be_reserved_twice_for_one_library() -> None:
         reserve_upload(
             db,
             requester=requester,
+            origin_operation_id=uuid4(),
+            correlation_id=uuid4(),
             project_id=None,
             input_size_bytes=1_024,
             original_filename="paper.pdf",
@@ -229,6 +242,8 @@ def test_empty_upload_is_rejected_before_any_reservation() -> None:
         reserve_upload(
             db,
             requester=MagicMock(id=17),
+            origin_operation_id=uuid4(),
+            correlation_id=uuid4(),
             project_id=None,
             input_size_bytes=0,
             original_filename="empty.pdf",
@@ -264,6 +279,8 @@ def test_idempotency_key_returns_the_original_reservation() -> None:
         result = reserve_upload(
             db,
             requester=requester,
+            origin_operation_id=uuid4(),
+            correlation_id=uuid4(),
             project_id=None,
             input_size_bytes=1_024,
             original_filename="paper.pdf",
@@ -271,7 +288,8 @@ def test_idempotency_key_returns_the_original_reservation() -> None:
             idempotency_key="request-1",
         )
 
-    assert result is reservation
+    assert result.reservation is reservation
+    assert result.reaped_stale_uploads == ()
     db.add.assert_not_called()
 
 

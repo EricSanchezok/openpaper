@@ -5,7 +5,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import get_application_executor, get_citation_workflow
+from app.bootstrap.workflows.citation import CitationWorkflow
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.papers.application.contracts.documents import (
     CollectPublicPaperResponse,
@@ -18,8 +19,11 @@ from app.modules.papers.application.contracts.documents import (
     LibraryPaperUpdateRequest,
     PublicPaperResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Response, status
 
 document_router = APIRouter()
@@ -50,10 +54,12 @@ def update_library_paper(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> LibraryPaperResponse:
     return executor.command(
         lambda capabilities: capabilities.paper_library.update(
             actor=current_user,
+            operation=operation,
             document_id=document_id,
             request=request,
         )
@@ -90,10 +96,12 @@ def share_library_paper(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> LibraryPaperShareResponse:
     return executor.command(
         lambda capabilities: capabilities.paper_library.share(
             actor=current_user,
+            operation=operation,
             document_id=document_id,
         )
     )
@@ -109,10 +117,12 @@ def unshare_library_paper(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.paper_library.unshare(
             actor=current_user,
+            operation=operation,
             document_id=document_id,
         )
     )
@@ -129,10 +139,12 @@ def delete_library_paper(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.paper_library.remove(
             actor=current_user,
+            operation=operation,
             document_id=document_id,
         )
     )
@@ -213,19 +225,16 @@ def get_document_citation(
     document_id: UUID,
     style: str = "APA",
     project_id: UUID | None = None,
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: CitationWorkflow = Depends(get_citation_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> CitationResult:
-    # Citation resolution may recover and persist missing bibliographic fields.
-    return executor.command(
-        lambda capabilities: capabilities.citations(
-            actor=current_user,
-            document_id=document_id,
-            style=style,
-            project_id=project_id,
-        )
+    return workflow.run(
+        actor=current_user,
+        operation=operation,
+        document_id=document_id,
+        style=style,
+        project_id=project_id,
     )
 
 
@@ -257,10 +266,12 @@ def collect_public_paper(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> CollectPublicPaperResponse:
     return executor.command(
         lambda capabilities: capabilities.paper_library.collect_public(
             actor=current_user,
+            operation=operation,
             share_token=share_token,
         )
     )

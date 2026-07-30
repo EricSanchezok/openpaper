@@ -259,8 +259,6 @@ def test_explicit_commits_are_limited_to_owned_background_transactions() -> None
         "bootstrap/adapters/document_gc.py",
         "bootstrap/adapters/document_job_callbacks.py",
         "bootstrap/adapters/job_completion_processor.py",
-        "bootstrap/adapters/zotero_operations.py",
-        "bootstrap/adapters/zotero_workflow.py",
         "modules/jobs/infrastructure/callback_boundaries.py",
         "modules/jobs/infrastructure/research_callbacks.py",
         "modules/billing/infrastructure/stripe_webhook_ledger.py",

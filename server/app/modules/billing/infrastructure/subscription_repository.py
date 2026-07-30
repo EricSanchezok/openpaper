@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
-from app.database.models import Subscription, SubscriptionPlan, SubscriptionStatus
-from app.shared.application import Actor
+from app.database.models import Subscription, SubscriptionStatus
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,32 +21,8 @@ class SubscriptionCreate(BaseModel):
     cancel_at_period_end: bool = False
 
 
-class SubscriptionUpdate(BaseModel):
-    """Schema for updating a subscription"""
-
-    stripe_customer_id: str | None = None
-    stripe_subscription_id: str | None = None
-    stripe_price_id: str | None = None
-    stripe_schedule_id: str | None = None
-    status: str | None = None
-    current_period_start: datetime | None = None
-    current_period_end: datetime | None = None
-    cancel_at_period_end: bool | None = None
-
-
 class SubscriptionRepository:
     """Persistence operations for subscription management."""
-
-    def is_user_active(self, db: Session, user: Actor) -> bool:
-        """Check if the user has an active subscription"""
-        return self.is_user_id_active(db, user.id)
-
-    def is_user_id_active(self, db: Session, user_id: int) -> bool:
-        subscription = self.get_by_user_id(db, user_id)
-        if not subscription or not subscription.current_period_end:
-            return False
-        # User is active if `current_period_end` is in the future
-        return subscription.current_period_end > datetime.now(tz=timezone.utc)
 
     def get_by_user_id(self, db: Session, user_id: int) -> Subscription | None:
         """Get subscription by user_id"""
@@ -94,44 +69,6 @@ class SubscriptionRepository:
         db.flush()
         db.refresh(created)
         return created
-
-    def update_subscription_status(
-        self,
-        db: Session,
-        subscription_id: str,
-        status: str,
-        stripe_price_id: str | None = None,
-        plan: SubscriptionPlan | None = None,
-        period_start: datetime | None = None,
-        period_end: datetime | None = None,
-        cancel_at_period_end: bool | None = None,
-    ) -> Subscription | None:
-        """Update subscription status and period dates"""
-        subscription = self.get_by_stripe_subscription_id(db, subscription_id)
-        if not subscription:
-            return None
-
-        # Use setattr to update fields
-        setattr(subscription, "status", status)
-        if plan:
-            setattr(subscription, "plan", plan)
-
-        if stripe_price_id:
-            setattr(subscription, "stripe_price_id", stripe_price_id)
-
-        # Update period dates if provided
-        if period_start:
-            setattr(subscription, "current_period_start", period_start)
-
-        if period_end:
-            setattr(subscription, "current_period_end", period_end)
-
-        if cancel_at_period_end is not None:
-            setattr(subscription, "cancel_at_period_end", cancel_at_period_end)
-
-        db.flush()
-        db.refresh(subscription)
-        return subscription
 
 
 subscription_repository = SubscriptionRepository()

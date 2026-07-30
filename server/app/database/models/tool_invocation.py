@@ -34,8 +34,12 @@ class ToolInvocation(Base):
         nullable=False,
         index=True,
     )
+    operation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
     invocation_key: Mapped[str] = mapped_column(String(512), nullable=False)
-    source: Mapped[str] = mapped_column(String(32), nullable=False)
     tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
     arguments_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(

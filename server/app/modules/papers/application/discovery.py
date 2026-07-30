@@ -12,8 +12,12 @@ from app.modules.papers.application.contracts.discovery import (
     OpenAlexResponse,
     OpenAlexWork,
 )
-from app.shared.application import Actor, SignedCursorCodec
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
+from app.shared.application import Actor, OperationContext, SignedCursorCodec
 from app.shared.domain import AppError, FailureKind
+
+PAPER_DOI_UPDATED = OperationAction("paper.doi_updated")
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +37,13 @@ class DiscoveryMatchPreparation:
 class DiscoveryMatchResult:
     graph: OpenAlexCitationGraph
     resolved_doi: str
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryListPreparation:
+    value: str
+    page: int
+    fingerprint: str
 
 
 class ExternalPaperCatalog(Protocol):
@@ -60,7 +71,7 @@ class DiscoveryDocumentGateway(Protocol):
         document_id: UUID,
     ) -> AccessibleDiscoveryDocument | None: ...
 
-    def set_doi(self, *, actor: Actor, document_id: UUID, doi: str) -> None: ...
+    def set_doi(self, *, actor: Actor, document_id: UUID, doi: str) -> bool: ...
 
 
 class ExternalDiscoveryRateLimiter(Protocol):
@@ -81,107 +92,11 @@ class DiscoverPapers:
     def __init__(
         self,
         *,
-        catalog: ExternalPaperCatalog,
         documents: DiscoveryDocumentGateway,
-        rate_limiter: ExternalDiscoveryRateLimiter,
-        events: DiscoveryEventRecorder,
-        cursors: SignedCursorCodec,
+        journal: OperationJournal,
     ) -> None:
-        self._catalog = catalog
         self._documents = documents
-        self._rate_limiter = rate_limiter
-        self._events = events
-        self._cursors = cursors
-
-    async def search(
-        self,
-        *,
-        actor: Actor,
-        client_ip: str,
-        query: str,
-        cursor: str | None,
-    ) -> DiscoveryPaperListResponse:
-        fingerprint = f"{actor.id}:search:{query.casefold()}"
-        page = (
-            self._cursors.decode(cursor=cursor, fingerprint=fingerprint)
-            if cursor
-            else 1
-        )
-        await self._rate_limiter.check(actor=actor, client_ip=client_ip)
-        results = await self._catalog.search(query=query, page=page)
-        self._events.record(
-            actor=actor,
-            name="external_paper_search",
-            properties={
-                "page": page,
-                "results_count": len(results.results),
-                "total_count": results.meta.get("count", 0),
-            },
-        )
-        return self._list_response(
-            results=results,
-            page=page,
-            fingerprint=fingerprint,
-        )
-
-    async def author_works(
-        self,
-        *,
-        actor: Actor,
-        client_ip: str,
-        author_id: str,
-        cursor: str | None,
-    ) -> DiscoveryPaperListResponse:
-        fingerprint = f"{actor.id}:author:{author_id}"
-        page = (
-            self._cursors.decode(cursor=cursor, fingerprint=fingerprint)
-            if cursor
-            else 1
-        )
-        await self._rate_limiter.check(actor=actor, client_ip=client_ip)
-        results = await self._catalog.author_works(author_id=author_id, page=page)
-        self._events.record(
-            actor=actor,
-            name="author_works_view",
-            properties={
-                "page": page,
-                "results_count": len(results.results),
-                "total_count": results.meta.get("count", 0),
-            },
-        )
-        return self._list_response(
-            results=results,
-            page=page,
-            fingerprint=fingerprint,
-        )
-
-    def _list_response(
-        self,
-        *,
-        results: OpenAlexResponse,
-        page: int,
-        fingerprint: str,
-    ) -> DiscoveryPaperListResponse:
-        count_value = results.meta.get("count", 0)
-        per_page_value = results.meta.get("per_page", len(results.results))
-        count = count_value if isinstance(count_value, int) else 0
-        per_page = (
-            per_page_value
-            if isinstance(per_page_value, int) and per_page_value > 0
-            else len(results.results) or 1
-        )
-        has_more = page * per_page < count
-        return DiscoveryPaperListResponse(
-            items=results.results,
-            next_cursor=(
-                self._cursors.encode(
-                    fingerprint=fingerprint,
-                    offset=page + 1,
-                )
-                if has_more
-                else None
-            ),
-        )
+        self._journal = journal
 
     def prepare_match(
         self,
@@ -213,6 +128,130 @@ class DiscoverPapers:
                 doi = document.doi
         return DiscoveryMatchPreparation(document=document, doi=doi)
 
+    def complete_match(
+        self,
+        *,
+        actor: Actor,
+        operation: OperationContext,
+        preparation: DiscoveryMatchPreparation,
+        result: DiscoveryMatchResult,
+    ) -> OpenAlexCitationGraph:
+        document = preparation.document
+        if document is not None and self._documents.set_doi(
+            actor=actor,
+            document_id=document.document_id,
+            doi=result.resolved_doi,
+        ):
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=PAPER_DOI_UPDATED,
+                resources=(
+                    ResourceRef(
+                        type="document",
+                        id=str(document.document_id),
+                    ),
+                ),
+            )
+        return result.graph
+
+
+class ExternalPaperDiscovery:
+    """Database-free scholarly catalog orchestration."""
+
+    def __init__(
+        self,
+        *,
+        catalog: ExternalPaperCatalog,
+        rate_limiter: ExternalDiscoveryRateLimiter,
+        events: DiscoveryEventRecorder,
+        cursors: SignedCursorCodec,
+    ) -> None:
+        self._catalog = catalog
+        self._rate_limiter = rate_limiter
+        self._events = events
+        self._cursors = cursors
+
+    def prepare_search(
+        self,
+        *,
+        actor: Actor,
+        query: str,
+        cursor: str | None,
+    ) -> DiscoveryListPreparation:
+        fingerprint = f"{actor.id}:search:{query.casefold()}"
+        return DiscoveryListPreparation(
+            value=query,
+            page=(
+                self._cursors.decode(cursor=cursor, fingerprint=fingerprint)
+                if cursor
+                else 1
+            ),
+            fingerprint=fingerprint,
+        )
+
+    async def search(
+        self,
+        *,
+        actor: Actor,
+        client_ip: str,
+        preparation: DiscoveryListPreparation,
+    ) -> DiscoveryPaperListResponse:
+        await self._rate_limiter.check(actor=actor, client_ip=client_ip)
+        results = await self._catalog.search(
+            query=preparation.value,
+            page=preparation.page,
+        )
+        self._events.record(
+            actor=actor,
+            name="external_paper_search",
+            properties=self._event_properties(
+                page=preparation.page,
+                results=results,
+            ),
+        )
+        return self._list_response(results=results, preparation=preparation)
+
+    def prepare_author_works(
+        self,
+        *,
+        actor: Actor,
+        author_id: str,
+        cursor: str | None,
+    ) -> DiscoveryListPreparation:
+        fingerprint = f"{actor.id}:author:{author_id}"
+        return DiscoveryListPreparation(
+            value=author_id,
+            page=(
+                self._cursors.decode(cursor=cursor, fingerprint=fingerprint)
+                if cursor
+                else 1
+            ),
+            fingerprint=fingerprint,
+        )
+
+    async def author_works(
+        self,
+        *,
+        actor: Actor,
+        client_ip: str,
+        preparation: DiscoveryListPreparation,
+    ) -> DiscoveryPaperListResponse:
+        await self._rate_limiter.check(actor=actor, client_ip=client_ip)
+        results = await self._catalog.author_works(
+            author_id=preparation.value,
+            page=preparation.page,
+        )
+        self._events.record(
+            actor=actor,
+            name="author_works_view",
+            properties=self._event_properties(
+                page=preparation.page,
+                results=results,
+            ),
+        )
+        return self._list_response(results=results, preparation=preparation)
+
     async def fetch_match(
         self,
         *,
@@ -242,21 +281,12 @@ class DiscoverPapers:
         graph = await self._catalog.citation_graph(work_id=work.id)
         return DiscoveryMatchResult(graph=graph, resolved_doi=doi)
 
-    def complete_match(
+    def record_match(
         self,
         *,
         actor: Actor,
-        preparation: DiscoveryMatchPreparation,
         result: DiscoveryMatchResult,
-    ) -> OpenAlexCitationGraph:
-        document = preparation.document
-        if document is not None and document.doi != result.resolved_doi:
-            self._documents.set_doi(
-                actor=actor,
-                document_id=document.document_id,
-                doi=result.resolved_doi,
-            )
-
+    ) -> None:
         graph = result.graph
         self._events.record(
             actor=actor,
@@ -266,4 +296,42 @@ class DiscoverPapers:
                 "cites_count": graph.cites.meta.get("count", 0),
             },
         )
-        return graph
+
+    def _list_response(
+        self,
+        *,
+        results: OpenAlexResponse,
+        preparation: DiscoveryListPreparation,
+    ) -> DiscoveryPaperListResponse:
+        count_value = results.meta.get("count", 0)
+        per_page_value = results.meta.get("per_page", len(results.results))
+        count = count_value if isinstance(count_value, int) else 0
+        per_page = (
+            per_page_value
+            if isinstance(per_page_value, int) and per_page_value > 0
+            else len(results.results) or 1
+        )
+        has_more = preparation.page * per_page < count
+        return DiscoveryPaperListResponse(
+            items=results.results,
+            next_cursor=(
+                self._cursors.encode(
+                    fingerprint=preparation.fingerprint,
+                    offset=preparation.page + 1,
+                )
+                if has_more
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _event_properties(
+        *,
+        page: int,
+        results: OpenAlexResponse,
+    ) -> dict[str, object]:
+        return {
+            "page": page,
+            "results_count": len(results.results),
+            "total_count": results.meta.get("count", 0),
+        }

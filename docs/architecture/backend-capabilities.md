@@ -9,6 +9,11 @@ or Zotero business rules.
 HTTP / Agent / MCP / job callback
                  |
                  v
+ authentication + Actor
+ permission/tool preflight
+ OperationContext provenance
+                 |
+                 v
           ApplicationExecutor
                  |
                  v
@@ -85,6 +90,35 @@ Zotero import/sync follow this shape. Agent and MCP paper tools obtain a fresh
 short operation for every tool call rather than retaining a session for the
 life of a conversation.
 
+## Authentication, permission, and operation provenance
+
+Authentication, authorization, and attribution are deliberately separate:
+
+- cloud-auth sessions authenticate browser users; Scholens AccessKeys
+  authenticate MCP clients;
+- `WorkspacePermission` and `ToolAccess` determine which catalog tools are
+  visible and executable;
+- `Actor` plus Domain policy authorizes the concrete resource;
+- immutable `OperationContext` records only trace, direct initiator, typed
+  origin, and a non-sensitive credential reference.
+
+Changing an Operation origin or credential must never change a Domain
+authorization result. Raw credential, signature, OAuth callback, and webhook
+verification complete before an `OperationContext` is constructed.
+
+Every product-changing Application command receives an explicit
+`operation: OperationContext`. Its private, session-bound `OperationJournal`
+appends stable business actions in the same UnitOfWork as the business write.
+Queries, rejected operations, no-ops, technical leases, and replayed tool
+invocations do not create Journal entries. The Journal is append-only and has
+no public read capability or transport endpoint.
+
+Conversation user messages are USER root operations. Model tool calls,
+answers, citations, and generated titles are AGENT child operations that retain
+the turn correlation. Jobs persist only their origin operation and correlation
+UUIDs, then callbacks resume a new SYSTEM operation after signature and owner
+verification.
+
 ## Canonical tool catalog
 
 Every model-visible research workspace tool is defined once in
@@ -103,17 +137,21 @@ session and JSON-RPC request identity. Replays return the persisted result, and
 conflicting argument reuse returns `tool_invocation_conflict`.
 
 The inbound Streamable HTTP MCP endpoint is `/mcp`, outside the public OpenAPI
-surface. Every request requires an active cloud-auth Bearer session. MCP
-defaults paper operations to the authenticated user's complete accessible
-paper collection. MCP protocol code only lists a profile, injects the actor,
-and delegates to `ToolDispatcher`.
+surface. Every request requires a Scholens AccessKey in the Bearer header.
+The key's immutable permission snapshot determines the MCP `ToolAccess`; its
+resolved Actor still passes through the same resource authorization as HTTP
+and Conversation calls. MCP defaults paper operations to the authenticated
+user's complete accessible paper collection. Protocol code only authenticates,
+builds typed provenance, selects a profile, and delegates to
+`ToolDispatcher`.
 
 Only progress-owning infrastructure may commit independently. The executable
-architecture whitelist currently contains the Stripe webhook ledger, durable
-outbox dispatcher, document garbage collection, durable job-completion
-processors, and Zotero remote workflow. These owners may checkpoint before
-releasing an external lease or continuing a remote workflow. Repositories
-themselves never commit.
+architecture whitelist contains narrow technical ledgers and dispatchers such
+as the Stripe webhook ledger and durable Jobs outbox. They reserve progress in
+a short transaction, perform external I/O with no Session, and finalize in
+another short transaction. Product workflows, including Zotero, citation
+recovery, discovery, document postprocessing, and billing, use
+`ApplicationExecutor` stages; repositories themselves never commit.
 
 Domain concepts have one canonical type name. Compatibility assignments such
 as `OldAccess = NewAccessDecision` are forbidden by an architecture test; a
@@ -147,10 +185,13 @@ tags, storage accounting, and ingestion ownership continue to use
    `bootstrap/container.py`.
 4. Expose the use case on `ApplicationCapabilities`; use a workflow only when
    external I/O requires explicit prepare/complete phases.
-5. For a model-visible capability, add one `ToolDefinition` and select it in
+5. Give every real command a stable owning-module `OperationAction`, accept an
+   explicit `OperationContext`, and append through its private Journal only
+   when the gateway reports a true change.
+6. For a model-visible capability, add one `ToolDefinition` and select it in
    the appropriate profiles. MCP code must not call repositories or HTTP
    routes.
-6. Update the OpenAPI snapshot and add an end-to-end contract test when the
+7. Update the OpenAPI snapshot and add an end-to-end contract test when the
    public surface changes.
 
 This boundary also applies when identity, Zotero, billing, or a future product

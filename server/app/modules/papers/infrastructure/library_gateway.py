@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import Protocol
 from uuid import UUID
 
 from app.helpers.s3 import s3_service
@@ -12,7 +12,12 @@ from app.modules.papers.application.contracts.documents import (
     LibraryPaperUpdateRequest,
     PublicPaperOwnerResponse,
 )
-from app.modules.papers.application.library import PublicShare
+from app.modules.papers.application.library import (
+    LibraryPaperAttachment,
+    LibraryPaperRemoval,
+    LibraryPaperUpdateResult,
+    PublicShare,
+)
 from app.modules.papers.infrastructure.models import Document, LibraryPaper
 from app.modules.papers.infrastructure.repository import document_repository
 from sqlalchemy import select
@@ -72,12 +77,30 @@ def library_paper_response(entry: LibraryPaper) -> LibraryPaperResponse:
     )
 
 
+class DocumentGcSchedule(Protocol):
+    @property
+    def job_id(self) -> UUID: ...
+
+    @property
+    def created(self) -> bool: ...
+
+
+class DocumentRemoved(Protocol):
+    def __call__(
+        self,
+        *,
+        document_id: UUID,
+        origin_operation_id: UUID,
+        correlation_id: UUID,
+    ) -> DocumentGcSchedule | None: ...
+
+
 class SqlAlchemyPaperLibraryGateway:
     def __init__(
         self,
         db: Session,
         *,
-        document_removed: Callable[[UUID], object],
+        document_removed: DocumentRemoved,
     ) -> None:
         self._db = db
         self._document_removed = document_removed
@@ -103,14 +126,16 @@ class SqlAlchemyPaperLibraryGateway:
         user_id: int,
         document_id: UUID,
         request: LibraryPaperUpdateRequest,
-    ) -> LibraryPaperResponse:
-        return library_paper_response(
-            document_repository.update_library_paper(
-                self._db,
-                document_id=document_id,
-                user_id=user_id,
-                request=request,
-            )
+    ) -> LibraryPaperUpdateResult:
+        updated = document_repository.update_library_paper(
+            self._db,
+            document_id=document_id,
+            user_id=user_id,
+            request=request,
+        )
+        return LibraryPaperUpdateResult(
+            response=library_paper_response(updated.entry),
+            changed=updated.changed,
         )
 
     def share(self, *, user_id: int, document_id: UUID) -> str:
@@ -120,20 +145,38 @@ class SqlAlchemyPaperLibraryGateway:
             user_id=user_id,
         )
 
-    def unshare(self, *, user_id: int, document_id: UUID) -> None:
-        document_repository.revoke_public_share(
+    def unshare(self, *, user_id: int, document_id: UUID) -> bool:
+        return document_repository.revoke_public_share(
             self._db,
             document_id=document_id,
             user_id=user_id,
         )
 
-    def remove(self, *, user_id: int, document_id: UUID) -> None:
+    def remove(
+        self,
+        *,
+        user_id: int,
+        document_id: UUID,
+        origin_operation_id: UUID,
+        correlation_id: UUID,
+    ) -> LibraryPaperRemoval:
         document_repository.delete_library_paper(
             self._db,
             document_id=document_id,
             user_id=user_id,
         )
-        self._document_removed(document_id)
+        scheduled = self._document_removed(
+            document_id=document_id,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
+        )
+        return LibraryPaperRemoval(
+            created_gc_job_id=(
+                scheduled.job_id
+                if scheduled is not None and scheduled.created
+                else None
+            )
+        )
 
     def public_share(self, *, share_token: str) -> PublicShare:
         shared = document_repository.require_public_share(
@@ -158,14 +201,23 @@ class SqlAlchemyPaperLibraryGateway:
             )
         )
 
-    def attach(self, *, user_id: int, document_id: UUID) -> UUID:
-        document_repository.attach_library(
+    def attach(
+        self,
+        *,
+        user_id: int,
+        document_id: UUID,
+    ) -> LibraryPaperAttachment:
+        attached = document_repository.attach_library(
             self._db,
             document_id=document_id,
             user_id=user_id,
         )
-        return document_repository.require_library_paper_by_document(
+        entry = document_repository.require_library_paper_by_document(
             self._db,
             document_id=document_id,
             user_id=user_id,
-        ).id
+        )
+        return LibraryPaperAttachment(
+            library_entry_id=entry.id,
+            created=attached.created,
+        )

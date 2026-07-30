@@ -13,9 +13,13 @@ from app.modules.papers.application.contracts.uploads import (
     UploadAcceptedResponse,
     UploadFromUrlRequest,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, OperationContext
 from app.shared.domain import AppError, FailureKind
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.transport.client_ip import http_client_ip
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 
 logger = logging.getLogger(__name__)
@@ -25,10 +29,6 @@ IdempotencyHeader = Annotated[
     str | None,
     Header(alias="Idempotency-Key", min_length=1, max_length=200),
 ]
-
-
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
 
 
 @document_upload_router.post(
@@ -41,15 +41,17 @@ async def upload_pdf_from_url(
     request: Request,
     idempotency_key: IdempotencyHeader = None,
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     ingestion: PaperIngestionWorkflow = Depends(get_paper_ingestion_workflow),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
     return await ingestion.from_url(
         actor=current_user,
+        operation=operation,
         url=str(payload.url),
         project_id=project_id,
         idempotency_key=idempotency_key,
-        ip_address=_client_ip(request),
+        ip_address=http_client_ip(request),
     )
 
 
@@ -63,6 +65,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     idempotency_key: IdempotencyHeader = None,
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     ingestion: PaperIngestionWorkflow = Depends(get_paper_ingestion_workflow),
     project_id: UUID | None = None,
 ) -> UploadAcceptedResponse:
@@ -106,9 +109,10 @@ async def upload_pdf(
 
     return await ingestion.from_bytes(
         actor=current_user,
+        operation=operation,
         content=content,
         filename=file.filename,
         project_id=project_id,
         idempotency_key=idempotency_key,
-        ip_address=_client_ip(request),
+        ip_address=http_client_ip(request),
     )

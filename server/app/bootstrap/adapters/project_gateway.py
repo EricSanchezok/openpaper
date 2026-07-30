@@ -5,7 +5,6 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.database.models import AuthUser, Project, ProjectInvitation
-from app.database.telemetry import track_event
 from app.helpers.email import send_project_invite_email
 from app.helpers.s3 import s3_service
 from app.bootstrap.adapters.upload_repository import (
@@ -28,7 +27,15 @@ from app.modules.projects.application.contracts import (
     ProjectTransferRequest,
     ProjectUpdateRequest,
 )
-from app.modules.projects.application.projects import InvitationDelivery
+from app.modules.projects.application.projects import (
+    AcceptedProjectInvitation,
+    InvitationDelivery,
+    ProjectCollaboratorUpdateResult,
+    ProjectDeletion,
+    ProjectDocumentCollection,
+    ProjectPaperRemoval,
+    ProjectUpdateResult,
+)
 from app.bootstrap.adapters.project_documents import (
     project_document_repository,
 )
@@ -146,21 +153,34 @@ class SqlAlchemyProjectGateway:
         user_id: int,
         project_id: UUID,
         request: ProjectUpdateRequest,
-    ) -> ProjectResponse:
-        project = project_repository.update(
+    ) -> ProjectUpdateResult:
+        updated = project_repository.update(
             self._db,
             project_id=project_id,
             user_id=user_id,
             changes=request.model_dump(exclude_unset=True),
         )
-        return self._project(project, user_id=user_id)
+        return ProjectUpdateResult(
+            response=self._project(updated.project, user_id=user_id),
+            changed=updated.changed,
+        )
 
-    def delete(self, *, user_id: int, project_id: UUID) -> None:
-        project_repository.delete(
+    def delete(
+        self,
+        *,
+        user_id: int,
+        project_id: UUID,
+        origin_operation_id: UUID,
+        correlation_id: UUID,
+    ) -> ProjectDeletion:
+        result = project_repository.delete(
             self._db,
             project_id=project_id,
             user_id=user_id,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
         )
+        return ProjectDeletion(created_cleanup_job_ids=result.created_job_ids)
 
     def list_members(
         self,
@@ -199,15 +219,17 @@ class SqlAlchemyProjectGateway:
         project_id: UUID,
         user_id: int,
         request: ProjectCollaboratorUpdateRequest,
-    ) -> ProjectCollaboratorResponse:
-        return _collaborator_response(
-            project_repository.update_collaborator(
-                self._db,
-                project_id=project_id,
-                actor_id=actor_id,
-                target_user_id=user_id,
-                requested=request,
-            )
+    ) -> ProjectCollaboratorUpdateResult:
+        updated = project_repository.update_collaborator(
+            self._db,
+            project_id=project_id,
+            actor_id=actor_id,
+            target_user_id=user_id,
+            requested=request,
+        )
+        return ProjectCollaboratorUpdateResult(
+            response=_collaborator_response(updated.collaborator),
+            changed=updated.changed,
         )
 
     def remove_member(
@@ -252,12 +274,16 @@ class SqlAlchemyProjectGateway:
         raw_token: str,
         user_id: int,
         email: str,
-    ) -> None:
-        project_repository.accept_invitation_token(
+    ) -> AcceptedProjectInvitation:
+        accepted = project_repository.accept_invitation_token(
             self._db,
             raw_token=raw_token,
             user_id=user_id,
             email=email,
+        )
+        return AcceptedProjectInvitation(
+            project_id=accepted.collaborator.project_id,
+            invitation_id=accepted.invitation_id,
         )
 
     def list_invitations(
@@ -314,8 +340,8 @@ class SqlAlchemyProjectGateway:
         actor_id: int,
         project_id: UUID,
         invitation_id: UUID,
-    ) -> None:
-        project_repository.revoke_invitation(
+    ) -> bool:
+        return project_repository.revoke_invitation(
             self._db,
             project_id=project_id,
             invitation_id=invitation_id,
@@ -327,14 +353,19 @@ class SqlAlchemyProjectGateway:
         *,
         actor: Actor,
         request: CollectPaperFromProjectRequest,
-    ) -> UUID | None:
-        document = project_document_repository.add_project_paper_to_library(
+    ) -> ProjectDocumentCollection | None:
+        attached = project_document_repository.add_project_paper_to_library(
             self._db,
             document_id=request.document_id,
             project_id=request.source_project_id,
             current_user=actor,
         )
-        return document.id if document is not None else None
+        if attached.document is None:
+            return None
+        return ProjectDocumentCollection(
+            document_id=attached.document.id,
+            added_to_library=attached.created,
+        )
 
     def add_documents(
         self,
@@ -460,31 +491,23 @@ class SqlAlchemyProjectGateway:
         actor: Actor,
         project_id: UUID,
         document_id: UUID,
-    ) -> None:
-        project_document_repository.remove_by_paper_and_project(
+        origin_operation_id: UUID,
+        correlation_id: UUID,
+    ) -> ProjectPaperRemoval:
+        scheduled = project_document_repository.remove_by_paper_and_project(
             self._db,
             document_id=document_id,
             project_id=project_id,
             user=actor,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
         )
-
-
-class PostHogProjectEvents:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def record(
-        self,
-        *,
-        actor: Actor,
-        name: str,
-        properties: dict[str, object] | None = None,
-    ) -> None:
-        track_event(
-            name,
-            user_id=str(actor.id),
-            properties=properties,
-            db=self._db,
+        return ProjectPaperRemoval(
+            created_gc_job_id=(
+                scheduled.job_id
+                if scheduled is not None and scheduled.created
+                else None
+            )
         )
 
 

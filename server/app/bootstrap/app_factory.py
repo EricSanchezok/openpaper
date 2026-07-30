@@ -60,11 +60,15 @@ from app.modules.identity.infrastructure.cloud_auth import (
 from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.execution import (
     create_application_executor,
+    create_billing_workflow,
     create_conversation_agent_runtime,
     create_conversation_chat,
+    create_conversation_title_workflow,
+    create_citation_workflow,
     create_job_completion_processor,
     create_mcp_transport,
     create_onboarding_finisher,
+    create_paper_discovery_workflow,
     create_paper_ingestion_workflow,
     create_research_generation_workflow,
     create_stripe_webhook_processor,
@@ -80,6 +84,7 @@ from app.bootstrap.settings import (
 from app.database.admin import setup_admin
 from app.database.database import SessionLocal
 from app.shared.domain import AppError
+from app.shared.application import OperationContextFactory
 from app.transport.http.errors import (
     app_error_handler,
     http_error_handler,
@@ -156,16 +161,27 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         },
     )
     application.state.settings = runtime_settings
+    operation_context_factory = OperationContextFactory()
+    application.state.operation_context_factory = operation_context_factory
     executor = create_application_executor(runtime_settings)
     application.state.application_executor = executor
-    ingestion_workflow = create_paper_ingestion_workflow(executor)
+    ingestion_workflow = create_paper_ingestion_workflow(
+        executor,
+        operation_context_factory,
+    )
+    citation_workflow = create_citation_workflow(
+        executor=executor,
+        operation_factory=operation_context_factory,
+    )
     tool_catalog, tool_dispatcher = create_workspace_tooling(
         executor=executor,
         ingestion=ingestion_workflow,
+        citations=citation_workflow,
     )
     conversation_runtime = create_conversation_agent_runtime(
         catalog=tool_catalog,
         dispatcher=tool_dispatcher,
+        operation_factory=operation_context_factory,
     )
     application.state.tool_catalog = tool_catalog
     application.state.tool_dispatcher = tool_dispatcher
@@ -175,21 +191,45 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         catalog=tool_catalog,
         dispatcher=tool_dispatcher,
         executor=executor,
+        operation_factory=operation_context_factory,
     )
     application.state.mcp_session_manager = mcp_manager
     application.router.routes.append(Route("/mcp", endpoint=mcp_application))
     application.state.conversation_chat = create_conversation_chat(
         executor,
         conversation_runtime,
+        operation_context_factory,
+    )
+    application.state.conversation_title_workflow = create_conversation_title_workflow(
+        executor, operation_context_factory
     )
     application.state.onboarding_finisher = create_onboarding_finisher()
-    application.state.stripe_webhook_processor = create_stripe_webhook_processor()
-    application.state.paper_ingestion_workflow = ingestion_workflow
-    application.state.research_generation_workflow = (
-        create_research_generation_workflow(executor)
+    application.state.billing_workflow = create_billing_workflow(
+        executor=executor,
+        operation_factory=operation_context_factory,
     )
-    application.state.zotero_workflow = create_zotero_workflow(executor)
-    application.state.job_completion_processor = create_job_completion_processor()
+    application.state.stripe_webhook_processor = create_stripe_webhook_processor(
+        executor=executor,
+        operation_factory=operation_context_factory,
+    )
+    application.state.paper_ingestion_workflow = ingestion_workflow
+    application.state.citation_workflow = citation_workflow
+    application.state.paper_discovery_workflow = create_paper_discovery_workflow(
+        executor=executor,
+        settings=runtime_settings,
+        operation_factory=operation_context_factory,
+    )
+    application.state.research_generation_workflow = (
+        create_research_generation_workflow(executor, operation_context_factory)
+    )
+    application.state.zotero_workflow = create_zotero_workflow(
+        executor,
+        operation_context_factory,
+    )
+    application.state.job_completion_processor = create_job_completion_processor(
+        executor,
+        operation_context_factory,
+    )
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[runtime_settings.client_domain],

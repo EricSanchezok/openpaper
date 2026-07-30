@@ -11,10 +11,18 @@ from app.modules.conversations.application.chat import (
 from app.modules.conversations.application.contracts.messages import ToolRunState
 from app.modules.papers.application.contracts.extraction import ToolCall
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
-from app.shared.application import Actor
+from app.shared.application import (
+    Actor,
+    ConversationOrigin,
+    CredentialKind,
+    CredentialRef,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 from app.shared.domain import WorkspacePermission
 from app.shared.domain.enums import ConversationScopeType
-from app.tooling import ToolAccess, ToolOutcome
+from app.tooling import ToolAccess, ToolExecutionContext, ToolOutcome
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 import pytest
 
@@ -52,9 +60,17 @@ class Executor:
 class ActionDispatcher:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.contexts: list[ToolExecutionContext] = []
 
-    async def dispatch(self, *, name: str, **_kwargs: object) -> ToolOutcome:
+    async def dispatch(
+        self,
+        *,
+        name: str,
+        context: ToolExecutionContext,
+        **_kwargs: object,
+    ) -> ToolOutcome:
         self.calls.append(name)
+        self.contexts.append(context)
         return ToolOutcome(
             payload={"project_id": str(uuid4())},
             action={"kind": "project_created"},
@@ -69,6 +85,7 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
     runtime = object.__new__(ConversationToolLoop)
     runtime._catalog = Catalog()  # type: ignore[assignment]
     runtime._dispatcher = dispatcher
+    runtime._operation_factory = OperationContextFactory()
     responses = iter(
         [
             LLMResponse(
@@ -89,6 +106,17 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
         "app.llm.conversation_tool_loop.track_event",
         lambda *_args, **_kwargs: None,
     )
+    conversation_id = uuid4()
+    turn_id = uuid4()
+    request_operation = OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=ConversationOrigin(
+            request=RequestReference(uuid4()),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+        ),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
 
     events = [
         event
@@ -108,9 +136,12 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
                 paper_context=LibraryPaperCollection(),
                 tool_permissions=frozenset(WorkspacePermission),
             ),
-            conversation_id=uuid4(),
-            turn_id=uuid4(),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
             client_ip="test",
+            request_operation=request_operation,
+            turn_correlation_id=request_operation.trace.correlation_id,
+            user_operation_id=request_operation.trace.operation_id,
         )
     ]
 
@@ -119,3 +150,8 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
     assert isinstance(state, ToolRunState)
     assert state.action_results == [{"kind": "project_created"}]
     assert dispatcher.calls == ["create_project"]
+    tool_operation = dispatcher.contexts[0].operation
+    assert tool_operation.initiated_by is OperationInitiator.AGENT
+    assert tool_operation.trace.correlation_id == request_operation.trace.correlation_id
+    assert tool_operation.trace.causation_id == request_operation.trace.operation_id
+    assert tool_operation.origin is request_operation.origin

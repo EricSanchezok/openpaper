@@ -14,11 +14,19 @@ from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.modules.conversations.application.chat import ConversationChat
 from app.modules.identity.application.onboarding import FinishOnboarding
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
+from app.bootstrap.workflows.billing import BillingWorkflow
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
+from app.bootstrap.workflows.pdf_postprocess import PdfPostprocessWorkflow
+from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
+from app.bootstrap.workflows.citation import CitationWorkflow
+from app.bootstrap.workflows.discovery import PaperDiscoveryWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
-from app.bootstrap.workflows.zotero import ZoteroWorkflow
+from app.bootstrap.workflows.zotero import (
+    ZoteroPostprocessWorkflow,
+    ZoteroWorkflow,
+)
 from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
-from app.shared.application import ApplicationExecutor
+from app.shared.application import ApplicationExecutor, OperationContextFactory
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from app.tooling import ToolCatalog, ToolDispatcher
 from app.transport.mcp.server import (
@@ -42,25 +50,80 @@ def create_application_executor(
 def create_conversation_chat(
     executor: ApplicationExecutor[ApplicationCapabilities],
     runtime: ConversationAgentRuntime,
+    operation_factory: OperationContextFactory,
 ) -> ConversationChat:
     from app.bootstrap.adapters.conversation_chat import (
         DefaultConversationChatGateway,
     )
 
-    return ConversationChat(DefaultConversationChatGateway(executor, runtime))
+    return ConversationChat(
+        DefaultConversationChatGateway(
+            executor,
+            runtime,
+            operation_factory,
+        )
+    )
+
+
+def create_conversation_title_workflow(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
+) -> ConversationTitleWorkflow:
+    from app.llm.conversation_operations import conversation_operations
+
+    return ConversationTitleWorkflow(
+        executor=executor,
+        generator=conversation_operations,
+        operation_factory=operation_factory,
+    )
+
+
+def create_citation_workflow(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
+) -> CitationWorkflow:
+    from app.bootstrap.adapters.citation_provider import CitationMetadataProvider
+
+    return CitationWorkflow(
+        executor=executor,
+        provider=CitationMetadataProvider(),
+        operation_factory=operation_factory,
+    )
+
+
+def create_paper_discovery_workflow(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    settings: AppSettings,
+    operation_factory: OperationContextFactory,
+) -> PaperDiscoveryWorkflow:
+    from app.bootstrap.container import build_external_paper_discovery
+
+    return PaperDiscoveryWorkflow(
+        executor=executor,
+        external=build_external_paper_discovery(
+            cursor_secret=settings.paper_search_cursor_secret,
+        ),
+        operation_factory=operation_factory,
+    )
 
 
 def create_workspace_tooling(
     *,
     executor: ApplicationExecutor[ApplicationCapabilities],
     ingestion: PaperIngestionWorkflow,
+    citations: CitationWorkflow,
 ) -> tuple[
     ToolCatalog[ApplicationCapabilities],
     ToolDispatcher[ApplicationCapabilities],
 ]:
     from app.tooling.workspace import build_workspace_tool_catalog
 
-    catalog = build_workspace_tool_catalog(ingestion=ingestion)
+    catalog = build_workspace_tool_catalog(
+        ingestion=ingestion,
+        citations=citations,
+    )
     return catalog, ToolDispatcher(catalog=catalog, executor=executor)
 
 
@@ -68,8 +131,13 @@ def create_conversation_agent_runtime(
     *,
     catalog: ToolCatalog[ApplicationCapabilities],
     dispatcher: ToolDispatcher[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
 ) -> ConversationAgentRuntime:
-    return ConversationAgentRuntime(catalog=catalog, dispatcher=dispatcher)
+    return ConversationAgentRuntime(
+        catalog=catalog,
+        dispatcher=dispatcher,
+        operation_factory=operation_factory,
+    )
 
 
 def create_mcp_transport(
@@ -78,6 +146,7 @@ def create_mcp_transport(
     catalog: ToolCatalog[ApplicationCapabilities],
     dispatcher: ToolDispatcher[ApplicationCapabilities],
     executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
 ) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
     async def authenticate(token: str) -> AuthenticatedAccessKey:
         return await asyncio.to_thread(
@@ -101,6 +170,7 @@ def create_mcp_transport(
             allowed_origins=allowed_origins,
         ),
         authenticate=authenticate,
+        operation_factory=operation_factory,
     )
 
 
@@ -110,47 +180,115 @@ def create_onboarding_finisher() -> FinishOnboarding:
     return build_finish_onboarding()
 
 
-def create_stripe_webhook_processor() -> ProcessStripeWebhook:
-    from app.bootstrap.adapters.stripe_webhook_adapter import StripeWebhookAdapter
+def create_billing_workflow(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
+) -> BillingWorkflow:
+    from app.modules.billing.infrastructure.application_gateway import (
+        EmailBillingNotifier,
+        PostHogBillingEvents,
+        StripePaymentProvider,
+    )
 
-    return ProcessStripeWebhook(StripeWebhookAdapter(SessionLocal))
+    return BillingWorkflow(
+        executor=executor,
+        payments=StripePaymentProvider(),
+        events=PostHogBillingEvents(),
+        notifier=EmailBillingNotifier(),
+        operation_factory=operation_factory,
+    )
+
+
+def create_stripe_webhook_processor(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
+) -> ProcessStripeWebhook:
+    from app.bootstrap.adapters.stripe_webhook import StripeWebhookWorkflow
+    from app.database.database import engine
+    from app.modules.billing.infrastructure.application_gateway import (
+        EmailBillingNotifier,
+        PostHogBillingEvents,
+    )
+    from app.modules.billing.infrastructure.config import STRIPE_WEBHOOK_SECRET
+
+    return StripeWebhookWorkflow(
+        executor=executor,
+        session_factory=SessionLocal,
+        engine=engine,
+        operation_factory=operation_factory,
+        events=PostHogBillingEvents(),
+        notifier=EmailBillingNotifier(),
+        webhook_secret=STRIPE_WEBHOOK_SECRET,
+    )
 
 
 def create_paper_ingestion_workflow(
     executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
 ) -> PaperIngestionWorkflow:
     from app.bootstrap.container import build_pdf_url_source
 
     return PaperIngestionWorkflow(
         executor=executor,
         url_source=build_pdf_url_source(),
+        operation_factory=operation_factory,
     )
 
 
 def create_research_generation_workflow(
     executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
 ) -> ResearchGenerationWorkflow:
     from app.bootstrap.container import build_generation_capacity
 
     return ResearchGenerationWorkflow(
         executor=executor,
         capacity=build_generation_capacity(),
+        operation_factory=operation_factory,
     )
 
 
 def create_zotero_workflow(
     executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
 ) -> ZoteroWorkflow:
     from app.bootstrap.adapters.zotero_operations import DefaultZoteroOperations
 
     return ZoteroWorkflow(
         executor=executor,
-        operations=DefaultZoteroOperations(SessionLocal),
+        operations=DefaultZoteroOperations(),
+        operation_factory=operation_factory,
     )
 
 
-def create_job_completion_processor() -> JobCompletionProcessor:
-    return JobCompletionProcessor(SessionLocal)
+def create_job_completion_processor(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    operation_factory: OperationContextFactory,
+) -> JobCompletionProcessor:
+    from app.bootstrap.adapters.citation_provider import CitationMetadataProvider
+    from app.bootstrap.adapters.document_job_callbacks import (
+        SqlAlchemyPdfPostprocessReader,
+    )
+    from app.bootstrap.adapters.zotero_operations import DefaultZoteroOperations
+
+    return JobCompletionProcessor(
+        session_factory=SessionLocal,
+        executor=executor,
+        operation_factory=operation_factory,
+        pdf_postprocess=PdfPostprocessWorkflow(
+            executor=executor,
+            reader=SqlAlchemyPdfPostprocessReader(SessionLocal),
+            provider=CitationMetadataProvider(),
+            operation_factory=operation_factory,
+        ),
+        zotero_postprocess=ZoteroPostprocessWorkflow(
+            executor=executor,
+            operations=DefaultZoteroOperations(),
+            operation_factory=operation_factory,
+        ),
+    )
 
 
 def get_application_executor(
@@ -162,8 +300,33 @@ def get_application_executor(
     )
 
 
+def get_operation_context_factory(request: Request) -> OperationContextFactory:
+    return cast(
+        OperationContextFactory,
+        request.app.state.operation_context_factory,
+    )
+
+
 def get_conversation_chat(request: Request) -> ConversationChat:
     return cast(ConversationChat, request.app.state.conversation_chat)
+
+
+def get_conversation_title_workflow(request: Request) -> ConversationTitleWorkflow:
+    return cast(
+        ConversationTitleWorkflow,
+        request.app.state.conversation_title_workflow,
+    )
+
+
+def get_citation_workflow(request: Request) -> CitationWorkflow:
+    return cast(CitationWorkflow, request.app.state.citation_workflow)
+
+
+def get_paper_discovery_workflow(request: Request) -> PaperDiscoveryWorkflow:
+    return cast(
+        PaperDiscoveryWorkflow,
+        request.app.state.paper_discovery_workflow,
+    )
 
 
 def get_tool_catalog(

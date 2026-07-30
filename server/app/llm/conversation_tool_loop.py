@@ -25,10 +25,16 @@ from app.modules.conversations.application.contracts.messages import (
     ToolRunState,
     ToolResultCompactionResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import (
+    Actor,
+    ApplicationExecutor,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+)
 from app.modules.conversations.application.chat import ConversationChatScope
 from app.shared.domain import AppError
-from app.tooling import ToolAccess, ToolCallContext, ToolCatalog, ToolDispatcher
+from app.tooling import ToolAccess, ToolExecutionContext, ToolCatalog, ToolDispatcher
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 
 logger = logging.getLogger(__name__)
@@ -86,10 +92,12 @@ class ConversationToolLoop(BaseLLMClient):
         *,
         catalog: ToolCatalog[ApplicationCapabilities],
         dispatcher: ToolDispatcher[ApplicationCapabilities],
+        operation_factory: OperationContextFactory,
     ) -> None:
         super().__init__()
         self._catalog = catalog
         self._dispatcher = dispatcher
+        self._operation_factory = operation_factory
 
     async def run_tools(
         self,
@@ -100,12 +108,16 @@ class ConversationToolLoop(BaseLLMClient):
         conversation_id: uuid.UUID,
         turn_id: uuid.UUID,
         client_ip: str,
+        request_operation: OperationContext,
+        turn_correlation_id: uuid.UUID,
+        user_operation_id: uuid.UUID,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Use the shared catalog to gather evidence or perform requested actions."""
         conversation_history = executor.query(
             lambda capabilities: capabilities.conversation_chat_data.history(
                 actor=current_user,
                 conversation_id=conversation_id,
+                exclude_turn_id=turn_id,
             )
         )
 
@@ -269,18 +281,22 @@ class ConversationToolLoop(BaseLLMClient):
                     self._dispatcher.dispatch(
                         name=tool_name,
                         raw_arguments=tool_arguments,
-                        context=ToolCallContext(
+                        context=ToolExecutionContext(
                             actor=current_user,
+                            operation=self._operation_factory.resume(
+                                correlation_id=turn_correlation_id,
+                                causation_id=user_operation_id,
+                                initiated_by=OperationInitiator.AGENT,
+                                origin=request_operation.origin,
+                                credential=request_operation.credential,
+                            ),
                             paper_collection=conversation_scope.paper_context,
                             anchor_document_id=conversation_scope.document_id,
-                            source="conversation",
                             invocation_id=(
                                 f"conversation:{conversation_id}:{turn_id}:"
                                 f"{hashlib.sha256(call_signature.encode()).hexdigest()}"
                             ),
                             client_ip=client_ip,
-                            conversation_id=conversation_id,
-                            turn_id=turn_id,
                         ),
                         access=tool_access,
                     )
@@ -381,17 +397,21 @@ class ConversationToolLoop(BaseLLMClient):
                         outcome = await self._dispatcher.dispatch(
                             name="search_papers",
                             raw_arguments={"query": keyword},
-                            context=ToolCallContext(
+                            context=ToolExecutionContext(
                                 actor=current_user,
+                                operation=self._operation_factory.resume(
+                                    correlation_id=turn_correlation_id,
+                                    causation_id=user_operation_id,
+                                    initiated_by=OperationInitiator.AGENT,
+                                    origin=request_operation.origin,
+                                    credential=request_operation.credential,
+                                ),
                                 paper_collection=conversation_scope.paper_context,
                                 anchor_document_id=conversation_scope.document_id,
-                                source="conversation",
                                 invocation_id=(
                                     f"conversation:{conversation_id}:{turn_id}:fallback"
                                 ),
                                 client_ip=client_ip,
-                                conversation_id=conversation_id,
-                                turn_id=turn_id,
                             ),
                             access=tool_access,
                         )

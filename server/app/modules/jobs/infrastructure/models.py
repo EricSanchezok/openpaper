@@ -51,6 +51,16 @@ class DurableJob(Base):
         default=uuid.uuid4,
     )
     operation: Mapped[str] = mapped_column(String(40), nullable=False)
+    correlation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    origin_operation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
     requested_by_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("auth.users.id", ondelete="SET NULL"),
@@ -114,7 +124,7 @@ class JobDispatch(Base):
     __tablename__ = "job_dispatches"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'published')",
+            "status IN ('pending', 'publishing', 'published')",
             name="ck_job_dispatches_status",
         ),
         Index(

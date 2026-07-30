@@ -10,16 +10,23 @@ from app.database.telemetry import track_event
 from app.helpers.email import notify_converted_billing_interval
 from app.modules.billing.application.contracts import UsageResponse
 from app.modules.billing.application.ports import (
+    BillingEvent,
     BillingEvents,
+    BillingIssueNotification,
+    BillingNotification,
     BillingNotifier,
     BillingPaymentFailed,
     BillingProviderUnavailable,
+    CancellationConfirmedNotification,
+    IntervalChangeScheduledNotification,
     PaymentProvider,
     ProviderCheckoutSession,
     ProviderSchedule,
     ProviderSubscription,
     SubscriptionRecord,
     SubscriptionStore,
+    SubscriptionWelcomeNotification,
+    SubscriptionWriteResult,
     UsageReader,
 )
 from app.modules.billing.infrastructure.config import YOUR_DOMAIN
@@ -33,7 +40,9 @@ from sqlalchemy.orm import Session
 
 def _record(model: Any) -> SubscriptionRecord:
     return SubscriptionRecord(
+        id=model.id,
         user_id=int(model.user_id),
+        plan=str(model.plan),
         stripe_customer_id=model.stripe_customer_id,
         stripe_subscription_id=model.stripe_subscription_id,
         stripe_price_id=model.stripe_price_id,
@@ -53,23 +62,50 @@ class SqlAlchemySubscriptionStore(SubscriptionStore):
         model = subscription_repository.get_by_user_id(self._db, user_id)
         return _record(model) if model else None
 
-    def save(self, user_id: int, **changes: object) -> SubscriptionRecord:
-        model = subscription_repository.create_or_update(self._db, user_id, changes)
-        return _record(model)
-
-    def refresh_from_provider(
-        self, provider_subscription: ProviderSubscription
-    ) -> SubscriptionRecord | None:
-        model = subscription_repository.update_subscription_status(
+    def get_by_customer_id(self, customer_id: str) -> SubscriptionRecord | None:
+        model = subscription_repository.get_by_stripe_customer_id(
             self._db,
-            provider_subscription.subscription_id,
-            provider_subscription.status,
-            stripe_price_id=provider_subscription.price_id,
-            period_start=provider_subscription.current_period_start,
-            period_end=provider_subscription.current_period_end,
-            cancel_at_period_end=provider_subscription.cancel_at_period_end,
+            customer_id,
         )
         return _record(model) if model else None
+
+    def get_by_subscription_id(
+        self,
+        subscription_id: str,
+    ) -> SubscriptionRecord | None:
+        model = subscription_repository.get_by_stripe_subscription_id(
+            self._db,
+            subscription_id,
+        )
+        return _record(model) if model else None
+
+    def save(self, user_id: int, **changes: object) -> SubscriptionWriteResult:
+        existing = subscription_repository.get_by_user_id(self._db, user_id)
+        if existing is not None:
+            applied = {
+                key: value
+                for key, value in changes.items()
+                if getattr(existing, key) != value
+            }
+            if not applied:
+                return SubscriptionWriteResult(
+                    record=_record(existing),
+                    changed=False,
+                )
+            model = subscription_repository.create_or_update(
+                self._db,
+                user_id,
+                applied,
+            )
+            return SubscriptionWriteResult(
+                record=_record(model),
+                changed=True,
+            )
+        model = subscription_repository.create_or_update(self._db, user_id, changes)
+        return SubscriptionWriteResult(
+            record=_record(model),
+            changed=True,
+        )
 
 
 class StripePaymentProvider(PaymentProvider):
@@ -296,24 +332,48 @@ class SqlAlchemyUsageReader(UsageReader):
 
 
 class PostHogBillingEvents(BillingEvents):
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def record(
-        self, event_name: str, *, actor: Actor, properties: dict[str, object]
-    ) -> None:
+    def record(self, event: BillingEvent) -> None:
         track_event(
-            event_name=event_name,
-            properties=properties,
-            user_id=str(actor.id),
-            db=self._db,
+            event_name=event.name,
+            properties=dict(event.properties),
+            user_id=str(event.actor_id) if event.actor_id is not None else None,
         )
 
 
 class EmailBillingNotifier(BillingNotifier):
-    def interval_change_scheduled(self, *, actor: Actor, new_interval: str) -> None:
-        notify_converted_billing_interval(
-            email=actor.email,
-            new_interval=new_interval,
-            name=actor.display_name,
-        )
+    def send(self, notification: BillingNotification) -> None:
+        if isinstance(notification, IntervalChangeScheduledNotification):
+            notify_converted_billing_interval(
+                email=notification.email,
+                new_interval=notification.new_interval,
+                name=notification.display_name,
+            )
+            return
+        if isinstance(notification, SubscriptionWelcomeNotification):
+            from app.helpers.email import send_subscription_welcome_email
+
+            send_subscription_welcome_email(notification.email)
+            return
+        if isinstance(notification, CancellationConfirmedNotification):
+            from app.helpers.email import send_confirmation_cancellation_email
+
+            first_name = (
+                notification.display_name.split(" ")[0]
+                if notification.display_name
+                else None
+            )
+            send_confirmation_cancellation_email(
+                to_email=notification.email,
+                name=first_name,
+            )
+            return
+        if isinstance(notification, BillingIssueNotification):
+            from app.helpers.email import notify_billing_issue
+
+            notify_billing_issue(
+                notification.email,
+                notification.issue,
+                notification.display_name,
+            )
+            return
+        raise TypeError(f"Unsupported billing notification: {type(notification)!r}")

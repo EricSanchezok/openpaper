@@ -14,8 +14,14 @@ from app.modules.identity.domain import (
     require_administrator,
     require_product_access,
 )
-from app.shared.application import Actor
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
+from app.shared.application import Actor, OperationContext
 from app.shared.domain import AppError, FailureKind
+
+IDENTITY_PROFILE_CREATED = OperationAction("identity.profile_created")
+IDENTITY_ACCOUNT_BLOCKED = OperationAction("identity.account_blocked")
+IDENTITY_ACCOUNT_UNBLOCKED = OperationAction("identity.account_unblocked")
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +41,12 @@ class IdentityProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class IdentityProfileResolution:
+    profile: IdentityProfile
+    created: bool
+
+
+@dataclass(frozen=True, slots=True)
 class LocalIdentity:
     id: int
     email: str
@@ -44,8 +56,14 @@ class LocalIdentity:
     profile: IdentityProfile
 
 
+@dataclass(frozen=True, slots=True)
+class BlockedStatusResolution:
+    profile_created: bool
+    changed: bool
+
+
 class IdentityGateway(Protocol):
-    def ensure_profile(self, *, user_id: int) -> IdentityProfile: ...
+    def resolve_profile(self, *, user_id: int) -> IdentityProfileResolution: ...
 
     def local_identity(self, *, user_id: int) -> LocalIdentity | None: ...
 
@@ -54,23 +72,42 @@ class IdentityGateway(Protocol):
         *,
         user_id: int,
         blocked: bool,
-    ) -> str | None: ...
+    ) -> BlockedStatusResolution | None: ...
 
 
 class Identity:
-    def __init__(self, gateway: IdentityGateway) -> None:
+    def __init__(
+        self,
+        gateway: IdentityGateway,
+        *,
+        journal: OperationJournal,
+    ) -> None:
         self._gateway = gateway
+        self._journal = journal
 
-    def resolve_actor(self, identity: AuthenticatedIdentity) -> Actor:
-        profile = self._gateway.ensure_profile(user_id=identity.id)
-        return self._actor(
+    def resolve_actor(
+        self,
+        identity: AuthenticatedIdentity,
+        *,
+        operation: OperationContext,
+    ) -> Actor:
+        resolution = self._gateway.resolve_profile(user_id=identity.id)
+        actor = self._actor(
             user_id=identity.id,
             email=identity.email,
             display_name=identity.display_name,
             status=identity.status,
             email_verified=identity.email_verified,
-            profile=profile,
+            profile=resolution.profile,
         )
+        if resolution.created:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=IDENTITY_PROFILE_CREATED,
+                resources=(ResourceRef("user", str(actor.id)),),
+            )
+        return actor
 
     def resolve_actor_by_user_id(self, user_id: int) -> Actor:
         identity = self._gateway.local_identity(user_id=user_id)
@@ -121,6 +158,7 @@ class Identity:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         user_id: int,
         request: SetUserBlockedRequest,
     ) -> SetUserBlockedResponse:
@@ -131,15 +169,34 @@ class Identity:
                 is_admin=actor.is_admin,
             )
         )
-        target_email = self._gateway.set_blocked(
+        resolution = self._gateway.set_blocked(
             user_id=user_id,
             blocked=request.blocked,
         )
-        if target_email is None:
+        if resolution is None:
             raise AppError(
                 code="user_not_found",
                 message="User not found",
                 kind=FailureKind.NOT_FOUND,
+            )
+        target = ResourceRef("user", str(user_id))
+        if resolution.profile_created:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=IDENTITY_PROFILE_CREATED,
+                resources=(target,),
+            )
+        if resolution.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=(
+                    IDENTITY_ACCOUNT_BLOCKED
+                    if request.blocked
+                    else IDENTITY_ACCOUNT_UNBLOCKED
+                ),
+                resources=(target,),
             )
         action = "blocked" if request.blocked else "unblocked"
         return SetUserBlockedResponse(

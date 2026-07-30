@@ -77,7 +77,7 @@ class SqlDiscoveryDocumentGateway:
             doi=document.doi,
         )
 
-    def set_doi(self, *, actor: Actor, document_id: UUID, doi: str) -> None:
+    def set_doi(self, *, actor: Actor, document_id: UUID, doi: str) -> bool:
         document = document_repository.find_accessible(
             self._db,
             document_id=document_id,
@@ -85,11 +85,15 @@ class SqlDiscoveryDocumentGateway:
         )
         if document is None:
             raise RuntimeError("accessible_document_disappeared")
+        self._db.refresh(document, with_for_update=True)
+        if document.doi == doi:
+            return False
         document_repository.update_canonical(
             self._db,
             document=document,
             update=DocumentUpdate(doi=doi),
         )
+        return True
 
 
 class AiExternalDiscoveryRateLimiter:
@@ -109,9 +113,6 @@ class AiExternalDiscoveryRateLimiter:
 
 
 class PostHogDiscoveryEventRecorder:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
     def record(
         self,
         *,
@@ -123,5 +124,4 @@ class PostHogDiscoveryEventRecorder:
             name,
             user_id=str(actor.id),
             properties=properties,
-            db=self._db,
         )

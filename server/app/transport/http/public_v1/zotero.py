@@ -1,5 +1,7 @@
 """HTTP adapters for the Zotero integration."""
 
+from uuid import uuid4
+
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.execution import get_application_executor, get_zotero_workflow
 from app.bootstrap.settings import AppSettings
@@ -12,9 +14,17 @@ from app.modules.integrations.zotero.application.contracts import (
     ZoteroStatusResponse,
     ZoteroSyncResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import (
+    Actor,
+    ApplicationExecutor,
+    OperationContext,
+    RequestReference,
+)
 from app.bootstrap.workflows.zotero import ZoteroWorkflow
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
@@ -25,9 +35,10 @@ zotero_oauth_router = APIRouter()
 @zotero_oauth_router.get("/connect", response_model=ZoteroConnectResponse)
 def zotero_connect(
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroConnectResponse:
-    return workflow.connect(actor=current_user)
+    return workflow.connect(actor=current_user, operation=operation)
 
 
 @zotero_oauth_router.get("/callback", response_class=RedirectResponse)
@@ -41,6 +52,7 @@ def zotero_callback(
     success = workflow.callback(
         oauth_token=oauth_token,
         oauth_verifier=oauth_verifier,
+        request=RequestReference(uuid4()),
     )
     state = "connected" if success else "error"
     return RedirectResponse(
@@ -67,12 +79,16 @@ def zotero_status(
 )
 def zotero_disconnect(
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
 ) -> Response:
     executor.command(
-        lambda capabilities: capabilities.zotero.disconnect(actor=current_user)
+        lambda capabilities: capabilities.zotero.disconnect(
+            actor=current_user,
+            operation=operation,
+        )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -94,10 +110,12 @@ async def zotero_import(
     request: ZoteroImportRequest,
     idempotency_key: str | None = Header(default=None, max_length=128),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroImportResponse:
     return await workflow.import_items(
         actor=current_user,
+        operation=operation,
         request=request,
         idempotency_key=idempotency_key,
     )
@@ -110,9 +128,10 @@ async def zotero_import(
 )
 async def zotero_sync(
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     workflow: ZoteroWorkflow = Depends(get_zotero_workflow),
 ) -> ZoteroSyncResponse:
-    return await workflow.sync(actor=current_user)
+    return await workflow.sync(actor=current_user, operation=operation)
 
 
 @zotero_router.get("/imports", response_model=ZoteroImportStatusListResponse)

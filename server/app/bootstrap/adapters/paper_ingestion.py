@@ -17,7 +17,9 @@ from app.helpers.ai_limits import release_concurrency_by_id
 from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.papers.application.ingestion import (
     FetchedPdf,
+    IngestionFinalization,
     IngestionReservation,
+    ReapedStaleIngestion,
 )
 from app.modules.papers.domain import content_sha256, durable_ingestion_key
 from app.bootstrap.adapters.document_submission import finalize_reserved_document
@@ -109,6 +111,8 @@ class SqlPaperIngestionGateway:
         self,
         *,
         actor: Actor,
+        correlation_id: UUID,
+        origin_operation_id: UUID,
         project_id: UUID | None,
         content: bytes,
         filename: str | None,
@@ -127,29 +131,53 @@ class SqlPaperIngestionGateway:
             )
             is not None
         )
-        reservation = reserve_upload(
+        reserved = reserve_upload(
             self._db,
             requester=actor,
+            correlation_id=correlation_id,
+            origin_operation_id=origin_operation_id,
             project_id=project_id,
             input_size_bytes=len(content),
             original_filename=filename,
             content_sha256=content_sha256(content),
             idempotency_key=idempotency_key,
         )
+        reservation = reserved.reservation
         replayed = (
             replayed
             or reservation.job.dispatch is not None
             or reservation.job.document_id is not None
         )
-        return IngestionReservation(job_id=reservation.id, replayed=replayed)
+        return IngestionReservation(
+            job_id=reservation.id,
+            replayed=replayed,
+            reaped_stale_uploads=tuple(
+                ReapedStaleIngestion(
+                    job_id=reaped.job_id,
+                    document_id=reaped.document_id,
+                    project_id=reaped.project_id,
+                    reference_removed=reaped.reference_removed,
+                    document_processing_failed=reaped.document_processing_failed,
+                    created_gc_job_id=reaped.created_gc_job_id,
+                )
+                for reaped in reserved.reaped_stale_uploads
+            ),
+        )
 
-    def fail(self, *, actor: Actor, job_id: UUID, error_code: str) -> None:
-        upload_reservation_repository.mark_as_failed(
-            db=self._db,
-            job_id=str(job_id),
+    def fail(self, *, actor: Actor, job_id: UUID, error_code: str) -> bool:
+        reservation = upload_reservation_repository.get(
+            self._db,
+            id=job_id,
             user=actor,
+        )
+        if reservation is None:
+            return False
+        _job, changed = job_repository.fail(
+            self._db,
+            job_id=job_id,
             error_code=error_code,
         )
+        return changed
 
     def finalize(
         self,
@@ -157,7 +185,7 @@ class SqlPaperIngestionGateway:
         actor: Actor,
         job_id: UUID,
         content: bytes,
-    ) -> str:
+    ) -> IngestionFinalization:
         reservation = upload_reservation_repository.get(
             self._db,
             id=job_id,

@@ -1,10 +1,6 @@
 import logging
-import uuid
 from collections.abc import Sequence
 
-from app.modules.conversations.infrastructure.message_repository import (
-    message_repository,
-)
 from app.llm.base import BaseLLMClient
 from app.llm.prompts import (
     NAME_DATA_TABLE_SYSTEM_PROMPT,
@@ -14,50 +10,12 @@ from app.llm.prompts import (
 )
 from app.llm.backend import TextContent
 from app.llm.backend import HistoryMessage
-from app.bootstrap.adapters.conversation_repository import conversation_repository
-from app.modules.conversations.application.contracts.conversations import (
-    ConversationUpdateRequest,
-)
-from app.shared.application import Actor
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
 class ConversationOperations(BaseLLMClient):
     """Operations related to conversations"""
-
-    def rename_conversation(
-        self,
-        conversation_id: str,
-        user: Actor,
-        db: Session,
-    ) -> str | None:
-        """
-        Rename a conversation based on its chat history
-        """
-        casted_uuid = uuid.UUID(conversation_id)
-        conversation = conversation_repository.require_owned(
-            db, conversation_id=casted_uuid, user_id=user.id
-        )
-
-        chat_history = message_repository.get_conversation_messages(
-            db, conversation_id=casted_uuid, user_id=user.id
-        )
-
-        new_title = self.generate_title(chat_history)
-        if new_title is None:
-            logger.warning(
-                f"Conversation with ID {conversation_id} has no messages. Cannot rename."
-            )
-            return None
-        conversation_repository.update(
-            db,
-            conversation_id=conversation.id,
-            user_id=user.id,
-            request=ConversationUpdateRequest(title=new_title),
-        )
-        return new_title
 
     def generate_title(
         self,

@@ -27,6 +27,14 @@ class ZoteroOAuthPending(Base):
     )
     oauth_token: Mapped[str] = mapped_column(String, nullable=False, index=True)
     oauth_token_secret: Mapped[str] = mapped_column(String, nullable=False)
+    correlation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    origin_operation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

@@ -1,12 +1,11 @@
-"""Authenticated router composition for Jobs callbacks."""
+"""Router composition for signed Jobs callbacks."""
 
-from app.transport.http.internal_v1.authentication import verify_jobs_webhook
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from .lifecycle import lifecycle_webhook_router
 from .terminal import terminal_router
 
-webhook_router = APIRouter(dependencies=[Depends(verify_jobs_webhook)])
+webhook_router = APIRouter()
 webhook_router.include_router(lifecycle_webhook_router)
 webhook_router.include_router(terminal_router)
 

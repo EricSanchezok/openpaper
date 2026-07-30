@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
-from typing import Literal
 from uuid import UUID
 
 from app.helpers.postgres import sanitize_for_postgres
-from app.database.models import Conversation, Message
+from app.database.models import Conversation, Message, RoleType
 from app.shared.domain import JsonValue
 from app.shared.domain import AppError, FailureKind
 from pydantic import BaseModel, ConfigDict
@@ -15,7 +14,10 @@ class MessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     conversation_id: UUID
-    role: Literal["user", "assistant"]
+    turn_id: UUID
+    created_operation_id: UUID
+    correlation_id: UUID
+    role: RoleType
     content: str
     references: dict[str, JsonValue] | None = None
     trace: dict[str, JsonValue] | None = None
@@ -25,6 +27,29 @@ class MessageCreate(BaseModel):
 
 class MessageRepository:
     """Persistence for messages owned through their parent Conversation."""
+
+    def lock_conversation(
+        self,
+        db: Session,
+        *,
+        conversation_id: UUID,
+        user_id: int,
+    ) -> Conversation:
+        conversation = db.scalar(
+            select(Conversation)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        if conversation is None:
+            raise AppError(
+                code="conversation_not_found",
+                message="Conversation not found",
+                kind=FailureKind.NOT_FOUND,
+            )
+        return conversation
 
     def create(
         self,
@@ -37,20 +62,11 @@ class MessageRepository:
         """Create a new message with auto-incrementing sequence number"""
         # Lock the owning conversation so concurrent streams cannot allocate the
         # same sequence number or attach a message to another user's chat.
-        conversation = db.scalar(
-            select(Conversation)
-            .where(
-                Conversation.id == request.conversation_id,
-                Conversation.user_id == user_id,
-            )
-            .with_for_update()
+        conversation = self.lock_conversation(
+            db,
+            conversation_id=request.conversation_id,
+            user_id=user_id,
         )
-        if conversation is None:
-            raise AppError(
-                code="conversation_not_found",
-                message="Conversation not found",
-                kind=FailureKind.NOT_FOUND,
-            )
 
         max_sequence = db.scalar(
             select(func.max(Message.sequence)).where(
@@ -75,6 +91,26 @@ class MessageRepository:
             db.flush()
         return db_obj
 
+    def find_turn_message(
+        self,
+        db: Session,
+        *,
+        conversation_id: UUID,
+        user_id: int,
+        turn_id: UUID,
+        role: RoleType,
+    ) -> Message | None:
+        return db.scalar(
+            select(Message)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                Message.conversation_id == conversation_id,
+                Conversation.user_id == user_id,
+                Message.turn_id == turn_id,
+                Message.role == role.value,
+            )
+        )
+
     def get_conversation_messages(
         self,
         db: Session,
@@ -83,6 +119,7 @@ class MessageRepository:
         user_id: int,
         page: int = 1,
         page_size: int = 10,
+        exclude_turn_id: UUID | None = None,
     ) -> list[Message]:
         """
         Get messages for a conversation:
@@ -90,7 +127,7 @@ class MessageRepository:
         2. Apply offset and limit
         3. Reverse final results for chronological display
         """
-        messages = db.scalars(
+        statement = (
             select(Message)
             .options(selectinload(Message.research_items))
             .join(Conversation, Conversation.id == Message.conversation_id)
@@ -101,7 +138,10 @@ class MessageRepository:
             .order_by(desc(Message.sequence))  # newest first for pagination
             .offset((page - 1) * page_size)
             .limit(page_size)
-        ).all()
+        )
+        if exclude_turn_id is not None:
+            statement = statement.where(Message.turn_id != exclude_turn_id)
+        messages = db.scalars(statement).all()
 
         # Reverse the results to get chronological order
         return list(reversed(messages))

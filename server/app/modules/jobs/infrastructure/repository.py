@@ -21,7 +21,7 @@ from app.modules.jobs.domain import (
     can_fail_job,
     can_recover_job,
 )
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,8 @@ from sqlalchemy.orm import Session
 class CreateJob:
     operation: JobOperation
     requested_by_id: int | None
+    correlation_id: uuid.UUID
+    origin_operation_id: uuid.UUID
     idempotency_key: str
     payload: dict[str, JsonValue]
     job_id: uuid.UUID | None = None
@@ -43,6 +45,22 @@ class EnqueueJob(CreateJob):
     queue: str = ""
     task_kwargs: dict[str, JsonValue] = field(default_factory=dict)
     available_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedJob:
+    job: DurableJob
+    created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReservedJobDispatch:
+    dispatch_id: uuid.UUID
+    job_id: uuid.UUID
+    task_name: str
+    queue: str
+    kwargs: dict[str, JsonValue]
+    attempt_count: int
 
 
 class JobRepository:
@@ -88,13 +106,15 @@ class JobRepository:
             ).all()
         )
 
-    def create(self, db: Session, *, request: CreateJob) -> DurableJob:
+    def create(self, db: Session, *, request: CreateJob) -> PersistedJob:
         job_id = request.job_id or uuid.uuid4()
         inserted_id = db.scalar(
             insert(DurableJob)
             .values(
                 id=job_id,
                 operation=request.operation.value,
+                correlation_id=request.correlation_id,
+                origin_operation_id=request.origin_operation_id,
                 requested_by_id=request.requested_by_id,
                 project_id=request.project_id,
                 document_id=request.document_id,
@@ -113,12 +133,12 @@ class JobRepository:
             )
             if existing is None:
                 raise RuntimeError("job_idempotency_lookup_failed")
-            return existing
+            return PersistedJob(job=existing, created=False)
 
         job = db.get(DurableJob, inserted_id)
         if job is None:
             raise RuntimeError("inserted_job_not_found")
-        return job
+        return PersistedJob(job=job, created=True)
 
     @staticmethod
     def add_dispatch(
@@ -141,8 +161,9 @@ class JobRepository:
         db.flush()
         return dispatch
 
-    def enqueue(self, db: Session, *, request: EnqueueJob) -> DurableJob:
-        job = self.create(db, request=request)
+    def enqueue(self, db: Session, *, request: EnqueueJob) -> PersistedJob:
+        persisted = self.create(db, request=request)
+        job = persisted.job
         if job.dispatch is None:
             self.add_dispatch(
                 db,
@@ -152,7 +173,7 @@ class JobRepository:
                 kwargs=request.task_kwargs,
                 available_at=request.available_at,
             )
-        return job
+        return persisted
 
     @staticmethod
     def require(db: Session, *, job_id: uuid.UUID) -> DurableJob:
@@ -326,23 +347,117 @@ class JobRepository:
         return job, True
 
     @staticmethod
-    def pending_dispatches(
+    def reserve_dispatches(
         db: Session,
         *,
         limit: int,
-    ) -> list[JobDispatch]:
-        return list(
+        lease: timedelta,
+    ) -> tuple[ReservedJobDispatch, ...]:
+        now = datetime.now(UTC)
+        dispatches = list(
             db.scalars(
                 select(JobDispatch)
                 .where(
-                    JobDispatch.status == JobDispatchStatus.PENDING.value,
-                    JobDispatch.available_at <= datetime.now(UTC),
+                    or_(
+                        and_(
+                            JobDispatch.status == JobDispatchStatus.PENDING.value,
+                            JobDispatch.available_at <= now,
+                        ),
+                        and_(
+                            JobDispatch.status == JobDispatchStatus.PUBLISHING.value,
+                            JobDispatch.available_at <= now,
+                        ),
+                    )
                 )
                 .order_by(JobDispatch.available_at, JobDispatch.id)
                 .limit(limit)
                 .with_for_update(skip_locked=True)
             ).all()
         )
+        reserved: list[ReservedJobDispatch] = []
+        for dispatch in dispatches:
+            dispatch.status = JobDispatchStatus.PUBLISHING.value
+            dispatch.attempt_count += 1
+            dispatch.available_at = now + lease
+            reserved.append(
+                ReservedJobDispatch(
+                    dispatch_id=dispatch.id,
+                    job_id=dispatch.job_id,
+                    task_name=dispatch.task_name,
+                    queue=dispatch.queue,
+                    kwargs=dict(dispatch.kwargs),
+                    attempt_count=dispatch.attempt_count,
+                )
+            )
+        db.flush()
+        return tuple(reserved)
+
+    @staticmethod
+    def complete_dispatch(
+        db: Session,
+        *,
+        dispatch_id: uuid.UUID,
+        attempt_count: int,
+    ) -> bool:
+        now = datetime.now(UTC)
+        changed = bool(
+            db.execute(
+                update(JobDispatch)
+                .where(
+                    JobDispatch.id == dispatch_id,
+                    JobDispatch.status == JobDispatchStatus.PUBLISHING.value,
+                    JobDispatch.attempt_count == attempt_count,
+                )
+                .values(
+                    status=JobDispatchStatus.PUBLISHED.value,
+                    published_at=now,
+                    available_at=now,
+                    last_error_code=None,
+                    last_error_detail=None,
+                )
+            ).rowcount
+        )
+        db.flush()
+        return changed
+
+    @staticmethod
+    def retry_dispatch(
+        db: Session,
+        *,
+        dispatch_id: uuid.UUID,
+        attempt_count: int,
+        available_at: datetime,
+        error_code: str,
+        error_detail: str,
+    ) -> bool:
+        changed = bool(
+            db.execute(
+                update(JobDispatch)
+                .where(
+                    JobDispatch.id == dispatch_id,
+                    JobDispatch.status == JobDispatchStatus.PUBLISHING.value,
+                    JobDispatch.attempt_count == attempt_count,
+                )
+                .values(
+                    status=JobDispatchStatus.PENDING.value,
+                    available_at=available_at,
+                    published_at=None,
+                    last_error_code=error_code,
+                    last_error_detail=error_detail,
+                )
+            ).rowcount
+        )
+        db.flush()
+        return changed
 
 
 job_repository = JobRepository()
+
+__all__ = [
+    "CreateJob",
+    "EnqueueJob",
+    "JobRepository",
+    "PersistedJob",
+    "ReservedJobDispatch",
+    "job_repository",
+]

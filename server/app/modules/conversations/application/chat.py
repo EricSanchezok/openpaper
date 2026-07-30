@@ -11,11 +11,20 @@ from uuid import UUID
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
 )
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import (
+    OperationAction,
+    OperationChange,
+    ResourceRef,
+)
 from app.modules.papers.application.contracts.search import PaperCollection
-from app.shared.application import Actor
+from app.shared.application import Actor, OperationContext
 from app.shared.domain import JsonValue, WorkspacePermission
 from app.shared.domain.enums import ConversationScopeType
 from app.shared.domain.enums import ReasoningLevel
+
+CONVERSATION_MESSAGE_CREATED = OperationAction("conversation.message_created")
+RESEARCH_CITATION_CREATED = OperationAction("research.citation_created")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +74,30 @@ class ConversationContextSnapshot:
     available_document_count: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class PersistedChatMessage:
+    id: UUID
+    content: str
+    references: dict[str, JsonValue] | None
+    trace: dict[str, JsonValue] | None
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationTurnStart:
+    user_message_id: UUID
+    user_operation_id: UUID
+    correlation_id: UUID
+    created: bool
+    assistant: PersistedChatMessage | None
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationTurnCompletion:
+    assistant: PersistedChatMessage
+    created: bool
+    citation_ids: tuple[UUID, ...]
+
+
 class ConversationChatDataGateway(Protocol):
     def prepare(
         self,
@@ -78,6 +111,7 @@ class ConversationChatDataGateway(Protocol):
         *,
         actor: Actor,
         conversation_id: UUID,
+        exclude_turn_id: UUID | None,
     ) -> list[ChatHistoryMessage]: ...
 
     def context(
@@ -102,34 +136,45 @@ class ConversationChatDataGateway(Protocol):
         request: ConversationMessageRequest,
     ) -> MentionScope: ...
 
-    def save_turn(
+    def start_turn(
         self,
         *,
         actor: Actor,
         conversation_id: UUID,
+        turn_id: UUID,
         user_content: str,
         user_references: dict[str, JsonValue] | None,
         scope: list[dict[str, JsonValue]] | None,
+        created_operation_id: UUID,
+        correlation_id: UUID,
+    ) -> ConversationTurnStart: ...
+
+    def complete_turn(
+        self,
+        *,
+        actor: Actor,
+        conversation_id: UUID,
+        turn_id: UUID,
         assistant_content: str,
         assistant_references: dict[str, JsonValue] | None,
         assistant_trace: dict[str, JsonValue] | None,
         artifacts: list[dict[str, JsonValue]],
-    ) -> None: ...
-
-    def rename(
-        self,
-        *,
-        actor: Actor,
-        conversation_id: UUID,
-        title: str,
-    ) -> None: ...
+        created_operation_id: UUID,
+        correlation_id: UUID,
+    ) -> ConversationTurnCompletion: ...
 
 
 class ConversationChatData:
     """Short-transaction persistence boundary used by the streaming workflow."""
 
-    def __init__(self, gateway: ConversationChatDataGateway) -> None:
+    def __init__(
+        self,
+        gateway: ConversationChatDataGateway,
+        *,
+        journal: OperationJournal,
+    ) -> None:
         self._gateway = gateway
+        self._journal = journal
 
     def prepare(
         self,
@@ -144,8 +189,13 @@ class ConversationChatData:
         *,
         actor: Actor,
         conversation_id: UUID,
+        exclude_turn_id: UUID | None = None,
     ) -> list[ChatHistoryMessage]:
-        return self._gateway.history(actor=actor, conversation_id=conversation_id)
+        return self._gateway.history(
+            actor=actor,
+            conversation_id=conversation_id,
+            exclude_turn_id=exclude_turn_id,
+        )
 
     def context(
         self,
@@ -179,43 +229,85 @@ class ConversationChatData:
             request=request,
         )
 
-    def save_turn(
+    def start_turn(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
+        turn_id: UUID,
         user_content: str,
         user_references: dict[str, JsonValue] | None,
         scope: list[dict[str, JsonValue]] | None,
+    ) -> ConversationTurnStart:
+        result = self._gateway.start_turn(
+            actor=actor,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            user_content=user_content,
+            user_references=user_references,
+            scope=scope,
+            created_operation_id=operation.trace.operation_id,
+            correlation_id=operation.trace.correlation_id,
+        )
+        if result.created:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=CONVERSATION_MESSAGE_CREATED,
+                resources=(
+                    ResourceRef("conversation", str(conversation_id)),
+                    ResourceRef("message", str(result.user_message_id)),
+                ),
+            )
+        return result
+
+    def complete_turn(
+        self,
+        *,
+        actor: Actor,
+        operation: OperationContext,
+        conversation_id: UUID,
+        turn_id: UUID,
         assistant_content: str,
         assistant_references: dict[str, JsonValue] | None,
         assistant_trace: dict[str, JsonValue] | None,
         artifacts: list[dict[str, JsonValue]],
-    ) -> None:
-        self._gateway.save_turn(
+    ) -> ConversationTurnCompletion:
+        result = self._gateway.complete_turn(
             actor=actor,
             conversation_id=conversation_id,
-            user_content=user_content,
-            user_references=user_references,
-            scope=scope,
+            turn_id=turn_id,
             assistant_content=assistant_content,
             assistant_references=assistant_references,
             assistant_trace=assistant_trace,
             artifacts=artifacts,
+            created_operation_id=operation.trace.operation_id,
+            correlation_id=operation.trace.correlation_id,
         )
-
-    def rename(
-        self,
-        *,
-        actor: Actor,
-        conversation_id: UUID,
-        title: str,
-    ) -> None:
-        self._gateway.rename(
-            actor=actor,
-            conversation_id=conversation_id,
-            title=title,
-        )
+        if result.created:
+            changes = [
+                OperationChange(
+                    action=CONVERSATION_MESSAGE_CREATED,
+                    resources=(
+                        ResourceRef("conversation", str(conversation_id)),
+                        ResourceRef("message", str(result.assistant.id)),
+                    ),
+                )
+            ]
+            changes.extend(
+                OperationChange(
+                    action=RESEARCH_CITATION_CREATED,
+                    resources=(ResourceRef("research_item", str(citation_id)),),
+                )
+                for citation_id in result.citation_ids
+            )
+            self._journal.append_many(
+                actor=actor,
+                operation=operation,
+                changes=changes,
+            )
+        return result
 
 
 class ConversationChatGateway(Protocol):
@@ -223,6 +315,7 @@ class ConversationChatGateway(Protocol):
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
         request: ConversationMessageRequest,
         client_ip: str,
@@ -237,12 +330,14 @@ class ConversationChat:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
         request: ConversationMessageRequest,
         client_ip: str,
     ) -> AsyncIterator[str]:
         return await self._gateway.stream(
             actor=actor,
+            operation=operation,
             conversation_id=conversation_id,
             request=request,
             client_ip=client_ip,

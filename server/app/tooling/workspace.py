@@ -6,12 +6,14 @@ Agent and MCP transports only render or dispatch this catalog.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import cast
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
+from app.bootstrap.workflows.citation import CitationWorkflow
 from app.modules.jobs.application.contracts import JobResponse
 from app.modules.papers.application.contracts.documents import (
     DocumentMetadataOverrides,
@@ -41,10 +43,10 @@ from app.shared.domain import (
     JsonValue,
     WorkspacePermission,
 )
-from app.shared.domain.enums import JobOperation, PaperStatus
+from app.shared.domain.enums import JobOperation, PaperStatus, RoleType
 from app.tooling.catalog import ToolCatalog, ToolProfile
 from app.tooling.contracts import (
-    ToolCallContext,
+    ToolExecutionContext,
     ToolDefinition,
     ToolExecutionKind,
     ToolOutcome,
@@ -64,7 +66,7 @@ def _json(value: object) -> JsonValue:
 
 def _require_paper(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     document_id: UUID,
 ) -> None:
     capabilities.paper_collection_access(
@@ -195,7 +197,7 @@ class JobInput(BaseModel):
 
 def _search_papers(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = SearchPapersInput.model_validate(arguments)
@@ -220,7 +222,7 @@ def _search_papers(
 
 def _get_paper(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -237,7 +239,7 @@ def _get_paper(
 
 def _paper_content(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     document_id: UUID,
 ) -> tuple[str | None, str | None, str | None]:
     _require_paper(capabilities, context, document_id)
@@ -250,7 +252,7 @@ def _paper_content(
 
 def _get_paper_abstract(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -272,7 +274,7 @@ def _get_paper_abstract(
 
 def _get_paper_content(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -294,7 +296,7 @@ def _get_paper_content(
 
 def _search_paper_content(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = SearchPaperContentInput.model_validate(arguments)
@@ -312,7 +314,7 @@ def _search_paper_content(
 
 def _get_paper_content_range(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = PaperContentRangeInput.model_validate(arguments)
@@ -350,25 +352,9 @@ def _get_paper_content_range(
     )
 
 
-def _get_paper_citation(
-    capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
-    arguments: BaseModel,
-) -> ToolOutcome:
-    parsed = PaperCitationInput.model_validate(arguments)
-    _require_paper(capabilities, context, parsed.document_id)
-    citation = capabilities.citations(
-        actor=context.actor,
-        document_id=parsed.document_id,
-        style=parsed.style,
-    )
-    payload = cast(dict[str, JsonValue], _json(citation))
-    return ToolOutcome(payload=payload, artifacts=[payload])
-
-
 def _get_paper_download_url(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -385,7 +371,7 @@ def _get_paper_download_url(
 
 def _list_projects(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = ListProjectsInput.model_validate(arguments)
@@ -398,7 +384,7 @@ def _list_projects(
 
 def _get_project(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = ProjectInput.model_validate(arguments)
@@ -414,11 +400,15 @@ def _get_project(
 
 def _create_project(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     request = ProjectCreateRequest.model_validate(arguments.model_dump())
-    result = capabilities.projects.create(actor=context.actor, request=request)
+    result = capabilities.projects.create(
+        actor=context.actor,
+        operation=context.operation,
+        request=request,
+    )
     payload = _json(result)
     return ToolOutcome(
         payload=payload,
@@ -428,12 +418,13 @@ def _create_project(
 
 def _update_project(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = UpdateProjectInput.model_validate(arguments)
     result = capabilities.projects.update(
         actor=context.actor,
+        operation=context.operation,
         project_id=parsed.project_id,
         request=ProjectUpdateRequest.model_validate(
             parsed.model_dump(exclude={"project_id"})
@@ -448,11 +439,15 @@ def _update_project(
 
 def _delete_project(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = ProjectInput.model_validate(arguments)
-    capabilities.projects.delete(actor=context.actor, project_id=parsed.project_id)
+    capabilities.projects.delete(
+        actor=context.actor,
+        operation=context.operation,
+        project_id=parsed.project_id,
+    )
     payload: dict[str, JsonValue] = {
         "deleted": True,
         "project_id": str(parsed.project_id),
@@ -462,7 +457,7 @@ def _delete_project(
 
 def _list_project_papers(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = ProjectInput.model_validate(arguments)
@@ -479,12 +474,13 @@ def _list_project_papers(
 
 def _add_papers_to_project(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = AddPapersToProjectInput.model_validate(arguments)
     result = capabilities.projects.add_documents(
         actor=context.actor,
+        operation=context.operation,
         project_id=parsed.project_id,
         request=AddPaperToProjectRequest(document_ids=parsed.document_ids),
     )
@@ -501,12 +497,13 @@ def _add_papers_to_project(
 
 def _remove_paper_from_project(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = ProjectPaperInput.model_validate(arguments)
     capabilities.projects.remove_document(
         actor=context.actor,
+        operation=context.operation,
         project_id=parsed.project_id,
         document_id=parsed.document_id,
     )
@@ -520,7 +517,7 @@ def _remove_paper_from_project(
 
 def _list_paper_projects(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -536,7 +533,7 @@ def _list_paper_projects(
 
 def _list_library_papers(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     del arguments
@@ -547,7 +544,7 @@ def _list_library_papers(
 
 def _get_library_paper(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -563,12 +560,13 @@ def _get_library_paper(
 
 def _update_library_paper(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = UpdateLibraryPaperInput.model_validate(arguments)
     result = capabilities.paper_library.update(
         actor=context.actor,
+        operation=context.operation,
         document_id=parsed.document_id,
         request=LibraryPaperUpdateRequest(
             status=parsed.status,
@@ -584,12 +582,13 @@ def _update_library_paper(
 
 def _remove_library_paper(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
     capabilities.paper_library.remove(
         actor=context.actor,
+        operation=context.operation,
         document_id=parsed.document_id,
     )
     payload: dict[str, JsonValue] = {
@@ -601,12 +600,13 @@ def _remove_library_paper(
 
 def _collect_project_paper_to_library(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = CollectProjectPaperInput.model_validate(arguments)
     result = capabilities.projects.collect_document(
         actor=context.actor,
+        operation=context.operation,
         request=CollectPaperFromProjectRequest(
             source_project_id=parsed.source_project_id,
             document_id=parsed.document_id,
@@ -621,7 +621,7 @@ def _collect_project_paper_to_library(
 
 def _list_highlights(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DocumentInput.model_validate(arguments)
@@ -639,7 +639,7 @@ def _list_highlights(
 
 def _create_highlight(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = CreateHighlightInput.model_validate(arguments)
@@ -649,6 +649,8 @@ def _create_highlight(
     )
     result = capabilities.research_items.create_highlight(
         actor=context.actor,
+        operation=context.operation,
+        content_role=RoleType.ASSISTANT,
         document_id=parsed.document_id,
         request=request,
     )
@@ -661,12 +663,13 @@ def _create_highlight(
 
 def _update_highlight(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = UpdateHighlightInput.model_validate(arguments)
     result = capabilities.research_items.update_highlight(
         actor=context.actor,
+        operation=context.operation,
         thread_id=parsed.highlight_id,
         request=UpdateHighlightThreadRequest.model_validate(
             parsed.model_dump(exclude={"highlight_id"})
@@ -681,12 +684,13 @@ def _update_highlight(
 
 def _delete_highlight(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = DeleteHighlightInput.model_validate(arguments)
     capabilities.research_items.delete_highlight(
         actor=context.actor,
+        operation=context.operation,
         thread_id=parsed.highlight_id,
         request=DeleteHighlightThreadRequest(
             confirm_delete_replies=parsed.delete_annotations
@@ -701,12 +705,14 @@ def _delete_highlight(
 
 def _create_annotation_comment(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = CreateAnnotationCommentInput.model_validate(arguments)
     result = capabilities.research_items.create_comment(
         actor=context.actor,
+        operation=context.operation,
+        content_role=RoleType.ASSISTANT,
         thread_id=parsed.highlight_id,
         request=CreateAnnotationCommentRequest(content=parsed.content),
     )
@@ -719,12 +725,13 @@ def _create_annotation_comment(
 
 def _update_annotation_comment(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = UpdateAnnotationCommentInput.model_validate(arguments)
     result = capabilities.research_items.update_comment(
         actor=context.actor,
+        operation=context.operation,
         comment_id=parsed.annotation_id,
         request=UpdateAnnotationCommentRequest(content=parsed.content),
     )
@@ -737,12 +744,13 @@ def _update_annotation_comment(
 
 def _delete_annotation_comment(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = AnnotationInput.model_validate(arguments)
     capabilities.research_items.delete_comment(
         actor=context.actor,
+        operation=context.operation,
         comment_id=parsed.annotation_id,
     )
     payload: dict[str, JsonValue] = {
@@ -754,7 +762,7 @@ def _delete_annotation_comment(
 
 def _list_jobs(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = ListJobsInput.model_validate(arguments)
@@ -773,7 +781,7 @@ def _list_jobs(
 
 def _get_job(
     capabilities: ApplicationCapabilities,
-    context: ToolCallContext,
+    context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = JobInput.model_validate(arguments)
@@ -787,9 +795,29 @@ def _get_job(
 def build_workspace_tool_catalog(
     *,
     ingestion: PaperIngestionWorkflow,
+    citations: CitationWorkflow,
 ) -> ToolCatalog[ApplicationCapabilities]:
+    async def get_paper_citation(
+        context: ToolExecutionContext,
+        arguments: BaseModel,
+        invocation_key: str,
+    ) -> ToolOutcome:
+        del invocation_key
+        parsed = PaperCitationInput.model_validate(arguments)
+        citation = await asyncio.to_thread(
+            citations.run,
+            actor=context.actor,
+            operation=context.operation,
+            document_id=parsed.document_id,
+            style=parsed.style,
+            paper_collection=context.paper_collection,
+            anchor_document_id=context.anchor_document_id,
+        )
+        payload = cast(dict[str, JsonValue], _json(citation))
+        return ToolOutcome(payload=payload, artifacts=[payload])
+
     async def ingest_paper_from_url(
-        context: ToolCallContext,
+        context: ToolExecutionContext,
         arguments: BaseModel,
         invocation_key: str,
     ) -> ToolOutcome:
@@ -797,6 +825,7 @@ def build_workspace_tool_catalog(
         idempotency_key = "tool:" + hashlib.sha256(invocation_key.encode()).hexdigest()
         result: UploadAcceptedResponse = await ingestion.from_url(
             actor=context.actor,
+            operation=context.operation,
             url=str(parsed.url),
             project_id=parsed.project_id,
             idempotency_key=idempotency_key,
@@ -866,9 +895,9 @@ def build_workspace_tool_catalog(
                 "recovered fields."
             ),
             input_model=PaperCitationInput,
-            execution=ToolExecutionKind.COMMAND,
+            execution=ToolExecutionKind.WORKFLOW,
             required_permission=WorkspacePermission.WRITE,
-            handler=_get_paper_citation,
+            workflow_handler=get_paper_citation,
         ),
         ToolDefinition(
             name="get_paper_download_url",

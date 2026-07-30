@@ -1,100 +1,127 @@
-import unittest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+"""Zotero automatic-import window behavior on the unified workflow."""
 
-from app.bootstrap.adapters import zotero_workflow as zotero_import_module
-from app.bootstrap.adapters.zotero_workflow import (
-    _parse_zotero_date_added,
-    auto_import_new_papers,
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+
+from app.bootstrap.adapters.zotero_operations import DefaultZoteroOperations
+from app.bootstrap.workflows.zotero import ZoteroPostprocessWorkflow
+from app.modules.integrations.zotero.application.zotero import (
+    ZoteroCredentials,
+    ZoteroImportPlan,
+    ZoteroItemSnapshot,
+    ZoteroLibrarySnapshot,
 )
+from app.shared.application import Actor, OperationContextFactory
 
 
-class TestParseZoteroDateAdded(unittest.TestCase):
-    def test_parses_z_suffix(self) -> None:
-        result = _parse_zotero_date_added("2024-06-01T10:15:30Z")
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertEqual(result.year, 2024)
-        self.assertEqual(result.month, 6)
-
-    def test_returns_none_for_invalid(self) -> None:
-        self.assertIsNone(_parse_zotero_date_added("not-a-date"))
-
-
-class TestAutoImportWindow(unittest.IsolatedAsyncioTestCase):
-    @patch.object(zotero_import_module, "import_batch", new_callable=AsyncMock)
-    @patch.object(zotero_import_module, "list_library")
-    @patch.object(zotero_import_module, "zotero_import_repository")
-    @patch.object(zotero_import_module, "zotero_connection_repository")
-    @patch.object(
-        zotero_import_module, "can_user_upload_paper", return_value=(True, None)
+def _actor() -> Actor:
+    return Actor(
+        id=7,
+        email="researcher@example.com",
+        status="active",
+        email_verified=True,
     )
-    @patch.object(
-        zotero_import_module, "get_remaining_paper_upload_slots", return_value=10
+
+
+def _item(key: str, date_added: str) -> ZoteroItemSnapshot:
+    return ZoteroItemSnapshot(
+        item_key=key,
+        title=key,
+        authors=(),
+        abstract=None,
+        publish_date=None,
+        doi=None,
+        tags=(),
+        date_added=date_added,
+        item_type="journalArticle",
+        venue=None,
+        collections=(),
+        has_pdf_attachment=True,
+        has_metadata=True,
     )
-    async def test_skips_items_before_import_cutoff(
-        self,
-        _mock_slots: MagicMock,
-        _mock_can_upload: MagicMock,
-        mock_zotero_connection_repository: MagicMock,
-        mock_zotero_import_repository: MagicMock,
-        mock_list_library: MagicMock,
-        mock_import_batch: AsyncMock,
-    ) -> None:
-        since = datetime(2025, 6, 1, tzinfo=timezone.utc)
-        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock()
-        mock_zotero_import_repository.get_auto_import_since.return_value = since
-
-        mock_list_library.return_value = {
-            "items": [
-                {
-                    "zotero_item_key": "OLD1",
-                    "already_imported": False,
-                    "date_added": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                },
-                {
-                    "zotero_item_key": "NEW1",
-                    "already_imported": False,
-                    "date_added": datetime(2025, 7, 1, tzinfo=timezone.utc),
-                },
-            ],
-            "remaining_slots": 10,
-        }
-        mock_import_batch.return_value = {"imported_count": 1}
-
-        user = MagicMock()
-        user.id = uuid4()
-        db = MagicMock()
-
-        result = await auto_import_new_papers(db, user=user)
-
-        mock_import_batch.assert_awaited_once()
-        keys = mock_import_batch.await_args.kwargs["item_keys"]
-        self.assertEqual(keys, ["NEW1"])
-        self.assertEqual(result["auto_imported_count"], 1)
-
-    @patch.object(zotero_import_module, "list_library")
-    @patch.object(zotero_import_module, "zotero_import_repository")
-    @patch.object(zotero_import_module, "zotero_connection_repository")
-    async def test_skips_when_no_completed_imports(
-        self,
-        mock_zotero_connection_repository: MagicMock,
-        mock_zotero_import_repository: MagicMock,
-        mock_list_library: MagicMock,
-    ) -> None:
-        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock()
-        mock_zotero_import_repository.get_auto_import_since.return_value = None
-
-        user = MagicMock()
-        user.id = uuid4()
-        db = MagicMock()
-
-        result = await auto_import_new_papers(db, user=user)
-
-        mock_list_library.assert_not_called()
-        self.assertEqual(result["auto_imported_count"], 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class _Executor:
+    def __init__(self, capabilities: object) -> None:
+        self.capabilities = capabilities
+
+    def query(self, operation):  # type: ignore[no-untyped-def]
+        return operation(self.capabilities)
+
+    def command(self, operation):  # type: ignore[no-untyped-def]
+        return operation(self.capabilities)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2024-06-01T10:15:30Z", datetime(2024, 6, 1, 10, 15, 30, tzinfo=UTC)),
+        ("not-a-date", None),
+        (None, None),
+    ],
+)
+def test_parse_date_added(value: str | None, expected: datetime | None) -> None:
+    assert DefaultZoteroOperations.parse_date_added(value) == expected
+
+
+@pytest.mark.asyncio
+async def test_auto_import_only_plans_items_at_or_after_cutoff() -> None:
+    since = datetime(2025, 6, 1, tzinfo=UTC)
+    zotero = MagicMock()
+    zotero.auto_import_since.return_value = since
+    captured: list[tuple[str, ...]] = []
+
+    def plan_import(*, items, **_kwargs):  # type: ignore[no-untyped-def]
+        captured.append(tuple(item.item_key for item in items))
+        return ZoteroImportPlan(items=(), skipped_already_imported=0, errors=())
+
+    zotero.plan_import.side_effect = plan_import
+    operations = MagicMock(spec=DefaultZoteroOperations)
+    operations.fetch_library.return_value = ZoteroLibrarySnapshot(
+        items=(
+            _item("OLD", "2020-01-01T00:00:00Z"),
+            _item("NEW", "2025-07-01T00:00:00Z"),
+            _item("INVALID", "not-a-date"),
+        )
+    )
+    operations.parse_date_added.side_effect = DefaultZoteroOperations.parse_date_added
+    workflow = ZoteroPostprocessWorkflow(
+        executor=_Executor(SimpleNamespace(zotero=zotero)),  # type: ignore[arg-type]
+        operations=operations,
+        operation_factory=OperationContextFactory(),
+    )
+
+    count = await workflow._auto_import(
+        actor=_actor(),
+        operation=MagicMock(),
+        credentials=ZoteroCredentials(user_id="remote", api_key="secret"),
+    )
+
+    assert count == 0
+    assert captured == [("NEW",)]
+
+
+@pytest.mark.asyncio
+async def test_auto_import_without_prior_completed_import_avoids_remote_io() -> None:
+    zotero = MagicMock()
+    zotero.auto_import_since.return_value = None
+    operations = MagicMock(spec=DefaultZoteroOperations)
+    workflow = ZoteroPostprocessWorkflow(
+        executor=_Executor(SimpleNamespace(zotero=zotero)),  # type: ignore[arg-type]
+        operations=operations,
+        operation_factory=OperationContextFactory(),
+    )
+
+    count = await workflow._auto_import(
+        actor=_actor(),
+        operation=MagicMock(),
+        credentials=ZoteroCredentials(user_id="remote", api_key="secret"),
+    )
+
+    assert count == 0
+    operations.fetch_library.assert_not_called()

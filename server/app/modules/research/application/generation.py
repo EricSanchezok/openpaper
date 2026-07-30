@@ -17,6 +17,9 @@ from app.modules.jobs.application.contracts import (
     DataTableTaskTablePayload,
 )
 from app.modules.jobs.application.jobs import EnqueueJobCommand, JobCommandPort
+from app.modules.jobs.application.actions import JOB_CREATED
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
 from app.modules.papers.application.content import (
     AccessiblePaperContent,
     PaperContentCapabilities,
@@ -24,12 +27,15 @@ from app.modules.papers.application.content import (
 from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
 )
-from app.shared.application import Actor
+from app.shared.application import Actor, OperationContext
 from app.shared.domain import AppError, JsonValue, FailureKind
 from app.shared.domain.enums import JobOperation
 from pydantic import TypeAdapter
 
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
+
+RESEARCH_AUDIO_OVERVIEW_CREATED = OperationAction("research.audio_overview_created")
+RESEARCH_DATA_TABLE_CREATED = OperationAction("research.data_table_created")
 
 
 class GenerationEntitlements(Protocol):
@@ -130,21 +136,25 @@ class ResearchGeneration:
         documents: GenerationDocuments,
         jobs: JobCommandPort,
         entitlements: GenerationEntitlements,
+        journal: OperationJournal,
     ) -> None:
         self._documents = documents
         self._jobs = jobs
         self._entitlements = entitlements
+        self._journal = journal
 
     def prepare_document_audio(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         document_id: UUID,
         request: CreateAudioOverviewRequest,
         idempotency_key: str | None,
     ) -> CreateJobResponse | PreparedGeneration:
         return self._prepare_audio(
             actor=actor,
+            operation=operation,
             scope_type="document",
             scope_id=document_id,
             documents=[self._documents.document(actor=actor, document_id=document_id)],
@@ -156,6 +166,7 @@ class ResearchGeneration:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         project_id: UUID,
         request: CreateAudioOverviewRequest,
         idempotency_key: str | None,
@@ -169,6 +180,7 @@ class ResearchGeneration:
             )
         return self._prepare_audio(
             actor=actor,
+            operation=operation,
             scope_type="project",
             scope_id=project_id,
             documents=documents,
@@ -180,6 +192,7 @@ class ResearchGeneration:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         scope_type: Literal["document", "project"],
         scope_id: UUID,
         documents: list[AccessiblePaperContent],
@@ -211,6 +224,8 @@ class ResearchGeneration:
                 job_id=operation_id,
                 operation=JobOperation.AUDIO_GENERATE,
                 requested_by_id=actor.id,
+                correlation_id=operation.trace.correlation_id,
+                origin_operation_id=operation.trace.operation_id,
                 project_id=scope_id if scope_type == "project" else None,
                 document_id=scope_id if scope_type == "document" else None,
                 idempotency_key=operation_key,
@@ -225,6 +240,7 @@ class ResearchGeneration:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         project_id: UUID,
         request: CreateDataTableRequest,
         idempotency_key: str | None,
@@ -268,6 +284,8 @@ class ResearchGeneration:
                 job_id=operation_id,
                 operation=JobOperation.DATA_TABLE_GENERATE,
                 requested_by_id=actor.id,
+                correlation_id=operation.trace.correlation_id,
+                origin_operation_id=operation.trace.operation_id,
                 project_id=project_id,
                 idempotency_key=operation_key,
                 payload=payload,
@@ -277,5 +295,19 @@ class ResearchGeneration:
             feature="data_table",
         )
 
-    def enqueue(self, *, prepared: PreparedGeneration) -> CreateJobResponse:
-        return CreateJobResponse(job=self._jobs.enqueue(command=prepared.command))
+    def enqueue(
+        self,
+        *,
+        actor: Actor,
+        operation: OperationContext,
+        prepared: PreparedGeneration,
+    ) -> CreateJobResponse:
+        result = self._jobs.enqueue(command=prepared.command)
+        if result.created:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=JOB_CREATED,
+                resources=(ResourceRef(type="job", id=str(result.job.id)),),
+            )
+        return CreateJobResponse(job=result.job)

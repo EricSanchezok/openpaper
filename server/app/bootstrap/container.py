@@ -8,6 +8,7 @@ HTTP, Agent, or MCP contract.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Literal
 
 from app.modules.papers.application.search import PaperSearchAccessPort, PaperSearchPort
@@ -50,11 +51,8 @@ from app.modules.identity.infrastructure.onboarding_adapters import (
 )
 from app.modules.billing.application.billing import Billing
 from app.modules.billing.infrastructure.application_gateway import (
-    EmailBillingNotifier,
-    PostHogBillingEvents,
     SqlAlchemySubscriptionStore,
     SqlAlchemyUsageReader,
-    StripePaymentProvider,
 )
 from app.modules.billing.infrastructure.config import (
     MONTHLY_PRICE_ID,
@@ -64,7 +62,10 @@ from app.modules.papers.application.tags import LibraryTags
 from app.modules.papers.infrastructure.tag_gateway import (
     SqlAlchemyLibraryTagGateway,
 )
-from app.modules.papers.application.discovery import DiscoverPapers
+from app.modules.papers.application.discovery import (
+    DiscoverPapers,
+    ExternalPaperDiscovery,
+)
 from app.modules.papers.infrastructure.discovery import (
     AiExternalDiscoveryRateLimiter,
     OpenAlexPaperCatalog,
@@ -72,7 +73,7 @@ from app.modules.papers.infrastructure.discovery import (
     SqlDiscoveryDocumentGateway,
 )
 from app.modules.papers.application.details import GetPaperDetails
-from app.modules.papers.application.citations import ResolveCitation
+from app.modules.papers.application.citations import CitationMetadata
 from app.modules.papers.application.library import PaperLibrary
 from app.modules.papers.infrastructure.details import SqlAlchemyPaperDetails
 from app.modules.papers.infrastructure.library_gateway import (
@@ -82,7 +83,6 @@ from app.bootstrap.adapters.document_gc import schedule_document_gc
 from app.modules.projects.application.projects import Projects
 from app.bootstrap.adapters.project_gateway import (
     EmailProjectInvitationNotifier,
-    PostHogProjectEvents,
     SqlAlchemyProjectGateway,
 )
 from app.modules.research.application.items import ResearchItems
@@ -106,8 +106,6 @@ from app.modules.research.infrastructure.generation import (
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.conversations.application.chat import ConversationChatData
 from app.bootstrap.adapters.conversation_lifecycle import (
-    LlmConversationTitleGenerator,
-    PostHogConversationEvents,
     SqlAlchemyConversationGateway,
 )
 from app.shared.application import SignedCursorCodec
@@ -120,6 +118,7 @@ from app.modules.access_keys.infrastructure import (
     SecureAccessKeySecrets,
     SqlAlchemyAccessKeyGateway,
 )
+from app.modules.operation_journal.application import OperationJournal
 from app.shared.infrastructure import SystemClock
 from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
 from app.modules.papers.application.topics import PaperTopics
@@ -127,7 +126,6 @@ from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
 from app.modules.integrations.zotero.application.zotero import Zotero
 from app.bootstrap.adapters.zotero_gateway import (
     DefaultZoteroGateway,
-    PostHogZoteroEvents,
 )
 from app.bootstrap.adapters.billing_capacity import (
     BillingLibraryCapacity,
@@ -185,11 +183,12 @@ def build_paper_download(*, db: Session) -> GetPaperDownload:
     )
 
 
-def build_paper_ingestion(*, db: Session) -> IngestPaper:
+def build_paper_ingestion(*, db: Session, journal: OperationJournal) -> IngestPaper:
     return IngestPaper(
         validator=DefaultPdfInputValidator(),
         limits=DefaultPaperIngestionLimits(),
         gateway=SqlPaperIngestionGateway(db),
+        journal=journal,
     )
 
 
@@ -208,10 +207,14 @@ def build_research_search(
     )
 
 
-def build_save_onboarding(*, db: Session) -> SaveOnboarding:
+def build_save_onboarding(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> SaveOnboarding:
     return SaveOnboarding(
         writer=SqlAlchemyOnboardingWriter(db),
-        events=PostHogOnboardingEventRecorder(db),
+        journal=journal,
     )
 
 
@@ -219,31 +222,46 @@ def build_finish_onboarding() -> FinishOnboarding:
     return FinishOnboarding(
         display_names=CloudAuthDisplayNameWriter(),
         notifier=EmailOnboardingNotifier(),
+        events=PostHogOnboardingEventRecorder(),
     )
 
 
-def build_billing(*, db: Session) -> Billing:
+def build_billing(*, db: Session, journal: OperationJournal) -> Billing:
     return Billing(
         subscriptions=SqlAlchemySubscriptionStore(db),
-        payments=StripePaymentProvider(),
         usage=SqlAlchemyUsageReader(db),
-        events=PostHogBillingEvents(db),
-        notifier=EmailBillingNotifier(),
+        journal=journal,
         monthly_price_id=MONTHLY_PRICE_ID,
         yearly_price_id=YEARLY_PRICE_ID,
     )
 
 
-def build_library_tags(*, db: Session) -> LibraryTags:
-    return LibraryTags(SqlAlchemyLibraryTagGateway(db))
+def build_library_tags(*, db: Session, journal: OperationJournal) -> LibraryTags:
+    return LibraryTags(
+        SqlAlchemyLibraryTagGateway(db),
+        journal=journal,
+    )
 
 
-def build_paper_discovery(*, db: Session, cursor_secret: str) -> DiscoverPapers:
+def build_paper_discovery(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> DiscoverPapers:
     return DiscoverPapers(
-        catalog=OpenAlexPaperCatalog(),
         documents=SqlDiscoveryDocumentGateway(db),
+        journal=journal,
+    )
+
+
+def build_external_paper_discovery(
+    *,
+    cursor_secret: str,
+) -> ExternalPaperDiscovery:
+    return ExternalPaperDiscovery(
+        catalog=OpenAlexPaperCatalog(),
         rate_limiter=AiExternalDiscoveryRateLimiter(),
-        events=PostHogDiscoveryEventRecorder(db),
+        events=PostHogDiscoveryEventRecorder(),
         cursors=SignedCursorCodec(
             cursor_secret,
             revision="external-discovery-v1",
@@ -252,17 +270,15 @@ def build_paper_discovery(*, db: Session, cursor_secret: str) -> DiscoverPapers:
     )
 
 
-def build_paper_library(*, db: Session) -> PaperLibrary:
+def build_paper_library(*, db: Session, journal: OperationJournal) -> PaperLibrary:
     return PaperLibrary(
         gateway=SqlAlchemyPaperLibraryGateway(
             db,
-            document_removed=lambda document_id: schedule_document_gc(
-                db,
-                document_id=document_id,
-            ),
+            document_removed=partial(schedule_document_gc, db),
         ),
         capacity=BillingLibraryCapacity(db),
         signer=S3PaperDownloadSigner(),
+        journal=journal,
     )
 
 
@@ -273,28 +289,39 @@ def build_paper_details(*, db: Session) -> GetPaperDetails:
     )
 
 
-def build_citation_resolver(*, db: Session) -> ResolveCitation:
-    # Lazy because the optional agentic metadata recovery path imports Agent
-    # tool definitions, which themselves delegate through this container.
+def build_citation_metadata(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> CitationMetadata:
     from app.bootstrap.adapters.citation_metadata import (
-        DefaultCitationMetadataGateway,
+        SqlAlchemyCitationMetadataStore,
     )
 
-    return ResolveCitation(DefaultCitationMetadataGateway(db))
+    return CitationMetadata(
+        SqlAlchemyCitationMetadataStore(db),
+        journal=journal,
+    )
 
 
-def build_projects(*, db: Session) -> Projects:
+def build_projects(*, db: Session, journal: OperationJournal) -> Projects:
     return Projects(
         gateway=SqlAlchemyProjectGateway(db),
         capacity=BillingProjectCapacity(db),
-        events=PostHogProjectEvents(db),
-        invitations=EmailProjectInvitationNotifier(),
         signer=S3PaperDownloadSigner(),
+        journal=journal,
     )
 
 
-def build_research_items(*, db: Session) -> ResearchItems:
-    return ResearchItems(SqlAlchemyResearchItemGateway(db))
+def build_project_invitation_notifier() -> EmailProjectInvitationNotifier:
+    return EmailProjectInvitationNotifier()
+
+
+def build_research_items(*, db: Session, journal: OperationJournal) -> ResearchItems:
+    return ResearchItems(
+        SqlAlchemyResearchItemGateway(db),
+        journal=journal,
+    )
 
 
 def build_jobs(*, db: Session) -> Jobs:
@@ -309,7 +336,11 @@ def build_job_callback_protection() -> ProtectJobCallback:
     return ProtectJobCallback(SqlAlchemyCallbackNonceStore())
 
 
-def build_job_callbacks(*, db: Session) -> JobCallbacks:
+def build_job_callbacks(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> JobCallbacks:
     # Callback adapters touch several domain modules and are loaded only by
     # the internal callback transport, avoiding composition-root import cycles.
     from app.modules.jobs.application.callbacks import RegisteredJobCallback
@@ -328,7 +359,6 @@ def build_job_callbacks(*, db: Session) -> JobCallbacks:
         PdfProcessCompletion,
         SqlAlchemyJobLifecycle,
         StorageDeleteCompletion,
-        ZoteroPostprocessCompletion,
         ZoteroSyncSchedule,
     )
     from app.shared.domain.enums import JobOperation
@@ -348,9 +378,6 @@ def build_job_callbacks(*, db: Session) -> JobCallbacks:
             JobOperation.STORAGE_DELETE: RegisteredJobCallback(
                 StorageDeleteCallback, StorageDeleteCompletion(db)
             ),
-            JobOperation.ZOTERO_POSTPROCESS: RegisteredJobCallback(
-                JobCallbackIdentity, ZoteroPostprocessCompletion(db)
-            ),
             JobOperation.AUDIO_GENERATE: RegisteredJobCallback(
                 AudioOverviewWebhookData, AudioCompletion(db)
             ),
@@ -359,10 +386,15 @@ def build_job_callbacks(*, db: Session) -> JobCallbacks:
             ),
         },
         schedules=ZoteroSyncSchedule(db),
+        journal=journal,
     )
 
 
-def build_research_generation(*, db: Session) -> ResearchGeneration:
+def build_research_generation(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> ResearchGeneration:
     project_documents = build_project_document_visibility(db=db)
     return ResearchGeneration(
         documents=GenerationDocuments(
@@ -371,6 +403,7 @@ def build_research_generation(*, db: Session) -> ResearchGeneration:
         ),
         jobs=SqlAlchemyJobsGateway(db),
         entitlements=SqlGenerationEntitlements(db),
+        journal=journal,
     )
 
 
@@ -378,42 +411,62 @@ def build_generation_capacity() -> RedisGenerationCapacity:
     return RedisGenerationCapacity()
 
 
-def build_conversations(*, db: Session, cursor_secret: str) -> Conversations:
+def build_conversations(
+    *,
+    db: Session,
+    cursor_secret: str,
+    journal: OperationJournal,
+) -> Conversations:
     return Conversations(
         gateway=SqlAlchemyConversationGateway(db),
-        titles=LlmConversationTitleGenerator(db),
-        events=PostHogConversationEvents(db),
         message_cursors=SignedCursorCodec(
             cursor_secret,
             revision="conversation-messages-v1",
             error_code="conversation_message_cursor_expired",
         ),
+        journal=journal,
     )
 
 
-def build_conversation_chat_data(*, db: Session) -> ConversationChatData:
+def build_conversation_chat_data(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> ConversationChatData:
     from app.bootstrap.adapters.conversation_chat_data import (
         SqlAlchemyConversationChatData,
     )
 
-    return ConversationChatData(SqlAlchemyConversationChatData(db))
+    return ConversationChatData(
+        SqlAlchemyConversationChatData(db),
+        journal=journal,
+    )
 
 
-def build_identity(*, db: Session) -> Identity:
-    return Identity(SqlAlchemyIdentityGateway(db))
+def build_identity(*, db: Session, journal: OperationJournal) -> Identity:
+    return Identity(
+        SqlAlchemyIdentityGateway(db),
+        journal=journal,
+    )
 
 
-def build_access_keys(*, db: Session, cursor_secret: str) -> AccessKeys:
+def build_access_keys(
+    *,
+    db: Session,
+    cursor_secret: str,
+    journal: OperationJournal,
+) -> AccessKeys:
     return AccessKeys(
         gateway=SqlAlchemyAccessKeyGateway(db),
         secrets=SecureAccessKeySecrets(),
-        actors=build_identity(db=db),
+        actors=build_identity(db=db, journal=journal),
         clock=SystemClock(),
         cursors=SignedCursorCodec(
             cursor_secret,
             revision="access-keys-v1",
             error_code="access_key_cursor_invalid",
         ),
+        journal=journal,
     )
 
 
@@ -421,10 +474,10 @@ def build_paper_topics(*, db: Session) -> PaperTopics:
     return PaperTopics(SqlAlchemyPaperTopics(db))
 
 
-def build_zotero(*, db: Session) -> Zotero:
+def build_zotero(*, db: Session, journal: OperationJournal) -> Zotero:
     return Zotero(
         gateway=DefaultZoteroGateway(db),
         capacity=BillingZoteroImportCapacity(db),
-        events=PostHogZoteroEvents(db),
         idempotency=SqlAlchemyJobsGateway(db),
+        journal=journal,
     )

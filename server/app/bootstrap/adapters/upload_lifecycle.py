@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from app.database.models import (
     Document,
@@ -16,7 +18,7 @@ from app.database.models import (
     ProjectPaper,
 )
 from app.modules.papers.domain import can_fail_processing
-from sqlalchemy import and_, delete, exists, or_, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -24,6 +26,16 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_SUBMISSION_TIMEOUT = timedelta(minutes=15)
 UPLOAD_PROCESSING_TIMEOUT = timedelta(hours=2)
+
+
+@dataclass(frozen=True, slots=True)
+class ReapedStaleUpload:
+    job_id: UUID
+    document_id: UUID | None
+    project_id: UUID | None
+    reference_removed: bool
+    document_processing_failed: bool
+    created_gc_job_id: UUID | None
 
 
 def active_upload_freshness_clause(now: datetime) -> ColumnElement[bool]:
@@ -52,8 +64,10 @@ def reap_stale_uploads(
     db: Session,
     *,
     quota_owner_id: int,
+    origin_operation_id: UUID,
+    correlation_id: UUID,
     now: datetime | None = None,
-) -> None:
+) -> tuple[ReapedStaleUpload, ...]:
     """Fail timed-out jobs and remove their inaccessible placeholder documents.
 
     The caller owns the transaction and must already hold the account quota
@@ -74,31 +88,50 @@ def reap_stale_uploads(
         ).all()
     )
     if not jobs:
-        return
+        return ()
 
+    reaped: list[ReapedStaleUpload] = []
     for job in jobs:
         durable_job = job.job
+        reference_removed = False
+        document_processing_failed = False
+        created_gc_job_id: UUID | None = None
         if durable_job.document_id is not None and job.reference_created:
+            reference: LibraryPaper | ProjectPaper | None
             if durable_job.project_id is None:
-                db.execute(
-                    delete(LibraryPaper).where(
+                reference = db.scalar(
+                    select(LibraryPaper)
+                    .where(
                         LibraryPaper.document_id == durable_job.document_id,
                         LibraryPaper.user_id == durable_job.requested_by_id,
                     )
+                    .with_for_update()
                 )
             else:
-                db.execute(
-                    delete(ProjectPaper).where(
+                reference = db.scalar(
+                    select(ProjectPaper)
+                    .where(
                         ProjectPaper.document_id == durable_job.document_id,
                         ProjectPaper.project_id == durable_job.project_id,
                     )
+                    .with_for_update()
                 )
+            if reference is not None:
+                db.delete(reference)
+                reference_removed = True
             db.flush()
             from app.bootstrap.adapters.document_gc import (
                 schedule_document_gc,
             )
 
-            schedule_document_gc(db, document_id=durable_job.document_id)
+            scheduled = schedule_document_gc(
+                db,
+                document_id=durable_job.document_id,
+                origin_operation_id=origin_operation_id,
+                correlation_id=correlation_id,
+            )
+            if scheduled is not None and scheduled.created:
+                created_gc_job_id = scheduled.job_id
         if durable_job.document_id is not None:
             document = db.scalar(
                 select(Document)
@@ -113,6 +146,7 @@ def reap_stale_uploads(
                 )
             ):
                 document.processing_status = DocumentProcessingStatus.FAILED.value
+                document_processing_failed = True
         durable_job.status = JobStatus.FAILED.value
         durable_job.completed_at = current_time
         durable_job.error_code = (
@@ -120,3 +154,15 @@ def reap_stale_uploads(
             if durable_job.dispatch is None
             else "upload_processing_timeout"
         )
+        reaped.append(
+            ReapedStaleUpload(
+                job_id=durable_job.id,
+                document_id=durable_job.document_id,
+                project_id=durable_job.project_id,
+                reference_removed=reference_removed,
+                document_processing_failed=document_processing_failed,
+                created_gc_job_id=created_gc_job_id,
+            )
+        )
+    db.flush()
+    return tuple(reaped)

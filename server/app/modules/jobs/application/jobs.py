@@ -20,6 +20,8 @@ class EnqueueJobCommand:
     job_id: UUID
     operation: JobOperation
     requested_by_id: int
+    correlation_id: UUID
+    origin_operation_id: UUID
     idempotency_key: str
     payload: dict[str, JsonValue]
     task_name: str
@@ -33,6 +35,8 @@ class ReserveOperationCommand:
     operation_id: UUID
     operation: JobOperation
     requested_by_id: int
+    correlation_id: UUID
+    origin_operation_id: UUID
     idempotency_key: str
     payload: dict[str, JsonValue]
 
@@ -44,10 +48,16 @@ class ReservedOperation:
     created: bool
 
 
+@dataclass(frozen=True, slots=True)
+class EnqueuedJob:
+    job: JobResponse
+    created: bool
+
+
 class JobCommandPort(Protocol):
     def find_by_idempotency_key(self, *, key: str) -> JobResponse | None: ...
 
-    def enqueue(self, *, command: EnqueueJobCommand) -> JobResponse: ...
+    def enqueue(self, *, command: EnqueueJobCommand) -> EnqueuedJob: ...
 
 
 class IdempotentOperationPort(Protocol):

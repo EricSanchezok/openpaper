@@ -26,7 +26,9 @@ from app.modules.access_keys.domain import (
     AccessKeyStatus,
     access_key_status,
 )
-from app.shared.application import Actor, Clock, SignedCursorCodec
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
+from app.shared.application import Actor, Clock, OperationContext, SignedCursorCodec
 from app.shared.domain import (
     AppError,
     FailureKind,
@@ -37,6 +39,9 @@ from app.shared.domain import (
 MAX_ACTIVE_ACCESS_KEYS = 10
 LAST_USED_WRITE_INTERVAL = timedelta(hours=1)
 ACCESS_KEY_CURSOR_FINGERPRINT = "access-key-management"
+ACCESS_KEY_CREATED = OperationAction("access_key.created")
+ACCESS_KEY_UPDATED = OperationAction("access_key.updated")
+ACCESS_KEY_REVOKED = OperationAction("access_key.revoked")
 
 
 class AccessKeys:
@@ -48,17 +53,20 @@ class AccessKeys:
         actors: ActorResolver,
         clock: Clock,
         cursors: SignedCursorCodec,
+        journal: OperationJournal,
     ) -> None:
         self._gateway = gateway
         self._secrets = secrets
         self._actors = actors
         self._clock = clock
         self._cursors = cursors
+        self._journal = journal
 
     def create(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         request: AccessKeyCreateRequest,
     ) -> AccessKeyCreateResponse:
         now = self._clock.now()
@@ -88,6 +96,12 @@ class AccessKeys:
             permissions=permissions,
             expires_at=request.expires_at,
             now=now,
+        )
+        self._journal.append(
+            actor=actor,
+            operation=operation,
+            action=ACCESS_KEY_CREATED,
+            resources=(ResourceRef("access_key", str(record.id)),),
         )
         return AccessKeyCreateResponse(
             access_key=_response(record, now=now),
@@ -131,6 +145,7 @@ class AccessKeys:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         access_key_id: UUID,
         request: AccessKeyUpdateRequest,
     ) -> AccessKeyResponse:
@@ -150,11 +165,20 @@ class AccessKeys:
             if request.permissions is not None
             else record.permissions
         )
+        name = request.name if request.name is not None else record.name
+        if name == record.name and permissions == record.permissions:
+            return _response(record, now=now)
         updated = self._gateway.update(
             access_key_id=record.id,
-            name=request.name if request.name is not None else record.name,
+            name=name,
             permissions=permissions,
             now=now,
+        )
+        self._journal.append(
+            actor=actor,
+            operation=operation,
+            action=ACCESS_KEY_UPDATED,
+            resources=(ResourceRef("access_key", str(record.id)),),
         )
         return _response(updated, now=now)
 
@@ -162,6 +186,7 @@ class AccessKeys:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         access_key_id: UUID,
     ) -> None:
         now = self._clock.now()
@@ -171,6 +196,12 @@ class AccessKeys:
         )
         if _status(record, now=now) is AccessKeyStatus.ACTIVE:
             self._gateway.revoke(access_key_id=record.id, now=now)
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=ACCESS_KEY_REVOKED,
+                resources=(ResourceRef("access_key", str(record.id)),),
+            )
 
     def authenticate(self, secret: str) -> AuthenticatedAccessKey:
         now = self._clock.now()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from uuid import UUID
 
 from app.shared.domain import JsonValue
 
@@ -21,8 +22,8 @@ class ToolInvocationGateway(Protocol):
         self,
         *,
         actor_id: int,
+        operation_id: UUID,
         invocation_key: str,
-        source: str,
         tool_name: str,
         arguments_hash: str,
         result: JsonValue,

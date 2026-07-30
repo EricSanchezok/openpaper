@@ -13,11 +13,22 @@ import mcp.types as mcp_types
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
+from app.shared.application import (
+    CredentialKind,
+    CredentialRef,
+    McpOrigin,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 from app.shared.domain import AppError, FailureKind, JsonValue
-from app.tooling import ToolAccess, ToolCallContext, ToolCatalog, ToolDispatcher
+from app.tooling import ToolAccess, ToolExecutionContext, ToolCatalog, ToolDispatcher
 from app.tooling.workspace import MCP_TOOL_PROFILE
+from app.transport.client_ip import UNKNOWN_CLIENT_IP, normalize_client_ip
 from app.transport.mcp.references import (
     mcp_invocation_id,
+    mcp_request_reference,
+    mcp_session_reference,
     validate_mcp_session_id,
 )
 from mcp.server import Server
@@ -39,9 +50,20 @@ _authenticated_context: ContextVar[AuthenticatedAccessKey | None] = ContextVar(
     "mcp_authenticated_access_key",
     default=None,
 )
-_client_ip_context: ContextVar[str] = ContextVar("mcp_client_ip", default="mcp")
-_session_context: ContextVar[str | None] = ContextVar(
-    "mcp_session",
+_client_ip_context: ContextVar[str] = ContextVar(
+    "mcp_client_ip",
+    default=UNKNOWN_CLIENT_IP,
+)
+_invocation_session_context: ContextVar[str | None] = ContextVar(
+    "mcp_invocation_session",
+    default=None,
+)
+_session_reference_context: ContextVar[str | None] = ContextVar(
+    "mcp_session_reference",
+    default=None,
+)
+_request_reference_context: ContextVar[RequestReference | None] = ContextVar(
+    "mcp_request_reference",
     default=None,
 )
 
@@ -139,23 +161,33 @@ class AuthenticatedMcpApplication:
             return
 
         client = scope.get("client")
-        client_ip = str(client[0]) if client else "mcp"
-        session_id = headers.get("mcp-session-id")
-        if session_id is not None:
+        client_ip = normalize_client_ip(client[0] if client else None)
+        supplied_session_id = headers.get("mcp-session-id")
+        if supplied_session_id is not None:
             try:
-                session_id = validate_mcp_session_id(session_id)
+                supplied_session_id = validate_mcp_session_id(supplied_session_id)
             except ValueError:
                 await self._send_session_error(send)
                 return
+            invocation_session_id = supplied_session_id
+            session_reference = mcp_session_reference(supplied_session_id)
         else:
-            session_id = str(uuid.uuid4())
+            invocation_session_id = str(uuid.uuid4())
+            session_reference = None
+        request_reference = RequestReference(uuid.uuid4())
         authenticated_token = _authenticated_context.set(authenticated)
         client_token = _client_ip_context.set(client_ip)
-        session_token = _session_context.set(session_id)
+        invocation_session_token = _invocation_session_context.set(
+            invocation_session_id
+        )
+        session_reference_token = _session_reference_context.set(session_reference)
+        request_reference_token = _request_reference_context.set(request_reference)
         try:
             await self._manager.handle_request(scope, receive, send)
         finally:
-            _session_context.reset(session_token)
+            _request_reference_context.reset(request_reference_token)
+            _session_reference_context.reset(session_reference_token)
+            _invocation_session_context.reset(invocation_session_token)
             _client_ip_context.reset(client_token)
             _authenticated_context.reset(authenticated_token)
 
@@ -223,6 +255,7 @@ def build_mcp_transport(
     dispatcher: ToolDispatcher[ApplicationCapabilities],
     security_settings: TransportSecuritySettings,
     authenticate: McpAuthenticator,
+    operation_factory: OperationContextFactory,
 ) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
     server: Server[object] = Server(
         "scholens",
@@ -274,8 +307,9 @@ def build_mcp_transport(
             permissions=authenticated.permissions,
         )
         current_request = request_ctx.get()
-        session_id = _session_context.get()
-        if session_id is None:
+        invocation_session_id = _invocation_session_context.get()
+        request_reference = _request_reference_context.get()
+        if invocation_session_id is None or request_reference is None:
             return _error_result(
                 kind=FailureKind.UNAUTHENTICATED,
                 code="mcp_authentication_required",
@@ -283,18 +317,30 @@ def build_mcp_transport(
             )
         invocation_id = mcp_invocation_id(
             access_key_id=authenticated.access_key_id,
-            session_id=session_id,
+            session_id=invocation_session_id,
             request_id=current_request.request_id,
+        )
+        operation = operation_factory.root(
+            initiated_by=OperationInitiator.AGENT,
+            origin=McpOrigin(
+                request=request_reference,
+                mcp_session_ref=_session_reference_context.get(),
+                mcp_request_ref=mcp_request_reference(current_request.request_id),
+            ),
+            credential=CredentialRef(
+                CredentialKind.ACCESS_KEY,
+                str(authenticated.access_key_id),
+            ),
         )
         try:
             outcome = await dispatcher.dispatch(
                 name=name,
                 raw_arguments=arguments,
-                context=ToolCallContext(
+                context=ToolExecutionContext(
                     actor=authenticated.actor,
+                    operation=operation,
                     paper_collection=LibraryPaperCollection(),
                     anchor_document_id=None,
-                    source="mcp",
                     invocation_id=invocation_id,
                     client_ip=_client_ip_context.get(),
                 ),

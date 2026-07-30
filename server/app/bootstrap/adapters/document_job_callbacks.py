@@ -15,7 +15,6 @@ from app.modules.identity.infrastructure.users import user_repository
 from app.modules.integrations.zotero.infrastructure.connection_repository import (
     zotero_connection_repository,
 )
-from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
 from app.modules.integrations.zotero.infrastructure.import_repository import (
     zotero_import_repository,
 )
@@ -28,14 +27,12 @@ from app.database.models import (
     JobOperation,
     LibraryPaper,
     ProjectPaper,
+    RoleType,
     ZoteroImportStatus,
 )
 from app.shared.domain import JsonValue
-from app.database.telemetry import track_event
 from app.shared.domain import AppError, FailureKind
 from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
-from app.helpers.metadata_hydration import hydrate_paper_metadata
-from app.helpers.ai_limits import release_concurrency_by_id
 from app.helpers.celery_config import get_webhook_base_url
 from app.modules.billing.infrastructure.quotas import can_user_auto_sync_zotero
 from app.bootstrap.adapters.document_gc import collect_document_if_due
@@ -49,7 +46,11 @@ from app.modules.papers.domain import (
     can_complete_processing,
     can_fail_processing,
 )
-from app.modules.jobs.infrastructure.repository import EnqueueJob, job_repository
+from app.modules.jobs.infrastructure.repository import (
+    EnqueueJob,
+    PersistedJob,
+    job_repository,
+)
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
 )
@@ -60,27 +61,59 @@ from app.modules.jobs.application.contracts import (
     PDFProcessingResult,
     PdfProcessingWebhookData,
     StorageDeleteCallback,
+    TokenUsageEventPayload,
 )
-from app.shared.application import Actor
+from app.modules.jobs.application.callbacks import (
+    JobHandlerResult,
+    JobPostCommitAction,
+    PdfPostprocessResolution,
+    RecordJobTelemetry,
+    ReleaseJobConcurrency,
+    ScheduledZoteroJobs,
+    SettleJobUsage,
+)
+from app.modules.jobs.application.actions import JOB_CREATED
+from app.modules.papers.application.actions import (
+    DOCUMENT_DELETED,
+    DOCUMENT_METADATA_HYDRATED,
+    DOCUMENT_PROCESSING_COMPLETED,
+    DOCUMENT_PROCESSING_FAILED,
+)
+from app.modules.research.application.items import (
+    RESEARCH_ANNOTATION_COMMENT_CREATED,
+    RESEARCH_HIGHLIGHT_CREATED,
+)
+from app.modules.conversations.application.chat import (
+    CONVERSATION_MESSAGE_CREATED,
+)
+from app.modules.conversations.application.conversations import (
+    CONVERSATION_CREATED,
+)
+from app.modules.integrations.zotero.application.actions import (
+    ZOTERO_IMPORT_COMPLETED,
+)
+from app.modules.operation_journal.domain import (
+    OperationAction,
+    OperationChange,
+    ResourceRef,
+)
+from app.shared.application import Actor, OperationContext
+from app.modules.papers.domain.citations import fields_from_paper
+from app.bootstrap.workflows.pdf_postprocess import (
+    PdfPostprocessReader,
+    PdfPostprocessSnapshot,
+)
 from app.modules.identity.infrastructure.users import actor_from_auth_user
-from app.bootstrap.adapters.zotero_workflow import (
-    apply_zotero_annotations,
-    auto_import_new_papers,
-    sync_batch,
+from app.bootstrap.adapters.zotero_annotations import (
+    apply_persisted_zotero_annotations,
 )
 from app.bootstrap.adapters.research_annotations import (
     create_ai_highlights,
 )
-from app.modules.jobs.infrastructure.callback_boundaries import (
-    callback_transaction,
-    optional_savepoint,
-    pdf_ingestion_callback,
-)
+from app.modules.jobs.infrastructure.callback_boundaries import optional_savepoint
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
-
-from app.modules.jobs.infrastructure.research_callbacks import settle_jobs_usage
+from sqlalchemy.orm import Session, sessionmaker
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +140,18 @@ def _enqueue_pdf_postprocess(
     ingestion_job_id: uuid.UUID,
     document_id: uuid.UUID,
     user_id: int,
-) -> uuid.UUID:
+    origin_operation_id: uuid.UUID,
+    correlation_id: uuid.UUID,
+) -> PersistedJob:
     postprocess_job_id = uuid.uuid4()
     base_url = get_webhook_base_url().rstrip("/")
-    job_repository.enqueue(
+    return job_repository.enqueue(
         db,
         request=EnqueueJob(
             operation=JobOperation.PDF_POSTPROCESS,
             requested_by_id=user_id,
+            correlation_id=correlation_id,
+            origin_operation_id=origin_operation_id,
             document_id=document_id,
             idempotency_key=f"pdf-postprocess:{ingestion_job_id}",
             payload={"ingestion_job_id": str(ingestion_job_id)},
@@ -131,7 +168,6 @@ def _enqueue_pdf_postprocess(
             job_id=postprocess_job_id,
         ),
     )
-    return postprocess_job_id
 
 
 def _finalize_zotero_import(
@@ -182,13 +218,11 @@ def _finalize_zotero_import(
         refresh_result=False,
     )
 
-    upload_reservation_repository.mark_as_completed(db=db, job_id=job_id, user=job_user)
-
     if not paper:
         return None
 
     # When salvaging a partial result, record the worker error on the import row.
-    # apply_zotero_annotations (below) flips the row to COMPLETED but preserves
+    # Annotation finalization flips the row to COMPLETED but preserves
     # this note (it only sets error_message when given one).
     if error_message:
         zotero_import = zotero_import_repository.get_by_upload_job_id(
@@ -203,11 +237,12 @@ def _finalize_zotero_import(
                 document_id=uuid.UUID(str(paper.id)),
             )
 
-    apply_zotero_annotations(
+    apply_persisted_zotero_annotations(
         db=db,
-        upload_job_id=job_id,
-        document_id=str(paper.id),
+        upload_job_id=uuid.UUID(job_id),
+        document_id=uuid.UUID(str(paper.id)),
         user=job_user,
+        page_dimensions=(),
     )
 
     logger.info(
@@ -218,8 +253,13 @@ def _finalize_zotero_import(
 
 
 def handle_failed_upload(
-    db: Session, job_id: str, job_user: Actor, reason: str = "Unknown error"
-) -> None:
+    db: Session,
+    job_id: str,
+    job_user: Actor,
+    *,
+    operation: OperationContext,
+    reason: str = "Unknown error",
+) -> tuple[OperationChange, ...]:
     """
     Handle cleanup for a failed paper upload job.
 
@@ -243,9 +283,10 @@ def handle_failed_upload(
             f"Ignoring failed-upload cleanup for already-completed job {job_id} "
             f"(reason: {reason}); refusing to delete a populated paper"
         )
-        return
+        return ()
 
     logger.error(f"PDF processing failed for job {job_id}: {reason}")
+    changes: list[OperationChange] = []
 
     if job and job.job.document_id is not None:
         durable_job = job.job
@@ -263,6 +304,12 @@ def handle_failed_upload(
         ):
             document.processing_status = DocumentProcessingStatus.FAILED.value
             document.parser_warning_code = "processing_failed"
+            changes.append(
+                OperationChange(
+                    action=DOCUMENT_PROCESSING_FAILED,
+                    resources=(ResourceRef("document", str(document_id)),),
+                )
+            )
         if job.reference_created:
             if durable_job.project_id is None:
                 db.execute(
@@ -283,9 +330,20 @@ def handle_failed_upload(
                 schedule_document_gc,
             )
 
-            schedule_document_gc(db, document_id=document_id)
+            scheduled_gc = schedule_document_gc(
+                db,
+                document_id=document_id,
+                origin_operation_id=operation.trace.operation_id,
+                correlation_id=operation.trace.correlation_id,
+            )
+            if scheduled_gc is not None and scheduled_gc.created:
+                changes.append(
+                    OperationChange(
+                        action=JOB_CREATED,
+                        resources=(ResourceRef("job", str(scheduled_gc.job_id)),),
+                    )
+                )
 
-    upload_reservation_repository.mark_as_failed(db=db, job_id=job_id, user=job_user)
     try:
         job_repository.fail(
             db,
@@ -307,43 +365,121 @@ def handle_failed_upload(
             error_message=reason,
             document_id=None,
         )
+    return tuple(changes)
 
 
-def post_process_paper(
+class SqlAlchemyPdfPostprocessReader(PdfPostprocessReader):
+    """Load immutable callback facts and close the Session before providers run."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def read(
+        self,
+        *,
+        actor: Actor,
+        job_id: uuid.UUID,
+        callback_task_id: uuid.UUID,
+    ) -> PdfPostprocessSnapshot:
+        with self._session_factory() as db:
+            job = job_repository.require(db, job_id=job_id)
+            if (
+                job.operation != JobOperation.PDF_POSTPROCESS.value
+                or callback_task_id != job_id
+            ):
+                raise AppError(
+                    code="job_callback_mismatch",
+                    message="Job callback does not match",
+                    kind=FailureKind.CONFLICT,
+                )
+            if job.requested_by_id != actor.id:
+                raise AppError(
+                    code="job_requester_mismatch",
+                    message="Job requester does not match callback operation",
+                    kind=FailureKind.CONFLICT,
+                )
+            if job.status in {
+                JobStatus.COMPLETED.value,
+                JobStatus.FAILED.value,
+                JobStatus.CANCELLED.value,
+            }:
+                return PdfPostprocessSnapshot(terminal=True, fields=None)
+            if job.document_id is None:
+                raise AppError(
+                    code="job_scope_missing",
+                    message="Job scope is incomplete",
+                    kind=FailureKind.CONFLICT,
+                )
+            paper = db.get(Document, job.document_id)
+            if paper is None:
+                raise AppError(
+                    code="job_scope_missing",
+                    message="Job scope is no longer available",
+                    kind=FailureKind.CONFLICT,
+                )
+            return PdfPostprocessSnapshot(
+                terminal=False,
+                fields=fields_from_paper(paper),
+            )
+
+
+def _apply_pdf_postprocess(
     *,
     db: Session,
     paper: Document,
-    job_user: Actor,
-) -> None:
-    """Build search passages and hydrate metadata under a durable job lease."""
+    actor: Actor,
+    resolution: PdfPostprocessResolution,
+) -> bool:
+    """Apply provider facts and search projection without external I/O."""
     if not paper.raw_content:
         raise RuntimeError("pdf_postprocess_content_missing")
-    paper.attempted_metadata_at = datetime.now(timezone.utc)
     document_search_repository.replace_passage_index(
         db,
         document_id=paper.id,
         raw_content=paper.raw_content,
     )
-    hydrated = hydrate_paper_metadata(
-        db=db,
-        paper=paper,
-        user=job_user,
-        force=True,
-        agentic=True,
+
+    candidates: dict[str, object | None] = {
+        "doi": resolution.doi,
+        "journal": resolution.journal,
+        "publisher": resolution.publisher,
+        "publish_date": resolution.publish_date,
+    }
+    updates: dict[str, object] = {
+        field_name: value
+        for field_name, value in candidates.items()
+        if value is not None and not getattr(paper, field_name)
+    }
+    if resolution.field_provenance is not None and updates:
+        provenance = dict(paper.field_provenance or {})
+        provenance.update(
+            {
+                field_name: resolution.field_provenance[field_name]
+                for field_name in updates
+                if field_name in resolution.field_provenance
+            }
+        )
+        updates["field_provenance"] = provenance
+    updates["attempted_metadata_at"] = datetime.now(timezone.utc)
+    updated = document_repository.update_canonical(
+        db,
+        document=paper,
+        update=DocumentUpdate.model_validate(updates),
+        user=actor,
+        refresh_result=False,
     )
-    track_event(
-        "doi_resolved",
-        properties={"has_doi": bool(hydrated.doi)},
-        user_id=str(job_user.id),
-        db=db,
-    )
+    return bool((updated or paper).doi)
 
 
 def complete_pdf_postprocess_job(
     job_id: uuid.UUID,
     callback: JobCallbackIdentity,
     db: Session,
-) -> JobClaimResponse:
+    *,
+    actor: Actor,
+    operation: OperationContext,
+    resolution: PdfPostprocessResolution,
+) -> JobHandlerResult:
     job = job_repository.require(db, job_id=job_id)
     if (
         job.operation != JobOperation.PDF_POSTPROCESS.value
@@ -354,8 +490,12 @@ def complete_pdf_postprocess_job(
             message="Job callback does not match",
             kind=FailureKind.CONFLICT,
         )
-    if job.status == JobStatus.COMPLETED.value:
-        return JobClaimResponse(claimed=False)
+    if job.status in {
+        JobStatus.COMPLETED.value,
+        JobStatus.FAILED.value,
+        JobStatus.CANCELLED.value,
+    }:
+        return JobHandlerResult(value=JobClaimResponse(claimed=False))
     if job.document_id is None or job.requested_by_id is None:
         raise AppError(
             code="job_scope_missing",
@@ -363,36 +503,56 @@ def complete_pdf_postprocess_job(
             kind=FailureKind.CONFLICT,
         )
     paper = db.get(Document, job.document_id)
-    user = user_repository.get(db, id=job.requested_by_id)
-    if paper is None or user is None:
+    if paper is None:
         raise AppError(
             code="job_scope_missing",
             message="Job scope is no longer available",
             kind=FailureKind.CONFLICT,
         )
-    with callback_transaction(
+    has_doi = _apply_pdf_postprocess(
+        db=db,
+        paper=paper,
+        actor=actor,
+        resolution=resolution,
+    )
+    _, changed = job_repository.complete(
         db,
-        operation="pdf_postprocess",
-        context={"job_id": str(job_id), "document_id": str(paper.id)},
-    ):
-        post_process_paper(
-            db=db,
-            paper=paper,
-            job_user=actor_from_auth_user(user),
-        )
-        job_repository.complete(
-            db,
-            job_id=job_id,
-            result={"document_id": str(paper.id)},
-        )
-    return JobClaimResponse(claimed=True)
+        job_id=job_id,
+        result={"document_id": str(paper.id)},
+    )
+    return JobHandlerResult(
+        value=JobClaimResponse(claimed=changed),
+        changes=(
+            (
+                OperationChange(
+                    action=DOCUMENT_METADATA_HYDRATED,
+                    resources=(ResourceRef("document", str(paper.id)),),
+                ),
+            )
+            if changed
+            else ()
+        ),
+        post_commit=(
+            (
+                RecordJobTelemetry(
+                    actor_id=actor.id,
+                    event="doi_resolved",
+                    properties=(("has_doi", has_doi),),
+                ),
+            )
+            if changed
+            else ()
+        ),
+    )
 
 
 def complete_document_gc_job(
     job_id: uuid.UUID,
     callback: JobCallbackIdentity,
     db: Session,
-) -> JobClaimResponse:
+    *,
+    operation: OperationContext,
+) -> JobHandlerResult:
     job = job_repository.require(db, job_id=job_id)
     if job.operation != JobOperation.DOCUMENT_GC.value or callback.task_id != job_id:
         raise AppError(
@@ -400,30 +560,33 @@ def complete_document_gc_job(
             message="Job callback does not match",
             kind=FailureKind.CONFLICT,
         )
-    if job.status == JobStatus.COMPLETED.value:
-        return JobClaimResponse(claimed=False)
+    if job.status in {
+        JobStatus.COMPLETED.value,
+        JobStatus.FAILED.value,
+        JobStatus.CANCELLED.value,
+    }:
+        return JobHandlerResult(value=JobClaimResponse(claimed=False))
     if job.document_id is None:
-        job_repository.complete(
+        _, changed = job_repository.complete(
             db,
             job_id=job_id,
             result={"deleted": True, "cancelled": False},
         )
-        return JobClaimResponse(claimed=True)
+        return JobHandlerResult(value=JobClaimResponse(claimed=changed))
 
-    result = collect_document_if_due(db, document_id=job.document_id)
-    if result.retry_required:
-        raise AppError(
-            code="document_gc_retry_required",
-            message="Document cleanup will be retried",
-            kind=FailureKind.UNAVAILABLE,
-        )
+    result = collect_document_if_due(
+        db,
+        document_id=job.document_id,
+        origin_operation_id=operation.trace.operation_id,
+        correlation_id=operation.trace.correlation_id,
+    )
     if not result.deleted and not result.cancelled:
         raise AppError(
             code="document_gc_not_due",
             message="Document cleanup is not due",
             kind=FailureKind.UNAVAILABLE,
         )
-    job_repository.complete(
+    _, changed = job_repository.complete(
         db,
         job_id=job_id,
         result={
@@ -431,14 +594,37 @@ def complete_document_gc_job(
             "cancelled": result.cancelled,
         },
     )
-    return JobClaimResponse(claimed=True)
+    changes: list[OperationChange] = []
+    if result.deleted:
+        changes.append(
+            OperationChange(
+                action=DOCUMENT_DELETED,
+                resources=(ResourceRef("document", str(result.document_id)),),
+            )
+        )
+    if result.storage_deletion is not None and result.storage_deletion.created:
+        changes.append(
+            OperationChange(
+                action=JOB_CREATED,
+                resources=(
+                    ResourceRef(
+                        "job",
+                        str(result.storage_deletion.job_id),
+                    ),
+                ),
+            )
+        )
+    return JobHandlerResult(
+        value=JobClaimResponse(claimed=changed),
+        changes=tuple(changes),
+    )
 
 
 def complete_storage_delete_job(
     job_id: uuid.UUID,
     callback: StorageDeleteCallback,
     db: Session,
-) -> JobClaimResponse:
+) -> JobHandlerResult:
     job = job_repository.require(db, job_id=job_id)
     if job.operation != JobOperation.STORAGE_DELETE.value or callback.task_id != job_id:
         raise AppError(
@@ -451,359 +637,560 @@ def complete_storage_delete_job(
         job_id=job_id,
         result={"deleted_count": callback.deleted_count},
     )
-    return JobClaimResponse(claimed=changed)
+    return JobHandlerResult(value=JobClaimResponse(claimed=changed))
+
+
+def _pdf_post_commit_actions(
+    *,
+    actor_id: int,
+    job_id: uuid.UUID,
+    usage_events: list[TokenUsageEventPayload],
+    telemetry: tuple[RecordJobTelemetry, ...] = (),
+) -> tuple[JobPostCommitAction, ...]:
+    """Return effects that must never run inside the callback database UoW."""
+    return (
+        SettleJobUsage(user_id=actor_id, events=tuple(usage_events)),
+        ReleaseJobConcurrency(
+            user_id=actor_id,
+            category="background",
+            job_id=job_id,
+        ),
+        *telemetry,
+    )
+
+
+def _document_change(
+    *,
+    action: OperationAction,
+    document_id: object,
+) -> OperationChange:
+    return OperationChange(
+        action=action,
+        resources=(ResourceRef("document", str(document_id)),),
+    )
+
+
+def _failed_pdf_result(
+    *,
+    db: Session,
+    job_id: str,
+    actor: Actor,
+    operation: OperationContext,
+    reason: str,
+    status: str,
+    post_commit: tuple[JobPostCommitAction, ...],
+) -> JobHandlerResult:
+    changes = handle_failed_upload(
+        db=db,
+        job_id=job_id,
+        job_user=actor,
+        operation=operation,
+        reason=reason,
+    )
+    return JobHandlerResult(
+        value={"status": status},
+        changes=changes,
+        post_commit=post_commit,
+    )
 
 
 async def handle_paper_processing_webhook(
     job_id: str,
     webhook_data: PdfProcessingWebhookData,
     db: Session,
-) -> dict[str, object]:
-    """Handle webhook from paper processing jobs service."""
-
-    # Get the job from your database (without user filtering since this is a webhook)
-    job = upload_reservation_repository.get_by(
-        db=db, task_id=webhook_data.task_id, id=job_id
+    *,
+    actor: Actor,
+    operation: OperationContext,
+) -> JobHandlerResult:
+    """Apply one PDF-worker result under the resumed durable-job operation."""
+    upload_job = upload_reservation_repository.get_by(
+        db=db,
+        task_id=webhook_data.task_id,
+        id=job_id,
     )
-    if not job:
+    if upload_job is None:
         raise AppError(
             code="job_not_found",
             message="Job not found",
             kind=FailureKind.NOT_FOUND,
         )
 
-    job_id = str(job.id)
-    durable_job = job_repository.require(db, job_id=job.id)
+    durable_job = job_repository.require(db, job_id=upload_job.id)
     if durable_job.operation != JobOperation.PDF_PROCESS.value:
         raise AppError(
             code="job_operation_mismatch",
             message="Job operation does not match callback",
             kind=FailureKind.CONFLICT,
         )
-
-    if durable_job.status == JobStatus.COMPLETED:
-        logger.warning(f"Received webhook for already completed job {job_id}, ignoring")
-        return {"status": "webhook ignored - job already completed"}
-
-    # Get the user object from the relationship
-    user = durable_job.requested_by
-    if not user:
-        logger.error(f"No user found for job {job_id}")
+    if durable_job.requested_by_id != actor.id:
         raise AppError(
-            code="job_requester_missing",
-            message="The job requester is unavailable",
+            code="job_requester_mismatch",
+            message="Job requester does not match callback operation",
             kind=FailureKind.CONFLICT,
         )
 
-    job_user: Actor = Actor(
-        id=user.id,
-        email=user.email,
-        display_name=user.display_name,
-        status=user.status,
-        email_verified=user.email_verified_at is not None,
-        locale=user.profile.locale if user.profile else None,
-        is_admin=bool(user.profile and user.profile.is_admin),
-        is_blocked=bool(user.profile and user.profile.is_blocked),
-        is_active=user.status == "active",
+    normalized_job_id = str(upload_job.id)
+    job_uuid = upload_job.id
+    post_commit = _pdf_post_commit_actions(
+        actor_id=actor.id,
+        job_id=job_uuid,
+        usage_events=webhook_data.usage_events,
     )
-    settle_jobs_usage(int(user.id), webhook_data.usage_events)
-    if durable_job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+    if durable_job.status in {
+        JobStatus.COMPLETED.value,
+        JobStatus.FAILED.value,
+        JobStatus.CANCELLED.value,
+    }:
         logger.warning(
-            "Ignoring late webhook for terminal job %s with status %s",
-            job_id,
+            "Ignoring late callback for terminal PDF job %s with status %s",
+            normalized_job_id,
             durable_job.status,
         )
-        db.commit()
-        await release_concurrency_by_id(
-            user_id=int(user.id),
-            category="background",
-            operation_id=job_id,
+        return JobHandlerResult(
+            value={"status": "webhook ignored - job is terminal"},
+            post_commit=post_commit,
         )
-        return {"status": "webhook ignored - job is terminal"}
 
-    # Serialize concurrent/duplicate deliveries for the same job. Celery retries
-    # with acks_late, so a redelivered task can fire a second webhook while the
-    # first is still processing. Without this, the two handlers race and one can
-    # delete the paper out from under the other (FK violations on highlight
-    # insert). Non-blocking: a loser bails immediately. The lock rides its own
-    # connection so it survives this handler's many intermediate commits.
+    # A dedicated connection owns this short, non-blocking serialization lock.
+    # The ApplicationExecutor remains the sole owner of the database commit.
     job_lock = AdvisoryLock(
-        engine, namespace=AdvisoryLockNamespace.PAPER_PROCESSING_WEBHOOK, key=job_id
+        engine,
+        namespace=AdvisoryLockNamespace.PAPER_PROCESSING_WEBHOOK,
+        key=normalized_job_id,
     )
     if not job_lock.acquire():
         logger.warning(
-            f"Webhook for job {job_id} is already being processed by another "
-            f"delivery, ignoring duplicate"
+            "PDF callback for job %s is already being processed",
+            normalized_job_id,
         )
-        return {"status": "webhook ignored - already being processed"}
-
-    status = webhook_data.status
-    result = webhook_data.result
-
-    zotero_import = zotero_import_repository.get_by_upload_job_id(
-        db, upload_job_id=uuid.UUID(job_id)
-    )
-
-    def mark_callback_failed() -> None:
-        upload_reservation_repository.mark_as_failed(
-            db=db,
-            job_id=job_id,
-            user=job_user,
-            error_code="webhook_processing_failed",
+        return JobHandlerResult(
+            value={"status": "webhook ignored - already being processed"}
         )
 
-    async with pdf_ingestion_callback(
-        db,
-        lock=job_lock,
-        user_id=int(user.id),
-        operation_id=job_id,
-        cleanup=lambda: handle_failed_upload(
-            db=db,
-            job_id=job_id,
-            job_user=job_user,
-            reason="webhook_processing_failed",
-        ),
-        fallback_mark_failed=mark_callback_failed,
-    ):
-        # Re-check completion under the lock: another delivery may have finished
-        # between our initial read and acquiring the lock.
-        db.refresh(durable_job)
-        if durable_job.status == JobStatus.COMPLETED:
-            logger.warning(
-                f"Job {job_id} completed by a concurrent delivery, ignoring "
-                f"duplicate webhook"
-            )
-            return {"status": "webhook ignored - job already completed"}
-        if durable_job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
-            logger.warning(
-                "Job %s became terminal before webhook processing; ignoring",
-                job_id,
-            )
-            return {"status": "webhook ignored - job is terminal"}
+    try:
+        try:
+            with db.begin_nested():
+                db.refresh(durable_job)
+                if durable_job.status in {
+                    JobStatus.COMPLETED.value,
+                    JobStatus.FAILED.value,
+                    JobStatus.CANCELLED.value,
+                }:
+                    return JobHandlerResult(
+                        value={"status": "webhook ignored - job is terminal"},
+                        post_commit=post_commit,
+                    )
 
-        if status == "completed" and result.success:
-            # Zotero imports run the worker with LLM metadata extraction skipped,
-            # so they have no `metadata` to apply. Zotero's authoritative metadata
-            # was already set at submit time; here we only fill the deterministic
-            # worker outputs and apply Zotero annotations.
-            if zotero_import:
-                finalized = _finalize_zotero_import(
-                    db=db, job_id=job_id, job_user=job_user, result=result
+                result = webhook_data.result
+                zotero_import = zotero_import_repository.get_by_upload_job_id(
+                    db,
+                    upload_job_id=job_uuid,
                 )
-                if finalized:
-                    _complete_pdf_job(db, job_id=job.id, result=result)
-                    track_event(
-                        "zotero_paper_processed",
-                        properties={"worker_duration": result.duration},
-                        user_id=str(user.id),
+                if webhook_data.status != "completed" or not result.success:
+                    error_message = result.error or "Unknown error"
+                    if zotero_import:
+                        salvaged = _finalize_zotero_import(
+                            db=db,
+                            job_id=normalized_job_id,
+                            job_user=actor,
+                            result=result,
+                            error_message=error_message,
+                        )
+                        if salvaged:
+                            changed = _complete_pdf_job(
+                                db,
+                                job_id=job_uuid,
+                                result=result,
+                            )
+                            return JobHandlerResult(
+                                value={
+                                    "status": "webhook processed - zotero salvage",
+                                    "document_id": salvaged,
+                                },
+                                changes=(
+                                    (
+                                        _document_change(
+                                            action=DOCUMENT_PROCESSING_COMPLETED,
+                                            document_id=salvaged,
+                                        ),
+                                        OperationChange(
+                                            action=ZOTERO_IMPORT_COMPLETED,
+                                            resources=(
+                                                ResourceRef(
+                                                    "document",
+                                                    str(salvaged),
+                                                ),
+                                            ),
+                                        ),
+                                    )
+                                    if changed
+                                    else ()
+                                ),
+                                post_commit=post_commit,
+                            )
+                    return _failed_pdf_result(
                         db=db,
+                        job_id=normalized_job_id,
+                        actor=actor,
+                        operation=operation,
+                        reason=error_message,
+                        status="webhook processed - failed",
+                        post_commit=post_commit,
                     )
-                    return {
-                        "status": "webhook processed - zotero import",
-                        "document_id": finalized,
-                    }
-                handle_failed_upload(
+
+                # Zotero supplied authoritative metadata before the worker ran.
+                if zotero_import:
+                    finalized = _finalize_zotero_import(
+                        db=db,
+                        job_id=normalized_job_id,
+                        job_user=actor,
+                        result=result,
+                    )
+                    if finalized:
+                        changed = _complete_pdf_job(
+                            db,
+                            job_id=job_uuid,
+                            result=result,
+                        )
+                        zotero_post_commit = _pdf_post_commit_actions(
+                            actor_id=actor.id,
+                            job_id=job_uuid,
+                            usage_events=webhook_data.usage_events,
+                            telemetry=(
+                                RecordJobTelemetry(
+                                    actor_id=actor.id,
+                                    event="zotero_paper_processed",
+                                    properties=(("worker_duration", result.duration),),
+                                ),
+                            ),
+                        )
+                        return JobHandlerResult(
+                            value={
+                                "status": "webhook processed - zotero import",
+                                "document_id": finalized,
+                            },
+                            changes=(
+                                (
+                                    _document_change(
+                                        action=DOCUMENT_PROCESSING_COMPLETED,
+                                        document_id=finalized,
+                                    ),
+                                    OperationChange(
+                                        action=ZOTERO_IMPORT_COMPLETED,
+                                        resources=(
+                                            ResourceRef(
+                                                "document",
+                                                str(finalized),
+                                            ),
+                                        ),
+                                    ),
+                                )
+                                if changed
+                                else ()
+                            ),
+                            post_commit=zotero_post_commit,
+                        )
+                    return _failed_pdf_result(
+                        db=db,
+                        job_id=normalized_job_id,
+                        actor=actor,
+                        operation=operation,
+                        reason="Zotero import missing metadata",
+                        status="webhook processed - zotero import failed",
+                        post_commit=post_commit,
+                    )
+
+                metadata = result.metadata
+                if metadata is None or not metadata.title:
+                    logger.error(
+                        "No metadata in PDF callback for job %s",
+                        normalized_job_id,
+                    )
+                    return _failed_pdf_result(
+                        db=db,
+                        job_id=normalized_job_id,
+                        actor=actor,
+                        operation=operation,
+                        reason="Missing metadata",
+                        status=("webhook processed - failed due to missing metadata"),
+                        post_commit=post_commit,
+                    )
+                if not result.raw_content:
+                    logger.error(
+                        "No raw content in PDF callback for job %s",
+                        normalized_job_id,
+                    )
+                    return _failed_pdf_result(
+                        db=db,
+                        job_id=normalized_job_id,
+                        actor=actor,
+                        operation=operation,
+                        reason="Missing raw_content",
+                        status=(
+                            "webhook processed - failed due to missing raw_content"
+                        ),
+                        post_commit=post_commit,
+                    )
+
+                existing_paper = document_repository.find_by_upload_job(
                     db=db,
-                    job_id=job_id,
-                    job_user=job_user,
-                    reason="Zotero import missing metadata",
+                    upload_job_id=normalized_job_id,
+                    user=actor,
                 )
-                return {"status": "webhook processed - zotero import failed"}
-
-            # Processing was successful
-            metadata = result.metadata
-
-            if not metadata or not metadata.title:
-                logger.error(f"No metadata in webhook result for job {job_id}")
-                handle_failed_upload(
-                    db=db, job_id=job_id, job_user=job_user, reason="Missing metadata"
-                )
-                return {"status": "webhook processed - failed due to missing metadata"}
-
-            if not result.raw_content:
-                logger.error(f"No raw_content in webhook result for job {job_id}")
-                handle_failed_upload(
-                    db=db,
-                    job_id=job_id,
-                    job_user=job_user,
-                    reason="Missing raw_content",
-                )
-                return {
-                    "status": "webhook processed - failed due to missing raw_content"
-                }
-
-            publish_date = metadata.publish_date if metadata.publish_date else None
-
-            existing_paper = document_repository.find_by_upload_job(
-                db=db, upload_job_id=job_id, user=job_user
-            )
-
-            # Create paper record
-            if existing_paper is None:
-                raise AppError(
-                    code="paper_not_found",
-                    message="Paper not found",
-                    kind=FailureKind.NOT_FOUND,
-                )
-            if not can_complete_processing(
-                DocumentProcessingStatus(existing_paper.processing_status)
-            ):
-                raise RuntimeError("document_completion_transition_rejected")
-            paper = document_repository.update_canonical(
-                db,
-                update=DocumentUpdate(
-                    preview_s3_key=result.preview_s3_key,
-                    title=metadata.title,
-                    authors=metadata.authors,
-                    abstract=metadata.abstract,
-                    summary="",
-                    summary_citations=[],
-                    institutions=metadata.institutions,
-                    keywords=metadata.keywords,
-                    publish_date=publish_date,
-                    raw_content=result.raw_content,
-                    parser_markdown_s3_key=result.parser_markdown_s3_key,
-                    parser_archive_s3_key=result.parser_archive_s3_key,
-                    parser_backend=result.parser_backend,
-                    parser_quality=result.parser_quality,
-                    parser_version=result.parser_version,
-                    parser_warning_code=result.parser_warning_code,
-                    page_offset_map=result.page_offset_map,
-                    processing_status=DocumentProcessingStatus.COMPLETED.value,
-                ),
-                document=existing_paper,
-                user=job_user,
-                refresh_result=False,
-            )
-
-            # Create highlights/annotations if any
-            if metadata.highlights and paper:
-                with optional_savepoint(
-                    db,
-                    operation="create_ai_highlights",
-                    context={"job_id": job_id, "document_id": str(paper.id)},
+                if existing_paper is None:
+                    raise AppError(
+                        code="paper_not_found",
+                        message="Paper not found",
+                        kind=FailureKind.NOT_FOUND,
+                    )
+                if not can_complete_processing(
+                    DocumentProcessingStatus(existing_paper.processing_status)
                 ):
-                    create_ai_highlights(
-                        db,
-                        document_id=paper.id,
-                        metadata=metadata,
-                        user=job_user,
-                    )
-
-            if metadata.summary and paper:
-                with optional_savepoint(
+                    raise RuntimeError("document_completion_transition_rejected")
+                paper = document_repository.update_canonical(
                     db,
-                    operation="create_summary_conversation",
-                    context={"job_id": job_id, "document_id": str(paper.id)},
-                ):
-                    conversation_data = ConversationCreateRequest(
-                        scope_type=ConversationScopeType.PAPER,
-                        scope_id=uuid.UUID(str(paper.id)),
-                    )
+                    update=DocumentUpdate(
+                        preview_s3_key=result.preview_s3_key,
+                        title=metadata.title,
+                        authors=metadata.authors,
+                        abstract=metadata.abstract,
+                        summary="",
+                        summary_citations=[],
+                        institutions=metadata.institutions,
+                        keywords=metadata.keywords,
+                        publish_date=metadata.publish_date,
+                        raw_content=result.raw_content,
+                        parser_markdown_s3_key=result.parser_markdown_s3_key,
+                        parser_archive_s3_key=result.parser_archive_s3_key,
+                        parser_backend=result.parser_backend,
+                        parser_quality=result.parser_quality,
+                        parser_version=result.parser_version,
+                        parser_warning_code=result.parser_warning_code,
+                        page_offset_map=result.page_offset_map,
+                        processing_status=(DocumentProcessingStatus.COMPLETED.value),
+                    ),
+                    document=existing_paper,
+                    user=actor,
+                    refresh_result=False,
+                )
 
-                    conversation = conversation_repository.create(
+                created_highlight_ids: tuple[uuid.UUID, ...] = ()
+                created_comment_ids: tuple[uuid.UUID, ...] = ()
+                if metadata.highlights:
+                    with optional_savepoint(
                         db,
-                        request=conversation_data,
-                        user_id=job_user.id,
-                        refresh_result=False,
-                    )
+                        operation="create_ai_highlights",
+                        context={
+                            "job_id": normalized_job_id,
+                            "document_id": str(paper.id),
+                        },
+                    ):
+                        created_highlights = create_ai_highlights(
+                            db,
+                            document_id=paper.id,
+                            metadata=metadata,
+                            user=actor,
+                        )
+                        created_highlight_ids = created_highlights.thread_ids
+                        created_comment_ids = created_highlights.comment_ids
 
-                    if conversation:
-                        # Add the summary as the first message in the conversation, from the AI
-
-                        citations_dict = (
+                summary_conversation_id: uuid.UUID | None = None
+                summary_message_id: uuid.UUID | None = None
+                if metadata.summary:
+                    with optional_savepoint(
+                        db,
+                        operation="create_summary_conversation",
+                        context={
+                            "job_id": normalized_job_id,
+                            "document_id": str(paper.id),
+                        },
+                    ):
+                        conversation = conversation_repository.create(
+                            db,
+                            request=ConversationCreateRequest(
+                                scope_type=ConversationScopeType.PAPER,
+                                scope_id=paper.id,
+                            ),
+                            user_id=actor.id,
+                            refresh_result=False,
+                        )
+                        citations = (
                             CitationHandler.convert_response_citation_to_paper_citation(
                                 metadata.summary_citations
                             )
                         )
-
-                        message_repository.create(
+                        message = message_repository.create(
                             db,
                             request=MessageCreate(
-                                conversation_id=uuid.UUID(str(conversation.id)),
-                                role="assistant",
+                                conversation_id=conversation.id,
+                                turn_id=operation.trace.operation_id,
+                                created_operation_id=operation.trace.operation_id,
+                                correlation_id=operation.trace.correlation_id,
+                                role=RoleType.ASSISTANT,
                                 content=metadata.summary,
-                                references=_JSON_OBJECT.validate_python(citations_dict),
+                                references=_JSON_OBJECT.validate_python(citations),
                             ),
-                            user_id=job_user.id,
+                            user_id=actor.id,
                             refresh_result=False,
                         )
+                        summary_conversation_id = conversation.id
+                        summary_message_id = message.id
 
-            # Track metadata extraction event
-            track_event(
-                "extracted_metadata",
-                properties={
-                    "has_title": bool(metadata.title),
-                    "has_authors": bool(metadata.authors),
-                    "has_abstract": bool(metadata.abstract),
-                    "has_summary": bool(metadata.summary),
-                    "has_ai_highlights": bool(metadata.highlights),
-                },
-                user_id=str(user.id),
-                db=db,
-            )
-
-            start_time = job.created_at
-            end_time = datetime.now(timezone.utc)
-
-            track_event(
-                "paper_upload",
-                properties={
-                    "has_metadata": bool(metadata),
-                    "duration": (end_time - start_time).total_seconds(),
-                    "worker_duration": result.duration,
-                },
-                user_id=str(user.id),
-                db=db,
-            )
-
-            # Mark job as completed
-            upload_reservation_repository.mark_as_completed(
-                db=db, job_id=job_id, user=job_user
-            )
-            _complete_pdf_job(
-                db,
-                job_id=uuid.UUID(job_id),
-                result=result,
-            )
-            if paper:
-                _enqueue_pdf_postprocess(
+                completed = _complete_pdf_job(
                     db,
-                    ingestion_job_id=uuid.UUID(job_id),
-                    document_id=uuid.UUID(str(paper.id)),
-                    user_id=job_user.id,
-                )
-
-        else:
-            # Processing failed.
-            error_message = result.error if result.error else "Unknown error"
-
-            # Best-effort salvage for Zotero imports: Zotero already supplied the
-            # metadata, so keep the paper with whatever deterministic outputs the
-            # worker did produce instead of discarding it.
-            if zotero_import:
-                salvaged = _finalize_zotero_import(
-                    db=db,
-                    job_id=job_id,
-                    job_user=job_user,
+                    job_id=job_uuid,
                     result=result,
-                    error_message=error_message,
                 )
-                if salvaged:
-                    _complete_pdf_job(db, job_id=job.id, result=result)
-                    return {
-                        "status": "webhook processed - zotero salvage",
-                        "document_id": salvaged,
-                    }
-
-            handle_failed_upload(
-                db=db, job_id=job_id, job_user=job_user, reason=error_message
+                postprocess_job = _enqueue_pdf_postprocess(
+                    db,
+                    ingestion_job_id=job_uuid,
+                    document_id=paper.id,
+                    user_id=actor.id,
+                    origin_operation_id=operation.trace.operation_id,
+                    correlation_id=operation.trace.correlation_id,
+                )
+                changes: list[OperationChange] = []
+                if completed:
+                    changes.append(
+                        _document_change(
+                            action=DOCUMENT_PROCESSING_COMPLETED,
+                            document_id=paper.id,
+                        )
+                    )
+                changes.extend(
+                    OperationChange(
+                        action=RESEARCH_HIGHLIGHT_CREATED,
+                        resources=(ResourceRef("research_item", str(thread_id)),),
+                    )
+                    for thread_id in created_highlight_ids
+                )
+                changes.extend(
+                    OperationChange(
+                        action=RESEARCH_ANNOTATION_COMMENT_CREATED,
+                        resources=(
+                            ResourceRef(
+                                "annotation_comment",
+                                str(comment_id),
+                            ),
+                        ),
+                    )
+                    for comment_id in created_comment_ids
+                )
+                if summary_conversation_id is not None:
+                    changes.append(
+                        OperationChange(
+                            action=CONVERSATION_CREATED,
+                            resources=(
+                                ResourceRef(
+                                    "conversation",
+                                    str(summary_conversation_id),
+                                ),
+                            ),
+                        )
+                    )
+                if summary_message_id is not None:
+                    changes.append(
+                        OperationChange(
+                            action=CONVERSATION_MESSAGE_CREATED,
+                            resources=(
+                                ResourceRef(
+                                    "message",
+                                    str(summary_message_id),
+                                ),
+                            ),
+                        )
+                    )
+                if postprocess_job.created:
+                    changes.append(
+                        OperationChange(
+                            action=JOB_CREATED,
+                            resources=(
+                                ResourceRef(
+                                    "job",
+                                    str(postprocess_job.job.id),
+                                ),
+                            ),
+                        )
+                    )
+                end_time = datetime.now(timezone.utc)
+                success_post_commit = _pdf_post_commit_actions(
+                    actor_id=actor.id,
+                    job_id=job_uuid,
+                    usage_events=webhook_data.usage_events,
+                    telemetry=(
+                        RecordJobTelemetry(
+                            actor_id=actor.id,
+                            event="extracted_metadata",
+                            properties=(
+                                ("has_title", bool(metadata.title)),
+                                ("has_authors", bool(metadata.authors)),
+                                ("has_abstract", bool(metadata.abstract)),
+                                ("has_summary", bool(metadata.summary)),
+                                (
+                                    "has_ai_highlights",
+                                    bool(metadata.highlights),
+                                ),
+                            ),
+                        ),
+                        RecordJobTelemetry(
+                            actor_id=actor.id,
+                            event="paper_upload",
+                            properties=(
+                                ("has_metadata", True),
+                                (
+                                    "duration",
+                                    (end_time - upload_job.created_at).total_seconds(),
+                                ),
+                                ("worker_duration", result.duration),
+                            ),
+                        ),
+                    ),
+                )
+                return JobHandlerResult(
+                    value={
+                        "status": "webhook processed",
+                        "document_id": str(paper.id),
+                    },
+                    changes=tuple(changes),
+                    post_commit=success_post_commit,
+                )
+        except Exception:
+            logger.exception(
+                "PDF callback application failed",
+                extra={"job_id": normalized_job_id},
             )
+            try:
+                with db.begin_nested():
+                    return _failed_pdf_result(
+                        db=db,
+                        job_id=normalized_job_id,
+                        actor=actor,
+                        operation=operation,
+                        reason="webhook_processing_failed",
+                        status="webhook processed - application failed",
+                        post_commit=post_commit,
+                    )
+            except Exception as cleanup_error:
+                logger.exception(
+                    "PDF callback failure cleanup failed",
+                    extra={"job_id": normalized_job_id},
+                )
+                raise AppError(
+                    code="pdf_webhook_failed",
+                    message="The PDF processing result could not be applied",
+                    kind=FailureKind.INTERNAL,
+                ) from cleanup_error
+    finally:
+        job_lock.release()
 
-    return {"status": "webhook processed"}
 
-
-def schedule_zotero_jobs(*, threshold_seconds: int, db: Session) -> dict[str, int]:
+def schedule_zotero_jobs(
+    *,
+    threshold_seconds: int,
+    db: Session,
+    origin_operation_id: uuid.UUID,
+    correlation_id: uuid.UUID,
+) -> ScheduledZoteroJobs:
     """Persist one idempotent job per due and eligible Zotero user."""
     threshold_hours = threshold_seconds / 3600
     user_ids = zotero_import_repository.list_user_ids_due_for_sync(
@@ -811,6 +1198,7 @@ def schedule_zotero_jobs(*, threshold_seconds: int, db: Session) -> dict[str, in
     )
     scheduled = 0
     skipped = 0
+    created_job_ids: list[uuid.UUID] = []
     window = int(datetime.now(timezone.utc).timestamp()) // threshold_seconds
     base_url = get_webhook_base_url().rstrip("/")
     for user_id in user_ids:
@@ -833,6 +1221,8 @@ def schedule_zotero_jobs(*, threshold_seconds: int, db: Session) -> dict[str, in
             request=EnqueueJob(
                 operation=JobOperation.ZOTERO_POSTPROCESS,
                 requested_by_id=user.id,
+                correlation_id=correlation_id,
+                origin_operation_id=origin_operation_id,
                 idempotency_key=f"zotero-postprocess:{user.id}:{window}",
                 payload={"threshold_seconds": threshold_seconds},
                 task_name="postprocess_zotero",
@@ -844,91 +1234,12 @@ def schedule_zotero_jobs(*, threshold_seconds: int, db: Session) -> dict[str, in
                 job_id=job_id,
             ),
         )
-        if job.id == job_id:
+        if job.created:
             scheduled += 1
-    return {
-        "total_users": len(user_ids),
-        "scheduled_jobs": scheduled,
-        "skipped_users": skipped,
-    }
-
-
-async def complete_zotero_postprocess_job(
-    job_id: uuid.UUID,
-    callback: JobCallbackIdentity,
-    db: Session,
-) -> JobClaimResponse:
-    job = job_repository.require(db, job_id=job_id)
-    if (
-        job.operation != JobOperation.ZOTERO_POSTPROCESS.value
-        or callback.task_id != job_id
-    ):
-        raise AppError(
-            code="job_callback_mismatch",
-            message="Job callback does not match",
-            kind=FailureKind.CONFLICT,
-        )
-    if job.status == JobStatus.COMPLETED.value:
-        return JobClaimResponse(claimed=False)
-    if job.requested_by_id is None:
-        raise AppError(
-            code="job_scope_missing",
-            message="Job scope is incomplete",
-            kind=FailureKind.CONFLICT,
-        )
-    user = user_repository.get(db, id=job.requested_by_id)
-    if user is None:
-        job_repository.complete(
-            db,
-            job_id=job_id,
-            result={"skipped": "user_not_found"},
-        )
-        return JobClaimResponse(claimed=True)
-    current_user = actor_from_auth_user(user)
-    connection = zotero_connection_repository.get_by_user_id(db, user_id=user.id)
-    if not can_user_auto_sync_zotero(db, current_user) or connection is None:
-        job_repository.complete(
-            db,
-            job_id=job_id,
-            result={"skipped": "not_eligible_or_disconnected"},
-        )
-        return JobClaimResponse(claimed=True)
-
-    with callback_transaction(
-        db,
-        operation="zotero_postprocess",
-        context={"job_id": str(job_id), "user_id": user.id},
-    ):
-        sync_result = await sync_batch(
-            db,
-            user=current_user,
-            credentials=ZoteroCredentials(
-                user_id=str(connection.zotero_user_id),
-                api_key=str(connection.api_key),
-            ),
-            limit=50,
-        )
-        import_result = await auto_import_new_papers(db, user=current_user)
-        synced_papers = int(sync_result.get("synced_papers_count", 0))
-        annotation_count = int(sync_result.get("new_annotations_count", 0))
-        imported_count = int(import_result.get("auto_imported_count", 0))
-        job_repository.complete(
-            db,
-            job_id=job_id,
-            result={
-                "synced_papers_count": synced_papers,
-                "new_annotations_count": annotation_count,
-                "auto_imported_count": imported_count,
-            },
-        )
-        track_event(
-            "zotero_auto_sync",
-            user_id=str(user.id),
-            properties={
-                "papers": synced_papers,
-                "annotations": annotation_count,
-                "auto_imported": imported_count,
-            },
-            db=db,
-        )
-    return JobClaimResponse(claimed=True)
+            created_job_ids.append(job.job.id)
+    return ScheduledZoteroJobs(
+        total_users=len(user_ids),
+        scheduled_jobs=scheduled,
+        skipped_users=skipped,
+        created_job_ids=tuple(created_job_ids),
+    )

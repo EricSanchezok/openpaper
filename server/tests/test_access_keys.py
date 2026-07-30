@@ -27,10 +27,23 @@ from app.modules.identity.application.identity import (
     AuthenticatedIdentity,
     Identity,
     IdentityProfile,
+    IdentityProfileResolution,
     LocalIdentity,
 )
-from app.shared.application import Actor, SignedCursorCodec
+from app.modules.operation_journal.application import OperationJournal
+from app.shared.application import (
+    Actor,
+    CredentialKind,
+    CredentialRef,
+    HttpOrigin,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+    SignedCursorCodec,
+)
 from app.shared.domain import AppError, WorkspacePermission
+from unittest.mock import MagicMock
 
 NOW = datetime(2026, 7, 30, 12, tzinfo=timezone.utc)
 
@@ -189,6 +202,14 @@ def _actor(user_id: int = 7) -> Actor:
     )
 
 
+def _operation() -> OperationContext:
+    return OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=HttpOrigin(RequestReference(uuid4())),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
+
+
 def _application(gateway: _Gateway) -> AccessKeys:
     return AccessKeys(
         gateway=gateway,
@@ -200,6 +221,7 @@ def _application(gateway: _Gateway) -> AccessKeys:
             revision="access-keys-v1",
             error_code="access_key_cursor_invalid",
         ),
+        journal=MagicMock(spec=OperationJournal),
     )
 
 
@@ -240,6 +262,7 @@ def test_management_lifecycle_normalizes_permissions_and_hides_secret() -> None:
     access_keys = _application(gateway)
     created = access_keys.create(
         actor=_actor(),
+        operation=_operation(),
         request=AccessKeyCreateRequest(
             name="  Claude Desktop  ",
             permissions=[
@@ -261,13 +284,22 @@ def test_management_lifecycle_normalizes_permissions_and_hides_secret() -> None:
 
     updated = access_keys.update(
         actor=_actor(),
+        operation=_operation(),
         access_key_id=created.access_key.id,
         request=AccessKeyUpdateRequest(permissions=[WorkspacePermission.DELETE]),
     )
     assert updated.permissions == [WorkspacePermission.DELETE]
 
-    access_keys.revoke(actor=_actor(), access_key_id=created.access_key.id)
-    access_keys.revoke(actor=_actor(), access_key_id=created.access_key.id)
+    access_keys.revoke(
+        actor=_actor(),
+        operation=_operation(),
+        access_key_id=created.access_key.id,
+    )
+    access_keys.revoke(
+        actor=_actor(),
+        operation=_operation(),
+        access_key_id=created.access_key.id,
+    )
     assert gateway.records[created.access_key.id].revoked_at == NOW
 
 
@@ -276,6 +308,7 @@ def test_authentication_is_uniform_and_touches_only_successful_keys() -> None:
     access_keys = _application(gateway)
     created = access_keys.create(
         actor=_actor(),
+        operation=_operation(),
         request=AccessKeyCreateRequest(
             name="Agent",
             permissions=[WorkspacePermission.READ],
@@ -289,7 +322,11 @@ def test_authentication_is_uniform_and_touches_only_successful_keys() -> None:
     assert authenticated.permissions == frozenset({WorkspacePermission.READ})
     assert gateway.touched == [created.access_key.id]
 
-    access_keys.revoke(actor=_actor(), access_key_id=created.access_key.id)
+    access_keys.revoke(
+        actor=_actor(),
+        operation=_operation(),
+        access_key_id=created.access_key.id,
+    )
     with pytest.raises(AppError) as error:
         access_keys.authenticate(created.secret)
     assert error.value.code == "invalid_access_key"
@@ -302,6 +339,7 @@ def test_active_capacity_and_stable_keyset_pagination() -> None:
     created_ids = [
         access_keys.create(
             actor=_actor(),
+            operation=_operation(),
             request=AccessKeyCreateRequest(
                 name=f"Agent {index}",
                 permissions=[WorkspacePermission.READ],
@@ -313,6 +351,7 @@ def test_active_capacity_and_stable_keyset_pagination() -> None:
     with pytest.raises(AppError) as capacity_error:
         access_keys.create(
             actor=_actor(),
+            operation=_operation(),
             request=AccessKeyCreateRequest(
                 name="One too many",
                 permissions=[WorkspacePermission.READ],
@@ -339,9 +378,14 @@ def test_active_capacity_and_stable_keyset_pagination() -> None:
     assert [item.id for item in third.items] == expected[8:]
     assert third.next_cursor is None
 
-    access_keys.revoke(actor=_actor(), access_key_id=created_ids[0])
+    access_keys.revoke(
+        actor=_actor(),
+        operation=_operation(),
+        access_key_id=created_ids[0],
+    )
     replacement = access_keys.create(
         actor=_actor(),
+        operation=_operation(),
         request=AccessKeyCreateRequest(
             name="Replacement",
             permissions=[WorkspacePermission.WRITE],
@@ -355,16 +399,22 @@ def test_inactive_and_non_owned_keys_cannot_be_updated() -> None:
     access_keys = _application(gateway)
     created = access_keys.create(
         actor=_actor(),
+        operation=_operation(),
         request=AccessKeyCreateRequest(
             name="Agent",
             permissions=[WorkspacePermission.READ],
         ),
     )
-    access_keys.revoke(actor=_actor(), access_key_id=created.access_key.id)
+    access_keys.revoke(
+        actor=_actor(),
+        operation=_operation(),
+        access_key_id=created.access_key.id,
+    )
 
     with pytest.raises(AppError) as inactive:
         access_keys.update(
             actor=_actor(),
+            operation=_operation(),
             access_key_id=created.access_key.id,
             request=AccessKeyUpdateRequest(name="Renamed"),
         )
@@ -373,6 +423,7 @@ def test_inactive_and_non_owned_keys_cannot_be_updated() -> None:
     with pytest.raises(AppError) as missing:
         access_keys.update(
             actor=_actor(8),
+            operation=_operation(),
             access_key_id=created.access_key.id,
             request=AccessKeyUpdateRequest(name="Stolen"),
         )
@@ -384,6 +435,7 @@ def test_expiration_boundary_and_openapi_management_surface() -> None:
     with pytest.raises(AppError) as error:
         _application(gateway).create(
             actor=_actor(),
+            operation=_operation(),
             request=AccessKeyCreateRequest(
                 name="Expired",
                 permissions=[WorkspacePermission.READ],
@@ -419,9 +471,9 @@ class _IdentityGateway:
             profile=self.profile,
         )
 
-    def ensure_profile(self, *, user_id: int) -> IdentityProfile:
+    def resolve_profile(self, *, user_id: int) -> IdentityProfileResolution:
         assert user_id == 7
-        return self.profile
+        return IdentityProfileResolution(profile=self.profile, created=False)
 
     def local_identity(self, *, user_id: int) -> LocalIdentity | None:
         return self.local if user_id == 7 else None
@@ -432,7 +484,7 @@ class _IdentityGateway:
 
 def test_cloud_and_access_key_identity_paths_share_account_rules() -> None:
     gateway = _IdentityGateway()
-    identity = Identity(gateway)
+    identity = Identity(gateway, journal=MagicMock(spec=OperationJournal))
     cloud_actor = identity.resolve_actor(
         AuthenticatedIdentity(
             id=7,
@@ -440,15 +492,22 @@ def test_cloud_and_access_key_identity_paths_share_account_rules() -> None:
             display_name="Reader",
             status="active",
             email_verified=True,
-        )
+        ),
+        operation=_operation(),
     )
     local_actor = identity.resolve_actor_by_user_id(7)
 
     assert local_actor == cloud_actor
 
     for unavailable in (
-        Identity(_IdentityGateway(status="pending")),
-        Identity(_IdentityGateway(blocked=True)),
+        Identity(
+            _IdentityGateway(status="pending"),
+            journal=MagicMock(spec=OperationJournal),
+        ),
+        Identity(
+            _IdentityGateway(blocked=True),
+            journal=MagicMock(spec=OperationJournal),
+        ),
     ):
         with pytest.raises(AppError):
             unavailable.resolve_actor_by_user_id(7)

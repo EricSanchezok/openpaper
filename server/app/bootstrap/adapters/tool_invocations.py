@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from app.database.models.tool_invocation import ToolInvocation
 from app.shared.domain import AppError, FailureKind, JsonValue
 from sqlalchemy import func, select
@@ -79,8 +81,8 @@ class SqlAlchemyToolInvocationGateway:
         self,
         *,
         actor_id: int,
+        operation_id: UUID,
         invocation_key: str,
-        source: str,
         tool_name: str,
         arguments_hash: str,
         result: JsonValue,
@@ -100,8 +102,8 @@ class SqlAlchemyToolInvocationGateway:
         self._session.add(
             ToolInvocation(
                 actor_id=actor_id,
+                operation_id=operation_id,
                 invocation_key=invocation_key,
-                source=source,
                 tool_name=tool_name,
                 arguments_hash=arguments_hash,
                 status="completed",

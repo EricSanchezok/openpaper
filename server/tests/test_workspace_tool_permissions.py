@@ -4,10 +4,11 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TypeVar
 from unittest.mock import MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from app.bootstrap.adapters.conversation_repository import conversation_repository
+from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.database.models import Conversation
 from app.llm.backend import LLMResponse
@@ -23,7 +24,16 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationToolPermissionsRequest,
 )
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
-from app.shared.application import Actor
+from app.shared.application import (
+    Actor,
+    ConversationOrigin,
+    CredentialKind,
+    CredentialRef,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 from app.shared.domain import (
     WORKSPACE_PERMISSION_ORDER,
     AppError,
@@ -35,7 +45,7 @@ from app.shared.domain import (
 from app.shared.domain.enums import ConversationScopeType
 from app.tooling import (
     ToolAccess,
-    ToolCallContext,
+    ToolExecutionContext,
     ToolCatalog,
     ToolDefinition,
     ToolDispatcher,
@@ -60,7 +70,7 @@ class RequiredInput(BaseModel):
 
 def _handler(
     _capabilities: object,
-    _context: ToolCallContext,
+    _context: ToolExecutionContext,
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = RequiredInput.model_validate(arguments)
@@ -68,7 +78,7 @@ def _handler(
 
 
 async def _workflow_handler(
-    _context: ToolCallContext,
+    _context: ToolExecutionContext,
     arguments: BaseModel,
     _invocation_key: str,
 ) -> ToolOutcome:
@@ -85,16 +95,35 @@ def _actor() -> Actor:
     )
 
 
-def _context() -> ToolCallContext:
-    return ToolCallContext(
+def _request_operation(
+    *,
+    conversation_id: UUID | None = None,
+    turn_id: UUID | None = None,
+) -> OperationContext:
+    return OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=ConversationOrigin(
+            request=RequestReference(uuid4()),
+            conversation_id=conversation_id or uuid4(),
+            turn_id=turn_id or uuid4(),
+        ),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
+
+
+def _context() -> ToolExecutionContext:
+    operation_factory = OperationContextFactory()
+    request_operation = _request_operation()
+    return ToolExecutionContext(
         actor=_actor(),
+        operation=operation_factory.child(
+            request_operation,
+            initiated_by=OperationInitiator.AGENT,
+        ),
         paper_collection=LibraryPaperCollection(),
         anchor_document_id=None,
-        source="conversation",
         invocation_id="permission-test",
         client_ip="test",
-        conversation_id=uuid4(),
-        turn_id=uuid4(),
     )
 
 
@@ -393,7 +422,8 @@ def test_workspace_tool_permission_mapping_is_exact() -> None:
         },
     }
     catalog = build_workspace_tool_catalog(
-        ingestion=MagicMock(spec=PaperIngestionWorkflow)
+        ingestion=MagicMock(spec=PaperIngestionWorkflow),
+        citations=MagicMock(spec=CitationWorkflow),
     )
     full_conversation_access = ToolAccess(
         profile_name=CONVERSATION_TOOL_PROFILE,
@@ -492,7 +522,7 @@ def test_permission_update_is_owned_locked_canonical_and_scope_independent(
         MagicMock(side_effect=AssertionError("scope access is irrelevant")),
     )
 
-    result = conversation_repository.update_tool_permissions(
+    write = conversation_repository.update_tool_permissions(
         db,
         conversation_id=conversation.id,
         user_id=7,
@@ -500,7 +530,9 @@ def test_permission_update_is_owned_locked_canonical_and_scope_independent(
             permissions=["delete", "read", "delete"]
         ),
     )
+    result = write.value
 
+    assert write.changed is True
     assert result.permissions == [
         WorkspacePermission.READ,
         WorkspacePermission.DELETE,
@@ -556,12 +588,19 @@ async def test_runtime_without_read_permission_never_runs_fallback_search(
     runtime = object.__new__(ConversationToolLoop)
     runtime._catalog = catalog  # type: ignore[assignment]
     runtime._dispatcher = dispatcher
+    runtime._operation_factory = OperationContextFactory()
     runtime.generate_content = MagicMock(return_value=LLMResponse(text=""))
     keyword_extractor = MagicMock(side_effect=AssertionError("fallback must not run"))
     runtime._extract_search_keywords = keyword_extractor
     monkeypatch.setattr(
         "app.llm.conversation_tool_loop.track_event",
         lambda *_args, **_kwargs: None,
+    )
+    conversation_id = uuid4()
+    turn_id = uuid4()
+    request_operation = _request_operation(
+        conversation_id=conversation_id,
+        turn_id=turn_id,
     )
 
     events = [
@@ -577,9 +616,12 @@ async def test_runtime_without_read_permission_never_runs_fallback_search(
                 paper_context=LibraryPaperCollection(),
                 tool_permissions=frozenset({WorkspacePermission.WRITE}),
             ),
-            conversation_id=uuid4(),
-            turn_id=uuid4(),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
             client_ip="test",
+            request_operation=request_operation,
+            turn_correlation_id=request_operation.trace.correlation_id,
+            user_operation_id=request_operation.trace.operation_id,
         )
     ]
 

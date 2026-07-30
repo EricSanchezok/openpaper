@@ -21,7 +21,13 @@ from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
     ToolRunState,
 )
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import (
+    Actor,
+    ApplicationExecutor,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+)
 from app.modules.conversations.infrastructure.chat_streaming import (
     stream_with_stable_error,
 )
@@ -142,6 +148,8 @@ async def stream_conversation_agent(
     executor: ApplicationExecutor[ApplicationCapabilities],
     current_user: Actor,
     runtime: ConversationAgentRuntime,
+    operation: OperationContext,
+    operation_factory: OperationContextFactory,
 ) -> AsyncGenerator[str, None]:
     """
     Send a chat message and stream the response from the LLM.
@@ -156,6 +164,85 @@ async def stream_conversation_agent(
         )
     )
     project_id = conversation_scope.project_id
+
+    mentions = executor.query(
+        lambda capabilities: capabilities.conversation_chat_data.mentions(
+            actor=current_user,
+            request=request,
+        )
+    )
+    mentioned_highlights = mentions.highlights
+    context_snapshot = executor.query(
+        lambda capabilities: capabilities.conversation_chat_data.context(
+            actor=current_user,
+            scope=conversation_scope,
+        )
+    )
+    scope_snapshot: list[dict[str, JsonValue]] = []
+    if conversation_scope.paper_context.kind == "library":
+        scope_snapshot.append({"kind": "library", "id": "library", "title": "Library"})
+    else:
+        scope_snapshot.extend(
+            {
+                "kind": "project",
+                "id": str(project.project_id),
+                "title": project.title,
+            }
+            for project in context_snapshot.projects
+        )
+        scope_snapshot.extend(
+            {
+                "kind": "paper",
+                "id": str(paper.document_id),
+                "title": paper.title,
+            }
+            for paper in context_snapshot.papers
+        )
+    if mentions.snapshot:
+        scope_snapshot.extend(mentions.snapshot)
+
+    formatted_references = (
+        CitationHandler.convert_references_to_dict(references=request.user_references)
+        if request.user_references
+        else None
+    )
+    turn_start = executor.command(
+        lambda capabilities: capabilities.conversation_chat_data.start_turn(
+            actor=current_user,
+            operation=operation,
+            conversation_id=conversation_id,
+            turn_id=request.turn_id,
+            user_content=request.user_query,
+            user_references=(
+                _JSON_OBJECT.validate_python(formatted_references)
+                if formatted_references is not None
+                else None
+            ),
+            scope=_JSON_OBJECT_LIST.validate_python(scope_snapshot),
+        )
+    )
+
+    if turn_start.assistant is not None:
+        persisted = turn_start.assistant
+
+        async def replay_response() -> AsyncGenerator[str, None]:
+            yield (
+                f"{json.dumps({'type': 'content', 'content': persisted.content})}"
+                f"{END_DELIMITER}"
+            )
+            if persisted.references is not None:
+                yield (
+                    f"{json.dumps({'type': 'references', 'content': persisted.references})}"
+                    f"{END_DELIMITER}"
+                )
+            if persisted.trace is not None:
+                yield (
+                    f"{json.dumps({'type': 'trace', 'content': persisted.trace})}"
+                    f"{END_DELIMITER}"
+                )
+
+        return replay_response()
+
     try:
         await enforce_rate_limit(
             user_id=int(current_user.id),
@@ -182,44 +269,6 @@ async def stream_conversation_agent(
         evidence_container: EvidenceState = {"evidence": None}
         tool_state: ToolRunState | None = None
 
-        mentions = executor.query(
-            lambda capabilities: capabilities.conversation_chat_data.mentions(
-                actor=current_user,
-                request=request,
-            )
-        )
-        mentioned_highlights = mentions.highlights
-        context_snapshot = executor.query(
-            lambda capabilities: capabilities.conversation_chat_data.context(
-                actor=current_user,
-                scope=conversation_scope,
-            )
-        )
-        scope_snapshot: list[dict[str, JsonValue]] = []
-        if conversation_scope.paper_context.kind == "library":
-            scope_snapshot.append(
-                {"kind": "library", "id": "library", "title": "Library"}
-            )
-        else:
-            scope_snapshot.extend(
-                {
-                    "kind": "project",
-                    "id": str(project.project_id),
-                    "title": project.title,
-                }
-                for project in context_snapshot.projects
-            )
-            scope_snapshot.extend(
-                {
-                    "kind": "paper",
-                    "id": str(paper.document_id),
-                    "title": paper.title,
-                }
-                for paper in context_snapshot.papers
-            )
-        if mentions.snapshot:
-            scope_snapshot.extend(mentions.snapshot)
-
         async for chunk in runtime.run_tools(
             conversation_id=conversation_id,
             turn_id=request.turn_id,
@@ -228,6 +277,9 @@ async def stream_conversation_agent(
             current_user=current_user,
             executor=executor,
             conversation_scope=conversation_scope,
+            request_operation=operation,
+            turn_correlation_id=turn_start.correlation_id,
+            user_operation_id=turn_start.user_operation_id,
         ):
             # Parse the chunk as a dictionary
             if isinstance(chunk, dict):
@@ -256,47 +308,55 @@ async def stream_conversation_agent(
             ),
             None,
         )
-        if tool_state is None or (
+        lacks_answer_context = tool_state is None or (
             len(tool_state.evidence) == 0
             and len(tool_state.artifacts) == 0
             and len(tool_state.action_results) == 0
             and (anchor_paper is None or not anchor_paper.raw_content)
-        ):
-            json_response = json.dumps(
-                {
-                    "type": "content",
-                    "content": "It looks like I couldn't find any relevant papers for your question. Please try rephrasing your question. If you think this is an error, please contact support.",
-                }
-            )
-            yield f"{json_response}{END_DELIMITER}"
-            return
-
-        yield f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}{END_DELIMITER}"
-
-        chat_generator = runtime.stream_answer(
-            question=request.user_query,
-            reasoning_level=request.reasoning_level,
-            user_references=request.user_references,
-            tool_state=tool_state,
-            conversation_id=str(conversation_id),
-            current_user=current_user,
-            all_papers=context_snapshot.papers,
-            anchor_paper=anchor_paper,
-            context_snapshot=context_snapshot,
-            scope_type=conversation_scope.scope_type,
-            response_style=request.style,
-            mentioned_highlights=mentioned_highlights,
-            executor=executor,
         )
-        async for stream_chunk in _stream_chat_chunks(
-            chunk_generator=chat_generator,
-            content_chunks=content_chunks,
-            evidence_container=evidence_container,
-            artifacts=artifacts_collected,
-            status_messages=status_messages,
-            reasoning_chunks=reasoning_chunks,
-        ):
-            yield stream_chunk
+        if lacks_answer_context:
+            no_results_message = (
+                "It looks like I couldn't find any relevant papers for your "
+                "question. Please try rephrasing your question. If you think "
+                "this is an error, please contact support."
+            )
+            content_chunks.append(no_results_message)
+            yield (
+                f"{json.dumps({'type': 'content', 'content': no_results_message})}"
+                f"{END_DELIMITER}"
+            )
+        else:
+            assert tool_state is not None
+            yield (
+                f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}"
+                f"{END_DELIMITER}"
+            )
+
+            chat_generator = runtime.stream_answer(
+                question=request.user_query,
+                reasoning_level=request.reasoning_level,
+                user_references=request.user_references,
+                tool_state=tool_state,
+                conversation_id=str(conversation_id),
+                turn_id=request.turn_id,
+                current_user=current_user,
+                all_papers=context_snapshot.papers,
+                anchor_paper=anchor_paper,
+                context_snapshot=context_snapshot,
+                scope_type=conversation_scope.scope_type,
+                response_style=request.style,
+                mentioned_highlights=mentioned_highlights,
+                executor=executor,
+            )
+            async for stream_chunk in _stream_chat_chunks(
+                chunk_generator=chat_generator,
+                content_chunks=content_chunks,
+                evidence_container=evidence_container,
+                artifacts=artifacts_collected,
+                status_messages=status_messages,
+                reasoning_chunks=reasoning_chunks,
+            ):
+                yield stream_chunk
 
         evidence = evidence_container["evidence"]
 
@@ -318,29 +378,20 @@ async def stream_conversation_agent(
         if assistant_trace:
             yield f"{json.dumps({'type': 'trace', 'content': assistant_trace})}{END_DELIMITER}"
 
-        formatted_references = (
-            CitationHandler.convert_references_to_dict(
-                references=request.user_references
-            )
-            if request.user_references
-            else None
+        answer_operation = operation_factory.resume(
+            correlation_id=turn_start.correlation_id,
+            causation_id=turn_start.user_operation_id,
+            initiated_by=OperationInitiator.AGENT,
+            origin=operation.origin,
+            credential=operation.credential,
         )
 
         executor.command(
-            lambda capabilities: capabilities.conversation_chat_data.save_turn(
+            lambda capabilities: capabilities.conversation_chat_data.complete_turn(
                 actor=current_user,
+                operation=answer_operation,
                 conversation_id=conversation_id,
-                user_content=request.user_query,
-                user_references=(
-                    _JSON_OBJECT.validate_python(formatted_references)
-                    if formatted_references is not None
-                    else None
-                ),
-                scope=(
-                    _JSON_OBJECT_LIST.validate_python(scope_snapshot)
-                    if scope_snapshot is not None
-                    else None
-                ),
+                turn_id=request.turn_id,
                 assistant_content=full_content,
                 assistant_references=(
                     _JSON_OBJECT.validate_python(evidence) if evidence else None
@@ -358,16 +409,33 @@ async def stream_conversation_agent(
             lambda capabilities: capabilities.conversation_chat_data.history(
                 actor=current_user,
                 conversation_id=conversation_id,
+                exclude_turn_id=None,
             )
         )
-        new_title = conversation_operations.generate_title(history)
-        if new_title is not None:
-            executor.command(
-                lambda capabilities: capabilities.conversation_chat_data.rename(
-                    actor=current_user,
-                    conversation_id=conversation_id,
-                    title=new_title,
+        try:
+            new_title = conversation_operations.generate_title(history)
+            if new_title is not None:
+                title_operation = operation_factory.resume(
+                    correlation_id=turn_start.correlation_id,
+                    causation_id=answer_operation.trace.operation_id,
+                    initiated_by=OperationInitiator.AGENT,
+                    origin=operation.origin,
+                    credential=operation.credential,
                 )
+                executor.command(
+                    lambda capabilities: (
+                        capabilities.conversations.apply_generated_title(
+                            actor=current_user,
+                            operation=title_operation,
+                            conversation_id=conversation_id,
+                            title=new_title,
+                        )
+                    )
+                )
+        except Exception:
+            logger.exception(
+                "Conversation title generation failed",
+                extra={"conversation_id": str(conversation_id)},
             )
 
         scope_items = scope_snapshot or []
@@ -429,14 +497,17 @@ class DefaultConversationChatGateway:
         self,
         executor: ApplicationExecutor[ApplicationCapabilities],
         runtime: ConversationAgentRuntime,
+        operation_factory: OperationContextFactory,
     ) -> None:
         self._executor = executor
         self._runtime = runtime
+        self._operation_factory = operation_factory
 
     async def stream(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: uuid.UUID,
         request: ConversationMessageRequest,
         client_ip: str,
@@ -448,4 +519,6 @@ class DefaultConversationChatGateway:
             executor=self._executor,
             current_user=actor,
             runtime=self._runtime,
+            operation=operation,
+            operation_factory=self._operation_factory,
         )

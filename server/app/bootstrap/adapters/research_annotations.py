@@ -27,6 +27,12 @@ class ParsedDocumentContent:
     page_offsets: dict[int, tuple[int, int]]
 
 
+@dataclass(frozen=True, slots=True)
+class CreatedAiHighlights:
+    thread_ids: tuple[uuid.UUID, ...]
+    comment_ids: tuple[uuid.UUID, ...]
+
+
 def require_parsed_content(
     db: Session,
     *,
@@ -63,7 +69,7 @@ def create_ai_highlights(
     document_id: uuid.UUID,
     metadata: PaperMetadataExtraction,
     user: Actor,
-) -> None:
+) -> CreatedAiHighlights:
     if research_repository.has_assistant_highlight(
         db,
         document_id=document_id,
@@ -72,8 +78,10 @@ def create_ai_highlights(
             "AI highlights already exist; skipping duplicate delivery",
             extra={"document_id": str(document_id)},
         )
-        return
+        return CreatedAiHighlights((), ())
     content = require_parsed_content(db, document_id=document_id, user=user)
+    thread_ids: list[uuid.UUID] = []
+    comment_ids: list[uuid.UUID] = []
     for highlight in metadata.highlights:
         offsets = find_offsets(highlight.text, content.raw_content)
         page_number = (
@@ -93,16 +101,30 @@ def create_ai_highlights(
                 position=None,
                 color="blue",
                 is_shared=True,
-                role=RoleType.ASSISTANT.value,
+                content_role=RoleType.ASSISTANT,
             ),
             refresh_result=False,
         )
-        research_repository.add_comment(
+        comment = research_repository.add_comment(
             db,
             thread_id=item.id,
             user_id=user.id,
             content=highlight.annotation,
-            role=RoleType.ASSISTANT.value,
+            content_role=RoleType.ASSISTANT,
             refresh_result=False,
         )
+        thread_ids.append(item.id)
+        comment_ids.append(comment.id)
     db.flush()
+    return CreatedAiHighlights(
+        thread_ids=tuple(thread_ids),
+        comment_ids=tuple(comment_ids),
+    )
+
+
+__all__ = [
+    "CreatedAiHighlights",
+    "ParsedDocumentContent",
+    "create_ai_highlights",
+    "require_parsed_content",
+]

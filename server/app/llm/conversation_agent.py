@@ -43,6 +43,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
     async def stream_answer(
         self,
         conversation_id: str,
+        turn_id: uuid.UUID,
         question: str,
         current_user: Actor,
         all_papers: list[ChatPaperSnapshot],
@@ -69,6 +70,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
             lambda capabilities: capabilities.conversation_chat_data.history(
                 actor=current_user,
                 conversation_id=casted_conversation_id,
+                exclude_turn_id=turn_id,
             )
         )
 

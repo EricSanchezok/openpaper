@@ -9,7 +9,7 @@ from typing import Generic, TypeVar
 from uuid import UUID
 
 from app.modules.papers.application.contracts.search import PaperCollection
-from app.shared.application import Actor
+from app.shared.application import Actor, OperationContext
 from app.shared.domain import (
     JsonValue,
     WorkspacePermission,
@@ -28,15 +28,28 @@ class ToolExecutionKind(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class ToolCallContext:
+class ToolExecutionContext:
     actor: Actor
+    operation: OperationContext
     paper_collection: PaperCollection
     anchor_document_id: UUID | None
-    source: str
     invocation_id: str
     client_ip: str
-    conversation_id: UUID | None = None
-    turn_id: UUID | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.invocation_id, str)
+            or not self.invocation_id
+            or len(self.invocation_id) > 1024
+        ):
+            raise ValueError("tool invocation_id must be a bounded non-empty string")
+        if (
+            not isinstance(self.client_ip, str)
+            or not self.client_ip
+            or self.client_ip != self.client_ip.strip()
+            or len(self.client_ip) > 64
+        ):
+            raise ValueError("tool client_ip must be a bounded normalized string")
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,9 +61,9 @@ class ToolOutcome:
     stop: bool = False
 
 
-ToolHandler = Callable[[CapabilitiesT, ToolCallContext, BaseModel], ToolOutcome]
+ToolHandler = Callable[[CapabilitiesT, ToolExecutionContext, BaseModel], ToolOutcome]
 WorkflowToolHandler = Callable[
-    [ToolCallContext, BaseModel, str],
+    [ToolExecutionContext, BaseModel, str],
     Awaitable[ToolOutcome],
 ]
 

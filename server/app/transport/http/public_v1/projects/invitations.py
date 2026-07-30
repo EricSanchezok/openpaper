@@ -5,14 +5,18 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.container import build_project_invitation_notifier
 from app.bootstrap.execution import get_application_executor
 from app.modules.projects.application.contracts import (
     ProjectInvitationCreateRequest,
     ProjectInvitationListResponse,
     ProjectInvitationResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Response, status
 
 router = APIRouter()
@@ -28,10 +32,12 @@ def accept_invitation_token(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.projects.accept_invitation(
             actor=current_user,
+            operation=operation,
             raw_token=token,
         )
     )
@@ -69,14 +75,21 @@ def create_project_invitation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectInvitationResponse:
-    return executor.command(
+    delivery = executor.command(
         lambda capabilities: capabilities.projects.create_invitation(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             request=request,
         )
     )
+    build_project_invitation_notifier().send(
+        inviter=current_user,
+        delivery=delivery,
+    )
+    return delivery.response
 
 
 @router.post(
@@ -90,14 +103,21 @@ def resend_project_invitation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectInvitationResponse:
-    return executor.command(
+    delivery = executor.command(
         lambda capabilities: capabilities.projects.resend_invitation(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             invitation_id=invitation_id,
         )
     )
+    build_project_invitation_notifier().send(
+        inviter=current_user,
+        delivery=delivery,
+    )
+    return delivery.response
 
 
 @router.delete(
@@ -111,10 +131,12 @@ def revoke_project_invitation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.projects.revoke_invitation(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             invitation_id=invitation_id,
         )

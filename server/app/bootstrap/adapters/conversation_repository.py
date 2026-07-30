@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.database.models import (
@@ -36,6 +37,12 @@ from app.shared.domain import (
 )
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationWrite[T]:
+    value: T
+    changed: bool
 
 
 def _not_found() -> AppError:
@@ -142,7 +149,85 @@ class ConversationRepository:
         conversation: Conversation,
         user_id: int,
         request: PaperContext,
-    ) -> PaperContext:
+    ) -> ConversationWrite[PaperContext]:
+        current_project_ids = set(
+            db.scalars(
+                select(ConversationContextProject.project_id).where(
+                    ConversationContextProject.conversation_id == conversation.id
+                )
+            ).all()
+        )
+        current_document_ids = set(
+            db.scalars(
+                select(ConversationContextDocument.document_id).where(
+                    ConversationContextDocument.conversation_id == conversation.id
+                )
+            ).all()
+        )
+
+        if isinstance(request, LibraryPaperContext):
+            context_kind = "library"
+            project_ids: set[uuid.UUID] = set()
+            document_ids: set[uuid.UUID] = set()
+        else:
+            context_kind = "selection"
+            project_ids = set(request.project_ids)
+            document_ids = set(request.document_ids)
+            if conversation.project_id is not None:
+                project_ids.discard(conversation.project_id)
+            if conversation.document_id is not None:
+                document_ids.discard(conversation.document_id)
+            if (
+                conversation.project_id is None
+                and conversation.document_id is None
+                and not project_ids
+                and not document_ids
+            ):
+                raise AppError(
+                    code="conversation_context_empty",
+                    message="A selected paper context cannot be empty",
+                    kind=FailureKind.UNPROCESSABLE,
+                )
+            for project_id in project_ids:
+                if (
+                    get_project_access(db, project_id=project_id, user_id=user_id)
+                    is None
+                ):
+                    raise AppError(
+                        code="conversation_context_project_not_found",
+                        message="A selected project was not found",
+                        kind=FailureKind.NOT_FOUND,
+                    )
+            for document_id in document_ids:
+                if (
+                    get_document_access(
+                        db,
+                        document_id=document_id,
+                        user_id=user_id,
+                    )
+                    is None
+                ):
+                    raise AppError(
+                        code="conversation_context_document_not_found",
+                        message="A selected paper was not found",
+                        kind=FailureKind.NOT_FOUND,
+                    )
+
+        changed = (
+            conversation.paper_context_kind != context_kind
+            or current_project_ids != project_ids
+            or current_document_ids != document_ids
+        )
+        if not changed:
+            return ConversationWrite(
+                value=self.paper_context(
+                    db,
+                    conversation=conversation,
+                    user_id=user_id,
+                ),
+                changed=False,
+            )
+
         db.execute(
             delete(ConversationContextProject).where(
                 ConversationContextProject.conversation_id == conversation.id
@@ -153,46 +238,7 @@ class ConversationRepository:
                 ConversationContextDocument.conversation_id == conversation.id
             )
         )
-        if isinstance(request, LibraryPaperContext):
-            conversation.paper_context_kind = "library"
-            db.flush()
-            return LibraryPaperContext()
-
-        project_ids = set(request.project_ids)
-        document_ids = set(request.document_ids)
-        if conversation.project_id is not None:
-            project_ids.discard(conversation.project_id)
-        if conversation.document_id is not None:
-            document_ids.discard(conversation.document_id)
-        if (
-            conversation.project_id is None
-            and conversation.document_id is None
-            and not project_ids
-            and not document_ids
-        ):
-            raise AppError(
-                code="conversation_context_empty",
-                message="A selected paper context cannot be empty",
-                kind=FailureKind.UNPROCESSABLE,
-            )
-        for project_id in project_ids:
-            if get_project_access(db, project_id=project_id, user_id=user_id) is None:
-                raise AppError(
-                    code="conversation_context_project_not_found",
-                    message="A selected project was not found",
-                    kind=FailureKind.NOT_FOUND,
-                )
-        for document_id in document_ids:
-            if (
-                get_document_access(db, document_id=document_id, user_id=user_id)
-                is None
-            ):
-                raise AppError(
-                    code="conversation_context_document_not_found",
-                    message="A selected paper was not found",
-                    kind=FailureKind.NOT_FOUND,
-                )
-        conversation.paper_context_kind = "selection"
+        conversation.paper_context_kind = context_kind
         db.add_all(
             ConversationContextProject(
                 conversation_id=conversation.id,
@@ -208,7 +254,14 @@ class ConversationRepository:
             for document_id in sorted(document_ids, key=str)
         )
         db.flush()
-        return self.paper_context(db, conversation=conversation, user_id=user_id)
+        return ConversationWrite(
+            value=self.paper_context(
+                db,
+                conversation=conversation,
+                user_id=user_id,
+            ),
+            changed=True,
+        )
 
     def update_paper_context(
         self,
@@ -217,7 +270,7 @@ class ConversationRepository:
         conversation_id: uuid.UUID,
         user_id: int,
         request: PaperContext,
-    ) -> PaperContext:
+    ) -> ConversationWrite[PaperContext]:
         conversation = self.require_owned(
             db,
             conversation_id=conversation_id,
@@ -239,7 +292,7 @@ class ConversationRepository:
         conversation_id: uuid.UUID,
         user_id: int,
         request: ConversationToolPermissionsRequest,
-    ) -> ConversationToolPermissionsResponse:
+    ) -> ConversationWrite[ConversationToolPermissionsResponse]:
         conversation = self.require_owned(
             db,
             conversation_id=conversation_id,
@@ -247,9 +300,13 @@ class ConversationRepository:
             for_update=True,
         )
         permissions = ordered_workspace_permissions(request.permissions)
-        conversation.tool_permissions = [permission.value for permission in permissions]
+        response = ConversationToolPermissionsResponse(permissions=permissions)
+        normalized = [permission.value for permission in permissions]
+        if conversation.tool_permissions == normalized:
+            return ConversationWrite(value=response, changed=False)
+        conversation.tool_permissions = normalized
         db.flush()
-        return ConversationToolPermissionsResponse(permissions=permissions)
+        return ConversationWrite(value=response, changed=True)
 
     def require_owned(
         self,
@@ -458,28 +515,46 @@ class ConversationRepository:
         conversation_id: uuid.UUID,
         user_id: int,
         request: ConversationUpdateRequest,
-    ) -> Conversation:
+    ) -> ConversationWrite[Conversation]:
         conversation = self.require_owned(
             db,
             conversation_id=conversation_id,
             user_id=user_id,
             for_update=True,
         )
-        if request.title is not None:
-            conversation.title = request.title
+        desired_title = (
+            request.title if request.title is not None else conversation.title
+        )
+        desired_pinned_at = conversation.pinned_at
+        desired_archived_at = conversation.archived_at
+        now: datetime | None = None
         if request.pinned is not None:
-            conversation.pinned_at = (
-                datetime.now(timezone.utc) if request.pinned else None
-            )
+            if request.pinned and desired_pinned_at is None:
+                now = datetime.now(timezone.utc)
+                desired_pinned_at = now
+            elif not request.pinned:
+                desired_pinned_at = None
         if request.archived is not None:
-            conversation.archived_at = (
-                datetime.now(timezone.utc) if request.archived else None
-            )
+            if request.archived and desired_archived_at is None:
+                now = now or datetime.now(timezone.utc)
+                desired_archived_at = now
+            elif not request.archived:
+                desired_archived_at = None
             if request.archived:
-                conversation.pinned_at = None
+                desired_pinned_at = None
+        changed = (
+            desired_title != conversation.title
+            or desired_pinned_at != conversation.pinned_at
+            or desired_archived_at != conversation.archived_at
+        )
+        if not changed:
+            return ConversationWrite(value=conversation, changed=False)
+        conversation.title = desired_title
+        conversation.pinned_at = desired_pinned_at
+        conversation.archived_at = desired_archived_at
         db.flush()
         db.refresh(conversation)
-        return conversation
+        return ConversationWrite(value=conversation, changed=True)
 
     def move(
         self,
@@ -488,7 +563,7 @@ class ConversationRepository:
         conversation_id: uuid.UUID,
         user_id: int,
         request: ConversationMoveRequest,
-    ) -> Conversation:
+    ) -> ConversationWrite[Conversation]:
         conversation = self.require_owned(
             db,
             conversation_id=conversation_id,
@@ -505,6 +580,11 @@ class ConversationRepository:
 
         if request.scope_type == ConversationScopeType.PROJECT.value:
             assert request.scope_id is not None
+            if (
+                conversation.scope_type == ConversationScopeType.PROJECT.value
+                and conversation.project_id == request.scope_id
+            ):
+                return ConversationWrite(value=conversation, changed=False)
             access = get_project_access(
                 db,
                 project_id=request.scope_id,
@@ -522,6 +602,8 @@ class ConversationRepository:
             conversation.scope_label_snapshot = access.project.title
             default_context: PaperContext = SelectedPaperContext()
         else:
+            if conversation.scope_type == ConversationScopeType.GLOBAL.value:
+                return ConversationWrite(value=conversation, changed=False)
             conversation.scope_type = ConversationScopeType.GLOBAL.value
             conversation.project_id = None
             conversation.document_id = None
@@ -535,7 +617,7 @@ class ConversationRepository:
         )
         db.flush()
         db.refresh(conversation)
-        return conversation
+        return ConversationWrite(value=conversation, changed=True)
 
     def delete(
         self,

@@ -1,12 +1,26 @@
 import uuid
 
-from app.bootstrap.execution import get_conversation_chat
+from app.bootstrap.execution import (
+    get_conversation_chat,
+    get_operation_context_factory,
+)
 from app.modules.conversations.application.chat import ConversationChat
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
 )
-from app.shared.application import Actor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import (
+    Actor,
+    ConversationOrigin,
+    HttpOrigin,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+)
+from app.transport.client_ip import http_client_ip
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
@@ -27,11 +41,25 @@ async def create_conversation_message(
     http_request: Request,
     chat: ConversationChat = Depends(get_conversation_chat),
     current_user: Actor = Depends(get_required_user),
+    request_operation: OperationContext = Depends(get_required_operation),
+    operation_factory: OperationContextFactory = Depends(get_operation_context_factory),
 ) -> StreamingResponse:
+    if not isinstance(request_operation.origin, HttpOrigin):
+        raise RuntimeError("conversation_http_origin_missing")
+    operation = operation_factory.root(
+        initiated_by=OperationInitiator.USER,
+        origin=ConversationOrigin(
+            request=request_operation.origin.request,
+            conversation_id=conversation_id,
+            turn_id=message.turn_id,
+        ),
+        credential=request_operation.credential,
+    )
     stream = await chat.stream(
         actor=current_user,
+        operation=operation,
         conversation_id=conversation_id,
         request=message,
-        client_ip=(http_request.client.host if http_request.client else "unknown"),
+        client_ip=http_client_ip(http_request),
     )
     return StreamingResponse(stream, media_type="text/event-stream")

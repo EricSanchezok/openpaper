@@ -31,6 +31,8 @@ def _upload_job(*, project_id=None) -> UploadReservation:
     durable_job = DurableJob(
         id=job_id,
         operation=JobOperation.PDF_PROCESS.value,
+        correlation_id=uuid4(),
+        origin_operation_id=uuid4(),
         requested_by_id=7,
         project_id=project_id,
         idempotency_key=f"pdf-reservation:{job_id}",
@@ -91,14 +93,17 @@ def test_personal_submission_persists_identity_before_broker_publish(
         add_dispatch,
     )
 
-    task_id = finalize_reserved_document(
+    result = finalize_reserved_document(
         pdf_bytes=b"%PDF-1.7",
         upload_job=upload_job,
         db=db,
         user=_user(),
     )
 
-    assert task_id == str(upload_job.id)
+    assert result.task_id == str(upload_job.id)
+    assert result.document_id == document.id
+    assert result.changed is True
+    assert result.job_completed is False
     assert upload_job.job.document_id == document.id
     get_or_create.assert_called_once()
     attach_library.assert_called_once_with(

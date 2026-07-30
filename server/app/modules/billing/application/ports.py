@@ -1,10 +1,11 @@
-"""Replaceable billing provider and persistence boundaries."""
+"""Replaceable billing persistence, provider, and notification boundaries."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Mapping, Protocol
+from uuid import UUID
 
 from app.modules.billing.application.contracts import UsageResponse
 from app.shared.application import Actor
@@ -18,9 +19,11 @@ class BillingPaymentFailed(BillingProviderUnavailable):
     """A payment method was missing or declined."""
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class SubscriptionRecord:
+    id: UUID
     user_id: int
+    plan: str
     stripe_customer_id: str | None
     stripe_subscription_id: str | None
     stripe_price_id: str | None
@@ -31,7 +34,13 @@ class SubscriptionRecord:
     cancel_at_period_end: bool
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
+class SubscriptionWriteResult:
+    record: SubscriptionRecord
+    changed: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderSubscription:
     subscription_id: str
     status: str
@@ -42,7 +51,7 @@ class ProviderSubscription:
     default_payment_method_id: str | None = None
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class ProviderCheckoutSession:
     session_id: str
     status: str
@@ -52,7 +61,7 @@ class ProviderCheckoutSession:
     subscription_id: str | None = None
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class ProviderSchedule:
     schedule_id: str
     current_phase_start: int
@@ -62,11 +71,14 @@ class ProviderSchedule:
 class SubscriptionStore(Protocol):
     def get(self, user_id: int) -> SubscriptionRecord | None: ...
 
-    def save(self, user_id: int, **changes: object) -> SubscriptionRecord: ...
+    def get_by_customer_id(self, customer_id: str) -> SubscriptionRecord | None: ...
 
-    def refresh_from_provider(
-        self, provider_subscription: ProviderSubscription
+    def get_by_subscription_id(
+        self,
+        subscription_id: str,
     ) -> SubscriptionRecord | None: ...
+
+    def save(self, user_id: int, **changes: object) -> SubscriptionWriteResult: ...
 
 
 class PaymentProvider(Protocol):
@@ -123,11 +135,54 @@ class UsageReader(Protocol):
     def read(self, actor: Actor) -> UsageResponse: ...
 
 
+@dataclass(frozen=True, slots=True)
+class BillingEvent:
+    name: str
+    actor_id: int | None
+    properties: Mapping[str, object]
+
+
 class BillingEvents(Protocol):
-    def record(
-        self, event_name: str, *, actor: Actor, properties: dict[str, object]
-    ) -> None: ...
+    def record(self, event: BillingEvent) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class IntervalChangeScheduledNotification:
+    email: str
+    display_name: str | None
+    new_interval: str
+    kind: Literal["interval_change_scheduled"] = "interval_change_scheduled"
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionWelcomeNotification:
+    email: str
+    display_name: str | None
+    kind: Literal["subscription_welcome"] = "subscription_welcome"
+
+
+@dataclass(frozen=True, slots=True)
+class CancellationConfirmedNotification:
+    email: str
+    display_name: str | None
+    kind: Literal["cancellation_confirmed"] = "cancellation_confirmed"
+
+
+@dataclass(frozen=True, slots=True)
+class BillingIssueNotification:
+    email: str
+    display_name: str | None
+    issue: str
+    kind: Literal["billing_issue"] = "billing_issue"
+
+
+type BillingNotification = (
+    IntervalChangeScheduledNotification
+    | SubscriptionWelcomeNotification
+    | CancellationConfirmedNotification
+    | BillingIssueNotification
+)
 
 
 class BillingNotifier(Protocol):
-    def interval_change_scheduled(self, *, actor: Actor, new_interval: str) -> None: ...
+    def send(self, notification: BillingNotification) -> None: ...

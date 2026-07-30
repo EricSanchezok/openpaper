@@ -1,6 +1,11 @@
 """SQLAlchemy adapter for Scholens identity/profile use cases."""
 
-from app.modules.identity.application.identity import IdentityProfile, LocalIdentity
+from app.modules.identity.application.identity import (
+    BlockedStatusResolution,
+    IdentityProfile,
+    IdentityProfileResolution,
+    LocalIdentity,
+)
 from app.modules.identity.infrastructure.users import user_repository
 from sqlalchemy.orm import Session
 
@@ -9,12 +14,18 @@ class SqlAlchemyIdentityGateway:
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def ensure_profile(self, *, user_id: int) -> IdentityProfile:
-        profile = user_repository.get_or_create_profile(self._db, user_id=user_id)
-        return IdentityProfile(
-            locale=profile.locale,
-            is_admin=profile.is_admin,
-            is_blocked=profile.is_blocked,
+    def resolve_profile(self, *, user_id: int) -> IdentityProfileResolution:
+        profile, created = user_repository.resolve_profile(
+            self._db,
+            user_id=user_id,
+        )
+        return IdentityProfileResolution(
+            profile=IdentityProfile(
+                locale=profile.locale,
+                is_admin=profile.is_admin,
+                is_blocked=profile.is_blocked,
+            ),
+            created=created,
         )
 
     def local_identity(self, *, user_id: int) -> LocalIdentity | None:
@@ -34,13 +45,25 @@ class SqlAlchemyIdentityGateway:
             ),
         )
 
-    def set_blocked(self, *, user_id: int, blocked: bool) -> str | None:
+    def set_blocked(
+        self,
+        *,
+        user_id: int,
+        blocked: bool,
+    ) -> BlockedStatusResolution | None:
         user = user_repository.get(self._db, id=user_id)
         if user is None:
             return None
-        user_repository.set_blocked(
+        profile, profile_created = user_repository.resolve_profile(
             self._db,
             user_id=user_id,
+        )
+        changed = user_repository.set_blocked(
+            self._db,
+            profile=profile,
             blocked=blocked,
         )
-        return user.email
+        return BlockedStatusResolution(
+            profile_created=profile_created,
+            changed=changed,
+        )

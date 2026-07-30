@@ -64,6 +64,7 @@ class JobOperation(str, Enum):
 
 class JobDispatchStatus(str, Enum):
     PENDING = "pending"
+    PUBLISHING = "publishing"
     PUBLISHED = "published"
 
 

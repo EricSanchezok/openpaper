@@ -22,8 +22,8 @@ def upgrade() -> None:
         "tool_invocations",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("actor_id", sa.BigInteger(), nullable=False),
+        sa.Column("operation_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("invocation_key", sa.String(length=512), nullable=False),
-        sa.Column("source", sa.String(length=32), nullable=False),
         sa.Column("tool_name", sa.String(length=128), nullable=False),
         sa.Column("arguments_hash", sa.String(length=64), nullable=False),
         sa.Column(
@@ -71,9 +71,21 @@ def upgrade() -> None:
         unique=False,
         schema="scholens",
     )
+    op.create_index(
+        op.f("ix_scholens_tool_invocations_operation_id"),
+        "tool_invocations",
+        ["operation_id"],
+        unique=False,
+        schema="scholens",
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        op.f("ix_scholens_tool_invocations_operation_id"),
+        table_name="tool_invocations",
+        schema="scholens",
+    )
     op.drop_index(
         op.f("ix_scholens_tool_invocations_actor_id"),
         table_name="tool_invocations",

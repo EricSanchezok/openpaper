@@ -1,477 +1,294 @@
-import asyncio
-import unittest
+"""Focused Zotero import planning and short-transaction workflow tests."""
+
+from __future__ import annotations
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from app.database.models import ZoteroImportSource, ZoteroImportStatus
+import pytest
+
+from app.bootstrap.adapters import zotero_gateway as gateway_module
+from app.bootstrap.adapters.zotero_gateway import DefaultZoteroGateway
+from app.bootstrap.workflows.zotero import _execute_import_plan
+from app.database.models import ZoteroImportSource
 from app.helpers.paper_search import normalize_doi
-from app.bootstrap.adapters import zotero_workflow as zotero_import_module
-from app.bootstrap.adapters.zotero_workflow import (
-    _discover_import_candidates,
-    _link_zotero_item_to_existing_paper,
-    import_batch,
+from app.modules.integrations.zotero.application.contracts import (
+    ZoteroImportItemResult,
 )
-from app.modules.integrations.zotero.application.zotero import ZoteroCredentials
+from app.modules.integrations.zotero.application.zotero import (
+    ZoteroAttachmentSnapshot,
+    ZoteroCredentials,
+    ZoteroImportContent,
+    ZoteroImportPlan,
+    ZoteroImportPlanItem,
+    ZoteroItemSnapshot,
+)
+from app.modules.papers.application.ingestion import (
+    IngestionFinalization,
+    IngestionReservation,
+)
+from app.shared.application import (
+    Actor,
+    CredentialKind,
+    CredentialRef,
+    HttpOrigin,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 
-_CREDENTIALS = ZoteroCredentials(user_id="1", api_key="key")
 
-
-class TestNormalizeDoi(unittest.TestCase):
-    def test_bare_doi(self) -> None:
-        self.assertEqual(normalize_doi("10.1234/abc"), "10.1234/abc")
-
-    def test_doi_url(self) -> None:
-        self.assertEqual(
-            normalize_doi("https://doi.org/10.1234/abc"),
-            "10.1234/abc",
-        )
-
-    def test_doi_prefix(self) -> None:
-        self.assertEqual(normalize_doi("doi:10.1234/abc"), "10.1234/abc")
-
-    def test_empty(self) -> None:
-        self.assertIsNone(normalize_doi(None))
-        self.assertIsNone(normalize_doi(""))
-        self.assertIsNone(normalize_doi("   "))
-
-
-class TestLinkZoteroItemToExistingPaper(unittest.IsolatedAsyncioTestCase):
-    @patch.object(zotero_import_module, "_sync_item")
-    @patch.object(zotero_import_module, "zotero_import_repository")
-    @patch.object(
-        zotero_import_module,
-        "_resolve_zotero_attachment_info",
-        return_value=(
-            ZoteroImportSource.PDF_ATTACHMENT,
-            "ATT1",
-            None,
-            [{"key": "ANN1", "data": {"annotationText": "hello"}}],
-        ),
+def _actor() -> Actor:
+    return Actor(
+        id=42,
+        email="researcher@example.com",
+        status="active",
+        email_verified=True,
     )
-    async def test_creates_import_row_and_syncs_annotations(
-        self,
-        mock_resolve: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_sync_item: MagicMock,
-    ) -> None:
-        user = MagicMock()
-        user.id = uuid4()
-        paper = MagicMock()
-        paper.id = uuid4()
-        import_row = MagicMock()
-        mock_import_repository.create.return_value = import_row
-        client = MagicMock()
-        item = {"key": "ITEM2", "data": {"title": "Document", "DOI": "10.1234/x"}}
-
-        await _link_zotero_item_to_existing_paper(
-            MagicMock(),
-            client=client,
-            item=item,
-            item_key="ITEM2",
-            paper=paper,
-            user=user,
-        )
-
-        mock_import_repository.create.assert_called_once()
-        create_kwargs = mock_import_repository.create.call_args.kwargs
-        self.assertEqual(create_kwargs["zotero_item_key"], "ITEM2")
-        self.assertEqual(create_kwargs["document_id"], paper.id)
-        self.assertEqual(create_kwargs["status"], ZoteroImportStatus.COMPLETED)
-        mock_sync_item.assert_called_once()
 
 
-# Shared decorator stack for tests that exercise the full _import_one_paper
-# hand-off to the durable document-submission service. import_batch resolves the
-# requested item keys, reserves a logical Library reference, and submits the
-# canonical SHA-addressed Document for processing when it is not already ready.
-def _patch_import_pipeline(fn):
-    # Applied innermost-first, so decorators[0] binds to the first method param.
-    # Order here mirrors the test method signatures below.
-    decorators = [
+def _item(key: str, *, doi: str | None = None) -> ZoteroItemSnapshot:
+    return ZoteroItemSnapshot(
+        item_key=key,
+        title=f"Paper {key}",
+        authors=("Researcher",),
+        abstract=None,
+        publish_date="2026-01-01",
+        doi=doi,
+        tags=(),
+        date_added="2026-01-02T00:00:00Z",
+        item_type="journalArticle",
+        venue=None,
+        collections=(),
+        has_pdf_attachment=True,
+        has_metadata=True,
+    )
+
+
+def _operation():
+    return OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=HttpOrigin(RequestReference(uuid4())),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("10.1234/abc", "10.1234/abc"),
+        ("https://doi.org/10.1234/abc", "10.1234/abc"),
+        ("doi:10.1234/abc", "10.1234/abc"),
+        (None, None),
+        ("  ", None),
+    ],
+)
+def test_normalize_doi(value: str | None, expected: str | None) -> None:
+    assert normalize_doi(value) == expected
+
+
+def test_plan_import_links_existing_and_duplicate_doi_without_title_dedup() -> None:
+    existing_document = SimpleNamespace(
+        id=uuid4(),
+        s3_object_key="documents/existing.pdf",
+    )
+    gateway = DefaultZoteroGateway(MagicMock())
+    items = (
+        _item("EXISTING", doi="10.1000/existing"),
+        _item("FIRST", doi="10.1000/new"),
+        _item("SECOND", doi="https://doi.org/10.1000/new"),
+        _item("NO-DOI"),
+        _item("NO-DOI-2"),
+    )
+
+    with (
         patch.object(
-            zotero_import_module,
-            "finalize_reserved_document",
-            return_value="task-123",
+            gateway_module.zotero_import_repository,
+            "get_by_item_key",
+            return_value=None,
         ),
         patch.object(
-            zotero_import_module.s3_service,
-            "upload_document_source",
-            new=MagicMock(),
-        ),
-        patch.object(
-            zotero_import_module,
-            "reserve_upload",
-            side_effect=lambda *_args, **_kwargs: SimpleNamespace(id=uuid4()),
-        ),
-        patch.object(zotero_import_module, "_apply_zotero_tags"),
-        patch.object(zotero_import_module, "upload_reservation_repository"),
-        patch.object(zotero_import_module, "document_repository"),
-        patch.object(zotero_import_module, "zotero_import_repository"),
-        patch.object(zotero_import_module, "zotero_connection_repository"),
-        patch.object(zotero_import_module, "ZoteroApiClient"),
-        patch.object(
-            zotero_import_module,
-            "_compute_max_new_imports",
-            return_value=(50, None),
-        ),
-        patch.object(
-            zotero_import_module,
-            "_resolve_pdf_bytes",
-            new_callable=AsyncMock,
-            return_value=(
-                b"%PDF",
-                ZoteroImportSource.PDF_ATTACHMENT,
-                "ATT1",
-                None,
-                [],
-                None,
+            gateway_module.document_repository,
+            "find_library_document_by_doi",
+            side_effect=lambda _db, *, doi, **_kwargs: (
+                existing_document if doi == "10.1000/existing" else None
             ),
         ),
         patch.object(
-            zotero_import_module,
-            "_link_zotero_item_to_existing_paper",
-            new_callable=AsyncMock,
+            gateway_module, "can_user_upload_paper", return_value=(True, None)
         ),
+        patch.object(
+            gateway_module,
+            "get_remaining_paper_upload_slots",
+            return_value=10,
+        ),
+    ):
+        plan = gateway.plan_import(actor=_actor(), items=items)
+
+    assert [planned.disposition for planned in plan.items] == [
+        "link_existing",
+        "import",
+        "link_batch",
+        "import",
+        "import",
     ]
-    for decorator in decorators:
-        fn = decorator(fn)
-    return fn
+    assert plan.items[0].document_id == existing_document.id
+    assert plan.items[2].source_item_key == "FIRST"
+    assert plan.skipped_already_imported == 2
+    assert plan.errors == ()
 
 
-class _ImportPipelineHelpers:
-    """Wire up the mocks injected by _patch_import_pipeline into a coherent state."""
+def test_plan_import_applies_remaining_capacity_only_to_new_documents() -> None:
+    gateway = DefaultZoteroGateway(MagicMock())
+    items = (_item("A"), _item("B"))
 
-    def _configure_mocks(
-        self,
-        *,
-        mock_zotero_connection_repository: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_document_repository: MagicMock,
-        mock_upload_reservation_repository: MagicMock,
-        mock_client_cls: MagicMock,
-        items: list,
-    ) -> tuple[MagicMock, MagicMock, MagicMock]:
-        user = MagicMock()
-        user.id = 42
-        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
-            zotero_user_id="1", api_key="key"
-        )
-        mock_import_repository.get_by_item_key.return_value = None
+    with (
+        patch.object(
+            gateway_module.zotero_import_repository,
+            "get_by_item_key",
+            return_value=None,
+        ),
+        patch.object(
+            gateway_module.document_repository,
+            "find_library_document_by_doi",
+            return_value=None,
+        ),
+        patch.object(
+            gateway_module, "can_user_upload_paper", return_value=(True, None)
+        ),
+        patch.object(
+            gateway_module,
+            "get_remaining_paper_upload_slots",
+            return_value=1,
+        ),
+    ):
+        plan = gateway.plan_import(actor=_actor(), items=items)
 
-        paper = MagicMock()
-        paper.id = uuid4()
-        mock_document_repository.find_by_upload_job.return_value = paper
-        mock_document_repository.find_accessible.return_value = paper
-
-        client = MagicMock()
-        mock_client_cls.return_value = client
-        client.get_items_by_keys.return_value = items
-
-        return user, paper, client
+    assert [planned.item.item_key for planned in plan.items] == ["A"]
+    assert [error.zotero_item_key for error in plan.errors] == ["B"]
 
 
-class TestImportBatchDoiDedup(unittest.IsolatedAsyncioTestCase, _ImportPipelineHelpers):
-    def _make_item(self, key: str, doi: str | None = "10.1234/attention") -> dict:
-        data: dict = {
-            "title": "Attention Is All You Need",
-            "itemType": "journalArticle",
-        }
-        if doi is not None:
-            data["DOI"] = doi
-        return {"key": key, "data": data}
+class _StageExecutor:
+    def __init__(self, capabilities: object, events: list[str]) -> None:
+        self.capabilities = capabilities
+        self.events = events
+        self.inside_transaction = False
 
-    @patch.object(
-        zotero_import_module,
-        "_compute_max_new_imports",
-        return_value=(50, None),
+    def query(self, operation):  # type: ignore[no-untyped-def]
+        assert not self.inside_transaction
+        self.events.append("query")
+        return operation(self.capabilities)
+
+    def command(self, operation):  # type: ignore[no-untyped-def]
+        assert not self.inside_transaction
+        self.events.append("command:start")
+        self.inside_transaction = True
+        try:
+            return operation(self.capabilities)
+        finally:
+            self.inside_transaction = False
+            self.events.append("command:end")
+
+
+@pytest.mark.asyncio
+async def test_import_plan_keeps_remote_io_outside_commands() -> None:
+    events: list[str] = []
+    actor = _actor()
+    item = _item("ITEM")
+    attachment = ZoteroAttachmentSnapshot(
+        item_key=item.item_key,
+        import_source=ZoteroImportSource.PDF_ATTACHMENT,
+        attachment_key="ATTACHMENT",
+        source_url=None,
+        annotations_json="[]",
     )
-    @patch.object(
-        zotero_import_module,
-        "_link_zotero_item_to_existing_paper",
-        new_callable=AsyncMock,
+    content = ZoteroImportContent(
+        item=item,
+        attachment=attachment,
+        pdf_content=b"%PDF-1.4",
+        page_dimensions=((0, 612.0, 792.0),),
+        error=None,
     )
-    @patch.object(zotero_import_module, "document_repository")
-    @patch.object(zotero_import_module, "zotero_import_repository")
-    @patch.object(zotero_import_module, "zotero_connection_repository")
-    @patch.object(zotero_import_module, "ZoteroApiClient")
-    async def test_skips_when_doi_matches_existing_paper(
-        self,
-        mock_client_cls: MagicMock,
-        mock_zotero_connection_repository: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_document_repository: MagicMock,
-        mock_link: AsyncMock,
-        mock_max_new: MagicMock,
-    ) -> None:
-        user = MagicMock()
-        user.id = uuid4()
-        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
-            zotero_user_id="1", api_key="key"
-        )
-        mock_import_repository.get_by_item_key.return_value = None
-
-        existing_paper = MagicMock()
-        existing_paper.id = uuid4()
-        mock_document_repository.find_library_document_by_doi.return_value = (
-            existing_paper
-        )
-
-        client = MagicMock()
-        mock_client_cls.return_value = client
-        client.get_items_by_keys.return_value = [self._make_item("ITEM2")]
-
-        result = await import_batch(
-            MagicMock(),
-            user=user,
-            item_keys=["ITEM2"],
-            credentials=_CREDENTIALS,
-        )
-
-        self.assertEqual(result["skipped_already_imported"], 1)
-        self.assertEqual(result["imported_count"], 0)
-        mock_link.assert_awaited_once()
-
-    @_patch_import_pipeline
-    async def test_second_duplicate_doi_in_batch_links_to_first_paper(
-        self,
-        mock_submit_job: MagicMock,
-        mock_reserve_upload: MagicMock,
-        mock_tags: MagicMock,
-        mock_upload_reservation_repository: MagicMock,
-        mock_document_repository: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_zotero_connection_repository: MagicMock,
-        mock_client_cls: MagicMock,
-        mock_max_new: MagicMock,
-        mock_resolve_pdf: AsyncMock,
-        mock_link: AsyncMock,
-    ) -> None:
-        mock_document_repository.find_library_document_by_doi.return_value = None
-
-        user, paper, _ = self._configure_mocks(
-            mock_zotero_connection_repository=mock_zotero_connection_repository,
-            mock_import_repository=mock_import_repository,
-            mock_document_repository=mock_document_repository,
-            mock_upload_reservation_repository=mock_upload_reservation_repository,
-            mock_client_cls=mock_client_cls,
-            items=[self._make_item("ITEM1"), self._make_item("ITEM2")],
-        )
-
-        result = await import_batch(
-            MagicMock(),
-            user=user,
-            item_keys=["ITEM1", "ITEM2"],
-            credentials=_CREDENTIALS,
-        )
-
-        self.assertEqual(result["imported_count"], 1)
-        self.assertEqual(result["skipped_already_imported"], 1)
-        mock_submit_job.assert_called_once()
-        mock_link.assert_awaited_once()
-        link_kwargs = mock_link.await_args.kwargs
-        self.assertEqual(link_kwargs["paper"], paper)
-
-    @_patch_import_pipeline
-    async def test_item_without_doi_still_imports(
-        self,
-        mock_submit_job: MagicMock,
-        mock_reserve_upload: MagicMock,
-        mock_tags: MagicMock,
-        mock_upload_reservation_repository: MagicMock,
-        mock_document_repository: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_zotero_connection_repository: MagicMock,
-        mock_client_cls: MagicMock,
-        mock_max_new: MagicMock,
-        mock_resolve_pdf: AsyncMock,
-        mock_link: AsyncMock,
-    ) -> None:
-        user, _, _ = self._configure_mocks(
-            mock_zotero_connection_repository=mock_zotero_connection_repository,
-            mock_import_repository=mock_import_repository,
-            mock_document_repository=mock_document_repository,
-            mock_upload_reservation_repository=mock_upload_reservation_repository,
-            mock_client_cls=mock_client_cls,
-            items=[self._make_item("ITEM1", doi=None)],
-        )
-
-        result = await import_batch(
-            MagicMock(),
-            user=user,
-            item_keys=["ITEM1"],
-            credentials=_CREDENTIALS,
-        )
-
-        self.assertEqual(result["imported_count"], 1)
-        self.assertEqual(result["skipped_already_imported"], 0)
-        mock_submit_job.assert_called_once()
-        mock_document_repository.find_library_document_by_doi.assert_not_called()
-
-
-class TestImportBatchNoTitleDedup(
-    unittest.IsolatedAsyncioTestCase, _ImportPipelineHelpers
-):
-    """Title-based dedup was intentionally dropped: zotero_item_key handles
-    re-imports and DOI handles genuine duplicates. Two same-title items without a
-    matching DOI should both import rather than being silently collapsed."""
-
-    TITLE = "Attention Is All You Need"
-
-    def _make_item(self, key: str) -> dict:
-        return {
-            "key": key,
-            "data": {"title": self.TITLE, "itemType": "journalArticle"},
-        }
-
-    @_patch_import_pipeline
-    async def test_same_title_without_doi_imports_both(
-        self,
-        mock_submit_job: MagicMock,
-        mock_upload_pdf: MagicMock,
-        mock_tags: MagicMock,
-        mock_upload_reservation_repository: MagicMock,
-        mock_document_repository: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_zotero_connection_repository: MagicMock,
-        mock_client_cls: MagicMock,
-        mock_max_new: MagicMock,
-        mock_resolve_pdf: AsyncMock,
-        mock_link: AsyncMock,
-    ) -> None:
-        mock_document_repository.find_library_document_by_doi.return_value = None
-
-        user, _, _ = self._configure_mocks(
-            mock_zotero_connection_repository=mock_zotero_connection_repository,
-            mock_import_repository=mock_import_repository,
-            mock_document_repository=mock_document_repository,
-            mock_upload_reservation_repository=mock_upload_reservation_repository,
-            mock_client_cls=mock_client_cls,
-            items=[self._make_item("ITEM1"), self._make_item("ITEM2")],
-        )
-
-        result = await import_batch(
-            MagicMock(),
-            user=user,
-            item_keys=["ITEM1", "ITEM2"],
-            credentials=_CREDENTIALS,
-        )
-
-        self.assertEqual(result["imported_count"], 2)
-        self.assertEqual(result["skipped_already_imported"], 0)
-        self.assertEqual(mock_submit_job.call_count, 2)
-        mock_link.assert_not_awaited()
-
-
-class TestDiscoverImportCandidates(unittest.IsolatedAsyncioTestCase):
-    def _make_item(self, key: str) -> dict:
-        return {
-            "key": key,
-            "data": {
-                "title": f"Document {key}",
-                "itemType": "journalArticle",
-            },
-        }
-
-    @patch.object(
-        zotero_import_module, "_compute_max_new_imports", return_value=(1, None)
+    job_id = uuid4()
+    document_id = uuid4()
+    paper_ingestion = MagicMock()
+    paper_ingestion.reserve.side_effect = lambda **_kwargs: (
+        events.append("reserve_paper")
+        or IngestionReservation(job_id=job_id, replayed=False)
     )
-    @patch.object(zotero_import_module, "zotero_import_repository")
-    @patch.object(zotero_import_module, "document_repository")
-    async def test_caps_candidates_at_upload_slots(
-        self,
-        mock_document_repository: MagicMock,
-        mock_import_repository: MagicMock,
-        mock_max_new: MagicMock,
-    ) -> None:
-        user = MagicMock()
-        user.id = uuid4()
-        mock_import_repository.get_by_item_key.return_value = None
-        mock_document_repository.find_library_document_by_doi.return_value = None
-
-        client = MagicMock()
-        client.get_top_importable_items.side_effect = [
-            [self._make_item("A"), self._make_item("B")],
-            [],
-        ]
-
-        candidates, deferred, skipped, errors = await _discover_import_candidates(
-            MagicMock(),
-            client=client,
-            user=user,
-            limit=50,
-        )
-
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["key"], "A")
-        self.assertEqual(deferred, [])
-        self.assertEqual(skipped, 0)
-        self.assertEqual(errors, [])
-
-
-class TestImportBatchParallel(unittest.IsolatedAsyncioTestCase):
-    @patch.object(zotero_import_module, "_import_one_paper", new_callable=AsyncMock)
-    @patch.object(
-        zotero_import_module,
-        "_discover_candidates_by_keys",
-        new_callable=AsyncMock,
+    paper_ingestion.acquire = AsyncMock(
+        side_effect=lambda **_kwargs: events.append("acquire")
     )
-    @patch.object(zotero_import_module, "zotero_connection_repository")
-    async def test_runs_gather_over_discovered_candidates(
-        self,
-        mock_zotero_connection_repository: MagicMock,
-        mock_discover: AsyncMock,
-        mock_import_one: AsyncMock,
-    ) -> None:
-        user = MagicMock()
-        user.id = uuid4()
-        mock_zotero_connection_repository.get_by_user_id.return_value = MagicMock(
-            zotero_user_id="1", api_key="key"
+    paper_ingestion.finalize.side_effect = lambda **_kwargs: (
+        events.append("finalize_paper")
+        or IngestionFinalization(
+            task_id=str(job_id),
+            job_id=job_id,
+            document_id=document_id,
+            project_id=None,
+            changed=True,
+            job_completed=False,
         )
+    )
+    zotero = MagicMock()
+    zotero.reserve_import_item.side_effect = lambda **_kwargs: events.append(
+        "reserve_zotero"
+    )
+    zotero.complete_import_item.side_effect = lambda **_kwargs: (
+        events.append("complete_zotero")
+        or ZoteroImportItemResult(
+            zotero_item_key=item.item_key,
+            document_id=str(document_id),
+            upload_job_id=str(job_id),
+            import_source=ZoteroImportSource.PDF_ATTACHMENT,
+            title=item.title,
+        )
+    )
+    capabilities = SimpleNamespace(
+        paper_ingestion=paper_ingestion,
+        zotero=zotero,
+    )
+    executor = _StageExecutor(capabilities, events)
+    operations = MagicMock()
 
-        items = [
-            {"key": "A", "data": {"title": "A"}},
-            {"key": "B", "data": {"title": "B"}},
-            {"key": "C", "data": {"title": "C"}},
-        ]
-        mock_discover.return_value = (items, [], 0, [])
+    async def fetch_import_content(**_kwargs):  # type: ignore[no-untyped-def]
+        assert not executor.inside_transaction
+        events.append("fetch_remote")
+        return content
 
-        async def fake_import(item, **kwargs):
-            key = item["key"]
-            return {
-                "status": "processing",
-                "zotero_item_key": key,
-                "document_id": f"paper-{key}",
-                "upload_job_id": f"job-{key}",
-                "import_source": ZoteroImportSource.PDF_ATTACHMENT,
-                "title": item["data"]["title"],
-                "imported_via_url": False,
-            }
+    async def upload_pdf(**_kwargs):  # type: ignore[no-untyped-def]
+        assert not executor.inside_transaction
+        events.append("upload_external")
 
-        mock_import_one.side_effect = fake_import
+    operations.fetch_import_content = AsyncMock(side_effect=fetch_import_content)
+    operations.upload_pdf = AsyncMock(side_effect=upload_pdf)
+    result = await _execute_import_plan(
+        executor=executor,  # type: ignore[arg-type]
+        operations=operations,
+        operation_factory=OperationContextFactory(),
+        actor=actor,
+        operation=_operation(),
+        credentials=ZoteroCredentials(user_id="remote", api_key="secret"),
+        plan=ZoteroImportPlan(
+            items=(ZoteroImportPlanItem(item=item, disposition="import"),),
+            skipped_already_imported=0,
+            errors=(),
+        ),
+    )
 
-        gather_sizes: list[int] = []
-        real_gather = asyncio.gather
-
-        async def track_gather(*coros, **kwargs):
-            gather_sizes.append(len(coros))
-            return await real_gather(*coros, **kwargs)
-
-        with patch(
-            "app.bootstrap.adapters.zotero_workflow.asyncio.gather",
-            side_effect=track_gather,
-        ):
-            result = await import_batch(
-                MagicMock(),
-                user=user,
-                item_keys=["A", "B", "C"],
-                credentials=_CREDENTIALS,
-            )
-
-        self.assertEqual(gather_sizes, [3])
-        self.assertEqual(result["imported_count"], 3)
-        self.assertEqual(mock_import_one.await_count, 3)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    assert result.imported_count == 1
+    assert events == [
+        "fetch_remote",
+        "command:start",
+        "reserve_paper",
+        "reserve_zotero",
+        "command:end",
+        "query",
+        "acquire",
+        "upload_external",
+        "command:start",
+        "finalize_paper",
+        "complete_zotero",
+        "command:end",
+    ]

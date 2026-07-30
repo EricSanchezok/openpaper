@@ -51,8 +51,14 @@ class HighlightThreadCreate:
     position: dict[str, JsonValue] | None
     color: str
     is_shared: bool
-    role: str = RoleType.USER.value
+    content_role: RoleType
     zotero_annotation_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchItemWrite[T]:
+    value: T
+    changed: bool
 
 
 class ResearchRepository:
@@ -192,7 +198,7 @@ class ResearchRepository:
             end_offset=create.end_offset,
             position=create.position,
             color=create.color,
-            role=create.role,
+            role=create.content_role.value,
             zotero_annotation_key=create.zotero_annotation_key,
         )
         db.add(item)
@@ -381,7 +387,7 @@ class ResearchRepository:
         thread_id: uuid.UUID,
         user_id: int,
         content: str,
-        role: str = RoleType.USER.value,
+        content_role: RoleType,
         refresh_result: bool = True,
     ) -> AnnotationComment:
         item = self.require_visible(db, item_id=thread_id, user_id=user_id)
@@ -402,7 +408,7 @@ class ResearchRepository:
             thread_id=thread_id,
             created_by_id=user_id,
             content=content,
-            role=role,
+            role=content_role.value,
         )
         db.add(comment)
         if refresh_result:
@@ -459,7 +465,7 @@ class ResearchRepository:
         item_id: uuid.UUID,
         user_id: int,
         shared: bool,
-    ) -> ResearchItem:
+    ) -> ResearchItemWrite[ResearchItem]:
         item = self.require_creator_owned(
             db,
             item_id=item_id,
@@ -472,10 +478,12 @@ class ResearchRepository:
                 message="Personal research cannot be shared without a target scope",
                 kind=FailureKind.CONFLICT,
             )
+        if item.is_shared == shared:
+            return ResearchItemWrite(value=item, changed=False)
         item.is_shared = shared
         db.flush()
         db.refresh(item)
-        return item
+        return ResearchItemWrite(value=item, changed=True)
 
     def update_highlight_thread(
         self,
@@ -484,7 +492,7 @@ class ResearchRepository:
         thread_id: uuid.UUID,
         user_id: int,
         values: dict[str, object],
-    ) -> ResearchItem:
+    ) -> ResearchItemWrite[ResearchItem]:
         item = self.require_creator_owned(
             db,
             item_id=thread_id,
@@ -500,14 +508,20 @@ class ResearchRepository:
                 message="Highlight thread not found",
                 kind=FailureKind.NOT_FOUND,
             )
+        changed = False
         shared = values.pop("shared", None)
-        if shared is not None:
+        if shared is not None and item.is_shared != bool(shared):
             item.is_shared = bool(shared)
+            changed = True
         for field, value in values.items():
-            setattr(item.highlight_thread, field, value)
+            if getattr(item.highlight_thread, field) != value:
+                setattr(item.highlight_thread, field, value)
+                changed = True
+        if not changed:
+            return ResearchItemWrite(value=item, changed=False)
         db.flush()
         db.refresh(item)
-        return item
+        return ResearchItemWrite(value=item, changed=True)
 
     def update_comment(
         self,
@@ -516,17 +530,19 @@ class ResearchRepository:
         comment_id: uuid.UUID,
         user_id: int,
         content: str,
-    ) -> AnnotationComment:
+    ) -> ResearchItemWrite[AnnotationComment]:
         comment = self.require_owned_comment(
             db,
             comment_id=comment_id,
             user_id=user_id,
             for_update=True,
         )
+        if comment.content == content:
+            return ResearchItemWrite(value=comment, changed=False)
         comment.content = content
         db.flush()
         db.refresh(comment)
-        return comment
+        return ResearchItemWrite(value=comment, changed=True)
 
     def delete_comment(
         self,
@@ -551,6 +567,8 @@ class ResearchRepository:
         item_id: uuid.UUID,
         user_id: int,
         confirm_delete_replies: bool = False,
+        origin_operation_id: uuid.UUID,
+        correlation_id: uuid.UUID,
     ) -> None:
         item = self.require_creator_owned(
             db,
@@ -591,6 +609,8 @@ class ResearchRepository:
                 db,
                 object_keys=[object_key],
                 idempotency_key=f"research-item:{item.id}",
+                origin_operation_id=origin_operation_id,
+                correlation_id=correlation_id,
             )
         db.flush()
 

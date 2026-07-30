@@ -13,8 +13,11 @@ from app.modules.access_keys.application.contracts import (
     AccessKeyResponse,
     AccessKeyUpdateRequest,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Query, Response, status
 
 access_keys_router = APIRouter()
@@ -46,6 +49,7 @@ def list_access_keys(
 def create_access_key(
     request: AccessKeyCreateRequest,
     actor: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
@@ -53,6 +57,7 @@ def create_access_key(
     return executor.command(
         lambda capabilities: capabilities.access_keys.create(
             actor=actor,
+            operation=operation,
             request=request,
         )
     )
@@ -66,6 +71,7 @@ def update_access_key(
     access_key_id: UUID,
     request: AccessKeyUpdateRequest,
     actor: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
@@ -73,6 +79,7 @@ def update_access_key(
     return executor.command(
         lambda capabilities: capabilities.access_keys.update(
             actor=actor,
+            operation=operation,
             access_key_id=access_key_id,
             request=request,
         )
@@ -86,6 +93,7 @@ def update_access_key(
 def revoke_access_key(
     access_key_id: UUID,
     actor: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
@@ -93,6 +101,7 @@ def revoke_access_key(
     executor.command(
         lambda capabilities: capabilities.access_keys.revoke(
             actor=actor,
+            operation=operation,
             access_key_id=access_key_id,
         )
     )

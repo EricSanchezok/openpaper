@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from app.modules.billing.infrastructure.usage_repository import (
@@ -35,12 +36,19 @@ from app.modules.projects.infrastructure.access import require_project_permissio
 from app.shared.application import Actor
 from app.modules.jobs.infrastructure.repository import CreateJob, job_repository
 from app.bootstrap.adapters.upload_lifecycle import (
+    ReapedStaleUpload,
     reap_stale_uploads,
 )
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 ACTIVE_UPLOAD_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
+
+
+@dataclass(frozen=True, slots=True)
+class UploadReservationResult:
+    reservation: UploadReservation
+    reaped_stale_uploads: tuple[ReapedStaleUpload, ...]
 
 
 def _active_account_reservations(db: Session, *, owner_id: int) -> tuple[int, int]:
@@ -237,12 +245,14 @@ def reserve_upload(
     db: Session,
     *,
     requester: Actor,
+    origin_operation_id: UUID,
+    correlation_id: UUID,
     project_id: UUID | None,
     input_size_bytes: int,
     original_filename: str | None,
     content_sha256: str,
     idempotency_key: str | None = None,
-) -> UploadReservation:
+) -> UploadReservationResult:
     """Authorize once and persist the destination and quota owner before hand-off."""
     if input_size_bytes <= 0:
         raise AppError(
@@ -296,7 +306,10 @@ def reserve_upload(
                     message="The idempotency key was already used for another request",
                     kind=FailureKind.CONFLICT,
                 )
-            return existing_reservation
+            return UploadReservationResult(
+                reservation=existing_reservation,
+                reaped_stale_uploads=(),
+            )
 
     existing_document_id = db.scalar(
         select(Document.id).where(Document.sha256 == content_sha256)
@@ -332,7 +345,12 @@ def reserve_upload(
             kind=FailureKind.CONFLICT,
         )
 
-    reap_stale_uploads(db, quota_owner_id=owner_id)
+    reaped = reap_stale_uploads(
+        db,
+        quota_owner_id=owner_id,
+        origin_operation_id=origin_operation_id,
+        correlation_id=correlation_id,
+    )
     if _has_active_duplicate_reservation(
         db,
         requester_id=requester.id,
@@ -409,11 +427,13 @@ def reserve_upload(
             )
 
     job_id = uuid4()
-    durable_job = job_repository.create(
+    persisted_job = job_repository.create(
         db,
         request=CreateJob(
             operation=JobOperation.PDF_PROCESS,
             requested_by_id=requester.id,
+            correlation_id=correlation_id,
+            origin_operation_id=origin_operation_id,
             project_id=project_id,
             idempotency_key=durable_idempotency_key or f"pdf-reservation:{job_id}",
             payload={
@@ -424,6 +444,7 @@ def reserve_upload(
             job_id=job_id,
         ),
     )
+    durable_job = persisted_job.job
     reservation = UploadReservation(
         id=durable_job.id,
         quota_owner_id=owner_id,
@@ -436,4 +457,7 @@ def reserve_upload(
     db.add(reservation)
     db.flush()
     db.refresh(reservation)
-    return reservation
+    return UploadReservationResult(
+        reservation=reservation,
+        reaped_stale_uploads=reaped,
+    )

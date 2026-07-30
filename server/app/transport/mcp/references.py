@@ -27,7 +27,7 @@ def mcp_invocation_id(
     *,
     access_key_id: UUID,
     session_id: str,
-    request_id: str | int,
+    request_id: CanonicalDigestValue,
 ) -> str:
     validate_mcp_session_id(session_id)
     digest = canonical_sha256(

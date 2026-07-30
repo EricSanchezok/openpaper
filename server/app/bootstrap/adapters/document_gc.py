@@ -17,12 +17,21 @@ from app.database.models import (
     ResearchItem,
 )
 from app.helpers.celery_config import get_webhook_base_url
-from app.helpers.s3 import s3_service
 from app.modules.jobs.infrastructure.repository import EnqueueJob, job_repository
+from app.bootstrap.adapters.storage_cleanup import (
+    ScheduledStorageDeletion,
+    schedule_storage_deletion,
+)
 from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 DOCUMENT_GC_GRACE_PERIOD = timedelta(hours=24)
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledDocumentGc:
+    job_id: uuid.UUID
+    created: bool
 
 
 def _has_references(db: Session, *, document_id: uuid.UUID) -> bool:
@@ -50,24 +59,28 @@ def schedule_document_gc(
     db: Session,
     *,
     document_id: uuid.UUID,
+    origin_operation_id: uuid.UUID,
+    correlation_id: uuid.UUID,
     now: datetime | None = None,
-) -> bool:
+) -> ScheduledDocumentGc | None:
     document = db.scalar(
         select(Document).where(Document.id == document_id).with_for_update()
     )
     if document is None:
-        return False
+        return None
     if _has_references(db, document_id=document_id):
         document.gc_after = None
-        return False
+        return None
     document.gc_after = (now or datetime.now(timezone.utc)) + DOCUMENT_GC_GRACE_PERIOD
     job_id = uuid.uuid4()
     base_url = get_webhook_base_url().rstrip("/")
-    job_repository.enqueue(
+    persisted = job_repository.enqueue(
         db,
         request=EnqueueJob(
             operation=JobOperation.DOCUMENT_GC,
             requested_by_id=None,
+            correlation_id=correlation_id,
+            origin_operation_id=origin_operation_id,
             document_id=document.id,
             idempotency_key=(
                 f"document-gc:{document.id}:{document.gc_after.isoformat()}"
@@ -83,7 +96,10 @@ def schedule_document_gc(
             available_at=document.gc_after,
         ),
     )
-    return True
+    return ScheduledDocumentGc(
+        job_id=persisted.job.id,
+        created=persisted.created,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,13 +107,15 @@ class DocumentGcResult:
     document_id: uuid.UUID
     deleted: bool
     cancelled: bool
-    retry_required: bool
+    storage_deletion: ScheduledStorageDeletion | None = None
 
 
 def collect_document_if_due(
     db: Session,
     *,
     document_id: uuid.UUID,
+    origin_operation_id: uuid.UUID,
+    correlation_id: uuid.UUID,
     now: datetime | None = None,
 ) -> DocumentGcResult:
     current_time = now or datetime.now(timezone.utc)
@@ -105,19 +123,12 @@ def collect_document_if_due(
         select(Document).where(Document.id == document_id).with_for_update()
     )
     if document is None:
-        return DocumentGcResult(
-            document_id, deleted=True, cancelled=False, retry_required=False
-        )
+        return DocumentGcResult(document_id, deleted=True, cancelled=False)
     if _has_references(db, document_id=document_id):
         document.gc_after = None
-        db.commit()
-        return DocumentGcResult(
-            document_id, deleted=False, cancelled=True, retry_required=False
-        )
+        return DocumentGcResult(document_id, deleted=False, cancelled=True)
     if document.gc_after is None or document.gc_after > current_time:
-        return DocumentGcResult(
-            document_id, deleted=False, cancelled=False, retry_required=False
-        )
+        return DocumentGcResult(document_id, deleted=False, cancelled=False)
 
     object_keys = {
         document.s3_object_key,
@@ -133,12 +144,13 @@ def collect_document_if_due(
             .where(ResearchItem.document_id == document_id)
         ).all(),
     }
-    failed = s3_service.delete_files(key for key in object_keys if key)
-    if failed:
-        db.rollback()
-        return DocumentGcResult(
-            document_id, deleted=False, cancelled=False, retry_required=True
-        )
+    storage_deletion = schedule_storage_deletion(
+        db,
+        object_keys=(key for key in object_keys if key),
+        idempotency_key=f"document:{document_id}",
+        origin_operation_id=origin_operation_id,
+        correlation_id=correlation_id,
+    )
 
     db.execute(
         update(Conversation)
@@ -156,9 +168,12 @@ def collect_document_if_due(
         )
     )
     db.delete(document)
-    db.commit()
+    db.flush()
     return DocumentGcResult(
-        document_id, deleted=True, cancelled=False, retry_required=False
+        document_id,
+        deleted=True,
+        cancelled=False,
+        storage_deletion=storage_deletion,
     )
 
 
@@ -180,3 +195,13 @@ def list_due_document_ids(
             .limit(limit)
         ).all()
     )
+
+
+__all__ = [
+    "DOCUMENT_GC_GRACE_PERIOD",
+    "DocumentGcResult",
+    "ScheduledDocumentGc",
+    "collect_document_if_due",
+    "list_due_document_ids",
+    "schedule_document_gc",
+]

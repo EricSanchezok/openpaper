@@ -6,14 +6,22 @@ from typing import Any, cast
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
+from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
-from app.shared.application import Actor
+from app.shared.application import (
+    Actor,
+    CredentialKind,
+    CredentialRef,
+    McpOrigin,
+    OperationContextFactory,
+    OperationInitiator,
+)
 from app.shared.domain import AppError, FailureKind, WorkspacePermission
 from app.tooling import (
     ToolAccess,
     ToolCatalog,
-    ToolCallContext,
+    ToolExecutionContext,
     ToolDefinition,
     ToolDispatcher,
     ToolExecutionKind,
@@ -36,7 +44,7 @@ ACCESS_KEY_SECRET = "sk_scholens_" + "a" * 43
 class RecordingDispatcher:
     def __init__(self) -> None:
         self.calls: list[
-            tuple[str, dict[str, object], ToolCallContext, ToolAccess]
+            tuple[str, dict[str, object], ToolExecutionContext, ToolAccess]
         ] = []
         self.error: AppError | None = None
 
@@ -45,7 +53,7 @@ class RecordingDispatcher:
         *,
         name: str,
         raw_arguments: dict[str, object],
-        context: ToolCallContext,
+        context: ToolExecutionContext,
         access: ToolAccess,
     ) -> ToolOutcome:
         self.calls.append((name, raw_arguments, context, access))
@@ -110,6 +118,7 @@ def _application(
             allowed_origins=[],
         ),
         authenticate=authenticate,
+        operation_factory=OperationContextFactory(),
     )
 
     @asynccontextmanager
@@ -125,7 +134,8 @@ def _application(
 
 def _transport() -> tuple[Starlette, RecordingDispatcher]:
     catalog = build_workspace_tool_catalog(
-        ingestion=cast(PaperIngestionWorkflow, object())
+        ingestion=cast(PaperIngestionWorkflow, object()),
+        citations=cast(CitationWorkflow, object()),
     )
     recording = RecordingDispatcher()
     return _application(catalog, recording), recording
@@ -228,7 +238,12 @@ async def test_mcp_lists_catalog_tools_and_dispatches_with_bound_actor() -> None
     assert name == "list_projects"
     assert arguments == {"limit": 10}
     assert context.actor.id == 7
-    assert context.source == "mcp"
+    assert context.operation.initiated_by is OperationInitiator.AGENT
+    assert isinstance(context.operation.origin, McpOrigin)
+    assert context.operation.credential == CredentialRef(
+        CredentialKind.ACCESS_KEY,
+        str(ACCESS_KEY_ID),
+    )
     assert context.paper_collection.kind == "library"
     assert context.anchor_document_id is None
     assert access.permissions == frozenset(WorkspacePermission)
@@ -240,7 +255,8 @@ async def test_mcp_lists_catalog_tools_and_dispatches_with_bound_actor() -> None
 @pytest.mark.asyncio
 async def test_mcp_tool_list_uses_access_key_permission_snapshot() -> None:
     catalog = build_workspace_tool_catalog(
-        ingestion=cast(PaperIngestionWorkflow, object())
+        ingestion=cast(PaperIngestionWorkflow, object()),
+        citations=cast(CitationWorkflow, object()),
     )
     application = _application(
         catalog,

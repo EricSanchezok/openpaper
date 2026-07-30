@@ -1,12 +1,15 @@
-from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.workflows.billing import BillingWorkflow
 from app.modules.billing.application.contracts import (
     CheckoutSessionResponse,
     CheckoutSessionStatusResponse,
     SubscriptionInterval,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
+from app.transport.http.public_v1.billing.dependencies import get_billing_workflow
 from fastapi import APIRouter, Depends, status
 
 router = APIRouter()
@@ -19,16 +22,14 @@ router = APIRouter()
 )
 def create_checkout_session(
     interval: SubscriptionInterval,
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: BillingWorkflow = Depends(get_billing_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> CheckoutSessionResponse:
-    return executor.command(
-        lambda capabilities: capabilities.billing.create_checkout(
-            current_user,
-            interval,
-        )
+    return workflow.create_checkout(
+        actor=current_user,
+        operation=operation,
+        interval=interval,
     )
 
 
@@ -38,10 +39,6 @@ def create_checkout_session(
 )
 def session_status(
     session_id: str,
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: BillingWorkflow = Depends(get_billing_workflow),
 ) -> CheckoutSessionStatusResponse:
-    return executor.query(
-        lambda capabilities: capabilities.billing.checkout_status(session_id)
-    )
+    return workflow.checkout_status(session_id)

@@ -54,6 +54,12 @@ class PublicLibraryPaper:
     owner: AuthUser
 
 
+@dataclass(frozen=True, slots=True)
+class UpdatedLibraryPaper:
+    entry: LibraryPaper
+    changed: bool
+
+
 class DocumentRepository:
     def find_accessible(
         self,
@@ -243,24 +249,29 @@ class DocumentRepository:
         document_id: uuid.UUID,
         user_id: int,
         request: LibraryPaperUpdateRequest,
-    ) -> LibraryPaper:
+    ) -> UpdatedLibraryPaper:
         entry = self.require_library_paper_by_document(
             db,
             document_id=document_id,
             user_id=user_id,
             for_update=True,
         )
-        if request.status is not None:
+        changed = False
+        if request.status is not None and entry.status != request.status.value:
             entry.status = request.status.value
+            changed = True
         if request.metadata_overrides is not None:
-            entry.metadata_overrides = request.metadata_overrides.model_dump(
+            metadata_overrides = request.metadata_overrides.model_dump(
                 mode="json",
                 exclude_none=True,
             )
+            if entry.metadata_overrides != metadata_overrides:
+                entry.metadata_overrides = metadata_overrides
+                changed = True
         entry.last_accessed_at = datetime.now(timezone.utc)
         db.flush()
         db.refresh(entry)
-        return entry
+        return UpdatedLibraryPaper(entry=entry, changed=changed)
 
     def delete_library_paper(
         self,
@@ -303,16 +314,19 @@ class DocumentRepository:
         *,
         document_id: uuid.UUID,
         user_id: int,
-    ) -> None:
+    ) -> bool:
         entry = self.require_library_paper_by_document(
             db,
             document_id=document_id,
             user_id=user_id,
             for_update=True,
         )
+        if not entry.is_public and entry.share_token_hash is None:
+            return False
         entry.share_token_hash = None
         entry.is_public = False
         db.flush()
+        return True
 
     def require_public_share(
         self,

@@ -49,6 +49,29 @@ class CreatedInvitation:
     raw_token: str
 
 
+@dataclass(frozen=True, slots=True)
+class AcceptedInvitation:
+    collaborator: ProjectCollaborator
+    invitation_id: uuid.UUID
+
+
+@dataclass(frozen=True, slots=True)
+class UpdatedProject:
+    project: Project
+    changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class UpdatedProjectCollaborator:
+    collaborator: ProjectCollaborator
+    changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectDeletionJobs:
+    created_job_ids: tuple[uuid.UUID, ...]
+
+
 def _normalized_email(email: str) -> str:
     return email.strip().casefold()
 
@@ -120,20 +143,31 @@ class ProjectRepository:
         project_id: uuid.UUID,
         user_id: int,
         changes: dict[str, object],
-    ) -> Project:
+    ) -> UpdatedProject:
         access = require_project_permission(
             db,
             project_id=project_id,
             user_id=user_id,
             permission="edit_project",
         )
+        changed = any(
+            getattr(access.project, field) != value for field, value in changes.items()
+        )
         for field, value in changes.items():
             setattr(access.project, field, value)
         db.flush()
         db.refresh(access.project)
-        return access.project
+        return UpdatedProject(project=access.project, changed=changed)
 
-    def delete(self, db: Session, *, project_id: uuid.UUID, user_id: int) -> None:
+    def delete(
+        self,
+        db: Session,
+        *,
+        project_id: uuid.UUID,
+        user_id: int,
+        origin_operation_id: uuid.UUID,
+        correlation_id: uuid.UUID,
+    ) -> ProjectDeletionJobs:
         require_project_permission(
             db,
             project_id=project_id,
@@ -152,13 +186,28 @@ class ProjectRepository:
         plan = prepare_project_deletion(db, project=project)
         db.delete(project)
         db.flush()
-        schedule_orphan_documents(db, plan=plan)
-        schedule_project_storage_cleanup(
+        document_gc = schedule_orphan_documents(
+            db,
+            plan=plan,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
+        )
+        storage_cleanup = schedule_project_storage_cleanup(
             db,
             project_id=project_id,
             plan=plan,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
         )
         db.flush()
+        created_job_ids = [
+            scheduled.job_id for scheduled in document_gc if scheduled.created
+        ]
+        if storage_cleanup is not None and storage_cleanup.created:
+            created_job_ids.append(storage_cleanup.job_id)
+        return ProjectDeletionJobs(
+            created_job_ids=tuple(dict.fromkeys(created_job_ids)),
+        )
 
     def list_collaborators(
         self, db: Session, *, project_id: uuid.UUID, user_id: int
@@ -182,7 +231,7 @@ class ProjectRepository:
         actor_id: int,
         target_user_id: int,
         requested: ProjectPermissionSet,
-    ) -> ProjectCollaborator:
+    ) -> UpdatedProjectCollaborator:
         actor = require_project_permission(
             db,
             project_id=project_id,
@@ -222,12 +271,21 @@ class ProjectRepository:
                 kind=FailureKind.PERMISSION_DENIED,
             )
 
-        target.can_edit_project = requested.edit_project
-        target.can_manage_papers = requested.manage_papers
-        target.can_manage_collaborators = requested.manage_collaborators
+        changed = (
+            target.can_edit_project != requested.edit_project
+            or target.can_manage_papers != requested.manage_papers
+            or target.can_manage_collaborators != requested.manage_collaborators
+        )
+        if changed:
+            target.can_edit_project = requested.edit_project
+            target.can_manage_papers = requested.manage_papers
+            target.can_manage_collaborators = requested.manage_collaborators
         db.flush()
         db.refresh(target)
-        return target
+        return UpdatedProjectCollaborator(
+            collaborator=target,
+            changed=changed,
+        )
 
     def remove_collaborator(
         self,
@@ -526,17 +584,23 @@ class ProjectRepository:
 
     def accept_invitation_token(
         self, db: Session, *, raw_token: str, user_id: int, email: str
-    ) -> ProjectCollaborator:
+    ) -> AcceptedInvitation:
         invitation = db.scalar(
             select(ProjectInvitation)
             .where(ProjectInvitation.token_hash == _token_hash(raw_token))
             .with_for_update()
         )
-        return self._accept_invitation(
+        collaborator = self._accept_invitation(
             db,
             invitation=invitation,
             user_id=user_id,
             email=email,
+        )
+        if invitation is None:
+            raise RuntimeError("accepted_project_invitation_missing")
+        return AcceptedInvitation(
+            collaborator=collaborator,
+            invitation_id=invitation.id,
         )
 
     def revoke_invitation(
@@ -546,7 +610,7 @@ class ProjectRepository:
         project_id: uuid.UUID,
         invitation_id: uuid.UUID,
         actor_id: int,
-    ) -> None:
+    ) -> bool:
         actor = require_project_permission(
             db,
             project_id=project_id,
@@ -566,8 +630,11 @@ class ProjectRepository:
                 kind=FailureKind.NOT_FOUND,
             )
         require_grant_subset(actor.facts, _invitation_permissions(invitation))
+        if invitation.revoked_at is not None:
+            return False
         invitation.revoked_at = datetime.now(timezone.utc)
         db.flush()
+        return True
 
     def resend_invitation(
         self,

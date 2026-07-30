@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -11,6 +12,12 @@ from app.database.models import (
 )
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
+
+
+@dataclass(frozen=True, slots=True)
+class ZoteroImportChange:
+    item: ZoteroImportedItem
+    changed: bool
 
 
 class ZoteroImportRepository:
@@ -46,6 +53,17 @@ class ZoteroImportRepository:
                 ZoteroImportedItem.user_id == user_id,
                 ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
             )
+        )
+
+    def completed_item_keys(self, db: Session, *, user_id: int) -> set[str]:
+        return set(
+            db.scalars(
+                select(ZoteroImportedItem.zotero_item_key).where(
+                    ZoteroImportedItem.user_id == user_id,
+                    ZoteroImportedItem.status == ZoteroImportStatus.COMPLETED,
+                    ZoteroImportedItem.document_id.isnot(None),
+                )
+            ).all()
         )
 
     def list_recent_by_user(
@@ -89,6 +107,7 @@ class ZoteroImportRepository:
         upload_job_id: UUID | None = None,
         annotations_payload: list[dict[str, JsonValue]] | None = None,
         status: str = ZoteroImportStatus.PROCESSING,
+        last_synced_at: datetime | None = None,
     ) -> ZoteroImportedItem:
         db_obj = ZoteroImportedItem(
             user_id=user_id,
@@ -100,6 +119,7 @@ class ZoteroImportRepository:
             upload_job_id=upload_job_id,
             annotations_payload=annotations_payload,
             status=status,
+            last_synced_at=last_synced_at,
         )
         db.add(db_obj)
         db.flush()
@@ -114,16 +134,23 @@ class ZoteroImportRepository:
         status: str,
         error_message: str | None = None,
         document_id: UUID | None = None,
-    ) -> ZoteroImportedItem:
-        setattr(item, "status", status)
+    ) -> ZoteroImportChange:
+        changed = item.status != status
+        if error_message is not None and item.error_message != error_message:
+            changed = True
+        if document_id is not None and item.document_id != document_id:
+            changed = True
+        if not changed:
+            return ZoteroImportChange(item=item, changed=False)
+        item.status = status
         if error_message is not None:
-            setattr(item, "error_message", error_message)
+            item.error_message = error_message
         if document_id is not None:
-            setattr(item, "document_id", document_id)
+            item.document_id = document_id
         db.add(item)
         db.flush()
         db.refresh(item)
-        return item
+        return ZoteroImportChange(item=item, changed=True)
 
     def list_syncable_by_user(
         self, db: Session, *, user_id: int, limit: int
@@ -189,20 +216,32 @@ class ZoteroImportRepository:
         upload_job_id: UUID,
         annotations_payload: list[dict[str, JsonValue]] | None,
         last_synced_at: datetime | None = None,
-    ) -> ZoteroImportedItem:
-        setattr(item, "import_source", import_source)
-        setattr(item, "zotero_attachment_key", zotero_attachment_key)
-        setattr(item, "source_url", source_url)
-        setattr(item, "document_id", document_id)
-        setattr(item, "upload_job_id", upload_job_id)
-        setattr(item, "annotations_payload", annotations_payload)
-        setattr(item, "error_message", None)
+    ) -> ZoteroImportChange:
+        changed = (
+            item.import_source != import_source
+            or item.zotero_attachment_key != zotero_attachment_key
+            or item.source_url != source_url
+            or item.document_id != document_id
+            or item.upload_job_id != upload_job_id
+            or item.annotations_payload != annotations_payload
+            or item.error_message is not None
+            or (last_synced_at is not None and item.last_synced_at != last_synced_at)
+        )
+        if not changed:
+            return ZoteroImportChange(item=item, changed=False)
+        item.import_source = import_source
+        item.zotero_attachment_key = zotero_attachment_key
+        item.source_url = source_url
+        item.document_id = document_id
+        item.upload_job_id = upload_job_id
+        item.annotations_payload = annotations_payload
+        item.error_message = None
         if last_synced_at is not None:
-            setattr(item, "last_synced_at", last_synced_at)
+            item.last_synced_at = last_synced_at
         db.add(item)
         db.flush()
         db.refresh(item)
-        return item
+        return ZoteroImportChange(item=item, changed=True)
 
     def update_after_sync(
         self,
@@ -211,13 +250,19 @@ class ZoteroImportRepository:
         item: ZoteroImportedItem,
         annotations_payload: list[dict[str, JsonValue]] | None,
         last_synced_at: datetime,
-    ) -> ZoteroImportedItem:
-        setattr(item, "annotations_payload", annotations_payload)
-        setattr(item, "last_synced_at", last_synced_at)
+    ) -> ZoteroImportChange:
+        changed = (
+            item.annotations_payload != annotations_payload
+            or item.last_synced_at != last_synced_at
+        )
+        if not changed:
+            return ZoteroImportChange(item=item, changed=False)
+        item.annotations_payload = annotations_payload
+        item.last_synced_at = last_synced_at
         db.add(item)
         db.flush()
         db.refresh(item)
-        return item
+        return ZoteroImportChange(item=item, changed=True)
 
 
 zotero_import_repository = ZoteroImportRepository()

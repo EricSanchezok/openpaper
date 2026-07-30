@@ -11,7 +11,13 @@ from app.modules.research.application.generation import (
     PreparedGeneration,
     ResearchGeneration,
 )
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import (
+    Actor,
+    ApplicationExecutor,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+)
 
 
 class ResearchGenerationWorkflow:
@@ -20,22 +26,32 @@ class ResearchGenerationWorkflow:
         *,
         executor: ApplicationExecutor[ApplicationCapabilities],
         capacity: GenerationCapacity,
+        operation_factory: OperationContextFactory,
     ) -> None:
         self._executor = executor
         self._capacity = capacity
+        self._operation_factory = operation_factory
 
     async def run(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         client_ip: str,
         prepare: Callable[
-            [ResearchGeneration],
+            [ResearchGeneration, OperationContext],
             CreateJobResponse | PreparedGeneration,
         ],
     ) -> CreateJobResponse:
+        enqueue_operation = self._operation_factory.child(
+            operation,
+            initiated_by=OperationInitiator.SYSTEM,
+        )
         prepared = self._executor.query(
-            lambda capabilities: prepare(capabilities.research_generation)
+            lambda capabilities: prepare(
+                capabilities.research_generation,
+                enqueue_operation,
+            )
         )
         if isinstance(prepared, CreateJobResponse):
             return prepared
@@ -59,7 +75,9 @@ class ResearchGenerationWorkflow:
         try:
             response = self._executor.command(
                 lambda capabilities: capabilities.research_generation.enqueue(
-                    prepared=prepared
+                    actor=actor,
+                    operation=enqueue_operation,
+                    prepared=prepared,
                 )
             )
         except Exception:

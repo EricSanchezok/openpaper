@@ -18,8 +18,12 @@ from app.modules.research.application.contracts import (
     UpdateAnnotationCommentRequest,
     UpdateHighlightThreadRequest,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.shared.domain.enums import RoleType
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Response, status
 
 document_research_router = APIRouter()
@@ -97,10 +101,13 @@ def create_highlight_thread(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ResearchItemResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.create_highlight(
             actor=current_user,
+            operation=operation,
+            content_role=RoleType.USER,
             document_id=document_id,
             request=request,
         )
@@ -118,10 +125,12 @@ def update_highlight_thread(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ResearchItemResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.update_highlight(
             actor=current_user,
+            operation=operation,
             thread_id=thread_id,
             request=request,
         )
@@ -139,10 +148,12 @@ def delete_highlight_thread(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> DeleteResearchItemResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.delete_highlight(
             actor=current_user,
+            operation=operation,
             thread_id=thread_id,
             request=request,
         )
@@ -161,10 +172,13 @@ def create_annotation_comment(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> AnnotationCommentResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.create_comment(
             actor=current_user,
+            operation=operation,
+            content_role=RoleType.USER,
             thread_id=thread_id,
             request=request,
         )
@@ -182,10 +196,12 @@ def update_annotation_comment(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> AnnotationCommentResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.update_comment(
             actor=current_user,
+            operation=operation,
             comment_id=comment_id,
             request=request,
         )
@@ -202,10 +218,12 @@ def delete_annotation_comment(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.research_items.delete_comment(
             actor=current_user,
+            operation=operation,
             comment_id=comment_id,
         )
     )
@@ -223,10 +241,12 @@ def update_research_item(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ResearchItemResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.set_visibility(
             actor=current_user,
+            operation=operation,
             item_id=item_id,
             request=request,
         )
@@ -243,10 +263,12 @@ def delete_research_item(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> DeleteResearchItemResponse:
     return executor.command(
         lambda capabilities: capabilities.research_items.delete_item(
             actor=current_user,
+            operation=operation,
             item_id=item_id,
         )
     )

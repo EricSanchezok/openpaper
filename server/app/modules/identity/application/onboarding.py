@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
-from app.shared.application import Actor
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
+from app.shared.application import Actor, OperationContext
 
 from .onboarding_contracts import CreateOnboardingRequest, OnboardingResponse
+
+IDENTITY_ONBOARDING_SAVED = OperationAction("identity.onboarding_saved")
+
+
+@dataclass(frozen=True, slots=True)
+class OnboardingSaveResult:
+    response: OnboardingResponse
+    changed: bool
 
 
 class OnboardingWriter(Protocol):
@@ -15,7 +26,7 @@ class OnboardingWriter(Protocol):
         *,
         actor: Actor,
         request: CreateOnboardingRequest,
-    ) -> OnboardingResponse: ...
+    ) -> OnboardingSaveResult: ...
 
 
 class DisplayNameWriter(Protocol):
@@ -40,30 +51,30 @@ class SaveOnboarding:
         self,
         *,
         writer: OnboardingWriter,
-        events: OnboardingEventRecorder,
+        journal: OperationJournal,
     ) -> None:
         self._writer = writer
-        self._events = events
+        self._journal = journal
 
     def execute(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         request: CreateOnboardingRequest,
     ) -> OnboardingResponse:
-        onboarding = self._writer.upsert(actor=actor, request=request)
-        properties: dict[str, object] = {
-            "name": request.name,
-            "email": str(request.email),
-            "company": request.company,
-            "job_titles_other": request.job_titles_other,
-            "research_fields_other": request.research_fields_other,
-            "reading_frequency": request.reading_frequency,
-            "job_titles": _split_values(request.job_titles),
-            "research_fields": _split_values(request.research_fields),
-        }
-        self._events.completed(user_id=actor.id, properties=properties)
-        return onboarding
+        result = self._writer.upsert(actor=actor, request=request)
+        if result.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=IDENTITY_ONBOARDING_SAVED,
+                resources=(
+                    ResourceRef("user", str(actor.id)),
+                    ResourceRef("onboarding", str(result.response.id)),
+                ),
+            )
+        return result.response
 
 
 class FinishOnboarding:
@@ -72,9 +83,11 @@ class FinishOnboarding:
         *,
         display_names: DisplayNameWriter,
         notifier: OnboardingNotifier,
+        events: OnboardingEventRecorder,
     ) -> None:
         self._display_names = display_names
         self._notifier = notifier
+        self._events = events
 
     async def execute(
         self,
@@ -89,6 +102,19 @@ class FinishOnboarding:
                 display_name=request.name,
             )
         self._notifier.notify(onboarding)
+        self._events.completed(
+            user_id=actor.id,
+            properties={
+                "name": request.name,
+                "email": str(request.email),
+                "company": request.company,
+                "job_titles_other": request.job_titles_other,
+                "research_fields_other": request.research_fields_other,
+                "reading_frequency": request.reading_frequency,
+                "job_titles": _split_values(request.job_titles),
+                "research_fields": _split_values(request.research_fields),
+            },
+        )
 
 
 def _split_values(value: str | None) -> list[str]:

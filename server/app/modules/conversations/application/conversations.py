@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
 from app.modules.conversations.application.contracts.conversations import (
     ConversationAutoTitleResponse,
     ConversationCreateRequest,
@@ -19,9 +22,25 @@ from app.modules.conversations.application.contracts.conversations import (
     PaperContext,
     MessageResponse,
 )
-from app.shared.application import Actor, SignedCursorCodec
-from app.shared.domain import AppError, FailureKind
-from app.shared.domain.enums import ConversationScopeType
+from app.shared.application import Actor, OperationContext, SignedCursorCodec
+
+CONVERSATION_CREATED = OperationAction("conversation.created")
+CONVERSATION_UPDATED = OperationAction("conversation.updated")
+CONVERSATION_MOVED = OperationAction("conversation.moved")
+CONVERSATION_TITLE_UPDATED = OperationAction("conversation.title_updated")
+CONVERSATION_DELETED = OperationAction("conversation.deleted")
+CONVERSATION_PAPER_CONTEXT_UPDATED = OperationAction(
+    "conversation.paper_context_updated"
+)
+CONVERSATION_TOOL_PERMISSIONS_UPDATED = OperationAction(
+    "conversation.tool_permissions_updated"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationChange[T]:
+    value: T
+    changed: bool
 
 
 class ConversationGateway(Protocol):
@@ -60,7 +79,7 @@ class ConversationGateway(Protocol):
         user_id: int,
         conversation_id: UUID,
         request: ConversationUpdateRequest,
-    ) -> ConversationSummaryResponse: ...
+    ) -> ConversationChange[ConversationSummaryResponse]: ...
 
     def move(
         self,
@@ -68,9 +87,7 @@ class ConversationGateway(Protocol):
         user_id: int,
         conversation_id: UUID,
         request: ConversationMoveRequest,
-    ) -> ConversationSummaryResponse: ...
-
-    def require_owned(self, *, user_id: int, conversation_id: UUID) -> None: ...
+    ) -> ConversationChange[ConversationSummaryResponse]: ...
 
     def delete(self, *, user_id: int, conversation_id: UUID) -> None: ...
 
@@ -80,7 +97,7 @@ class ConversationGateway(Protocol):
         user_id: int,
         conversation_id: UUID,
         request: PaperContext,
-    ) -> PaperContext: ...
+    ) -> ConversationChange[PaperContext]: ...
 
     def update_tool_permissions(
         self,
@@ -88,15 +105,15 @@ class ConversationGateway(Protocol):
         user_id: int,
         conversation_id: UUID,
         request: ConversationToolPermissionsRequest,
-    ) -> ConversationToolPermissionsResponse: ...
+    ) -> ConversationChange[ConversationToolPermissionsResponse]: ...
 
-
-class ConversationTitleGenerator(Protocol):
-    def generate(self, *, actor: Actor, conversation_id: UUID) -> str | None: ...
-
-
-class ConversationEvents(Protocol):
-    def created(self, *, actor: Actor, scope_type: ConversationScopeType) -> None: ...
+    def update_title(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        title: str,
+    ) -> bool: ...
 
 
 class Conversations:
@@ -104,14 +121,12 @@ class Conversations:
         self,
         *,
         gateway: ConversationGateway,
-        titles: ConversationTitleGenerator,
-        events: ConversationEvents,
         message_cursors: SignedCursorCodec,
+        journal: OperationJournal,
     ) -> None:
         self._gateway = gateway
-        self._titles = titles
-        self._events = events
         self._message_cursors = message_cursors
+        self._journal = journal
 
     def list_page(
         self,
@@ -132,10 +147,16 @@ class Conversations:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         request: ConversationCreateRequest,
     ) -> ConversationDetailResponse:
         result = self._gateway.create(user_id=actor.id, request=request)
-        self._events.created(actor=actor, scope_type=request.scope_type)
+        self._journal.append(
+            actor=actor,
+            operation=operation,
+            action=CONVERSATION_CREATED,
+            resources=(ResourceRef("conversation", str(result.id)),),
+        )
         return result
 
     def get(
@@ -193,78 +214,125 @@ class Conversations:
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
         request: ConversationUpdateRequest,
     ) -> ConversationSummaryResponse:
-        return self._gateway.update(
+        result = self._gateway.update(
             user_id=actor.id,
             conversation_id=conversation_id,
             request=request,
         )
+        if result.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=CONVERSATION_UPDATED,
+                resources=(ResourceRef("conversation", str(conversation_id)),),
+            )
+        return result.value
 
     def move(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
         request: ConversationMoveRequest,
     ) -> ConversationSummaryResponse:
-        return self._gateway.move(
+        result = self._gateway.move(
             user_id=actor.id,
             conversation_id=conversation_id,
             request=request,
         )
+        if result.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=CONVERSATION_MOVED,
+                resources=(ResourceRef("conversation", str(conversation_id)),),
+            )
+        return result.value
 
-    def auto_title(
+    def apply_generated_title(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
+        title: str,
     ) -> ConversationAutoTitleResponse:
-        self._gateway.require_owned(
+        if self._gateway.update_title(
             user_id=actor.id,
             conversation_id=conversation_id,
-        )
-        title = self._titles.generate(
-            actor=actor,
-            conversation_id=conversation_id,
-        )
-        if not title:
-            raise AppError(
-                code="conversation_title_failed",
-                message="Conversation title could not be generated",
-                kind=FailureKind.UNPROCESSABLE,
+            title=title,
+        ):
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=CONVERSATION_TITLE_UPDATED,
+                resources=(ResourceRef("conversation", str(conversation_id)),),
             )
         return ConversationAutoTitleResponse(title=title)
 
-    def delete(self, *, actor: Actor, conversation_id: UUID) -> None:
+    def delete(
+        self,
+        *,
+        actor: Actor,
+        operation: OperationContext,
+        conversation_id: UUID,
+    ) -> None:
         self._gateway.delete(
             user_id=actor.id,
             conversation_id=conversation_id,
+        )
+        self._journal.append(
+            actor=actor,
+            operation=operation,
+            action=CONVERSATION_DELETED,
+            resources=(ResourceRef("conversation", str(conversation_id)),),
         )
 
     def update_paper_context(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
         request: PaperContext,
     ) -> PaperContext:
-        return self._gateway.update_paper_context(
+        result = self._gateway.update_paper_context(
             user_id=actor.id,
             conversation_id=conversation_id,
             request=request,
         )
+        if result.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=CONVERSATION_PAPER_CONTEXT_UPDATED,
+                resources=(ResourceRef("conversation", str(conversation_id)),),
+            )
+        return result.value
 
     def update_tool_permissions(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         conversation_id: UUID,
         request: ConversationToolPermissionsRequest,
     ) -> ConversationToolPermissionsResponse:
-        return self._gateway.update_tool_permissions(
+        result = self._gateway.update_tool_permissions(
             user_id=actor.id,
             conversation_id=conversation_id,
             request=request,
         )
+        if result.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=CONVERSATION_TOOL_PERMISSIONS_UPDATED,
+                resources=(ResourceRef("conversation", str(conversation_id)),),
+            )
+        return result.value

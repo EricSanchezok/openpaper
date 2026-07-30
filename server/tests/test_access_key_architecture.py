@@ -3,7 +3,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from app.database.models.tool_invocation import ToolInvocation
-from app.tooling import ToolCallContext
+from app.tooling import ToolExecutionContext
 
 ROOT = Path(__file__).parents[2]
 APP_ROOT = ROOT / "server" / "app"
@@ -56,5 +56,5 @@ def test_mcp_has_no_cloud_auth_or_legacy_actor_authentication_path() -> None:
 
 
 def test_access_key_identity_is_not_added_to_tool_or_invocation_storage() -> None:
-    assert "access_key_id" not in {field.name for field in fields(ToolCallContext)}
+    assert "access_key_id" not in {field.name for field in fields(ToolExecutionContext)}
     assert "access_key_id" not in ToolInvocation.__table__.c

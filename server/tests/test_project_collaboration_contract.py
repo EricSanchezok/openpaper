@@ -232,6 +232,8 @@ def test_fresh_project_upload_requires_matching_durable_reservation(
     durable_job = DurableJob(
         id=job_id,
         operation=JobOperation.PDF_PROCESS.value,
+        correlation_id=uuid.uuid4(),
+        origin_operation_id=uuid.uuid4(),
         requested_by_id=2,
         project_id=project_id,
         idempotency_key=f"pdf-reservation:{job_id}",

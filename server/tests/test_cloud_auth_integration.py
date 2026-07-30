@@ -9,10 +9,11 @@ from app.database.models import AuthUser, Base
 from app.modules.identity.infrastructure import cloud_auth as runtime
 from app.modules.identity.infrastructure import application_gateway
 from app.transport.http.public_v1 import auth_dependencies as dependencies
+from app.shared.application import OperationContextFactory
 from app.shared.domain import AppError, FailureKind
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from cloud_auth.models.user import UserRecord
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import configure_mappers
 
@@ -32,6 +33,17 @@ def _executor(db: MagicMock) -> SqlAlchemyApplicationExecutor[ApplicationCapabil
     return SqlAlchemyApplicationExecutor(
         MagicMock(return_value=db),
         lambda session: ApplicationCapabilities(session, AppSettings()),
+    )
+
+
+def _request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [],
+        }
     )
 
 
@@ -58,7 +70,12 @@ def test_all_orm_mappers_and_relationships_configure() -> None:
 
 @pytest.mark.asyncio
 async def test_optional_auth_returns_none_without_token() -> None:
-    result = await dependencies.get_current_user(None, _executor(MagicMock()))
+    result = await dependencies.get_current_user(
+        _request(),
+        None,
+        _executor(MagicMock()),
+        OperationContextFactory(),
+    )
     assert result is None
 
 
@@ -72,10 +89,15 @@ async def test_cloud_identity_is_enriched_with_scholens_profile() -> None:
     db = MagicMock()
     with patch.object(
         application_gateway.user_repository,
-        "get_or_create_profile",
-        return_value=profile,
+        "resolve_profile",
+        return_value=(profile, False),
     ) as get_profile:
-        result = await dependencies.get_current_user(_cloud_user(), _executor(db))
+        result = await dependencies.get_current_user(
+            _request(),
+            _cloud_user(),
+            _executor(db),
+            OperationContextFactory(),
+        )
 
     assert result is not None
     assert result.id == 42
@@ -92,13 +114,15 @@ async def test_product_block_does_not_modify_shared_account() -> None:
     profile = SimpleNamespace(locale=None, is_admin=False, is_blocked=True)
     with patch.object(
         application_gateway.user_repository,
-        "get_or_create_profile",
-        return_value=profile,
+        "resolve_profile",
+        return_value=(profile, False),
     ):
         with pytest.raises(AppError) as exc_info:
             await dependencies.get_current_user(
+                _request(),
                 _cloud_user(),
                 _executor(MagicMock()),
+                OperationContextFactory(),
             )
 
     assert exc_info.value.kind is FailureKind.PERMISSION_DENIED

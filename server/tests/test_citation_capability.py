@@ -1,34 +1,23 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+from app.bootstrap.workflows.citation import CitationWorkflow
 from app.main import app
-from app.modules.papers.application.citations import ResolveCitation
 from app.modules.papers.application.contracts.citation import (
     CitationData,
     CitationResult,
 )
 from app.modules.papers.domain.citations import CitationFields
-from app.shared.application import Actor
+from app.shared.application import (
+    Actor,
+    CredentialKind,
+    CredentialRef,
+    HttpOrigin,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 from app.transport.http.public_v1.documents.router import get_document_citation
-
-
-class CitationGateway:
-    def __init__(self, fields: CitationFields) -> None:
-        self.fields = fields
-        self.hydrate_calls = 0
-        self.recover_calls = 0
-
-    def read(self, **_kwargs: object) -> CitationFields:
-        return self.fields
-
-    def hydrate(self, **_kwargs: object) -> CitationFields:
-        self.hydrate_calls += 1
-        return self.fields
-
-    def recover(
-        self, **_kwargs: object
-    ) -> tuple[CitationFields, dict[str, object], float | None]:
-        self.recover_calls += 1
-        return self.fields, {}, None
 
 
 def actor() -> Actor:
@@ -41,8 +30,50 @@ def actor() -> Actor:
     )
 
 
+def operation() -> OperationContext:
+    return OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=HttpOrigin(RequestReference(uuid4())),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
+
+
+class CachedCitationCapability:
+    def __init__(self, fields: CitationFields) -> None:
+        self.fields = fields
+
+    def read(self, **_kwargs: object) -> CitationFields:
+        return self.fields
+
+
+class CachedCapabilities:
+    def __init__(self, fields: CitationFields) -> None:
+        self.citations = CachedCitationCapability(fields)
+
+
+class QueryExecutor:
+    def __init__(self, fields: CitationFields) -> None:
+        self._capabilities = CachedCapabilities(fields)
+        self.query_count = 0
+
+    def query(self, callback: object) -> object:
+        self.query_count += 1
+        return callback(self._capabilities)  # type: ignore[operator]
+
+    def command(self, _callback: object) -> object:
+        raise AssertionError("cached citation must not start a command")
+
+
+class UnexpectedProvider:
+    def deterministic(self, **_kwargs: object) -> object:
+        raise AssertionError("cached citation must not call a provider")
+
+    def agentic(self, **_kwargs: object) -> object:
+        raise AssertionError("cached citation must not call a provider")
+
+
 def test_cached_citation_does_not_call_external_metadata_paths() -> None:
-    gateway = CitationGateway(
+    executor = QueryExecutor(
         CitationFields(
             title="A Paper",
             authors=["A. Author"],
@@ -50,13 +81,22 @@ def test_cached_citation_does_not_call_external_metadata_paths() -> None:
             journal="Journal",
         )
     )
+    workflow = CitationWorkflow(
+        executor=executor,  # type: ignore[arg-type]
+        provider=UnexpectedProvider(),  # type: ignore[arg-type]
+        operation_factory=OperationContextFactory(),
+    )
 
-    result = ResolveCitation(gateway)(actor=actor(), document_id=uuid4(), style="APA")
+    result = workflow.run(
+        actor=actor(),
+        operation=operation(),
+        document_id=uuid4(),
+        style="APA",
+    )
 
     assert result.method == "cached"
     assert result.data.title == "A Paper"
-    assert gateway.hydrate_calls == 0
-    assert gateway.recover_calls == 0
+    assert executor.query_count == 1
 
 
 def test_citation_is_one_shared_public_paper_capability() -> None:
@@ -71,8 +111,9 @@ def test_citation_is_one_shared_public_paper_capability() -> None:
     )
 
 
-def test_http_citation_commits_recovered_metadata() -> None:
+def test_http_citation_delegates_to_short_transaction_workflow() -> None:
     document_id = uuid4()
+    request_operation = operation()
     expected = CitationResult(
         document_id=str(document_id),
         preferred_style="APA",
@@ -81,31 +122,30 @@ def test_http_citation_commits_recovered_metadata() -> None:
         method="cached",
     )
 
-    class Capabilities:
-        @staticmethod
-        def citations(**_kwargs: object) -> CitationResult:
+    class Workflow:
+        def run(
+            self,
+            *,
+            actor: Actor,
+            operation: OperationContext,
+            document_id: UUID,
+            style: str,
+            project_id: UUID | None,
+        ) -> CitationResult:
+            assert actor.id == 7
+            assert operation is request_operation
+            assert style == "APA"
+            assert project_id is None
+            assert str(document_id) == expected.document_id
             return expected
-
-    class Executor:
-        def __init__(self) -> None:
-            self.commands = 0
-
-        def query(self, _operation: object) -> CitationResult:
-            raise AssertionError("write-capable citation resolution used query")
-
-        def command(self, operation: object) -> CitationResult:
-            self.commands += 1
-            return operation(Capabilities())  # type: ignore[operator]
-
-    executor = Executor()
 
     result = get_document_citation(
         document_id=document_id,
         style="APA",
         project_id=None,
-        executor=executor,  # type: ignore[arg-type]
+        workflow=Workflow(),  # type: ignore[arg-type]
         current_user=actor(),
+        operation=request_operation,
     )
 
     assert result == expected
-    assert executor.commands == 1

@@ -12,11 +12,20 @@ from app.modules.jobs.application.contracts import (
     CreateJobResponse,
     JobResponse,
 )
-from app.modules.jobs.application.jobs import EnqueueJobCommand
+from app.modules.jobs.application.jobs import EnqueueJobCommand, EnqueuedJob
 from app.modules.papers.application.content import AccessiblePaperContent
 from app.modules.research.application.generation import ResearchGeneration
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
-from app.shared.application import Actor
+from app.shared.application import (
+    Actor,
+    CredentialKind,
+    CredentialRef,
+    HttpOrigin,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 
 
 def _actor() -> Actor:
@@ -26,6 +35,14 @@ def _actor() -> Actor:
         display_name="Researcher",
         status="active",
         email_verified=True,
+    )
+
+
+def _operation() -> OperationContext:
+    return OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=HttpOrigin(request=RequestReference(uuid4())),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
     )
 
 
@@ -72,17 +89,18 @@ class FakeJobs:
     def __init__(self) -> None:
         self.existing: JobResponse | None = None
         self.fail_enqueue = False
+        self.created = True
         self.commands: list[EnqueueJobCommand] = []
 
     def find_by_idempotency_key(self, *, key: str) -> JobResponse | None:
         assert key
         return self.existing
 
-    def enqueue(self, *, command: EnqueueJobCommand) -> JobResponse:
+    def enqueue(self, *, command: EnqueueJobCommand) -> EnqueuedJob:
         self.commands.append(command)
         if self.fail_enqueue:
             raise RuntimeError("outbox_unavailable")
-        return _job(command.job_id)
+        return EnqueuedJob(job=_job(command.job_id), created=self.created)
 
 
 class FakeEntitlements:
@@ -91,6 +109,15 @@ class FakeEntitlements:
 
     def require_tokens(self, **_kwargs: object) -> None:
         self.required_tokens += 1
+
+
+class FakeJournal:
+    def __init__(self) -> None:
+        self.entries: list[dict[str, object]] = []
+
+    def append(self, **entry: object) -> object:
+        self.entries.append(entry)
+        return object()
 
 
 class FakeCapacity:
@@ -143,14 +170,17 @@ def test_audio_idempotency_replays_without_reserving_capacity() -> None:
     existing = _job(uuid4())
     jobs.existing = existing
     entitlements = FakeEntitlements()
+    journal = FakeJournal()
     generation = ResearchGeneration(
         documents=FakeDocuments(_document()),  # type: ignore[arg-type]
         jobs=jobs,
         entitlements=entitlements,
+        journal=journal,  # type: ignore[arg-type]
     )
 
     result = generation.prepare_document_audio(
         actor=_actor(),
+        operation=_operation(),
         document_id=uuid4(),
         request=CreateAudioOverviewRequest(),
         idempotency_key="same-request",
@@ -160,6 +190,37 @@ def test_audio_idempotency_replays_without_reserving_capacity() -> None:
     assert result.job.id == existing.id
     assert entitlements.required_tokens == 0
     assert jobs.commands == []
+    assert journal.entries == []
+
+
+def test_enqueue_persists_causality_and_journals_only_a_new_job() -> None:
+    jobs = FakeJobs()
+    journal = FakeJournal()
+    operation = _operation()
+    actor = _actor()
+    generation = ResearchGeneration(
+        documents=FakeDocuments(_document()),  # type: ignore[arg-type]
+        jobs=jobs,
+        entitlements=FakeEntitlements(),
+        journal=journal,  # type: ignore[arg-type]
+    )
+    prepared = generation.prepare_document_audio(
+        actor=actor,
+        operation=operation,
+        document_id=uuid4(),
+        request=CreateAudioOverviewRequest(),
+        idempotency_key="new-request",
+    )
+    assert not isinstance(prepared, CreateJobResponse)
+    assert prepared.command.correlation_id == operation.trace.correlation_id
+    assert prepared.command.origin_operation_id == operation.trace.operation_id
+
+    generation.enqueue(actor=actor, operation=operation, prepared=prepared)
+    assert len(journal.entries) == 1
+
+    jobs.created = False
+    generation.enqueue(actor=actor, operation=operation, prepared=prepared)
+    assert len(journal.entries) == 1
 
 
 @pytest.mark.asyncio
@@ -172,19 +233,23 @@ async def test_audio_releases_external_capacity_when_outbox_enqueue_fails() -> N
         documents=FakeDocuments(_document()),  # type: ignore[arg-type]
         jobs=jobs,
         entitlements=entitlements,
+        journal=FakeJournal(),  # type: ignore[arg-type]
     )
     executor = FakeExecutor(generation)
     workflow = ResearchGenerationWorkflow(
         executor=executor,  # type: ignore[arg-type]
         capacity=capacity,
+        operation_factory=OperationContextFactory(),
     )
 
     with pytest.raises(RuntimeError, match="outbox_unavailable"):
         await workflow.run(
             actor=_actor(),
+            operation=_operation(),
             client_ip="127.0.0.1",
-            prepare=lambda capability: capability.prepare_document_audio(
+            prepare=lambda capability, operation: capability.prepare_document_audio(
                 actor=_actor(),
+                operation=operation,
                 document_id=uuid4(),
                 request=CreateAudioOverviewRequest(),
                 idempotency_key="new-request",

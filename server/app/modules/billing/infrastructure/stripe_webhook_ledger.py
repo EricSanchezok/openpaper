@@ -41,7 +41,7 @@ def begin_webhook_attempt(
         event.last_error_code = None
         event.processed_at = None
 
-    db.commit()
+    db.flush()
     return WebhookClaim(
         should_process=True,
         status=StripeWebhookEventStatus.PROCESSING,
@@ -60,7 +60,7 @@ def complete_webhook(
     event.status = status
     event.last_error_code = None
     event.processed_at = datetime.now(timezone.utc)
-    db.commit()
+    db.flush()
 
 
 def fail_webhook(db: Session, *, event_id: str, error_code: str) -> None:
@@ -70,4 +70,4 @@ def fail_webhook(db: Session, *, event_id: str, error_code: str) -> None:
     event.status = StripeWebhookEventStatus.FAILED
     event.last_error_code = error_code[:64]
     event.processed_at = None
-    db.commit()
+    db.flush()

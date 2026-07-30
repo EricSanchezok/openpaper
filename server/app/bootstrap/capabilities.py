@@ -7,7 +7,7 @@ from functools import cached_property
 from app.bootstrap.container import (
     build_access_keys,
     build_billing,
-    build_citation_resolver,
+    build_citation_metadata,
     build_conversation_chat_data,
     build_conversations,
     build_identity,
@@ -42,7 +42,7 @@ from app.modules.identity.application.onboarding import SaveOnboarding
 from app.modules.integrations.zotero.application.zotero import Zotero
 from app.modules.jobs.application.callbacks import JobCallbacks
 from app.modules.jobs.application.jobs import Jobs
-from app.modules.papers.application.citations import ResolveCitation
+from app.modules.papers.application.citations import CitationMetadata
 from app.modules.papers.application.content import PaperContentCapabilities
 from app.modules.papers.application.collection_access import RequirePaperInCollection
 from app.modules.papers.application.details import GetPaperDetails
@@ -63,6 +63,11 @@ from app.modules.research.application.items import ResearchItems
 from app.modules.research.application.search import SearchResearch
 from sqlalchemy.orm import Session
 from app.tooling.invocations import ToolInvocationGateway
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.infrastructure import (
+    SqlAlchemyOperationJournalStore,
+)
+from app.shared.infrastructure import SystemClock
 
 
 class ApplicationCapabilities:
@@ -71,16 +76,21 @@ class ApplicationCapabilities:
     def __init__(self, session: Session, settings: AppSettings) -> None:
         self._session = session
         self._settings = settings
+        self._journal = OperationJournal(
+            store=SqlAlchemyOperationJournalStore(session),
+            clock=SystemClock(),
+        )
 
     @cached_property
     def identity(self) -> Identity:
-        return build_identity(db=self._session)
+        return build_identity(db=self._session, journal=self._journal)
 
     @cached_property
     def access_keys(self) -> AccessKeys:
         return build_access_keys(
             db=self._session,
             cursor_secret=self._settings.paper_search_cursor_secret,
+            journal=self._journal,
         )
 
     @cached_property
@@ -121,7 +131,7 @@ class ApplicationCapabilities:
 
     @cached_property
     def paper_ingestion(self) -> IngestPaper:
-        return build_paper_ingestion(db=self._session)
+        return build_paper_ingestion(db=self._session, journal=self._journal)
 
     @cached_property
     def research_search(self) -> SearchResearch:
@@ -132,42 +142,42 @@ class ApplicationCapabilities:
 
     @cached_property
     def onboarding(self) -> SaveOnboarding:
-        return build_save_onboarding(db=self._session)
+        return build_save_onboarding(db=self._session, journal=self._journal)
 
     @cached_property
     def billing(self) -> Billing:
-        return build_billing(db=self._session)
+        return build_billing(db=self._session, journal=self._journal)
 
     @cached_property
     def library_tags(self) -> LibraryTags:
-        return build_library_tags(db=self._session)
+        return build_library_tags(db=self._session, journal=self._journal)
 
     @cached_property
     def paper_discovery(self) -> DiscoverPapers:
         return build_paper_discovery(
             db=self._session,
-            cursor_secret=self._settings.paper_search_cursor_secret,
+            journal=self._journal,
         )
 
     @cached_property
     def paper_library(self) -> PaperLibrary:
-        return build_paper_library(db=self._session)
+        return build_paper_library(db=self._session, journal=self._journal)
 
     @cached_property
     def paper_details(self) -> GetPaperDetails:
         return build_paper_details(db=self._session)
 
     @cached_property
-    def citations(self) -> ResolveCitation:
-        return build_citation_resolver(db=self._session)
+    def citations(self) -> CitationMetadata:
+        return build_citation_metadata(db=self._session, journal=self._journal)
 
     @cached_property
     def projects(self) -> Projects:
-        return build_projects(db=self._session)
+        return build_projects(db=self._session, journal=self._journal)
 
     @cached_property
     def research_items(self) -> ResearchItems:
-        return build_research_items(db=self._session)
+        return build_research_items(db=self._session, journal=self._journal)
 
     @cached_property
     def jobs(self) -> Jobs:
@@ -175,22 +185,29 @@ class ApplicationCapabilities:
 
     @cached_property
     def job_callbacks(self) -> JobCallbacks:
-        return build_job_callbacks(db=self._session)
+        return build_job_callbacks(db=self._session, journal=self._journal)
 
     @cached_property
     def research_generation(self) -> ResearchGeneration:
-        return build_research_generation(db=self._session)
+        return build_research_generation(
+            db=self._session,
+            journal=self._journal,
+        )
 
     @cached_property
     def conversations(self) -> Conversations:
         return build_conversations(
             db=self._session,
             cursor_secret=self._settings.paper_search_cursor_secret,
+            journal=self._journal,
         )
 
     @cached_property
     def conversation_chat_data(self) -> ConversationChatData:
-        return build_conversation_chat_data(db=self._session)
+        return build_conversation_chat_data(
+            db=self._session,
+            journal=self._journal,
+        )
 
     @cached_property
     def paper_topics(self) -> PaperTopics:
@@ -198,4 +215,4 @@ class ApplicationCapabilities:
 
     @cached_property
     def zotero(self) -> Zotero:
-        return build_zotero(db=self._session)
+        return build_zotero(db=self._session, journal=self._journal)

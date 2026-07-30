@@ -1,11 +1,14 @@
-from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.workflows.billing import BillingWorkflow
 from app.modules.billing.application.contracts import (
     SubscriptionResponse,
     UsageResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
+from app.transport.http.public_v1.billing.dependencies import get_billing_workflow
 from fastapi import APIRouter, Depends
 
 router = APIRouter()
@@ -13,23 +16,19 @@ router = APIRouter()
 
 @router.get("/subscription", response_model=SubscriptionResponse)
 def get_user_subscription(
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: BillingWorkflow = Depends(get_billing_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> SubscriptionResponse:
-    return executor.query(
-        lambda capabilities: capabilities.billing.get_subscription(current_user)
+    return workflow.get_subscription(
+        actor=current_user,
+        operation=operation,
     )
 
 
 @router.get("/usage", response_model=UsageResponse)
 def get_user_usage(
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: BillingWorkflow = Depends(get_billing_workflow),
     current_user: Actor = Depends(get_required_user),
 ) -> UsageResponse:
-    return executor.query(
-        lambda capabilities: capabilities.billing.get_usage(current_user)
-    )
+    return workflow.get_usage(current_user)

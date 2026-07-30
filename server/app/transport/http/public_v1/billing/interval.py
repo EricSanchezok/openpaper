@@ -1,11 +1,14 @@
-from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.workflows.billing import BillingWorkflow
 from app.modules.billing.application.contracts import (
     IntervalChangeResponse,
     SubscriptionInterval,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
+from app.transport.http.public_v1.billing.dependencies import get_billing_workflow
 from fastapi import APIRouter, Depends
 
 router = APIRouter()
@@ -14,26 +17,24 @@ router = APIRouter()
 @router.patch("/subscription/interval", response_model=IntervalChangeResponse)
 def change_subscription_interval(
     new_interval: SubscriptionInterval,
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: BillingWorkflow = Depends(get_billing_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> IntervalChangeResponse:
-    return executor.command(
-        lambda capabilities: capabilities.billing.schedule_interval_change(
-            current_user,
-            new_interval,
-        )
+    return workflow.schedule_interval_change(
+        actor=current_user,
+        operation=operation,
+        new_interval=new_interval,
     )
 
 
 @router.delete("/subscription/interval", response_model=IntervalChangeResponse)
 def cancel_scheduled_change(
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: BillingWorkflow = Depends(get_billing_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> IntervalChangeResponse:
-    return executor.command(
-        lambda capabilities: capabilities.billing.cancel_interval_change(current_user)
+    return workflow.cancel_interval_change(
+        actor=current_user,
+        operation=operation,
     )

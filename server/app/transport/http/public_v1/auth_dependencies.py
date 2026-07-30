@@ -1,17 +1,32 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import uuid4
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.container import optional_cloud_user_dependency
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import (
+    get_application_executor,
+    get_operation_context_factory,
+)
 from app.modules.identity.application import AuthenticatedIdentity
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import (
+    Actor,
+    ApplicationExecutor,
+    CredentialKind,
+    CredentialRef,
+    HttpOrigin,
+    OperationContext,
+    OperationContextFactory,
+    OperationInitiator,
+    RequestReference,
+)
 from cloud_auth.models.user import UserRecord
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 
 async def get_current_user(
+    request: Request,
     cloud_user: Annotated[
         UserRecord | None,
         Depends(optional_cloud_user_dependency),
@@ -19,6 +34,7 @@ async def get_current_user(
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
+    operation_factory: OperationContextFactory = Depends(get_operation_context_factory),
 ) -> Actor | None:
     if cloud_user is None:
         return None
@@ -30,9 +46,20 @@ async def get_current_user(
         status=cloud_user.status,
         email_verified=cloud_user.email_verified,
     )
+    operation = operation_factory.root(
+        initiated_by=OperationInitiator.USER,
+        origin=HttpOrigin(
+            request=RequestReference(
+                request_id=uuid4(),
+            )
+        ),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
+    request.state.operation_context = operation
     return executor.command(
         lambda capabilities: capabilities.identity.resolve_actor(
             identity,
+            operation=operation,
         )
     )
 
@@ -47,6 +74,16 @@ async def get_required_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return current_user
+
+
+async def get_required_operation(
+    request: Request,
+    _current_user: Annotated[Actor, Depends(get_required_user)],
+) -> OperationContext:
+    operation = getattr(request.state, "operation_context", None)
+    if not isinstance(operation, OperationContext):
+        raise RuntimeError("authenticated_operation_context_missing")
+    return operation
 
 
 async def get_admin_user(

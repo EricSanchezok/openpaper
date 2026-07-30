@@ -13,8 +13,17 @@ from app.database.models import (
     ResearchScopeType,
 )
 from app.shared.domain import AppError, FailureKind
-from app.helpers.ai_limits import release_concurrency_by_id
 from app.llm.token_credits import llm_usage_context, settle_token_usage
+from app.modules.jobs.application.callbacks import (
+    JobHandlerResult,
+    ReleaseJobConcurrency,
+    SettleJobUsage,
+)
+from app.modules.operation_journal.domain import OperationChange, ResourceRef
+from app.modules.research.application.generation import (
+    RESEARCH_AUDIO_OVERVIEW_CREATED,
+    RESEARCH_DATA_TABLE_CREATED,
+)
 from app.modules.jobs.infrastructure.repository import job_repository
 from app.modules.jobs.application.contracts import (
     AudioOverviewTaskPayload,
@@ -74,7 +83,7 @@ async def complete_audio_job(
     job_id: uuid.UUID,
     webhook: AudioOverviewWebhookData,
     db: Session,
-) -> JobClaimResponse:
+) -> JobHandlerResult:
     job = job_repository.require(db, job_id=job_id)
     _validate_callback(
         job_id=job_id,
@@ -133,27 +142,50 @@ async def complete_audio_job(
                 model_version=result.model_version,
             )
             db.add(item)
-    if job.requested_by_id is not None:
-        settle_jobs_usage(job.requested_by_id, webhook.usage_events)
-        db.commit()
-        await release_concurrency_by_id(
-            user_id=job.requested_by_id,
-            category="audio",
-            operation_id=str(job_id),
+    changes = (
+        (
+            OperationChange(
+                action=RESEARCH_AUDIO_OVERVIEW_CREATED,
+                resources=(
+                    ResourceRef("research_item", str(webhook.result.research_item_id)),
+                ),
+            ),
         )
-        await release_concurrency_by_id(
-            user_id=job.requested_by_id,
-            category="background",
-            operation_id=str(job_id),
+        if changed and webhook.status == "completed" and webhook.result is not None
+        else ()
+    )
+    post_commit = (
+        (
+            SettleJobUsage(
+                user_id=job.requested_by_id,
+                events=tuple(webhook.usage_events),
+            ),
+            ReleaseJobConcurrency(
+                user_id=job.requested_by_id,
+                category="audio",
+                job_id=job_id,
+            ),
+            ReleaseJobConcurrency(
+                user_id=job.requested_by_id,
+                category="background",
+                job_id=job_id,
+            ),
         )
-    return JobClaimResponse(claimed=changed)
+        if job.requested_by_id is not None
+        else ()
+    )
+    return JobHandlerResult(
+        value=JobClaimResponse(claimed=changed),
+        changes=changes,
+        post_commit=post_commit,
+    )
 
 
 async def complete_data_table_job(
     job_id: uuid.UUID,
     webhook: DataTableWebhookData,
     db: Session,
-) -> JobClaimResponse:
+) -> JobHandlerResult:
     job = job_repository.require(db, job_id=job_id)
     _validate_callback(
         job_id=job_id,
@@ -206,12 +238,35 @@ async def complete_data_table_job(
                 row_failures=[str(document_id) for document_id in result.row_failures],
             )
             db.add(item)
-    if job.requested_by_id is not None:
-        settle_jobs_usage(job.requested_by_id, webhook.usage_events)
-        db.commit()
-        await release_concurrency_by_id(
-            user_id=job.requested_by_id,
-            category="background",
-            operation_id=str(job_id),
+    changes = (
+        (
+            OperationChange(
+                action=RESEARCH_DATA_TABLE_CREATED,
+                resources=(
+                    ResourceRef("research_item", str(webhook.result.research_item_id)),
+                ),
+            ),
         )
-    return JobClaimResponse(claimed=changed)
+        if changed and webhook.status == "completed" and webhook.result is not None
+        else ()
+    )
+    post_commit = (
+        (
+            SettleJobUsage(
+                user_id=job.requested_by_id,
+                events=tuple(webhook.usage_events),
+            ),
+            ReleaseJobConcurrency(
+                user_id=job.requested_by_id,
+                category="background",
+                job_id=job_id,
+            ),
+        )
+        if job.requested_by_id is not None
+        else ()
+    )
+    return JobHandlerResult(
+        value=JobClaimResponse(claimed=changed),
+        changes=changes,
+        post_commit=post_commit,
+    )

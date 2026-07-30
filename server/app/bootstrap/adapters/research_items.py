@@ -13,11 +13,12 @@ from app.modules.research.application.contracts import (
     UpdateAnnotationCommentRequest,
     UpdateHighlightThreadRequest,
 )
+from app.modules.research.application.items import ResearchItemChange
 from app.bootstrap.adapters.research_repository import (
     HighlightThreadCreate,
     research_repository,
 )
-from app.shared.domain.enums import ResearchItemKind
+from app.shared.domain.enums import ResearchItemKind, RoleType
 from sqlalchemy.orm import Session
 
 
@@ -70,6 +71,7 @@ class SqlAlchemyResearchItemGateway:
         user_id: int,
         document_id: UUID,
         request: CreateHighlightThreadRequest,
+        content_role: RoleType,
     ) -> ResearchItemResponse:
         item = research_repository.create_highlight_thread(
             self._db,
@@ -83,6 +85,7 @@ class SqlAlchemyResearchItemGateway:
                 position=request.position,
                 color=request.color,
                 is_shared=request.shared,
+                content_role=content_role,
             ),
         )
         return self._serialize(item=item, user_id=user_id)
@@ -93,14 +96,17 @@ class SqlAlchemyResearchItemGateway:
         user_id: int,
         thread_id: UUID,
         request: UpdateHighlightThreadRequest,
-    ) -> ResearchItemResponse:
-        item = research_repository.update_highlight_thread(
+    ) -> ResearchItemChange[ResearchItemResponse]:
+        result = research_repository.update_highlight_thread(
             self._db,
             thread_id=thread_id,
             user_id=user_id,
             values=request.model_dump(exclude_unset=True),
         )
-        return self._serialize(item=item, user_id=user_id)
+        return ResearchItemChange(
+            value=self._serialize(item=result.value, user_id=user_id),
+            changed=result.changed,
+        )
 
     def delete_item(
         self,
@@ -108,12 +114,16 @@ class SqlAlchemyResearchItemGateway:
         user_id: int,
         item_id: UUID,
         confirm_delete_replies: bool,
+        origin_operation_id: UUID,
+        correlation_id: UUID,
     ) -> None:
         research_repository.delete_item(
             self._db,
             item_id=item_id,
             user_id=user_id,
             confirm_delete_replies=confirm_delete_replies,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
         )
 
     @staticmethod
@@ -138,6 +148,7 @@ class SqlAlchemyResearchItemGateway:
         user_id: int,
         thread_id: UUID,
         request: CreateAnnotationCommentRequest,
+        content_role: RoleType,
     ) -> AnnotationCommentResponse:
         return self._comment(
             comment=research_repository.add_comment(
@@ -145,6 +156,7 @@ class SqlAlchemyResearchItemGateway:
                 thread_id=thread_id,
                 user_id=user_id,
                 content=request.content,
+                content_role=content_role,
             ),
             user_id=user_id,
         )
@@ -155,15 +167,19 @@ class SqlAlchemyResearchItemGateway:
         user_id: int,
         comment_id: UUID,
         request: UpdateAnnotationCommentRequest,
-    ) -> AnnotationCommentResponse:
-        return self._comment(
-            comment=research_repository.update_comment(
-                self._db,
-                comment_id=comment_id,
-                user_id=user_id,
-                content=request.content,
-            ),
+    ) -> ResearchItemChange[AnnotationCommentResponse]:
+        result = research_repository.update_comment(
+            self._db,
+            comment_id=comment_id,
             user_id=user_id,
+            content=request.content,
+        )
+        return ResearchItemChange(
+            value=self._comment(
+                comment=result.value,
+                user_id=user_id,
+            ),
+            changed=result.changed,
         )
 
     def delete_comment(self, *, user_id: int, comment_id: UUID) -> None:
@@ -179,11 +195,14 @@ class SqlAlchemyResearchItemGateway:
         user_id: int,
         item_id: UUID,
         request: ResearchVisibilityRequest,
-    ) -> ResearchItemResponse:
-        item = research_repository.set_visibility(
+    ) -> ResearchItemChange[ResearchItemResponse]:
+        result = research_repository.set_visibility(
             self._db,
             item_id=item_id,
             user_id=user_id,
             shared=request.shared,
         )
-        return self._serialize(item=item, user_id=user_id)
+        return ResearchItemChange(
+            value=self._serialize(item=result.value, user_id=user_id),
+            changed=result.changed,
+        )

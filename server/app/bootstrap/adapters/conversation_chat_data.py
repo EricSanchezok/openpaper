@@ -18,10 +18,10 @@ from app.modules.conversations.application.chat import (
     ConversationContextSnapshot,
     ConversationChatDataGateway,
     ConversationChatScope,
+    ConversationTurnCompletion,
+    ConversationTurnStart,
     MentionScope,
-)
-from app.modules.conversations.application.contracts.conversations import (
-    ConversationUpdateRequest,
+    PersistedChatMessage,
 )
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
@@ -43,6 +43,8 @@ from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, JsonValue
 from app.shared.domain import normalize_workspace_permissions
 from app.shared.domain.enums import ConversationScopeType
+from app.shared.domain.enums import RoleType
+from app.helpers.postgres import sanitize_for_postgres
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
 
@@ -206,6 +208,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
         *,
         actor: Actor,
         conversation_id: uuid.UUID,
+        exclude_turn_id: uuid.UUID | None,
     ) -> list[ChatHistoryMessage]:
         return [
             ChatHistoryMessage(role=message.role, content=message.content)
@@ -213,6 +216,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
                 self._session,
                 conversation_id=conversation_id,
                 user_id=actor.id,
+                exclude_turn_id=exclude_turn_id,
             )
         ]
 
@@ -282,66 +286,176 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             highlights=list(highlights_by_paper.values()),
         )
 
-    def save_turn(
+    @staticmethod
+    def _persisted(message: object) -> PersistedChatMessage:
+        from app.modules.conversations.infrastructure.models import Message
+
+        if not isinstance(message, Message):
+            raise TypeError("expected Message")
+        return PersistedChatMessage(
+            id=message.id,
+            content=message.content,
+            references=message.references,
+            trace=message.trace,
+        )
+
+    def start_turn(
         self,
         *,
         actor: Actor,
         conversation_id: uuid.UUID,
+        turn_id: uuid.UUID,
         user_content: str,
         user_references: dict[str, JsonValue] | None,
         scope: list[dict[str, JsonValue]] | None,
-        assistant_content: str,
-        assistant_references: dict[str, JsonValue] | None,
-        assistant_trace: dict[str, JsonValue] | None,
-        artifacts: list[dict[str, JsonValue]],
-    ) -> None:
-        conversation = self._conversation(
-            actor=actor,
+        created_operation_id: uuid.UUID,
+        correlation_id: uuid.UUID,
+    ) -> ConversationTurnStart:
+        message_repository.lock_conversation(
+            self._session,
             conversation_id=conversation_id,
+            user_id=actor.id,
         )
-        message_repository.create(
+        existing_user = message_repository.find_turn_message(
+            self._session,
+            conversation_id=conversation_id,
+            user_id=actor.id,
+            turn_id=turn_id,
+            role=RoleType.USER,
+        )
+        if existing_user is not None:
+            normalized_content = sanitize_for_postgres(user_content)
+            if existing_user.content != normalized_content:
+                raise AppError(
+                    code="conversation_turn_conflict",
+                    message="This conversation turn was already used differently",
+                    kind=FailureKind.CONFLICT,
+                )
+            existing_assistant = message_repository.find_turn_message(
+                self._session,
+                conversation_id=conversation_id,
+                user_id=actor.id,
+                turn_id=turn_id,
+                role=RoleType.ASSISTANT,
+            )
+            return ConversationTurnStart(
+                user_message_id=existing_user.id,
+                user_operation_id=existing_user.created_operation_id,
+                correlation_id=existing_user.correlation_id,
+                created=False,
+                assistant=(
+                    self._persisted(existing_assistant)
+                    if existing_assistant is not None
+                    else None
+                ),
+            )
+
+        user_message = message_repository.create(
             self._session,
             request=MessageCreate(
                 conversation_id=conversation_id,
-                role="user",
+                turn_id=turn_id,
+                created_operation_id=created_operation_id,
+                correlation_id=correlation_id,
+                role=RoleType.USER,
                 content=user_content,
                 references=user_references,
                 scope=scope,
             ),
             user_id=actor.id,
         )
+        return ConversationTurnStart(
+            user_message_id=user_message.id,
+            user_operation_id=user_message.created_operation_id,
+            correlation_id=user_message.correlation_id,
+            created=True,
+            assistant=None,
+        )
+
+    def complete_turn(
+        self,
+        *,
+        actor: Actor,
+        conversation_id: uuid.UUID,
+        turn_id: uuid.UUID,
+        assistant_content: str,
+        assistant_references: dict[str, JsonValue] | None,
+        assistant_trace: dict[str, JsonValue] | None,
+        artifacts: list[dict[str, JsonValue]],
+        created_operation_id: uuid.UUID,
+        correlation_id: uuid.UUID,
+    ) -> ConversationTurnCompletion:
+        conversation = self._conversation(
+            actor=actor,
+            conversation_id=conversation_id,
+        )
+        message_repository.lock_conversation(
+            self._session,
+            conversation_id=conversation_id,
+            user_id=actor.id,
+        )
+        existing = message_repository.find_turn_message(
+            self._session,
+            conversation_id=conversation_id,
+            user_id=actor.id,
+            turn_id=turn_id,
+            role=RoleType.ASSISTANT,
+        )
+        if existing is not None:
+            return ConversationTurnCompletion(
+                assistant=self._persisted(existing),
+                created=False,
+                citation_ids=(),
+            )
+        user_message = message_repository.find_turn_message(
+            self._session,
+            conversation_id=conversation_id,
+            user_id=actor.id,
+            turn_id=turn_id,
+            role=RoleType.USER,
+        )
+        if user_message is None:
+            raise AppError(
+                code="conversation_turn_not_started",
+                message="The conversation turn has not been started",
+                kind=FailureKind.CONFLICT,
+            )
+        if user_message.correlation_id != correlation_id:
+            raise AppError(
+                code="conversation_turn_causality_invalid",
+                message="The conversation turn causality is invalid",
+                kind=FailureKind.CONFLICT,
+            )
         assistant_message = message_repository.create(
             self._session,
             request=MessageCreate(
                 conversation_id=conversation_id,
-                role="assistant",
+                turn_id=turn_id,
+                created_operation_id=created_operation_id,
+                correlation_id=correlation_id,
+                role=RoleType.ASSISTANT,
                 content=assistant_content,
                 references=assistant_references,
                 trace=assistant_trace,
             ),
             user_id=actor.id,
         )
+        citation_ids: tuple[uuid.UUID, ...] = ()
         if artifacts:
-            research_repository.create_citations_for_message(
-                self._session,
-                conversation=conversation,
-                message_id=assistant_message.id,
-                user_id=actor.id,
-                snapshots=cast(list[dict[str, object]], artifacts),
+            citation_ids = tuple(
+                item.id
+                for item in research_repository.create_citations_for_message(
+                    self._session,
+                    conversation=conversation,
+                    message_id=assistant_message.id,
+                    user_id=actor.id,
+                    snapshots=cast(list[dict[str, object]], artifacts),
+                )
             )
-
-    def rename(
-        self,
-        *,
-        actor: Actor,
-        conversation_id: uuid.UUID,
-        title: str,
-    ) -> None:
-        conversation_repository.update(
-            self._session,
-            conversation_id=conversation_id,
-            user_id=actor.id,
-            request=ConversationUpdateRequest(title=title),
+        return ConversationTurnCompletion(
+            assistant=self._persisted(assistant_message),
+            created=True,
+            citation_ids=citation_ids,
         )
 
     def _conversation(

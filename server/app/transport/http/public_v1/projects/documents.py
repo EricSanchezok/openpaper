@@ -14,8 +14,11 @@ from app.modules.projects.application.contracts import (
     ProjectPapersAddedResponse,
     ProjectPendingUploadsResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Response, status
 
 project_papers_router = APIRouter()
@@ -34,10 +37,12 @@ def collect_paper_from_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectPaperCollectedResponse:
     return executor.command(
         lambda capabilities: capabilities.projects.collect_document(
             actor=current_user,
+            operation=operation,
             request=request,
         )
     )
@@ -55,10 +60,12 @@ def add_paper_to_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ProjectPapersAddedResponse:
     return executor.command(
         lambda capabilities: capabilities.projects.add_documents(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             request=request,
         )
@@ -156,10 +163,12 @@ def remove_paper_from_project(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.projects.remove_document(
             actor=current_user,
+            operation=operation,
             project_id=project_id,
             document_id=document_id,
         )

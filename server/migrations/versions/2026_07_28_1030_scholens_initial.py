@@ -397,6 +397,8 @@ def upgrade() -> None:
         "zotero_oauth_pending",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("correlation_id", sa.UUID(), nullable=False),
+        sa.Column("origin_operation_id", sa.UUID(), nullable=False),
         sa.Column("oauth_token", sa.String(), nullable=False),
         sa.Column("oauth_token_secret", sa.String(), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
@@ -493,6 +495,8 @@ def upgrade() -> None:
         "jobs",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("operation", sa.String(length=40), nullable=False),
+        sa.Column("correlation_id", sa.UUID(), nullable=False),
+        sa.Column("origin_operation_id", sa.UUID(), nullable=False),
         sa.Column("requested_by_id", sa.BigInteger(), nullable=True),
         sa.Column("project_id", sa.UUID(), nullable=True),
         sa.Column("document_id", sa.UUID(), nullable=True),
@@ -541,6 +545,20 @@ def upgrade() -> None:
         "ix_jobs_document_status",
         "jobs",
         ["document_id", "status"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_jobs_correlation_id"),
+        "jobs",
+        ["correlation_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_jobs_origin_operation_id"),
+        "jobs",
+        ["origin_operation_id"],
         unique=False,
         schema="scholens",
     )
@@ -867,7 +885,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "status IN ('pending', 'published')", name="ck_job_dispatches_status"
+            "status IN ('pending', 'publishing', 'published')",
+            name="ck_job_dispatches_status",
         ),
         sa.ForeignKeyConstraint(["job_id"], ["scholens.jobs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -910,6 +929,9 @@ def upgrade() -> None:
         "messages",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("conversation_id", sa.UUID(), nullable=False),
+        sa.Column("turn_id", sa.UUID(), nullable=False),
+        sa.Column("created_operation_id", sa.UUID(), nullable=False),
+        sa.Column("correlation_id", sa.UUID(), nullable=False),
         sa.Column("role", sa.String(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("references", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
@@ -935,6 +957,124 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "conversation_id", "sequence", name="uq_messages_conversation_sequence"
         ),
+        sa.UniqueConstraint(
+            "conversation_id",
+            "turn_id",
+            "role",
+            name="uq_messages_conversation_turn_role",
+        ),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_messages_created_operation_id"),
+        "messages",
+        ["created_operation_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_messages_correlation_id"),
+        "messages",
+        ["correlation_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_table(
+        "operation_journal_entries",
+        sa.Column("entry_id", sa.UUID(), nullable=False),
+        sa.Column("operation_id", sa.UUID(), nullable=False),
+        sa.Column("correlation_id", sa.UUID(), nullable=False),
+        sa.Column("causation_id", sa.UUID(), nullable=True),
+        sa.Column("actor_id", sa.BigInteger(), nullable=True),
+        sa.Column("initiated_by", sa.String(length=16), nullable=False),
+        sa.Column("origin_kind", sa.String(length=32), nullable=False),
+        sa.Column("origin_name", sa.String(length=128), nullable=True),
+        sa.Column("origin_reference", sa.String(length=64), nullable=True),
+        sa.Column("credential_kind", sa.String(length=32), nullable=True),
+        sa.Column("credential_id", sa.String(length=128), nullable=True),
+        sa.Column("request_id", sa.UUID(), nullable=True),
+        sa.Column("conversation_id", sa.UUID(), nullable=True),
+        sa.Column("turn_id", sa.UUID(), nullable=True),
+        sa.Column("job_id", sa.UUID(), nullable=True),
+        sa.Column("action", sa.String(length=127), nullable=False),
+        sa.Column("resources", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "initiated_by IN ('user', 'agent', 'system')",
+            name="ck_operation_journal_initiator",
+        ),
+        sa.CheckConstraint(
+            "origin_kind IN ("
+            "'http', 'conversation', 'mcp', 'job', 'webhook', "
+            "'oauth_callback', 'scheduler'"
+            ")",
+            name="ck_operation_journal_origin",
+        ),
+        sa.CheckConstraint(
+            "credential_kind IS NULL OR credential_kind IN ("
+            "'cloud_session', 'access_key', 'internal_signature', "
+            "'provider_signature'"
+            ")",
+            name="ck_operation_journal_credential",
+        ),
+        sa.CheckConstraint(
+            "action ~ '^[a-z][a-z0-9_]{0,62}\\.[a-z][a-z0-9_]{0,62}$'",
+            name="ck_operation_journal_action",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(resources) = 'array' "
+            "AND jsonb_array_length(resources) BETWEEN 1 AND 100",
+            name="ck_operation_journal_resources",
+        ),
+        sa.CheckConstraint(
+            "(causation_id IS NULL AND operation_id = correlation_id) OR "
+            "(causation_id IS NOT NULL "
+            "AND operation_id <> correlation_id "
+            "AND operation_id <> causation_id)",
+            name="ck_operation_journal_trace",
+        ),
+        sa.CheckConstraint(
+            "created_at = updated_at",
+            name="ck_operation_journal_append_only_timestamp",
+        ),
+        sa.ForeignKeyConstraint(
+            ["actor_id"],
+            ["auth.users.id"],
+            ondelete="SET NULL",
+        ),
+        sa.PrimaryKeyConstraint("entry_id"),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_operation_journal_entries_actor_id"),
+        "operation_journal_entries",
+        ["actor_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_operation_journal_entries_correlation_id"),
+        "operation_journal_entries",
+        ["correlation_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_operation_journal_entries_operation_id"),
+        "operation_journal_entries",
+        ["operation_id"],
+        unique=False,
         schema="scholens",
     )
     op.create_table(
@@ -1367,6 +1507,32 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("upload_reservations", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_operation_journal_entries_operation_id"),
+        table_name="operation_journal_entries",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_operation_journal_entries_correlation_id"),
+        table_name="operation_journal_entries",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_operation_journal_entries_actor_id"),
+        table_name="operation_journal_entries",
+        schema="scholens",
+    )
+    op.drop_table("operation_journal_entries", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_messages_correlation_id"),
+        table_name="messages",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_messages_created_operation_id"),
+        table_name="messages",
+        schema="scholens",
+    )
     op.drop_table("messages", schema="scholens")
     op.drop_table("library_paper_tags", schema="scholens")
     op.drop_index(
@@ -1440,6 +1606,16 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("library_papers", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_jobs_origin_operation_id"),
+        table_name="jobs",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_jobs_correlation_id"),
+        table_name="jobs",
+        schema="scholens",
+    )
     op.drop_index("ix_jobs_requester_activity", table_name="jobs", schema="scholens")
     op.drop_index("ix_jobs_project_status", table_name="jobs", schema="scholens")
     op.drop_index("ix_jobs_document_status", table_name="jobs", schema="scholens")

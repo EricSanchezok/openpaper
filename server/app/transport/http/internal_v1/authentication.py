@@ -6,14 +6,18 @@ import hashlib
 import hmac
 import os
 import time
+from uuid import uuid4
+
 from app.bootstrap.container import build_job_callback_protection
+from app.modules.jobs.application.authentication import VerifiedJobCallback
 from app.shared.domain import AppError, FailureKind
+from app.transport.http.internal_v1.references import job_delivery_reference
 from fastapi import Request
 
 
 async def verify_jobs_webhook(
     request: Request,
-) -> None:
+) -> VerifiedJobCallback:
     secret = os.getenv("JOBS_WEBHOOK_SIGNING_SECRET")
     if not secret or len(secret.encode()) < 32:
         raise AppError(
@@ -67,3 +71,7 @@ async def verify_jobs_webhook(
             message="Jobs callback nonce has already been used",
             kind=FailureKind.CONFLICT,
         )
+    return VerifiedJobCallback(
+        request_id=uuid4(),
+        delivery_ref=job_delivery_reference(nonce),
+    )

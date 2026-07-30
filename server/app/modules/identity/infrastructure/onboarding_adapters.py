@@ -8,6 +8,7 @@ from app.modules.identity.application.onboarding_contracts import (
     CreateOnboardingRequest,
     OnboardingResponse,
 )
+from app.modules.identity.application.onboarding import OnboardingSaveResult
 from app.modules.identity.infrastructure.cloud_auth import auth_manager
 from app.modules.identity.infrastructure.onboarding_repository import (
     OnboardingCreate,
@@ -26,7 +27,7 @@ class SqlAlchemyOnboardingWriter:
         *,
         actor: Actor,
         request: CreateOnboardingRequest,
-    ) -> OnboardingResponse:
+    ) -> OnboardingSaveResult:
         existing = onboarding_repository.get_by(self._db, user=actor)
         values = request.model_dump(exclude_unset=True, mode="json")
         if existing is None:
@@ -34,13 +35,25 @@ class SqlAlchemyOnboardingWriter:
                 self._db,
                 obj_in=OnboardingCreate(user_id=actor.id, **values),
             )
+            changed = True
         else:
-            onboarding = onboarding_repository.update(
-                self._db,
-                db_obj=existing,
-                obj_in=values,
+            changed = any(
+                getattr(existing, field_name) != value
+                for field_name, value in values.items()
             )
-        return OnboardingResponse.model_validate(onboarding)
+            onboarding = (
+                onboarding_repository.update(
+                    self._db,
+                    db_obj=existing,
+                    obj_in=values,
+                )
+                if changed
+                else existing
+            )
+        return OnboardingSaveResult(
+            response=OnboardingResponse.model_validate(onboarding),
+            changed=changed,
+        )
 
 
 class CloudAuthDisplayNameWriter:
@@ -54,9 +67,6 @@ class EmailOnboardingNotifier:
 
 
 class PostHogOnboardingEventRecorder:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
     def completed(
         self,
         *,
@@ -67,5 +77,4 @@ class PostHogOnboardingEventRecorder:
             "onboarding_completed",
             user_id=str(user_id),
             properties=properties,
-            db=self._db,
         )

@@ -1,7 +1,11 @@
 """Cross-module project-document persistence adapter."""
 
+from __future__ import annotations
+
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from app.database.models import (
     Document,
@@ -26,6 +30,15 @@ from app.modules.projects.infrastructure.access import (
 from app.shared.application import Actor
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, load_only
+
+if TYPE_CHECKING:
+    from app.bootstrap.adapters.document_gc import ScheduledDocumentGc
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectLibraryAttachment:
+    document: Document | None
+    created: bool
 
 
 class ProjectDocumentRepository:
@@ -298,7 +311,9 @@ class ProjectDocumentRepository:
         document_id: uuid.UUID,
         project_id: uuid.UUID,
         user: Actor,
-    ) -> ProjectPaper | None:
+        origin_operation_id: uuid.UUID,
+        correlation_id: uuid.UUID,
+    ) -> ScheduledDocumentGc | None:
         require_project_permission(
             db,
             project_id=project_id,
@@ -326,9 +341,14 @@ class ProjectDocumentRepository:
             schedule_document_gc,
         )
 
-        schedule_document_gc(db, document_id=document_id)
+        scheduled = schedule_document_gc(
+            db,
+            document_id=document_id,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
+        )
         db.flush()
-        return project_paper
+        return scheduled
 
     def get_projects_by_document_id(
         self, db: Session, *, document_id: uuid.UUID, user: Actor
@@ -368,7 +388,7 @@ class ProjectDocumentRepository:
         document_id: uuid.UUID,
         project_id: uuid.UUID,
         current_user: Actor,
-    ) -> Document | None:
+    ) -> ProjectLibraryAttachment:
         document = self.get_paper_by_project(
             db,
             document_id=document_id,
@@ -376,7 +396,7 @@ class ProjectDocumentRepository:
             user=current_user,
         )
         if document is None:
-            return None
+            return ProjectLibraryAttachment(document=None, created=False)
         existing = db.scalar(
             select(LibraryPaper).where(
                 LibraryPaper.document_id == document.id,
@@ -384,19 +404,22 @@ class ProjectDocumentRepository:
             )
         )
         if existing is not None:
-            return document
+            return ProjectLibraryAttachment(document=document, created=False)
         require_library_document_capacity(
             db,
             user=current_user,
             document=document,
         )
-        document_repository.attach_library(
+        attached = document_repository.attach_library(
             db,
             document_id=document.id,
             user_id=current_user.id,
         )
         db.flush()
-        return document
+        return ProjectLibraryAttachment(
+            document=document,
+            created=attached.created,
+        )
 
 
 project_document_repository = ProjectDocumentRepository()

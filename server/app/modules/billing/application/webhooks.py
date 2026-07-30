@@ -1,30 +1,20 @@
-"""Stripe webhook application boundary."""
+"""Transport-neutral contract for verified Stripe webhook processing."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
+from app.shared.application import RequestReference
 
-class StripeWebhookPort(Protocol):
+
+class ProcessStripeWebhook(Protocol):
     async def process(
         self,
         *,
         payload: bytes,
         signature: str,
+        request_reference: RequestReference,
     ) -> dict[str, object]: ...
 
 
-class ProcessStripeWebhook:
-    def __init__(self, processor: StripeWebhookPort) -> None:
-        self._processor = processor
-
-    async def __call__(
-        self,
-        *,
-        payload: bytes,
-        signature: str,
-    ) -> dict[str, object]:
-        return await self._processor.process(
-            payload=payload,
-            signature=signature,
-        )
+__all__ = ["ProcessStripeWebhook"]

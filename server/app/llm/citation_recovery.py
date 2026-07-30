@@ -1,42 +1,20 @@
-"""Agentic recovery of missing paper metadata.
-
-A small LLM loop that uses AnySearch and Scholight MCP tools over a paper's
-bibliographic details, falls back to a forced structured-output
-extraction, and writes back any null fields it can confidently fill (with
-field_provenance). Reusable from any codepath that already has a Document row
-(chat, post-upload background, backfill).
-
-This module deliberately does NOT depend on `app.helpers.metadata_hydration` so
-the chain `metadata_hydration → citation_recovery` remains a clean DAG.
-"""
+"""External, persistence-free recovery of missing paper metadata."""
 
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
-from app.database.models import Document
-from app.modules.papers.domain.citations import (
-    CitationFields,
-    bibliographic_gaps,
-    fields_from_paper,
-)
-from app.helpers.paper_search import extract_doi_from_url
-from app.helpers.parser import parse_publication_date
+from app.modules.papers.domain.citations import CitationFields
 from app.modules.conversations.infrastructure.mcp_client import (
     call_remote_tool_sync,
     discover_function_declarations_sync,
 )
 from app.llm.base import BaseLLMClient
-from app.modules.papers.infrastructure.repository import document_repository
 from app.modules.papers.application.contracts.citation import CitationStep
-from app.modules.papers.application.contracts.documents import DocumentUpdate
 from app.modules.papers.application.contracts.extraction import (
     TextContent,
     ToolCallResult,
 )
-from app.shared.application import Actor
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -120,50 +98,35 @@ submit_findings_function = {
 
 
 class MetadataRecoveryAgent(BaseLLMClient):
-    """Web-search + extraction agent that fills missing paper metadata."""
+    """Web-search + extraction agent that returns provider facts only."""
 
-    def recover_metadata(
+    def find_metadata(
         self,
         *,
-        db: Session,
-        paper: Document,
-        user: Actor | None = None,
-        missing_hint: list[str] | None = None,
-        steps: list[CitationStep] | None = None,
-    ) -> tuple[Document, dict[str, Any], float | None]:
-        """Agentic fallback that tries to fill the paper's missing metadata.
-
-        Confidence-gated, null-only write-back with `field_provenance`. Pass
-        `missing_hint` to focus the search on specific fields; otherwise we
-        derive a style-agnostic list of bibliographic gaps from the paper.
-        `steps` collects the trajectory when the caller wants to surface it.
-
-        Returns: (paper, filled_fields, confidence). `filled_fields` is empty
-        when nothing was written.
-        """
-        fields = fields_from_paper(paper)
-        gaps = missing_hint if missing_hint is not None else bibliographic_gaps(fields)
-        captured = steps if steps is not None else []
-        if not gaps:
-            return paper, {}, None
-
-        findings = self._run_web_loop(fields, gaps, captured)
+        fields: CitationFields,
+        missing_fields: list[str],
+        steps: list[CitationStep],
+    ) -> tuple[dict[str, Any], float | None]:
+        """Resolve metadata through external providers without database access."""
+        if not missing_fields:
+            return {}, None
+        findings = self._run_web_loop(fields, missing_fields, steps)
         if not findings:
-            return paper, {}, None
-
+            return {}, None
         confidence = float(findings.get("confidence") or 0.0)
         if confidence < CONFIDENCE_THRESHOLD:
-            captured.append(
+            steps.append(
                 CitationStep(
                     kind="write_back",
-                    detail=f"Findings below confidence threshold ({confidence}); not written back.",
+                    detail=(
+                        "Findings below confidence threshold "
+                        f"({confidence}); not written back."
+                    ),
                     data=findings,
                 )
             )
-            return paper, {}, confidence
-
-        filled = self._write_back(db, paper, findings, confidence, user, captured)
-        return paper, filled, confidence
+            return {}, confidence
+        return findings, confidence
 
     def _describe_task(self, fields: CitationFields, missing: list[str]) -> str:
         authors = ", ".join(fields.authors) if fields.authors else "unknown"
@@ -353,85 +316,3 @@ class MetadataRecoveryAgent(BaseLLMClient):
             )
         )
         return findings
-
-    def _write_back(
-        self,
-        db: Session,
-        paper: Document,
-        findings: dict[str, Any],
-        confidence: float,
-        current_user: Actor | None,
-        steps: list[CitationStep],
-    ) -> dict[str, Any]:
-        source_url = findings.get("source_url")
-        now_iso = datetime.now(timezone.utc).isoformat()
-
-        doi = findings.get("doi")
-        if doi:
-            doi = extract_doi_from_url(doi) or doi
-
-        publish_date = findings.get("publish_date")
-        if publish_date:
-            parsed = parse_publication_date(publish_date)
-            publish_date = parsed.isoformat() if parsed else None
-
-        candidates = {
-            "journal": findings.get("journal"),
-            "publisher": findings.get("publisher"),
-            "doi": doi,
-            "publish_date": publish_date,
-        }
-        # Never clobber existing values — fill only currently-null fields.
-        current = {
-            "journal": paper.journal,
-            "publisher": paper.publisher,
-            "doi": paper.doi,
-            "publish_date": paper.publish_date,
-        }
-
-        filled: dict[str, Any] = {}
-        provenance: dict[str, Any] = dict(paper.field_provenance or {})
-        for f, value in candidates.items():
-            if value and not current.get(f):
-                filled[f] = value
-                provenance[f] = {
-                    "source_url": source_url,
-                    "filled_by": "get_paper_citation",
-                    "confidence": confidence,
-                    "filled_at": now_iso,
-                }
-
-        if not filled:
-            steps.append(
-                CitationStep(
-                    kind="write_back",
-                    detail="Nothing new to write (fields already populated).",
-                )
-            )
-            return {}
-
-        document_repository.update_canonical(
-            db,
-            document=paper,
-            update=DocumentUpdate(field_provenance=provenance, **filled),
-            user=current_user,
-        )
-        steps.append(
-            CitationStep(
-                kind="write_back",
-                detail=f"Wrote back {list(filled)} (confidence {confidence}).",
-                data=filled,
-            )
-        )
-        return filled
-
-
-_recovery_agent: MetadataRecoveryAgent | None = None
-
-
-def get_recovery_agent() -> MetadataRecoveryAgent:
-    """Lazy singleton — avoids constructing provider clients until first use."""
-    global _recovery_agent
-    if _recovery_agent is None:
-        _recovery_agent = MetadataRecoveryAgent()
-    return _recovery_agent

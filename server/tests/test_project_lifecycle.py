@@ -10,6 +10,8 @@ from app.bootstrap.adapters.project_lifecycle import (
     schedule_orphan_documents,
     schedule_project_storage_cleanup,
 )
+from app.bootstrap.adapters.document_gc import ScheduledDocumentGc
+from app.bootstrap.adapters.storage_cleanup import ScheduledStorageDeletion
 from sqlalchemy.orm import Session
 
 
@@ -44,17 +46,33 @@ def test_project_deletion_preserves_private_chats_and_schedules_document_gc() ->
     # research items are removed by their database cascade.
     assert db.execute.call_count == 1
 
-    schedule_gc = MagicMock()
+    gc_job_id = uuid4()
+    schedule_gc = MagicMock(
+        return_value=ScheduledDocumentGc(job_id=gc_job_id, created=True)
+    )
+    operation_id = uuid4()
+    correlation_id = uuid4()
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
         "app.bootstrap.adapters.document_gc.schedule_document_gc",
         schedule_gc,
     )
     try:
-        schedule_orphan_documents(db, plan=plan)
+        scheduled = schedule_orphan_documents(
+            db,
+            plan=plan,
+            origin_operation_id=operation_id,
+            correlation_id=correlation_id,
+        )
     finally:
         monkeypatch.undo()
-    schedule_gc.assert_called_once_with(db, document_id=document.id)
+    schedule_gc.assert_called_once_with(
+        db,
+        document_id=document.id,
+        origin_operation_id=operation_id,
+        correlation_id=correlation_id,
+    )
+    assert scheduled == (ScheduledDocumentGc(job_id=gc_job_id, created=True),)
 
 
 def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
@@ -77,7 +95,13 @@ def test_project_deletion_is_blocked_while_any_project_job_is_active() -> None:
 def test_storage_cleanup_is_persisted_before_project_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    schedule_delete = MagicMock()
+    cleanup_job_id = uuid4()
+    schedule_delete = MagicMock(
+        return_value=ScheduledStorageDeletion(
+            job_id=cleanup_job_id,
+            created=True,
+        )
+    )
     monkeypatch.setattr(
         "app.bootstrap.adapters.storage_cleanup.schedule_storage_deletion",
         schedule_delete,
@@ -89,10 +113,24 @@ def test_storage_cleanup_is_persisted_before_project_commit(
 
     db = MagicMock(spec=Session)
     project_id = uuid4()
-    schedule_project_storage_cleanup(db, project_id=project_id, plan=plan)
+    operation_id = uuid4()
+    correlation_id = uuid4()
+    scheduled = schedule_project_storage_cleanup(
+        db,
+        project_id=project_id,
+        plan=plan,
+        origin_operation_id=operation_id,
+        correlation_id=correlation_id,
+    )
 
     schedule_delete.assert_called_once_with(
         db,
         object_keys=("first", "second"),
         idempotency_key=f"project:{project_id}",
+        origin_operation_id=operation_id,
+        correlation_id=correlation_id,
+    )
+    assert scheduled == ScheduledStorageDeletion(
+        job_id=cleanup_job_id,
+        created=True,
     )

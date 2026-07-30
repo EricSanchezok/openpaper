@@ -166,11 +166,14 @@ def test_highlight_thread_with_other_authors_requires_explicit_delete_confirmati
     )
 
     with pytest.raises(AppError) as exc_info:
+        operation_id = uuid.uuid4()
         research_repository.delete_item(
             db,
             item_id=item.id,
             user_id=2,
             confirm_delete_replies=False,
+            origin_operation_id=operation_id,
+            correlation_id=operation_id,
         )
 
     assert exc_info.value.code == "highlight_thread_has_other_replies"

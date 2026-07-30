@@ -13,8 +13,11 @@ from app.modules.papers.application.contracts.tags import (
     LibraryTagListResponse,
     LibraryTagResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Response, status
 
 library_tags_router = APIRouter()
@@ -43,10 +46,12 @@ def create_library_tag(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> LibraryTagResponse:
     return executor.command(
         lambda capabilities: capabilities.library_tags.create(
             actor=current_user,
+            operation=operation,
             request=request,
         )
     )
@@ -63,10 +68,12 @@ def assign_library_tags(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> LibraryTagAssignmentResponse:
     return executor.command(
         lambda capabilities: capabilities.library_tags.assign(
             actor=current_user,
+            operation=operation,
             request=request,
         )
     )
@@ -83,10 +90,12 @@ def remove_library_tag_assignment(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.library_tags.remove(
             actor=current_user,
+            operation=operation,
             document_id=document_id,
             tag_id=tag_id,
         )

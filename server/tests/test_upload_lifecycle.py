@@ -10,7 +10,9 @@ from app.database.models import (
     JobOperation,
     JobStatus,
     UploadReservation,
+    LibraryPaper,
 )
+from app.bootstrap.adapters.document_gc import ScheduledDocumentGc
 from app.bootstrap.adapters.upload_lifecycle import (
     UPLOAD_PROCESSING_TIMEOUT,
     UPLOAD_SUBMISSION_TIMEOUT,
@@ -48,6 +50,8 @@ def test_reaper_fails_job_and_schedules_canonical_document_gc() -> None:
     durable_job = DurableJob(
         id=job_id,
         operation=JobOperation.PDF_PROCESS.value,
+        correlation_id=uuid4(),
+        origin_operation_id=uuid4(),
         requested_by_id=5,
         idempotency_key=f"pdf-reservation:{job_id}",
         status=JobStatus.PENDING.value,
@@ -79,30 +83,57 @@ def test_reaper_fails_job_and_schedules_canonical_document_gc() -> None:
     durable_job.document_id = document.id
     db = MagicMock(spec=Session)
     db.scalars.return_value = _result([job])
-    db.scalar.return_value = document
-    schedule_gc = MagicMock()
+    library_reference = MagicMock(spec=LibraryPaper)
+    db.scalar.side_effect = [library_reference, document]
+    gc_job_id = uuid4()
+    schedule_gc = MagicMock(
+        return_value=ScheduledDocumentGc(job_id=gc_job_id, created=True)
+    )
+    origin_operation_id = uuid4()
+    correlation_id = uuid4()
 
     with patch(
         "app.bootstrap.adapters.document_gc.schedule_document_gc",
         schedule_gc,
     ):
-        reap_stale_uploads(db, quota_owner_id=9, now=now)
+        reaped = reap_stale_uploads(
+            db,
+            quota_owner_id=9,
+            origin_operation_id=origin_operation_id,
+            correlation_id=correlation_id,
+            now=now,
+        )
 
     assert durable_job.status == JobStatus.FAILED.value
     assert durable_job.completed_at == now
     assert durable_job.error_code == "upload_processing_timeout"
     assert document.processing_status == DocumentProcessingStatus.FAILED.value
-    assert db.execute.call_count == 1
-    db.flush.assert_called_once()
-    schedule_gc.assert_called_once_with(db, document_id=document.id)
-    db.delete.assert_not_called()
+    assert len(reaped) == 1
+    assert reaped[0].job_id == job_id
+    assert reaped[0].reference_removed
+    assert reaped[0].document_processing_failed
+    assert reaped[0].created_gc_job_id == gc_job_id
+    assert db.flush.call_count == 2
+    schedule_gc.assert_called_once_with(
+        db,
+        document_id=document.id,
+        origin_operation_id=origin_operation_id,
+        correlation_id=correlation_id,
+    )
+    db.delete.assert_called_once_with(library_reference)
 
 
 def test_reaper_is_a_noop_when_no_reservation_is_stale() -> None:
     db = MagicMock(spec=Session)
     db.scalars.return_value = _result([])
 
-    reap_stale_uploads(db, quota_owner_id=9)
+    result = reap_stale_uploads(
+        db,
+        quota_owner_id=9,
+        origin_operation_id=uuid4(),
+        correlation_id=uuid4(),
+    )
 
+    assert result == ()
     db.execute.assert_not_called()
     db.delete.assert_not_called()

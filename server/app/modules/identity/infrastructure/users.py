@@ -24,29 +24,42 @@ class UserRepository:
             .where(AuthUser.email == email.lower().strip())
         ).first()
 
-    def get_or_create_profile(self, db: Session, *, user_id: int) -> UserProfile:
+    def resolve_profile(
+        self,
+        db: Session,
+        *,
+        user_id: int,
+    ) -> tuple[UserProfile, bool]:
         profile = db.scalars(
             select(UserProfile).where(UserProfile.user_id == user_id)
         ).first()
         if profile is not None:
-            return profile
+            return profile, False
 
-        db.execute(
+        created_user_id = db.scalar(
             insert(UserProfile)
             .values(user_id=user_id)
             .on_conflict_do_nothing(index_elements=[UserProfile.user_id])
+            .returning(UserProfile.user_id)
         )
         db.flush()
-        return db.scalars(
-            select(UserProfile).where(UserProfile.user_id == user_id)
-        ).one()
+        return (
+            db.scalars(select(UserProfile).where(UserProfile.user_id == user_id)).one(),
+            created_user_id is not None,
+        )
 
-    def set_blocked(self, db: Session, *, user_id: int, blocked: bool) -> UserProfile:
-        profile = self.get_or_create_profile(db, user_id=user_id)
+    def set_blocked(
+        self,
+        db: Session,
+        *,
+        profile: UserProfile,
+        blocked: bool,
+    ) -> bool:
+        if profile.is_blocked == blocked:
+            return False
         profile.is_blocked = blocked
         db.flush()
-        db.refresh(profile)
-        return profile
+        return True
 
 
 user_repository = UserRepository()

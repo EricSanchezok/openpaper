@@ -5,7 +5,12 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import (
+    get_application_executor,
+    get_conversation_title_workflow,
+)
+from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
+from app.database.telemetry import track_event
 from app.modules.conversations.application.contracts.conversations import (
     ConversationAutoTitleResponse,
     ConversationCreateRequest,
@@ -19,8 +24,12 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationToolPermissionsResponse,
     PaperContext,
 )
-from app.shared.application import Actor, ApplicationExecutor
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.shared.domain.enums import ConversationScopeType
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Query, Response, status
 
 conversation_router = APIRouter()
@@ -57,13 +66,21 @@ def create_conversation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ConversationDetailResponse:
-    return executor.command(
+    conversation = executor.command(
         lambda capabilities: capabilities.conversations.create(
             actor=current_user,
+            operation=operation,
             request=request,
         )
     )
+    if request.scope_type is ConversationScopeType.PROJECT:
+        track_event(
+            "project_conversation_created",
+            user_id=str(current_user.id),
+        )
+    return conversation
 
 
 @conversation_router.get(
@@ -119,10 +136,12 @@ def update_conversation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ConversationSummaryResponse:
     return executor.command(
         lambda capabilities: capabilities.conversations.update(
             actor=current_user,
+            operation=operation,
             conversation_id=conversation_id,
             request=request,
         )
@@ -140,10 +159,12 @@ def move_conversation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ConversationSummaryResponse:
     return executor.command(
         lambda capabilities: capabilities.conversations.move(
             actor=current_user,
+            operation=operation,
             conversation_id=conversation_id,
             request=request,
         )
@@ -161,10 +182,12 @@ def update_conversation_paper_context(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> PaperContext:
     return executor.command(
         lambda capabilities: capabilities.conversations.update_paper_context(
             actor=current_user,
+            operation=operation,
             conversation_id=conversation_id,
             request=request,
         )
@@ -182,10 +205,12 @@ def update_conversation_tool_permissions(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ConversationToolPermissionsResponse:
     return executor.command(
         lambda capabilities: capabilities.conversations.update_tool_permissions(
             actor=current_user,
+            operation=operation,
             conversation_id=conversation_id,
             request=request,
         )
@@ -198,16 +223,14 @@ def update_conversation_tool_permissions(
 )
 def auto_title_conversation(
     conversation_id: UUID,
-    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
-        get_application_executor
-    ),
+    workflow: ConversationTitleWorkflow = Depends(get_conversation_title_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> ConversationAutoTitleResponse:
-    return executor.command(
-        lambda capabilities: capabilities.conversations.auto_title(
-            actor=current_user,
-            conversation_id=conversation_id,
-        )
+    return workflow.run(
+        actor=current_user,
+        operation=operation,
+        conversation_id=conversation_id,
     )
 
 
@@ -221,10 +244,12 @@ def delete_conversation(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> Response:
     executor.command(
         lambda capabilities: capabilities.conversations.delete(
             actor=current_user,
+            operation=operation,
             conversation_id=conversation_id,
         )
     )

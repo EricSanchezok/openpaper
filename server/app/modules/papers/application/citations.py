@@ -1,26 +1,42 @@
-"""Citation resolution use case shared by HTTP, Agent, and future MCP."""
+"""Citation metadata persistence and transport-neutral result construction."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from app.modules.operation_journal.application import OperationJournal
+from app.modules.operation_journal.domain import OperationAction, ResourceRef
 from app.modules.papers.application.contracts.citation import (
     CitationData,
     CitationMethod,
     CitationResult,
     CitationStep,
 )
-from app.modules.papers.domain.citations import (
-    STYLE_DISPLAY_NAMES,
-    CitationFields,
-    missing_required_fields,
-    normalize_style,
-)
-from app.shared.application import Actor
+from app.modules.papers.domain.citations import CitationFields
+from app.shared.application import Actor, OperationContext
+from app.shared.domain import JsonValue
+
+PAPER_CITATION_METADATA_UPDATED = OperationAction("paper.citation_metadata_updated")
 
 
-class CitationMetadataGateway(Protocol):
+@dataclass(frozen=True, slots=True)
+class CitationMetadataPatch:
+    doi: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    publish_date: str | None = None
+    field_provenance: dict[str, JsonValue] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CitationMetadataWrite:
+    fields: CitationFields
+    changed: bool
+
+
+class CitationMetadataStore(Protocol):
     def read(
         self,
         *,
@@ -29,176 +45,110 @@ class CitationMetadataGateway(Protocol):
         project_id: UUID | None,
     ) -> CitationFields | None: ...
 
-    def hydrate(
+    def apply_missing(
         self,
         *,
         actor: Actor,
         document_id: UUID,
         project_id: UUID | None,
-    ) -> CitationFields | None: ...
+        patch: CitationMetadataPatch,
+    ) -> CitationMetadataWrite: ...
 
-    def recover(
+
+class CitationMetadata:
+    """Read citation facts and atomically apply provider findings."""
+
+    def __init__(
+        self,
+        store: CitationMetadataStore,
+        *,
+        journal: OperationJournal,
+    ) -> None:
+        self._store = store
+        self._journal = journal
+
+    def read(
         self,
         *,
         actor: Actor,
         document_id: UUID,
         project_id: UUID | None,
-        missing_fields: list[str],
-        steps: list[CitationStep],
-    ) -> tuple[CitationFields | None, dict[str, object], float | None]: ...
+    ) -> CitationFields | None:
+        return self._store.read(
+            actor=actor,
+            document_id=document_id,
+            project_id=project_id,
+        )
 
-
-class ResolveCitation:
-    def __init__(self, gateway: CitationMetadataGateway) -> None:
-        self._gateway = gateway
-
-    def __call__(
+    def apply_missing(
         self,
         *,
         actor: Actor,
+        operation: OperationContext,
         document_id: UUID,
-        style: str = "APA",
-        project_id: UUID | None = None,
-    ) -> CitationResult:
-        canonical = normalize_style(style)
-        display = STYLE_DISPLAY_NAMES[canonical]
-        steps: list[CitationStep] = []
-        fields = self._gateway.read(
+        project_id: UUID | None,
+        patch: CitationMetadataPatch,
+    ) -> CitationFields:
+        result = self._store.apply_missing(
             actor=actor,
             document_id=document_id,
             project_id=project_id,
+            patch=patch,
         )
-        if fields is None:
-            return CitationResult(
-                document_id=str(document_id),
-                preferred_style=canonical,
-                style_display=display,
-                data=CitationData(document_id=str(document_id)),
-                method="not_found",
-                steps=[
-                    CitationStep(
-                        kind="check",
-                        detail="Paper not found or access denied.",
-                    )
-                ],
+        if result.changed:
+            self._journal.append(
+                actor=actor,
+                operation=operation,
+                action=PAPER_CITATION_METADATA_UPDATED,
+                resources=(ResourceRef("document", str(document_id)),),
             )
+        return result.fields
 
-        missing = missing_required_fields(fields, canonical)
-        steps.append(
-            CitationStep(
-                kind="check",
-                detail=(f"Fields needed for {display}: {missing or 'none missing'}."),
-                data={"missing": missing},
-            )
-        )
-        if not missing:
-            return self._result(
-                document_id=document_id,
-                canonical=canonical,
-                display=display,
-                fields=fields,
-                method="cached",
-                missing=[],
-                filled={},
-                confidence=None,
-                steps=steps,
-            )
 
-        hydrated = self._gateway.hydrate(
-            actor=actor,
-            document_id=document_id,
-            project_id=project_id,
+def build_citation_result(
+    *,
+    document_id: UUID,
+    canonical_style: str,
+    style_display: str,
+    fields: CitationFields,
+    method: CitationMethod,
+    missing_fields: list[str],
+    filled_fields: dict[str, object],
+    confidence: float | None,
+    steps: list[CitationStep],
+) -> CitationResult:
+    steps.append(
+        CitationStep(
+            kind="resolve",
+            detail=f"Resolved citation metadata; preferred style {style_display}.",
+            data={"missing": missing_fields},
         )
-        if hydrated is not None:
-            fields = hydrated
-        missing = missing_required_fields(fields, canonical)
-        steps.append(
-            CitationStep(
-                kind="deterministic",
-                detail=(
-                    "After deterministic metadata lookup, still missing: "
-                    f"{missing or 'none'}."
-                ),
-                data={
-                    "missing": missing,
-                    "doi": fields.doi,
-                    "journal": fields.journal,
-                    "publisher": fields.publisher,
-                },
-            )
-        )
-        if not missing:
-            return self._result(
-                document_id=document_id,
-                canonical=canonical,
-                display=display,
-                fields=fields,
-                method="deterministic",
-                missing=[],
-                filled={},
-                confidence=None,
-                steps=steps,
-            )
-
-        recovered, filled, confidence = self._gateway.recover(
-            actor=actor,
-            document_id=document_id,
-            project_id=project_id,
-            missing_fields=missing,
-            steps=steps,
-        )
-        if recovered is not None:
-            fields = recovered
-        missing = missing_required_fields(fields, canonical)
-        method: CitationMethod = "agentic" if filled else "partial"
-        return self._result(
-            document_id=document_id,
-            canonical=canonical,
-            display=display,
-            fields=fields,
-            method=method,
-            missing=missing,
-            filled=filled,
-            confidence=confidence,
-            steps=steps,
-        )
-
-    @staticmethod
-    def _result(
-        *,
-        document_id: UUID,
-        canonical: str,
-        display: str,
-        fields: CitationFields,
-        method: CitationMethod,
-        missing: list[str],
-        filled: dict[str, object],
-        confidence: float | None,
-        steps: list[CitationStep],
-    ) -> CitationResult:
-        steps.append(
-            CitationStep(
-                kind="resolve",
-                detail=f"Resolved citation metadata; preferred style {display}.",
-                data={"missing": missing},
-            )
-        )
-        return CitationResult(
+    )
+    return CitationResult(
+        document_id=str(document_id),
+        preferred_style=canonical_style,
+        style_display=style_display,
+        data=CitationData(
             document_id=str(document_id),
-            preferred_style=canonical,
-            style_display=display,
-            data=CitationData(
-                document_id=str(document_id),
-                title=fields.title,
-                authors=fields.authors,
-                publish_date=fields.publish_date,
-                journal=fields.journal,
-                publisher=fields.publisher,
-                doi=fields.doi,
-            ),
-            method=method,
-            missing_fields=missing,
-            filled_fields=filled,
-            confidence=confidence,
-            steps=steps,
-        )
+            title=fields.title,
+            authors=fields.authors,
+            publish_date=fields.publish_date,
+            journal=fields.journal,
+            publisher=fields.publisher,
+            doi=fields.doi,
+        ),
+        method=method,
+        missing_fields=missing_fields,
+        filled_fields=filled_fields,
+        confidence=confidence,
+        steps=steps,
+    )
+
+
+__all__ = [
+    "CitationMetadata",
+    "CitationMetadataPatch",
+    "CitationMetadataStore",
+    "CitationMetadataWrite",
+    "build_citation_result",
+]

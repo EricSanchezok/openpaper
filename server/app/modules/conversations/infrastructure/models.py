@@ -70,6 +70,12 @@ class Message(Base):
             "sequence",
             name="uq_messages_conversation_sequence",
         ),
+        UniqueConstraint(
+            "conversation_id",
+            "turn_id",
+            "role",
+            name="uq_messages_conversation_turn_role",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -79,6 +85,20 @@ class Message(Base):
         UUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    turn_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    created_operation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    correlation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
     )
     role: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

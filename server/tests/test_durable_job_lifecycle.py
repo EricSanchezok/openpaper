@@ -9,7 +9,10 @@ from app.database.models import (
     JobOperation,
     JobStatus,
 )
-from app.modules.jobs.infrastructure.repository import job_repository
+from app.modules.jobs.infrastructure.repository import (
+    ReservedJobDispatch,
+    job_repository,
+)
 from app.modules.jobs.infrastructure.dispatcher import dispatch_pending_jobs_once
 from sqlalchemy.orm import Session
 
@@ -19,6 +22,8 @@ def _job(*, status: JobStatus = JobStatus.PENDING) -> DurableJob:
     return DurableJob(
         id=job_id,
         operation=JobOperation.AUDIO_GENERATE.value,
+        correlation_id=uuid4(),
+        origin_operation_id=uuid4(),
         requested_by_id=7,
         idempotency_key=f"audio:{job_id}",
         status=status.value,
@@ -87,32 +92,27 @@ def test_expired_worker_lease_requeues_the_existing_dispatch() -> None:
 
 def test_publish_failure_keeps_dispatch_pending_for_retry() -> None:
     job = _job()
-    dispatch = JobDispatch(
+    dispatch = ReservedJobDispatch(
+        dispatch_id=uuid4(),
         job_id=job.id,
         task_name="generate_audio_overview",
         queue="audio",
         kwargs={"request": {}},
-        status=JobDispatchStatus.PENDING.value,
-        available_at=datetime.now(UTC),
-        attempt_count=0,
+        attempt_count=1,
     )
-    session = MagicMock(spec=Session)
-    session.__enter__.return_value = session
-    session.__exit__.return_value = False
-    session.scalars.return_value.all.return_value = []
 
     with (
         patch(
-            "app.modules.jobs.infrastructure.dispatcher.SessionLocal",
-            return_value=session,
+            "app.modules.jobs.infrastructure.dispatcher._reserve_dispatches",
+            return_value=(dispatch,),
         ),
         patch(
-            "app.modules.jobs.infrastructure.dispatcher.job_repository.recover_expired_leases",
-            return_value=0,
-        ),
+            "app.modules.jobs.infrastructure.dispatcher._record_publish_failure",
+            return_value=True,
+        ) as record_failure,
         patch(
-            "app.modules.jobs.infrastructure.dispatcher.job_repository.pending_dispatches",
-            return_value=[dispatch],
+            "app.modules.jobs.infrastructure.dispatcher._record_publish_success",
+            return_value=True,
         ),
         patch(
             "app.modules.jobs.infrastructure.dispatcher.jobs_client.publish_task",
@@ -122,7 +122,31 @@ def test_publish_failure_keeps_dispatch_pending_for_retry() -> None:
         published = dispatch_pending_jobs_once()
 
     assert published == 0
-    assert dispatch.status == JobDispatchStatus.PENDING.value
     assert dispatch.attempt_count == 1
-    assert dispatch.last_error_code == "jobs_broker_unavailable"
-    session.commit.assert_called_once()
+    record_failure.assert_called_once()
+
+
+def test_dispatch_reservation_uses_a_versioned_publishing_lease() -> None:
+    job = _job()
+    dispatch = JobDispatch(
+        job_id=job.id,
+        task_name="generate_audio_overview",
+        queue="audio",
+        kwargs={"request": {}},
+        status=JobDispatchStatus.PENDING.value,
+        available_at=datetime.now(UTC),
+        attempt_count=0,
+    )
+    db = MagicMock(spec=Session)
+    db.scalars.return_value.all.return_value = [dispatch]
+    lease = timedelta(seconds=30)
+
+    reserved = job_repository.reserve_dispatches(db, limit=10, lease=lease)
+
+    assert len(reserved) == 1
+    assert reserved[0].dispatch_id == dispatch.id
+    assert reserved[0].attempt_count == 1
+    assert dispatch.status == JobDispatchStatus.PUBLISHING.value
+    assert dispatch.attempt_count == 1
+    assert dispatch.available_at > datetime.now(UTC)
+    db.flush.assert_called_once()

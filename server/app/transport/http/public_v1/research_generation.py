@@ -17,18 +17,18 @@ from app.modules.jobs.application.contracts import (
     JobListResponse,
     JobResponse,
 )
-from app.shared.application import Actor, ApplicationExecutor
+from app.shared.application import Actor, ApplicationExecutor, OperationContext
 from app.shared.domain.enums import JobOperation
-from app.transport.http.public_v1.auth_dependencies import get_required_user
+from app.transport.client_ip import http_client_ip
+from app.transport.http.public_v1.auth_dependencies import (
+    get_required_operation,
+    get_required_user,
+)
 from fastapi import APIRouter, Depends, Header, Request, status
 
 document_generation_router = APIRouter()
 project_generation_router = APIRouter()
 jobs_router = APIRouter()
-
-
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
 
 
 @document_generation_router.post(
@@ -43,12 +43,15 @@ async def create_document_audio_overview(
     idempotency_key: str | None = Header(default=None, max_length=128),
     workflow: ResearchGenerationWorkflow = Depends(get_research_generation_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> CreateJobResponse:
     return await workflow.run(
         actor=current_user,
-        client_ip=_client_ip(http_request),
-        prepare=lambda generation: generation.prepare_document_audio(
+        operation=operation,
+        client_ip=http_client_ip(http_request),
+        prepare=lambda generation, enqueue_operation: generation.prepare_document_audio(
             actor=current_user,
+            operation=enqueue_operation,
             document_id=document_id,
             request=request,
             idempotency_key=idempotency_key,
@@ -68,12 +71,15 @@ async def create_project_audio_overview(
     idempotency_key: str | None = Header(default=None, max_length=128),
     workflow: ResearchGenerationWorkflow = Depends(get_research_generation_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> CreateJobResponse:
     return await workflow.run(
         actor=current_user,
-        client_ip=_client_ip(http_request),
-        prepare=lambda generation: generation.prepare_project_audio(
+        operation=operation,
+        client_ip=http_client_ip(http_request),
+        prepare=lambda generation, enqueue_operation: generation.prepare_project_audio(
             actor=current_user,
+            operation=enqueue_operation,
             project_id=project_id,
             request=request,
             idempotency_key=idempotency_key,
@@ -131,14 +137,19 @@ async def create_project_data_table(
     idempotency_key: str | None = Header(default=None, max_length=128),
     workflow: ResearchGenerationWorkflow = Depends(get_research_generation_workflow),
     current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
 ) -> CreateJobResponse:
     return await workflow.run(
         actor=current_user,
-        client_ip=_client_ip(http_request),
-        prepare=lambda generation: generation.prepare_project_data_table(
-            actor=current_user,
-            project_id=project_id,
-            request=request,
-            idempotency_key=idempotency_key,
+        operation=operation,
+        client_ip=http_client_ip(http_request),
+        prepare=lambda generation, enqueue_operation: (
+            generation.prepare_project_data_table(
+                actor=current_user,
+                operation=enqueue_operation,
+                project_id=project_id,
+                request=request,
+                idempotency_key=idempotency_key,
+            )
         ),
     )

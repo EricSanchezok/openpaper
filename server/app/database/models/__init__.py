@@ -22,6 +22,9 @@ from app.shared.domain.enums import (
 )
 from app.modules.identity.infrastructure.models import AuthUser, UserProfile
 from app.modules.access_keys.infrastructure.models import AccessKey
+from app.modules.operation_journal.infrastructure.models import (
+    OperationJournalEntryModel,
+)
 from app.modules.identity.infrastructure.onboarding_model import Onboarding
 from app.modules.jobs.infrastructure.models import (
     DurableJob,
@@ -90,6 +93,7 @@ __all__ = [
     "JsonValue",
     "Message",
     "Onboarding",
+    "OperationJournalEntryModel",
     "Document",
     "DocumentPassage",
     "PaperStatus",

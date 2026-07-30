@@ -32,7 +32,7 @@ from app.modules.conversations.application.contracts.conversations import (
 from app.modules.conversations.infrastructure.presenters import serialize_messages
 from app.modules.conversations.infrastructure.message_repository import MessageCreate
 from app.shared.application import Actor
-from app.shared.domain.enums import ConversationScopeType
+from app.shared.domain.enums import ConversationScopeType, RoleType
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -128,7 +128,10 @@ def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
         db,
         request=MessageCreate(
             conversation_id=conversation.id,
-            role="user",
+            turn_id=uuid.uuid4(),
+            created_operation_id=uuid.uuid4(),
+            correlation_id=uuid.uuid4(),
+            role=RoleType.USER,
             content="Question",
         ),
         user_id=_current_user().id,
@@ -151,7 +154,10 @@ def test_message_creation_rejects_a_conversation_owned_by_someone_else() -> None
             db,
             request=MessageCreate(
                 conversation_id=uuid.uuid4(),
-                role="user",
+                turn_id=uuid.uuid4(),
+                created_operation_id=uuid.uuid4(),
+                correlation_id=uuid.uuid4(),
+                role=RoleType.USER,
                 content="Question",
             ),
             user_id=_current_user().id,
@@ -223,13 +229,15 @@ def test_moving_project_conversation_to_library_resets_paper_context(
         lambda *_args, **_kwargs: None,
     )
 
-    moved = conversation_repository.move(
+    move_result = conversation_repository.move(
         db,
         conversation_id=conversation.id,
         user_id=1,
         request=ConversationMoveRequest(scope_type="global"),
     )
+    moved = move_result.value
 
+    assert move_result.changed is True
     assert moved.scope_type == "global"
     assert moved.project_id is None
     assert moved.paper_context_kind == "library"
@@ -249,13 +257,15 @@ def test_archiving_a_conversation_also_unpins_it() -> None:
     db = MagicMock(spec=Session)
     db.scalar.return_value = conversation
 
-    updated = conversation_repository.update(
+    update_result = conversation_repository.update(
         db,
         conversation_id=conversation.id,
         user_id=1,
         request=ConversationUpdateRequest(archived=True),
     )
+    updated = update_result.value
 
+    assert update_result.changed is True
     assert updated.archived_at is not None
     assert updated.pinned_at is None
     db.commit.assert_not_called()

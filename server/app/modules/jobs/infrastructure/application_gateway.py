@@ -8,6 +8,7 @@ from app.helpers.celery_config import get_webhook_base_url
 from app.modules.jobs.application.contracts import JobResponse
 from app.modules.jobs.application.jobs import (
     EnqueueJobCommand,
+    EnqueuedJob,
     ReserveOperationCommand,
     ReservedOperation,
 )
@@ -40,13 +41,15 @@ class SqlAlchemyJobsGateway:
         )
         return job_response(job) if job is not None else None
 
-    def enqueue(self, *, command: EnqueueJobCommand) -> JobResponse:
+    def enqueue(self, *, command: EnqueueJobCommand) -> EnqueuedJob:
         base_url = get_webhook_base_url().rstrip("/")
-        job = job_repository.enqueue(
+        persisted = job_repository.enqueue(
             self._db,
             request=EnqueueJob(
                 operation=command.operation,
                 requested_by_id=command.requested_by_id,
+                correlation_id=command.correlation_id,
+                origin_operation_id=command.origin_operation_id,
                 project_id=command.project_id,
                 document_id=command.document_id,
                 idempotency_key=command.idempotency_key,
@@ -65,7 +68,10 @@ class SqlAlchemyJobsGateway:
                 job_id=command.job_id,
             ),
         )
-        return job_response(job)
+        return EnqueuedJob(
+            job=job_response(persisted.job),
+            created=persisted.created,
+        )
 
     def reserve(self, *, command: ReserveOperationCommand) -> ReservedOperation:
         existing = job_repository.find_by_idempotency_key(
@@ -78,20 +84,22 @@ class SqlAlchemyJobsGateway:
                 payload=existing.payload,
                 created=False,
             )
-        job = job_repository.create(
+        persisted = job_repository.create(
             self._db,
             request=CreateJob(
                 job_id=command.operation_id,
                 operation=command.operation,
                 requested_by_id=command.requested_by_id,
+                correlation_id=command.correlation_id,
+                origin_operation_id=command.origin_operation_id,
                 idempotency_key=command.idempotency_key,
                 payload=command.payload,
             ),
         )
         return ReservedOperation(
-            job=job_response(job),
-            payload=job.payload,
-            created=job.id == command.operation_id,
+            job=job_response(persisted.job),
+            payload=persisted.job.payload,
+            created=persisted.created,
         )
 
     def complete(
