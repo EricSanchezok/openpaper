@@ -29,7 +29,7 @@ from app.modules.projects.infrastructure.models import (
 )
 from app.shared.application import Actor
 from sqlalchemy import ColumnElement, and_, exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 
 def _visibility_condition(
@@ -169,13 +169,17 @@ class PostgresPaperSearch:
             actor=actor,
             collection=request.collection,
         )
+        actor_library_entry = aliased(
+            LibraryPaper,
+            name="actor_library_entry",
+        )
         statement = (
-            select(Document, LibraryPaper)
+            select(Document, actor_library_entry)
             .outerjoin(
-                LibraryPaper,
+                actor_library_entry,
                 and_(
-                    LibraryPaper.document_id == Document.id,
-                    LibraryPaper.user_id == actor.id,
+                    actor_library_entry.document_id == Document.id,
+                    actor_library_entry.user_id == actor.id,
                 ),
             )
             .where(
@@ -200,7 +204,7 @@ class PostgresPaperSearch:
         else:
             statement = statement.order_by(
                 rank.desc(),
-                LibraryPaper.last_accessed_at.desc().nullslast(),
+                actor_library_entry.last_accessed_at.desc().nullslast(),
                 Document.id,
             )
 

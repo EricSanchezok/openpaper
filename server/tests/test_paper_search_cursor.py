@@ -1,23 +1,31 @@
 from datetime import UTC, datetime
 from typing import Callable
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from app.bootstrap.adapters.paper_search import (
+    PostgresPaperSearch,
+    _visibility_condition,
+)
 from app.modules.papers.application.contracts.search import (
     LibraryPaperCollection,
     PaperCollection,
+    PaperSearchFilters,
     PaperSearchQuery,
     PaperSearchRequest,
     PaperSearchResponse,
     PaperSearchResult,
+    PaperSearchSort,
     PaperSearchStats,
     SelectedPaperCollection,
 )
 from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
-from app.bootstrap.adapters.paper_search import _visibility_condition
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import ClauseElement
 
 
 def _actor() -> Actor:
@@ -180,3 +188,52 @@ def test_library_visibility_includes_personal_and_project_access() -> None:
     assert "projects" in statement
     assert "project_collaborators" in statement
     assert "owner_id" in statement
+
+
+def test_library_search_compiles_with_distinct_result_and_visibility_rows() -> None:
+    db = Mock(spec=Session)
+    compiled_sql: list[str] = []
+
+    def compile_statement(statement: ClauseElement) -> str:
+        return " ".join(str(statement.compile(dialect=postgresql.dialect())).split())
+
+    def scalar(statement: ClauseElement) -> int:
+        compiled_sql.append(compile_statement(statement))
+        return 0
+
+    rows = Mock()
+    rows.all.return_value = []
+
+    def execute(statement: ClauseElement) -> Mock:
+        compiled_sql.append(compile_statement(statement))
+        return rows
+
+    db.scalar.side_effect = scalar
+    db.execute.side_effect = execute
+
+    response = PostgresPaperSearch(db).search(
+        actor=_actor(),
+        request=PaperSearchQuery(
+            query="graph retrieval",
+            collection=LibraryPaperCollection(),
+            filters=PaperSearchFilters(),
+            sort=PaperSearchSort.RELEVANCE,
+            limit=50,
+            offset=0,
+        ),
+    )
+
+    assert response.items == []
+    assert response.total == 0
+    assert len(compiled_sql) == 2
+    for statement in compiled_sql:
+        assert (
+            "LEFT OUTER JOIN scholens.library_papers AS actor_library_entry"
+            in statement
+        )
+        assert (
+            "EXISTS (SELECT scholens.library_papers.id "
+            "FROM scholens.library_papers "
+            "WHERE scholens.library_papers.document_id = scholens.documents.id"
+            in statement
+        )
