@@ -65,6 +65,7 @@ from app.modules.research.infrastructure.models import (
     ResearchItem,
 )
 from app.modules.billing.infrastructure.models import StripeWebhookEvent, Subscription
+from app.tooling.invocations import ToolInvocation
 
 __all__ = [
     "AuthUser",
@@ -113,6 +114,7 @@ __all__ = [
     "StripeWebhookEventStatus",
     "TokenUsageEvent",
     "TokenWeeklyUsage",
+    "ToolInvocation",
     "UserProfile",
     "ZoteroConnection",
     "ZoteroImportSource",

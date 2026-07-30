@@ -57,6 +57,10 @@ from app.modules.research.application.generation import ResearchGeneration
 from app.modules.research.application.items import ResearchItems
 from app.modules.research.application.search import SearchResearch
 from sqlalchemy.orm import Session
+from app.tooling.invocations import (
+    SqlAlchemyToolInvocationGateway,
+    ToolInvocationGateway,
+)
 
 
 class ApplicationCapabilities:
@@ -69,6 +73,10 @@ class ApplicationCapabilities:
     @cached_property
     def identity(self) -> Identity:
         return build_identity(db=self._session)
+
+    @cached_property
+    def tool_invocations(self) -> ToolInvocationGateway:
+        return SqlAlchemyToolInvocationGateway(self._session)
 
     @cached_property
     def paper_search(self) -> SearchPapers:
