@@ -13,6 +13,7 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    PaperContext,
     MessageResponse,
 )
 from app.modules.conversations.infrastructure.message_repository import (
@@ -70,7 +71,14 @@ class SqlAlchemyConversationGateway:
             self._db,
             conversation=conversation,
         )
-        return ConversationDetailResponse(**summary.model_dump())
+        return ConversationDetailResponse(
+            **summary.model_dump(),
+            paper_context=conversation_repository.paper_context(
+                self._db,
+                conversation=conversation,
+                user_id=user_id,
+            ),
+        )
 
     def get(
         self,
@@ -87,7 +95,14 @@ class SqlAlchemyConversationGateway:
             self._db,
             conversation=conversation,
         )
-        return ConversationDetailResponse(**summary.model_dump())
+        return ConversationDetailResponse(
+            **summary.model_dump(),
+            paper_context=conversation_repository.paper_context(
+                self._db,
+                conversation=conversation,
+                user_id=user_id,
+            ),
+        )
 
     def messages(
         self,
@@ -155,6 +170,20 @@ class SqlAlchemyConversationGateway:
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
+        )
+
+    def update_paper_context(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        request: PaperContext,
+    ) -> PaperContext:
+        return conversation_repository.update_paper_context(
+            self._db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            request=request,
         )
 
 

@@ -15,6 +15,7 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    PaperContext,
 )
 from app.shared.application import Actor, ApplicationExecutor
 from app.transport.http.public_v1.auth_dependencies import get_required_user
@@ -140,6 +141,27 @@ def move_conversation(
 ) -> ConversationSummaryResponse:
     return executor.command(
         lambda capabilities: capabilities.conversations.move(
+            actor=current_user,
+            conversation_id=conversation_id,
+            request=request,
+        )
+    )
+
+
+@conversation_router.put(
+    "/{conversation_id}/context",
+    response_model=PaperContext,
+)
+def update_conversation_paper_context(
+    conversation_id: UUID,
+    request: PaperContext,
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
+    current_user: Actor = Depends(get_required_user),
+) -> PaperContext:
+    return executor.command(
+        lambda capabilities: capabilities.conversations.update_paper_context(
             actor=current_user,
             conversation_id=conversation_id,
             request=request,

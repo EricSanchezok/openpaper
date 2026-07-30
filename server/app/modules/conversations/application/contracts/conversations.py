@@ -1,13 +1,40 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from app.modules.research.application.contracts import CitationSnapshot
 from app.shared.domain import JsonValue
 from app.shared.domain.enums import ConversationScopeType
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class LibraryPaperContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["library"] = "library"
+
+
+class SelectedPaperContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["selection"] = "selection"
+    project_ids: list[UUID] = Field(default_factory=list, max_length=20)
+    document_ids: list[UUID] = Field(default_factory=list, max_length=50)
+
+    @field_validator("project_ids", "document_ids", mode="before")
+    @classmethod
+    def normalize_ids(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return sorted({str(UUID(str(item))) for item in value})
+
+
+PaperContext = Annotated[
+    LibraryPaperContext | SelectedPaperContext,
+    Field(discriminator="kind"),
+]
 
 
 class ConversationCreateRequest(BaseModel):
@@ -16,6 +43,7 @@ class ConversationCreateRequest(BaseModel):
     scope_type: ConversationScopeType
     scope_id: UUID | None = None
     title: str = Field(default="New conversation", min_length=1, max_length=240)
+    paper_context: PaperContext | None = None
 
     @model_validator(mode="after")
     def validate_scope(self) -> ConversationCreateRequest:
@@ -90,7 +118,7 @@ class ConversationListResponse(BaseModel):
 
 
 class ConversationDetailResponse(ConversationSummaryResponse):
-    pass
+    paper_context: PaperContext
 
 
 class MessageResponse(BaseModel):

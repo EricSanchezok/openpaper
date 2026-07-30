@@ -14,6 +14,7 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    PaperContext,
     MessageResponse,
 )
 from app.shared.application import Actor, SignedCursorCodec
@@ -70,6 +71,14 @@ class ConversationGateway(Protocol):
     def require_owned(self, *, user_id: int, conversation_id: UUID) -> None: ...
 
     def delete(self, *, user_id: int, conversation_id: UUID) -> None: ...
+
+    def update_paper_context(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        request: PaperContext,
+    ) -> PaperContext: ...
 
 
 class ConversationTitleGenerator(Protocol):
@@ -222,4 +231,17 @@ class Conversations:
         self._gateway.delete(
             user_id=actor.id,
             conversation_id=conversation_id,
+        )
+
+    def update_paper_context(
+        self,
+        *,
+        actor: Actor,
+        conversation_id: UUID,
+        request: PaperContext,
+    ) -> PaperContext:
+        return self._gateway.update_paper_context(
+            user_id=actor.id,
+            conversation_id=conversation_id,
+            request=request,
         )

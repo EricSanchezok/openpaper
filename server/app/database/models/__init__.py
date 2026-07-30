@@ -32,7 +32,12 @@ from app.modules.integrations.zotero.infrastructure.models import (
     ZoteroImportedItem,
     ZoteroOAuthPending,
 )
-from app.modules.conversations.infrastructure.models import Conversation, Message
+from app.modules.conversations.infrastructure.models import (
+    Conversation,
+    ConversationContextDocument,
+    ConversationContextProject,
+    Message,
+)
 from app.modules.papers.infrastructure.models import (
     LibraryPaper,
     LibraryPaperTag,
@@ -67,6 +72,8 @@ __all__ = [
     "ConversationScopeType",
     "DocumentProcessingStatus",
     "Conversation",
+    "ConversationContextDocument",
+    "ConversationContextProject",
     "HighlightType",
     "DurableJob",
     "JobDispatch",

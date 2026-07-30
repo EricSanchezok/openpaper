@@ -30,6 +30,38 @@ if TYPE_CHECKING:
     from app.modules.research.infrastructure.models import ResearchItem
 
 
+class ConversationContextProject(Base):
+    __tablename__ = "conversation_context_projects"
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+
+
+class ConversationContextDocument(Base):
+    __tablename__ = "conversation_context_documents"
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+
+
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
@@ -83,6 +115,10 @@ class Conversation(Base):
             "(document_id IS NULL AND context_deleted_at IS NOT NULL)))",
             name="ck_conversations_scope_consistency",
         ),
+        CheckConstraint(
+            "paper_context_kind IN ('library', 'selection')",
+            name="ck_conversations_paper_context_kind",
+        ),
         Index(
             "ix_conversations_user_archive_activity",
             "user_id",
@@ -107,6 +143,9 @@ class Conversation(Base):
         String(16),
         nullable=False,
         default=ConversationScopeType.PAPER,
+    )
+    paper_context_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="selection", server_default="selection"
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -148,4 +187,10 @@ class Conversation(Base):
         back_populates="conversation",
         order_by=Message.sequence,
         cascade="all, delete-orphan",
+    )
+    context_projects: Mapped[list["ConversationContextProject"]] = relationship(
+        "ConversationContextProject", cascade="all, delete-orphan"
+    )
+    context_documents: Mapped[list["ConversationContextDocument"]] = relationship(
+        "ConversationContextDocument", cascade="all, delete-orphan"
     )

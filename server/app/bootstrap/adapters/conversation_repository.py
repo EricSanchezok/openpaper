@@ -8,7 +8,12 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from app.database.models import Conversation, ConversationScopeType
+from app.database.models import (
+    Conversation,
+    ConversationContextDocument,
+    ConversationContextProject,
+    ConversationScopeType,
+)
 from app.shared.domain import AppError, FailureKind
 from app.bootstrap.adapters.conversation_access import conversation_policy
 from app.modules.papers.infrastructure.access import get_document_access
@@ -17,10 +22,13 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationCapabilitiesResponse,
     ConversationCreateRequest,
     ConversationMoveRequest,
+    LibraryPaperContext,
+    PaperContext,
+    SelectedPaperContext,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
 )
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 
@@ -68,6 +76,150 @@ def _decode_cursor(cursor: str) -> tuple[datetime | None, datetime, uuid.UUID]:
 
 
 class ConversationRepository:
+    def paper_context(
+        self,
+        db: Session,
+        *,
+        conversation: Conversation,
+        user_id: int,
+    ) -> PaperContext:
+        if conversation.paper_context_kind == "library":
+            return LibraryPaperContext()
+
+        project_ids = set(
+            db.scalars(
+                select(ConversationContextProject.project_id).where(
+                    ConversationContextProject.conversation_id == conversation.id
+                )
+            ).all()
+        )
+        document_ids = set(
+            db.scalars(
+                select(ConversationContextDocument.document_id).where(
+                    ConversationContextDocument.conversation_id == conversation.id
+                )
+            ).all()
+        )
+        if conversation.project_id is not None:
+            project_ids.add(conversation.project_id)
+        if conversation.document_id is not None:
+            document_ids.add(conversation.document_id)
+
+        accessible_projects = {
+            project_id
+            for project_id in project_ids
+            if get_project_access(db, project_id=project_id, user_id=user_id)
+            is not None
+        }
+        accessible_documents = {
+            document_id
+            for document_id in document_ids
+            if get_document_access(db, document_id=document_id, user_id=user_id)
+            is not None
+        }
+        return SelectedPaperContext(
+            kind="selection",
+            project_ids=sorted(accessible_projects, key=str),
+            document_ids=sorted(accessible_documents, key=str),
+        )
+
+    def _replace_paper_context(
+        self,
+        db: Session,
+        *,
+        conversation: Conversation,
+        user_id: int,
+        request: PaperContext,
+    ) -> PaperContext:
+        db.execute(
+            delete(ConversationContextProject).where(
+                ConversationContextProject.conversation_id == conversation.id
+            )
+        )
+        db.execute(
+            delete(ConversationContextDocument).where(
+                ConversationContextDocument.conversation_id == conversation.id
+            )
+        )
+        if isinstance(request, LibraryPaperContext):
+            conversation.paper_context_kind = "library"
+            db.flush()
+            return LibraryPaperContext()
+
+        project_ids = set(request.project_ids)
+        document_ids = set(request.document_ids)
+        if conversation.project_id is not None:
+            project_ids.discard(conversation.project_id)
+        if conversation.document_id is not None:
+            document_ids.discard(conversation.document_id)
+        if (
+            conversation.project_id is None
+            and conversation.document_id is None
+            and not project_ids
+            and not document_ids
+        ):
+            raise AppError(
+                code="conversation_context_empty",
+                message="A selected paper context cannot be empty",
+                kind=FailureKind.UNPROCESSABLE,
+            )
+        for project_id in project_ids:
+            if get_project_access(db, project_id=project_id, user_id=user_id) is None:
+                raise AppError(
+                    code="conversation_context_project_not_found",
+                    message="A selected project was not found",
+                    kind=FailureKind.NOT_FOUND,
+                )
+        for document_id in document_ids:
+            if (
+                get_document_access(db, document_id=document_id, user_id=user_id)
+                is None
+            ):
+                raise AppError(
+                    code="conversation_context_document_not_found",
+                    message="A selected paper was not found",
+                    kind=FailureKind.NOT_FOUND,
+                )
+        conversation.paper_context_kind = "selection"
+        db.add_all(
+            ConversationContextProject(
+                conversation_id=conversation.id,
+                project_id=project_id,
+            )
+            for project_id in sorted(project_ids, key=str)
+        )
+        db.add_all(
+            ConversationContextDocument(
+                conversation_id=conversation.id,
+                document_id=document_id,
+            )
+            for document_id in sorted(document_ids, key=str)
+        )
+        db.flush()
+        return self.paper_context(db, conversation=conversation, user_id=user_id)
+
+    def update_paper_context(
+        self,
+        db: Session,
+        *,
+        conversation_id: uuid.UUID,
+        user_id: int,
+        request: PaperContext,
+    ) -> PaperContext:
+        conversation = self.require_owned(
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        conversation_policy.require_can_continue(db, conversation=conversation)
+        return self._replace_paper_context(
+            db,
+            conversation=conversation,
+            user_id=user_id,
+            request=request,
+        )
+
     def require_owned(
         self,
         db: Session,
@@ -174,8 +326,21 @@ class ConversationRepository:
             project_id=project_id,
             document_id=document_id,
             scope_label_snapshot=scope_label,
+            paper_context_kind=(
+                "library"
+                if request.scope_type == ConversationScopeType.GLOBAL
+                else "selection"
+            ),
         )
         db.add(conversation)
+        db.flush()
+        if request.paper_context is not None:
+            self._replace_paper_context(
+                db,
+                conversation=conversation,
+                user_id=user_id,
+                request=request.paper_context,
+            )
         if refresh_result:
             db.flush()
             db.refresh(conversation)
@@ -314,11 +479,19 @@ class ConversationRepository:
             conversation.project_id = request.scope_id
             conversation.document_id = None
             conversation.scope_label_snapshot = access.project.title
+            default_context: PaperContext = SelectedPaperContext()
         else:
             conversation.scope_type = ConversationScopeType.GLOBAL.value
             conversation.project_id = None
             conversation.document_id = None
             conversation.scope_label_snapshot = None
+            default_context = LibraryPaperContext()
+        self._replace_paper_context(
+            db,
+            conversation=conversation,
+            user_id=user_id,
+            request=default_context,
+        )
         db.flush()
         db.refresh(conversation)
         return conversation
