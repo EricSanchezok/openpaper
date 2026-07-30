@@ -14,6 +14,7 @@ from app.bootstrap.container import (
     build_jobs,
     build_library_tags,
     build_paper_content,
+    build_paper_collection_access,
     build_paper_details,
     build_paper_discovery,
     build_paper_download,
@@ -40,6 +41,7 @@ from app.modules.jobs.application.callbacks import JobCallbacks
 from app.modules.jobs.application.jobs import Jobs
 from app.modules.papers.application.citations import ResolveCitation
 from app.modules.papers.application.content import PaperContentCapabilities
+from app.modules.papers.application.collection_access import RequirePaperInCollection
 from app.modules.papers.application.details import GetPaperDetails
 from app.modules.papers.application.discovery import DiscoverPapers
 from app.modules.papers.application.downloads import GetPaperDownload
@@ -101,6 +103,10 @@ class ApplicationCapabilities:
     @cached_property
     def paper_content(self) -> PaperContentCapabilities:
         return build_paper_content(db=self._session)
+
+    @cached_property
+    def paper_collection_access(self) -> RequirePaperInCollection:
+        return RequirePaperInCollection(build_paper_collection_access(db=self._session))
 
     @cached_property
     def paper_download(self) -> GetPaperDownload:

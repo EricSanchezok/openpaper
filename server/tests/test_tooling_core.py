@@ -3,10 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
+from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, JsonValue
 from app.tooling import (
@@ -19,6 +21,11 @@ from app.tooling import (
     ToolProfile,
 )
 from app.tooling.invocations import ToolInvocationGateway
+from app.tooling.workspace import (
+    CONVERSATION_TOOL_PROFILE,
+    MCP_TOOL_PROFILE,
+    build_workspace_tool_catalog,
+)
 from pydantic import BaseModel
 
 ResultT = TypeVar("ResultT")
@@ -188,3 +195,25 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
     assert second.action == {"replayed": True}
     assert capabilities.writes == 1
     assert executor.commands == 2
+
+
+def test_workspace_profiles_share_one_canonical_definition_set() -> None:
+    catalog = build_workspace_tool_catalog(
+        ingestion=MagicMock(spec=PaperIngestionWorkflow)
+    )
+    conversation = catalog.definitions_for(CONVERSATION_TOOL_PROFILE)
+    mcp = catalog.definitions_for(MCP_TOOL_PROFILE)
+    conversation_by_name = {tool.name: tool for tool in conversation}
+    mcp_by_name = {tool.name: tool for tool in mcp}
+
+    assert set(conversation_by_name) == set(mcp_by_name) | {"finish_tool_use"}
+    assert "STOP" not in conversation_by_name
+    assert "read_file" not in conversation_by_name
+    assert len(mcp_by_name) == 32
+    for name, mcp_tool in mcp_by_name.items():
+        conversation_tool = conversation_by_name[name]
+        assert conversation_tool is mcp_tool
+        assert (
+            conversation_tool.input_model.model_json_schema()
+            == mcp_tool.input_model.model_json_schema()
+        )

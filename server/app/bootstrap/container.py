@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Literal
 
 from app.modules.papers.application.search import PaperSearchAccessPort, PaperSearchPort
+from app.modules.papers.application.collection_access import PaperCollectionAccessPort
 from app.modules.papers.application.content import PaperContentCapabilities
 from app.modules.papers.infrastructure.content_gateway import (
     SqlAlchemyPaperContentGateway,
@@ -146,6 +147,14 @@ def build_paper_search_access(*, db: Session) -> PaperSearchAccessPort:
     from app.bootstrap.adapters.paper_search_access import SqlPaperSearchAccess
 
     return SqlPaperSearchAccess(db)
+
+
+def build_paper_collection_access(*, db: Session) -> PaperCollectionAccessPort:
+    from app.bootstrap.adapters.paper_collection_access import (
+        SqlPaperCollectionAccess,
+    )
+
+    return SqlPaperCollectionAccess(db)
 
 
 def build_project_document_visibility(
