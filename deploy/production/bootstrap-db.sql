@@ -86,6 +86,13 @@ WHERE schemaname = 'scholens'
   AND tablename <> 'schema_migrations'
 ORDER BY tablename \gexec
 
+-- Product code may append attribution, but cannot mutate or erase it.
+SELECT format(
+  'REVOKE UPDATE, DELETE ON TABLE scholens.operation_journal_entries FROM %I',
+  :'app_role'
+)
+WHERE to_regclass('scholens.operation_journal_entries') IS NOT NULL \gexec
+
 SELECT format(
   'GRANT USAGE, SELECT ON SEQUENCE %I.%I TO %I',
   sequence_schema,

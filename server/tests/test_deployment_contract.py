@@ -70,6 +70,12 @@ def test_database_contract_shares_auth_and_isolates_scholens() -> None:
         'REVOKE CREATE ON SCHEMA auth FROM :"app_role", :"product_migrator_role"'
         in bootstrap
     )
+    assert (
+        "REVOKE UPDATE, DELETE ON TABLE scholens.operation_journal_entries" in bootstrap
+    )
+    assert ci.count("'scholens.operation_journal_entries'") >= 3
+    assert "'UPDATE'" in ci
+    assert "'DELETE'" in ci
     assert "ALTER DEFAULT PRIVILEGES" in bootstrap
     for current_table in (
         "scholens.documents",

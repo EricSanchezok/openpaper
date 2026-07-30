@@ -294,6 +294,17 @@ jobs:
                  AND to_regclass('scholens.documents') IS NOT NULL
                  AND to_regclass('scholens.library_papers') IS NOT NULL
                  AND to_regclass('scholens.user_profiles') IS NOT NULL
+                 AND to_regclass('scholens.operation_journal_entries') IS NOT NULL
+                 AND NOT has_table_privilege(
+                   'scholens_app',
+                   'scholens.operation_journal_entries',
+                   'UPDATE'
+                 )
+                 AND NOT has_table_privilege(
+                   'scholens_app',
+                   'scholens.operation_journal_entries',
+                   'DELETE'
+                 )
                  AND to_regclass('scholens.discover_searches') IS NULL
                  AND EXISTS (
                    SELECT 1
