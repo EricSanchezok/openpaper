@@ -121,7 +121,7 @@ def bibliographic_gaps(fields: CitationFields) -> list[str]:
 def missing_required_fields(fields: CitationFields, style: str) -> list[str]:
     """Return the labels of citation-critical fields still missing for this style.
 
-    Used to decide whether find_citation should attempt metadata recovery. A
+    Used to decide whether citation resolution should attempt metadata recovery. A
     missing field here means the rendered citation would contain a placeholder
     or an "n.d." year. Authors and DOI are omitted gracefully by the templates,
     so they are not treated as blocking here.

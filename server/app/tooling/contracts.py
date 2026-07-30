@@ -61,7 +61,11 @@ class ToolDefinition(Generic[CapabilitiesT]):
     workflow_handler: WorkflowToolHandler | None = None
 
     def __post_init__(self) -> None:
-        if not self.name or self.name.lower() != self.name:
+        if (
+            not self.name
+            or self.name.lower() != self.name
+            or not self.name.isidentifier()
+        ):
             raise ValueError("tool names must be non-empty lowercase identifiers")
         if self.execution is ToolExecutionKind.CONTROL:
             if self.handler is not None or self.workflow_handler is not None:

@@ -162,6 +162,15 @@ async def _require_active_session(
 async def get_cloud_user(
     credentials: HTTPAuthorizationCredentials = Depends(_required_bearer),
 ) -> UserRecord:
+    return await authenticate_cloud_access_token(credentials.credentials)
+
+
+async def authenticate_cloud_access_token(access_token: str) -> UserRecord:
+    """Validate one Bearer access token without depending on an HTTP request."""
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=access_token,
+    )
     user = await _unchecked_cloud_user(credentials=credentials)
     return await _require_active_session(user, credentials)
 

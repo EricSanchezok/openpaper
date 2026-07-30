@@ -7,8 +7,7 @@ field_provenance). Reusable from any codepath that already has a Document row
 (chat, post-upload background, backfill).
 
 This module deliberately does NOT depend on `app.helpers.metadata_hydration` so
-the chain `metadata_hydration → citation_recovery` is a clean DAG (the
-higher-level `app.transport.agent.citation` imports both).
+the chain `metadata_hydration → citation_recovery` remains a clean DAG.
 """
 
 import json

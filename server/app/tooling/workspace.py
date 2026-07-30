@@ -36,6 +36,7 @@ from app.modules.research.application.contracts import (
     UpdateHighlightThreadRequest,
 )
 from app.shared.domain import JsonValue
+from app.shared.domain import AppError, FailureKind
 from app.shared.domain.enums import JobOperation, PaperStatus
 from app.tooling.catalog import ToolCatalog, ToolProfile
 from app.tooling.contracts import (
@@ -44,7 +45,7 @@ from app.tooling.contracts import (
     ToolExecutionKind,
     ToolOutcome,
 )
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter, model_validator
 
 CONVERSATION_TOOL_PROFILE = "conversation"
 MCP_TOOL_PROFILE = "mcp"
@@ -81,7 +82,7 @@ class DocumentInput(BaseModel):
 
 class SearchPapersInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    query: str = Field(min_length=1, max_length=2_000)
+    query: str = Field(min_length=2, max_length=1_000)
 
 
 class SearchPaperContentInput(DocumentInput):
@@ -91,6 +92,12 @@ class SearchPaperContentInput(DocumentInput):
 class PaperContentRangeInput(DocumentInput):
     start_line: int = Field(ge=1)
     end_line: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> PaperContentRangeInput:
+        if self.end_line < self.start_line:
+            raise ValueError("end_line must not precede start_line")
+        return self
 
 
 class PaperCitationInput(DocumentInput):
@@ -305,8 +312,6 @@ def _get_paper_content_range(
     arguments: BaseModel,
 ) -> ToolOutcome:
     parsed = PaperContentRangeInput.model_validate(arguments)
-    if parsed.end_line < parsed.start_line:
-        raise ValueError("end_line must not precede start_line")
     title, _, content = _paper_content(
         capabilities,
         context,
@@ -317,7 +322,12 @@ def _get_paper_content_range(
     else:
         source_lines = content.splitlines()
         if parsed.end_line > len(source_lines):
-            raise ValueError("end_line exceeds paper content")
+            raise AppError(
+                kind=FailureKind.INVALID_ARGUMENT,
+                code="paper_content_range_invalid",
+                message="end_line exceeds paper content",
+                details={"line_count": len(source_lines)},
+            )
         lines = [
             f"{line_number}: {source_lines[line_number - 1]}"
             for line_number in range(parsed.start_line, parsed.end_line + 1)
@@ -799,21 +809,21 @@ def build_workspace_tool_catalog(
     definitions = [
         ToolDefinition(
             "search_papers",
-            "Search the active conversation paper collection.",
+            "Search the server-bound paper collection.",
             SearchPapersInput,
             query,
             _search_papers,
         ),
         ToolDefinition(
             "get_paper",
-            "Get canonical metadata for one paper in the active context.",
+            "Get canonical metadata for one paper in the server-bound collection.",
             DocumentInput,
             query,
             _get_paper,
         ),
         ToolDefinition(
             "get_paper_abstract",
-            "Get the abstract of one paper in the active context.",
+            "Get the abstract of one paper in the server-bound collection.",
             DocumentInput,
             query,
             _get_paper_abstract,

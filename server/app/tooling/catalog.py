@@ -26,6 +26,13 @@ class ToolCatalog(Generic[CapabilitiesT]):
         for definition in definitions:
             if definition.name in self._definitions:
                 raise ValueError(f"duplicate tool definition: {definition.name}")
+            if not definition.description.strip():
+                raise ValueError(f"tool {definition.name} requires a description")
+            schema = definition.input_model.model_json_schema()
+            if schema.get("type") != "object":
+                raise ValueError(
+                    f"tool {definition.name} input schema must be an object"
+                )
             self._definitions[definition.name] = definition
         self._profiles: dict[str, ToolProfile] = {}
         for profile in profiles:

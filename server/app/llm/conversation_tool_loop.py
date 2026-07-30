@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -271,7 +272,10 @@ class ConversationToolLoop(BaseLLMClient):
                             paper_collection=conversation_scope.paper_context,
                             anchor_document_id=conversation_scope.document_id,
                             source="conversation",
-                            invocation_id=f"conversation:{conversation_id}:{turn_id}",
+                            invocation_id=(
+                                f"conversation:{conversation_id}:{turn_id}:"
+                                f"{hashlib.sha256(call_signature.encode()).hexdigest()}"
+                            ),
                             client_ip=client_ip,
                             conversation_id=conversation_id,
                             turn_id=turn_id,

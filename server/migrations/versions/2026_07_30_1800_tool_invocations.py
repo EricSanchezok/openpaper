@@ -26,6 +26,12 @@ def upgrade() -> None:
         sa.Column("source", sa.String(length=32), nullable=False),
         sa.Column("tool_name", sa.String(length=128), nullable=False),
         sa.Column("arguments_hash", sa.String(length=64), nullable=False),
+        sa.Column(
+            "status",
+            sa.String(length=32),
+            server_default="completed",
+            nullable=False,
+        ),
         sa.Column("result", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column(
             "completed_at",

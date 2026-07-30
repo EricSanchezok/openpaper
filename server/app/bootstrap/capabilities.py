@@ -31,6 +31,7 @@ from app.bootstrap.container import (
     build_zotero,
 )
 from app.bootstrap.settings import AppSettings
+from app.bootstrap.adapters.tool_invocations import SqlAlchemyToolInvocationGateway
 from app.modules.billing.application.billing import Billing
 from app.modules.conversations.application.chat import ConversationChatData
 from app.modules.conversations.application.conversations import Conversations
@@ -59,10 +60,7 @@ from app.modules.research.application.generation import ResearchGeneration
 from app.modules.research.application.items import ResearchItems
 from app.modules.research.application.search import SearchResearch
 from sqlalchemy.orm import Session
-from app.tooling.invocations import (
-    SqlAlchemyToolInvocationGateway,
-    ToolInvocationGateway,
-)
+from app.tooling.invocations import ToolInvocationGateway
 
 
 class ApplicationCapabilities:

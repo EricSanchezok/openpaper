@@ -5,7 +5,7 @@ APIs (CrossRef / OpenAlex via paper_search). This is the single seam used by:
 
 - GET /paper (lazy, on read)
 - post_process_paper (background, after upload)
-- the find_citation agent (forced, when a citation is requested)
+- citation metadata recovery (forced by `get_paper_citation` when needed)
 
 Writes are best-effort and gated by `attempted_metadata_at` so we don't re-hit
 external APIs on every read; pass force=True to bypass the cache window.

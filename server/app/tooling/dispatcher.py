@@ -8,7 +8,7 @@ import json
 from typing import Generic, Protocol, TypeVar, cast
 
 from app.shared.application import ApplicationExecutor
-from app.shared.domain import JsonValue
+from app.shared.domain import AppError, FailureKind, JsonValue
 from app.tooling.catalog import ToolCatalog
 from app.tooling.contracts import (
     ToolCallContext,
@@ -17,7 +17,7 @@ from app.tooling.contracts import (
     ToolOutcome,
 )
 from app.tooling.invocations import ToolInvocationGateway
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 CapabilitiesT = TypeVar("CapabilitiesT", bound="ToolInvocationCapabilities")
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
@@ -54,8 +54,29 @@ class ToolDispatcher(Generic[CapabilitiesT]):
         raw_arguments: dict[str, object],
         context: ToolCallContext,
     ) -> ToolOutcome:
-        definition = self._catalog.definition(name)
-        arguments = definition.input_model.model_validate(raw_arguments)
+        try:
+            definition = self._catalog.definition(name)
+        except KeyError as exc:
+            raise AppError(
+                kind=FailureKind.NOT_FOUND,
+                code="tool_not_found",
+                message="Tool not found",
+                details={"tool_name": name},
+            ) from exc
+        try:
+            arguments = definition.input_model.model_validate(raw_arguments)
+        except ValidationError as exc:
+            raise AppError(
+                kind=FailureKind.INVALID_ARGUMENT,
+                code="tool_arguments_invalid",
+                message="Tool arguments are invalid",
+                details={
+                    "errors": exc.errors(
+                        include_url=False,
+                        include_context=False,
+                    )
+                },
+            ) from exc
         if definition.execution is ToolExecutionKind.CONTROL:
             return ToolOutcome(payload={"completed": True}, stop=True)
         if definition.execution is ToolExecutionKind.QUERY:
@@ -68,7 +89,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
             workflow_handler = definition.workflow_handler
             assert workflow_handler is not None
             fingerprint = _arguments_hash(arguments)
-            invocation_key = f"{context.invocation_id}:{name}:{fingerprint}"
+            invocation_key = f"{context.invocation_id}:{name}"
             replay = await asyncio.to_thread(
                 self._executor.query,
                 lambda capabilities: capabilities.tool_invocations.replay(
@@ -104,7 +125,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
         assert definition.execution is ToolExecutionKind.COMMAND
         command_handler = cast(ToolHandler[CapabilitiesT], definition.handler)
         fingerprint = _arguments_hash(arguments)
-        invocation_key = f"{context.invocation_id}:{name}:{fingerprint}"
+        invocation_key = f"{context.invocation_id}:{name}"
 
         def execute(capabilities: CapabilitiesT) -> ToolOutcome:
             replay = capabilities.tool_invocations.replay(

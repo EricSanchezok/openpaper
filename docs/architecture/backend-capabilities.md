@@ -1,12 +1,12 @@
 # Backend capability architecture
 
 Scholens exposes one set of business capabilities through several adapters.
-The public HTTP API, the in-process Agent tools, internal job callbacks, and a
-future MCP server are entry points; none of them owns paper, project, billing,
+The public HTTP API, the in-process Agent tools, internal job callbacks, and the
+inbound MCP server are entry points; none of them owns paper, project, billing,
 or Zotero business rules.
 
 ```text
-HTTP / Agent / future MCP / job callback
+HTTP / Agent / MCP / job callback
                  |
                  v
           ApplicationExecutor
@@ -54,7 +54,7 @@ packages.
 - `infrastructure` implements ports. Repository methods flush but do not
   commit a caller-owned request transaction.
 - `transport` validates and translates protocols only. HTTP, Agent, job, and
-  future MCP adapters receive the same `ApplicationExecutor`; they never
+  MCP adapters receive the same `ApplicationExecutor`; they never
   receive a SQLAlchemy `Session`, select adapters, or duplicate business
   rules.
 - `bootstrap/capabilities.py` is the canonical session-bound application
@@ -84,6 +84,29 @@ Chat streaming, paper ingestion, Research generation, onboarding, Stripe, and
 Zotero import/sync follow this shape. Agent and MCP paper tools obtain a fresh
 short operation for every tool call rather than retaining a session for the
 life of a conversation.
+
+## Canonical tool catalog
+
+Every model-visible research workspace tool is defined once in
+`server/app/tooling/workspace.py`. A `ToolDefinition` owns its stable name,
+description, Pydantic input model, execution kind, and application handler.
+Independent Conversation and MCP profiles select definitions from the same
+catalog; transports never copy schemas or handlers.
+
+`ToolDispatcher` validates arguments and executes each tool through a fresh
+`ApplicationExecutor` operation. Query tools never commit. Command tools commit
+their business change and completed invocation ledger row atomically. Workflow
+tools use an explicit external-I/O workflow and then persist the completed
+result. Conversation write invocation identities include conversation, turn,
+tool-call arguments, and tool name; MCP identities use the authenticated token
+session and JSON-RPC request identity. Replays return the persisted result, and
+conflicting argument reuse returns `tool_invocation_conflict`.
+
+The inbound Streamable HTTP MCP endpoint is `/mcp`, outside the public OpenAPI
+surface. Every request requires an active cloud-auth Bearer session. MCP
+defaults paper operations to the authenticated user's complete accessible
+paper collection. MCP protocol code only lists a profile, injects the actor,
+and delegates to `ToolDispatcher`.
 
 Only progress-owning infrastructure may commit independently. The executable
 architecture whitelist currently contains the Stripe webhook ledger, durable
@@ -124,8 +147,9 @@ tags, storage accounting, and ingestion ownership continue to use
    `bootstrap/container.py`.
 4. Expose the use case on `ApplicationCapabilities`; use a workflow only when
    external I/O requires explicit prepare/complete phases.
-5. Keep every protocol adapter thin and delegate to the same capability or
-   workflow. A future MCP tool must not call repositories or HTTP routes.
+5. For a model-visible capability, add one `ToolDefinition` and select it in
+   the appropriate profiles. MCP code must not call repositories or HTTP
+   routes.
 6. Update the OpenAPI snapshot and add an end-to-end contract test when the
    public surface changes.
 

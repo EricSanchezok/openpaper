@@ -30,7 +30,7 @@ the features you want to exercise. See [`../DEVELOPMENT.md`](../DEVELOPMENT.md)
 for the shared-local-account and AWS RDS distinction.
 
 The backend exposes one versioned capability surface and shares its application
-use cases with Agent adapters and the future MCP server. Architecture rules,
+use cases with Agent adapters and the authenticated `/mcp` server. Architecture rules,
 resource semantics, transaction ownership, and the replaceable search boundary
 are documented in
 [`../docs/architecture/backend-capabilities.md`](../docs/architecture/backend-capabilities.md).
@@ -106,11 +106,12 @@ uv run pytest -q
 We have an `Ask` page, which allows you to ask questions across your entire knowledge base. AI-generated responses come with inline citations which will link to the original papers and show the text citation. Deep-linking is not yet available, but is planned.
 
 The response agent works by sending off an agent with access to a series of research tools:
-- `read_file`
-- `search_file`
-- `view_file`
-- `read_abstract`
-- `search_all_files`
+- `search_papers`
+- `get_paper_abstract`
+- `search_paper_content`
+- `get_paper_content_range`
+- `get_paper_content`
+- workspace management tools selected from the same catalog exposed by `/mcp`
 
 ![knowledge base research diagram](./lr_research_diagram.png)
 
@@ -121,12 +122,13 @@ Unified Conversation agent workflow:
 |      User      |----->|             FastAPI Server                    |----->|        LLM        |
 +----------------+      |         (conversation_agent.py)               |      +-------------------+
         ^             |                                                 |              ^
-        |             |  1. gather_evidence(question)                   |              |
+        |             |  1. run_tools(request)                          |              |
         |             |     - Iteratively calls LLM with tools:         |              |
-        |             |       - search_all_files(query)                 |--------------+
-        |             |       - read_file(document_id, query)           |
+        |             |       - search_papers(query)                    |--------------+
+        |             |       - get_paper_content(document_id)          |
         |             |       - ...                                     |
-        |             |     - Compacts evidence if it gets too large    |
+        |             |     - Executes explicit workspace actions       |
+        |             |     - Compacts results if they get too large    |
         |             |                                                 |
         |             |  2. stream_answer(question, evidence)           |
         |             |     - Sends evidence and question to LLM        |--------------+

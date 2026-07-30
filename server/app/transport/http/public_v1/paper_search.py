@@ -15,7 +15,7 @@ search_router = APIRouter()
 
 
 @search_router.post("", response_model=PaperSearchResponse)
-async def search_knowledge_base_endpoint(
+async def search_papers_endpoint(
     request: PaperSearchRequest,
     http_request: Request,
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(

@@ -16,17 +16,17 @@ When it comes to knowledge bases in Scholens, sizes can get fairly large. Curren
 To manage this effectively, we store an index of all your papers in a Postgres DB. On initial upload, we extract all the associated text, the authors, the abstract, and the institutions.
 
 When you ask a question in the multi-paper scenarios (either projects or the [/understand page](/understand)), the model is given access to the titles of all the works in your project/library. From there it can pick the best tool to dig into the works to answer your question:
-- `read_abstract`: Reads the abstract of a single file.
-- `search_knowledge_base`: Enters a search term to search across the entire set of reference works.
-- `search_file`: Enters a search term to search within a specific work.
-- `view_file`: Inspect a specific file based on a range of line numbers.
-- `read_file`: Read a full file.
+- `get_paper_abstract`: Reads the abstract of a single paper.
+- `search_papers`: Searches across the active paper collection.
+- `search_paper_content`: Searches within a specific paper.
+- `get_paper_content_range`: Reads a bounded line range from a paper.
+- `get_paper_content`: Reads a paper's full extracted text.
 
 You can watch OP undertake its investigation in the thinking trace while it's working on your question.
 
-In a perfect world, our models would `read_file` their way through the whole knowledge base, but we know that they can't do that due to limits in the aforementioned context window. Hence, they use all these other tools at their disposal to pinpoint an answer to your question. They'll typically start with a call to `search_knowledge_base`, and use that as a starting point to dig in deeper.
+In a perfect world, our models would `get_paper_content` their way through the whole knowledge base, but we know that they can't do that due to limits in the aforementioned context window. Hence, they use all these other tools at their disposal to pinpoint an answer to your question. They'll typically start with a call to `search_papers`, and use that as a starting point to dig in deeper.
 
-Both of the search functions return line numbers in their results, so they can be used in conjunction with `view_file`, which allows the model to specify a range for its search. The model is given a few iterations for retrieving evidence for answering its question, before it has to finalize and respond.
+Both search tools return source locations in their results, so they can be used with `get_paper_content_range`, which allows the model to inspect a focused section. The model is given a few iterations for retrieving evidence or carrying out an explicit workspace action before it finalizes and responds.
 
 The same internal DeepSeek backend now handles tool orchestration and final
 answers. Scholens exposes only standard and deep reasoning levels; model names
@@ -39,10 +39,10 @@ changing the client API.
 |      User      |----->|               Server                            |----->|        LLM        |
 +----------------+      |           (conversation_agent.py)               |      +-------------------+
         ^               |                                                 |              ^
-        |               |    1. gather_evidence(question)                 |              |
-        |               |       - Iteratively calls LLM with tools:       |              |
-        |               |         - search_all_files(query)               |--------------+
-        |               |         - read_file(document_id, query)         |
+|               |    1. run_tools(request)                        |              |
+|               |       - Iteratively calls LLM with tools:       |              |
+|               |         - search_papers(query)                  |--------------+
+|               |         - get_paper_content(document_id)        |
         |               |         - ...                                   |
         |               |       - Compacts evidence if it gets too large  |
         |               |                                                 |
@@ -66,7 +66,7 @@ But now we've lost all of our granular citations.
 
 In order to reconstruct the citations for the final answer, we use reference to the compacted summary to expand back out to the relevant snippets that were used to power it. In turn this allows us to zoom-in and zoom-out through the relevant steps of our work, while giving the model the minimal relevant context it needs to put together a more useful response to the target question.
 
-Vector embeddings can still be powerful because they make your read-time compute very, very cheap. But they require a lot of manual reconstruction. Our `search_knowledge_base` step could be augmented with a cosine similarity layer, but it's not strictly necessary, nor always beneficial.
+Vector embeddings can still be powerful because they make your read-time compute very, very cheap. But they require a lot of manual reconstruction. Our `search_papers` step could be augmented with a cosine similarity layer, but it's not strictly necessary, nor always beneficial.
 
 The whole process of generating accurate, grounded responses is still evolving. And honestly, it's still imperfect. The AI system still makes mistakes and requires manual intervention. That's why we've taken a design approach that makes it easy for you to jump back into context when needed, with minimal loss to flow.
 

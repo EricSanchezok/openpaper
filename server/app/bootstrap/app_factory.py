@@ -62,6 +62,7 @@ from app.bootstrap.execution import (
     create_conversation_agent_runtime,
     create_conversation_chat,
     create_job_completion_processor,
+    create_mcp_transport,
     create_onboarding_finisher,
     create_paper_ingestion_workflow,
     create_research_generation_workflow,
@@ -89,6 +90,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +164,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     application.state.tool_catalog = tool_catalog
     application.state.tool_dispatcher = tool_dispatcher
     application.state.conversation_agent_runtime = conversation_runtime
+    mcp_manager, mcp_application = create_mcp_transport(
+        settings=runtime_settings,
+        catalog=tool_catalog,
+        dispatcher=tool_dispatcher,
+        executor=executor,
+    )
+    application.state.mcp_session_manager = mcp_manager
+    application.router.routes.append(Route("/mcp", endpoint=mcp_application))
     application.state.conversation_chat = create_conversation_chat(
         executor,
         conversation_runtime,

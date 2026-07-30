@@ -187,6 +187,21 @@ def test_transport_only_depends_on_application_and_protocol_layers() -> None:
     assert violations == []
 
 
+def test_tooling_core_does_not_own_persistence_or_business_adapters() -> None:
+    forbidden_imports = (
+        "sqlalchemy",
+        ".infrastructure",
+        ".repository",
+        "app.database",
+    )
+    violations: list[str] = []
+    for path in (APP_ROOT / "tooling").rglob("*.py"):
+        for imported in _imports(path):
+            if any(fragment in imported for fragment in forbidden_imports):
+                violations.append(f"{path.relative_to(APP_ROOT)} imports {imported}")
+    assert violations == []
+
+
 def test_transport_never_owns_database_sessions_or_builds_bound_capabilities() -> None:
     violations: list[str] = []
     for path in (APP_ROOT / "transport").rglob("*.py"):
@@ -271,18 +286,44 @@ def test_explicit_commits_are_limited_to_owned_background_transactions() -> None
     assert violations == []
 
 
-def test_paper_agent_and_mcp_adapters_share_application_capabilities() -> None:
-    agent = APP_ROOT / "transport" / "agent" / "paper_tools.py"
-    mcp = APP_ROOT / "transport" / "mcp" / "papers.py"
-    combined_imports = _imports(agent) | _imports(mcp)
+def test_agent_and_mcp_share_only_the_canonical_tool_catalog() -> None:
+    catalog = APP_ROOT / "tooling" / "workspace.py"
+    mcp = APP_ROOT / "transport" / "mcp" / "server.py"
 
-    assert "app.bootstrap.capabilities" in combined_imports
-    assert "app.shared.application" in combined_imports
-    assert all(".infrastructure" not in imported for imported in _imports(agent))
+    assert "app.bootstrap.capabilities" in _imports(catalog)
+    assert "app.tooling.workspace" in _imports(mcp)
+    assert not (APP_ROOT / "transport" / "agent" / "paper_tools.py").exists()
+    assert not (APP_ROOT / "transport" / "mcp" / "papers.py").exists()
     for imported in _imports(mcp):
         assert ".infrastructure" not in imported
         assert not imported.startswith("app.transport.http")
         assert imported != "requests"
+
+
+def test_legacy_model_tool_names_cannot_reenter_runtime_code() -> None:
+    legacy_names = {
+        "read_file",
+        "search_file",
+        "view_file",
+        "read_abstract",
+        "search_all_files",
+        "find_citation",
+        "STOP",
+    }
+    runtime_roots = (
+        APP_ROOT / "tooling",
+        APP_ROOT / "transport" / "agent",
+        APP_ROOT / "transport" / "mcp",
+        APP_ROOT / "llm",
+    )
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in runtime_roots
+        for path in root.rglob("*.py")
+    )
+    for name in legacy_names:
+        assert f'"{name}"' not in source
+        assert f"'{name}'" not in source
 
 
 def test_only_versioned_public_routes_are_exposed() -> None:
@@ -292,6 +333,11 @@ def test_only_versioned_public_routes_are_exposed() -> None:
     assert all(path.startswith("/api/v1/") for path in public_business_paths)
     assert not any(path.startswith("/internal/") for path in paths)
     assert "/webhooks/v1/stripe" in paths
+
+
+def test_mcp_is_mounted_outside_the_public_openapi_contract() -> None:
+    assert any(getattr(route, "path", None) == "/mcp" for route in app.routes)
+    assert "/mcp" not in app.openapi()["paths"]
 
 
 def test_jobs_use_one_generic_versioned_lifecycle_surface() -> None:

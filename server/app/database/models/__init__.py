@@ -65,7 +65,7 @@ from app.modules.research.infrastructure.models import (
     ResearchItem,
 )
 from app.modules.billing.infrastructure.models import StripeWebhookEvent, Subscription
-from app.tooling.invocations import ToolInvocation
+from app.database.models.tool_invocation import ToolInvocation
 
 __all__ = [
     "AuthUser",

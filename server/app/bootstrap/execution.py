@@ -2,23 +2,35 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
+from urllib.parse import urlsplit
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
 from app.llm.conversation_agent import ConversationAgentRuntime
 from app.database.database import SessionLocal
 from app.modules.conversations.application.chat import ConversationChat
+from app.modules.identity.application import AuthenticatedIdentity
+from app.modules.identity.infrastructure.cloud_auth import (
+    authenticate_cloud_access_token,
+)
 from app.modules.identity.application.onboarding import FinishOnboarding
 from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.bootstrap.workflows.zotero import ZoteroWorkflow
 from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
-from app.shared.application import ApplicationExecutor
+from app.shared.application import Actor, ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
 from app.tooling import ToolCatalog, ToolDispatcher
+from app.transport.mcp.server import (
+    AuthenticatedMcpApplication,
+    build_mcp_transport,
+)
 from fastapi import Request
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.server.transport_security import TransportSecuritySettings
 
 
 def create_application_executor(
@@ -61,6 +73,46 @@ def create_conversation_agent_runtime(
     dispatcher: ToolDispatcher[ApplicationCapabilities],
 ) -> ConversationAgentRuntime:
     return ConversationAgentRuntime(catalog=catalog, dispatcher=dispatcher)
+
+
+def create_mcp_transport(
+    *,
+    settings: AppSettings,
+    catalog: ToolCatalog[ApplicationCapabilities],
+    dispatcher: ToolDispatcher[ApplicationCapabilities],
+    executor: ApplicationExecutor[ApplicationCapabilities],
+) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
+    async def authenticate(token: str) -> Actor:
+        cloud_user = await authenticate_cloud_access_token(token)
+        identity = AuthenticatedIdentity(
+            id=cloud_user.id,
+            email=cloud_user.email,
+            display_name=cloud_user.display_name,
+            status=cloud_user.status,
+            email_verified=cloud_user.email_verified,
+        )
+        return await asyncio.to_thread(
+            executor.query,
+            lambda capabilities: capabilities.identity.resolve_actor(identity),
+        )
+
+    public_url = urlsplit(settings.client_domain)
+    public_host = public_url.netloc
+    allowed_hosts = [public_host]
+    allowed_origins = [settings.client_domain.rstrip("/")]
+    if settings.environment.casefold() != "production":
+        allowed_hosts.extend(["localhost:*", "127.0.0.1:*", "testserver"])
+        allowed_origins.extend(["http://localhost:*", "http://127.0.0.1:*"])
+    return build_mcp_transport(
+        catalog=catalog,
+        dispatcher=dispatcher,
+        security_settings=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=allowed_hosts,
+            allowed_origins=allowed_origins,
+        ),
+        authenticate=authenticate,
+    )
 
 
 def create_onboarding_finisher() -> FinishOnboarding:

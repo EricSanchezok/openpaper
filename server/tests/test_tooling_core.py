@@ -150,6 +150,44 @@ def test_profiles_are_independent_and_validate_references() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatcher_maps_unknown_tools_and_invalid_arguments() -> None:
+    definition = ToolDefinition[Capabilities](
+        name="query_tool",
+        description="query",
+        input_model=Arguments,
+        execution=ToolExecutionKind.QUERY,
+        handler=lambda capabilities, context, arguments: ToolOutcome(
+            payload={"value": arguments.value}
+        ),
+    )
+    capabilities = Capabilities(MemoryInvocationGateway())
+    dispatcher = ToolDispatcher(
+        catalog=ToolCatalog(
+            [definition],
+            [ToolProfile(name="conversation", tool_names=frozenset({"query_tool"}))],
+        ),
+        executor=Executor(capabilities),
+    )
+
+    with pytest.raises(AppError) as unknown:
+        await dispatcher.dispatch(
+            name="missing",
+            raw_arguments={},
+            context=_context(),
+        )
+    assert unknown.value.code == "tool_not_found"
+
+    with pytest.raises(AppError) as invalid:
+        await dispatcher.dispatch(
+            name="query_tool",
+            raw_arguments={},
+            context=_context(),
+        )
+    assert invalid.value.code == "tool_arguments_invalid"
+    assert invalid.value.kind is FailureKind.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
 async def test_command_dispatch_is_persistently_replayed() -> None:
     def write(
         capabilities: Capabilities,
@@ -198,6 +236,15 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
     }
     assert capabilities.writes == 1
     assert executor.commands == 2
+
+    with pytest.raises(AppError, match="tool_invocation_conflict") as conflict:
+        await dispatcher.dispatch(
+            name="write_tool",
+            raw_arguments={"value": "different"},
+            context=_context(),
+        )
+    assert conflict.value.code == "tool_invocation_conflict"
+    assert capabilities.writes == 1
 
 
 def test_workspace_profiles_share_one_canonical_definition_set() -> None:
