@@ -851,9 +851,12 @@ def build_workspace_tool_catalog(
         ),
         ToolDefinition(
             "get_paper_citation",
-            "Resolve and format bibliographic metadata for one paper.",
+            (
+                "Resolve bibliographic metadata for one paper and persist "
+                "recovered fields."
+            ),
             PaperCitationInput,
-            query,
+            command,
             _get_paper_citation,
         ),
         ToolDefinition(

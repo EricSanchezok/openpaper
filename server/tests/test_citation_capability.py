@@ -2,8 +2,13 @@ from uuid import uuid4
 
 from app.main import app
 from app.modules.papers.application.citations import ResolveCitation
+from app.modules.papers.application.contracts.citation import (
+    CitationData,
+    CitationResult,
+)
 from app.modules.papers.domain.citations import CitationFields
 from app.shared.application import Actor
+from app.transport.http.public_v1.documents.router import get_document_citation
 
 
 class CitationGateway:
@@ -64,3 +69,43 @@ def test_citation_is_one_shared_public_paper_capability() -> None:
         ]["application/json"]["schema"]["$ref"]
         == "#/components/schemas/CitationResult"
     )
+
+
+def test_http_citation_commits_recovered_metadata() -> None:
+    document_id = uuid4()
+    expected = CitationResult(
+        document_id=str(document_id),
+        preferred_style="APA",
+        style_display="APA 7th Edition",
+        data=CitationData(document_id=str(document_id), title="A Paper"),
+        method="cached",
+    )
+
+    class Capabilities:
+        @staticmethod
+        def citations(**_kwargs: object) -> CitationResult:
+            return expected
+
+    class Executor:
+        def __init__(self) -> None:
+            self.commands = 0
+
+        def query(self, _operation: object) -> CitationResult:
+            raise AssertionError("write-capable citation resolution used query")
+
+        def command(self, operation: object) -> CitationResult:
+            self.commands += 1
+            return operation(Capabilities())  # type: ignore[operator]
+
+    executor = Executor()
+
+    result = get_document_citation(
+        document_id=document_id,
+        style="APA",
+        project_id=None,
+        executor=executor,  # type: ignore[arg-type]
+        current_user=actor(),
+    )
+
+    assert result == expected
+    assert executor.commands == 1

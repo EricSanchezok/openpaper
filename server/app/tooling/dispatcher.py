@@ -17,10 +17,48 @@ from app.tooling.contracts import (
     ToolOutcome,
 )
 from app.tooling.invocations import ToolInvocationGateway
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 CapabilitiesT = TypeVar("CapabilitiesT", bound="ToolInvocationCapabilities")
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+
+
+class _PersistedToolOutcome(BaseModel):
+    payload: JsonValue
+    evidence: dict[str, list[str]] = Field(default_factory=dict)
+    artifacts: list[dict[str, JsonValue]] = Field(default_factory=list)
+    action: dict[str, JsonValue] | None = None
+    stop: bool = False
+
+
+def _persisted_outcome(outcome: ToolOutcome) -> JsonValue:
+    return _JSON_VALUE.validate_python(
+        _PersistedToolOutcome(
+            payload=outcome.payload,
+            evidence=outcome.evidence,
+            artifacts=outcome.artifacts,
+            action=outcome.action,
+            stop=outcome.stop,
+        ).model_dump(mode="json")
+    )
+
+
+def _restore_outcome(value: JsonValue) -> ToolOutcome:
+    try:
+        persisted = _PersistedToolOutcome.model_validate(value)
+    except ValidationError as exc:
+        raise AppError(
+            kind=FailureKind.DEPENDENCY_FAILURE,
+            code="tool_invocation_result_invalid",
+            message="Stored tool invocation result is invalid",
+        ) from exc
+    return ToolOutcome(
+        payload=persisted.payload,
+        evidence=persisted.evidence,
+        artifacts=persisted.artifacts,
+        action=persisted.action,
+        stop=persisted.stop,
+    )
 
 
 class ToolInvocationCapabilities(Protocol):
@@ -100,10 +138,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                 ),
             )
             if replay is not None:
-                return ToolOutcome(
-                    payload=replay,
-                    action={"replayed": True, "result": replay},
-                )
+                return _restore_outcome(replay)
             outcome = await workflow_handler(
                 context,
                 arguments,
@@ -117,7 +152,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                     source=context.source,
                     tool_name=name,
                     arguments_hash=fingerprint,
-                    result=_JSON_VALUE.validate_python(outcome.payload),
+                    result=_persisted_outcome(outcome),
                 ),
             )
             return outcome
@@ -135,10 +170,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                 arguments_hash=fingerprint,
             )
             if replay is not None:
-                return ToolOutcome(
-                    payload=replay,
-                    action={"replayed": True, "result": replay},
-                )
+                return _restore_outcome(replay)
             outcome = command_handler(capabilities, context, arguments)
             capabilities.tool_invocations.complete(
                 actor_id=context.actor.id,
@@ -146,7 +178,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                 source=context.source,
                 tool_name=name,
                 arguments_hash=fingerprint,
-                result=_JSON_VALUE.validate_python(outcome.payload),
+                result=_persisted_outcome(outcome),
             )
             return outcome
 

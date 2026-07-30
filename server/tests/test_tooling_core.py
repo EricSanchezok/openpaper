@@ -199,6 +199,8 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
         capabilities.writes += 1
         return ToolOutcome(
             payload={"value": parsed.value},
+            evidence={"paper-1": ["1: evidence"]},
+            artifacts=[{"kind": "artifact"}],
             action={"kind": "write"},
         )
 
@@ -230,10 +232,9 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
 
     assert first.payload == {"value": "same"}
     assert second.payload == {"value": "same"}
-    assert second.action == {
-        "replayed": True,
-        "result": {"value": "same"},
-    }
+    assert second.evidence == first.evidence
+    assert second.artifacts == first.artifacts
+    assert second.action == {"kind": "write"}
     assert capabilities.writes == 1
     assert executor.commands == 2
 
@@ -260,6 +261,10 @@ def test_workspace_profiles_share_one_canonical_definition_set() -> None:
     assert "STOP" not in conversation_by_name
     assert "read_file" not in conversation_by_name
     assert len(mcp_by_name) == 32
+    assert (
+        mcp_by_name["get_paper_citation"].execution
+        is ToolExecutionKind.COMMAND
+    )
     for name, mcp_tool in mcp_by_name.items():
         conversation_tool = conversation_by_name[name]
         assert conversation_tool is mcp_tool

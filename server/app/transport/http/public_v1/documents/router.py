@@ -218,7 +218,8 @@ def get_document_citation(
     ),
     current_user: Actor = Depends(get_required_user),
 ) -> CitationResult:
-    return executor.query(
+    # Citation resolution may recover and persist missing bibliographic fields.
+    return executor.command(
         lambda capabilities: capabilities.citations(
             actor=current_user,
             document_id=document_id,

@@ -1,20 +1,29 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import cast
+from typing import Any, cast
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind
-from app.tooling import ToolCallContext, ToolDispatcher, ToolOutcome
+from app.tooling import (
+    ToolCatalog,
+    ToolCallContext,
+    ToolDefinition,
+    ToolDispatcher,
+    ToolExecutionKind,
+    ToolOutcome,
+    ToolProfile,
+)
 from app.tooling.workspace import build_workspace_tool_catalog
 from app.transport.mcp.server import build_mcp_transport
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from mcp.server.transport_security import TransportSecuritySettings
 import pytest
+from pydantic import BaseModel, ConfigDict
 from starlette.applications import Starlette
 from starlette.routing import Route
 
@@ -37,6 +46,22 @@ class RecordingDispatcher:
         return ToolOutcome(payload={"tool": name, "arguments": raw_arguments})
 
 
+class EmptyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class MinimalCapabilities:
+    pass
+
+
+class MinimalExecutor:
+    def query(
+        self,
+        operation: Callable[[MinimalCapabilities], Any],
+    ) -> Any:
+        return operation(MinimalCapabilities())
+
+
 def _actor() -> Actor:
     return Actor(
         id=7,
@@ -46,22 +71,20 @@ def _actor() -> Actor:
     )
 
 
-def _transport() -> tuple[Starlette, RecordingDispatcher]:
-    catalog = build_workspace_tool_catalog(
-        ingestion=cast(PaperIngestionWorkflow, object())
-    )
-    recording = RecordingDispatcher()
-
+def _application(
+    catalog: ToolCatalog[Any],
+    dispatcher: object,
+) -> Starlette:
     async def authenticate(token: str) -> Actor:
         if token != "active-token":
             raise HTTPException(status_code=401, detail="Session revoked or expired")
         return _actor()
 
     manager, endpoint = build_mcp_transport(
-        catalog=catalog,
+        catalog=cast(ToolCatalog[ApplicationCapabilities], catalog),
         dispatcher=cast(
             ToolDispatcher[ApplicationCapabilities],
-            recording,
+            dispatcher,
         ),
         security_settings=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
@@ -76,13 +99,18 @@ def _transport() -> tuple[Starlette, RecordingDispatcher]:
         async with manager.run():
             yield
 
-    return (
-        Starlette(
-            routes=[Route("/mcp", endpoint=endpoint)],
-            lifespan=lifespan,
-        ),
-        recording,
+    return Starlette(
+        routes=[Route("/mcp", endpoint=endpoint)],
+        lifespan=lifespan,
     )
+
+
+def _transport() -> tuple[Starlette, RecordingDispatcher]:
+    catalog = build_workspace_tool_catalog(
+        ingestion=cast(PaperIngestionWorkflow, object())
+    )
+    recording = RecordingDispatcher()
+    return _application(catalog, recording), recording
 
 
 async def _initialize(client: AsyncClient) -> dict[str, str]:
@@ -221,4 +249,44 @@ async def test_mcp_maps_application_errors_to_structured_tool_errors() -> None:
         "code": "project_access_denied",
         "message": "Project access denied",
         "details": {"project_id": "missing"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_mcp_call_runs_through_the_shared_dispatcher() -> None:
+    catalog = ToolCatalog(
+        [
+            ToolDefinition(
+                name="who_am_i",
+                description="Return the authenticated actor.",
+                input_model=EmptyInput,
+                execution=ToolExecutionKind.QUERY,
+                handler=lambda _capabilities, context, _arguments: ToolOutcome(
+                    payload={"actor_id": context.actor.id}
+                ),
+            )
+        ],
+        [ToolProfile(name="mcp", tool_names=frozenset({"who_am_i"}))],
+    )
+    dispatcher = ToolDispatcher(catalog=catalog, executor=MinimalExecutor())
+    application = _application(catalog, dispatcher)
+    async with application.router.lifespan_context(application):
+        async with AsyncClient(
+            transport=ASGITransport(app=application),
+            base_url="http://testserver",
+        ) as client:
+            headers = await _initialize(client)
+            response = await client.post(
+                "/mcp",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "call-tool",
+                    "method": "tools/call",
+                    "params": {"name": "who_am_i", "arguments": {}},
+                },
+            )
+
+    assert response.json()["result"]["structuredContent"]["result"] == {
+        "actor_id": 7
     }
