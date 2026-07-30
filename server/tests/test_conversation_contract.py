@@ -3,33 +3,36 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.settings import AppSettings
-from app.bootstrap.adapters.conversation_chat import (
-    chat_message_multipaper,
-)
 from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
-from app.database.models import Conversation, Message
+from app.database.models import (
+    Conversation,
+    ConversationContextDocument,
+    ConversationContextProject,
+    Message,
+)
 from app.shared.domain import AppError, FailureKind
 from app.main import app
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.bootstrap.adapters.conversation_lifecycle import (
     SqlAlchemyConversationGateway,
 )
+from app.bootstrap.adapters.conversation_chat_data import (
+    SqlAlchemyConversationChatData,
+)
+from app.modules.conversations.application.chat import ConversationChatScope
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
+    LibraryPaperContext,
     ConversationMoveRequest,
+    SelectedPaperContext,
     ConversationUpdateRequest,
 )
 from app.modules.conversations.infrastructure.presenters import serialize_messages
-from app.modules.conversations.application.contracts.messages import (
-    MultiPaperChatRequest,
-)
 from app.modules.conversations.infrastructure.message_repository import MessageCreate
 from app.shared.application import Actor
-from app.shared.infrastructure import SqlAlchemyApplicationExecutor
+from app.shared.domain.enums import ConversationScopeType
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -74,6 +77,7 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
 
     assert "/api/v1/conversations" in paths
     assert "/api/v1/conversations/{conversation_id}/scope" in paths
+    assert "/api/v1/conversations/{conversation_id}/context" in paths
     assert "/api/v1/conversations/{conversation_id}/messages" in paths
     assert not any(path.startswith("/api/v1/conversation/") for path in paths)
     assert not any(path.startswith("/api/v1/projects/conversations") for path in paths)
@@ -84,6 +88,7 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     assert table.c.title.nullable is False
     assert {
         "scope_type",
+        "paper_context_kind",
         "project_id",
         "document_id",
         "context_deleted_at",
@@ -92,6 +97,14 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
         "scope_label_snapshot",
     } <= set(table.c.keys())
     assert "conversable_id" not in table.c
+    assert {
+        "conversation_id",
+        "project_id",
+    } <= set(ConversationContextProject.__table__.c.keys())
+    assert {
+        "conversation_id",
+        "document_id",
+    } <= set(ConversationContextDocument.__table__.c.keys())
     assert "user_id" not in Message.__table__.c
     assert any(
         constraint.name == "uq_messages_conversation_sequence"
@@ -192,6 +205,38 @@ def test_paper_conversation_scope_is_immutable(
     db.commit.assert_not_called()
 
 
+def test_moving_project_conversation_to_library_resets_paper_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        title="Project",
+        user_id=1,
+        scope_type="project",
+        project_id=uuid.uuid4(),
+        paper_context_kind="selection",
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = conversation
+    monkeypatch.setattr(
+        "app.bootstrap.adapters.conversation_repository.conversation_policy.require_can_continue",
+        lambda *_args, **_kwargs: None,
+    )
+
+    moved = conversation_repository.move(
+        db,
+        conversation_id=conversation.id,
+        user_id=1,
+        request=ConversationMoveRequest(scope_type="global"),
+    )
+
+    assert moved.scope_type == "global"
+    assert moved.project_id is None
+    assert moved.paper_context_kind == "library"
+    assert db.execute.call_count == 2
+    db.commit.assert_not_called()
+
+
 def test_archiving_a_conversation_also_unpins_it() -> None:
     now = datetime.now(timezone.utc)
     conversation = Conversation(
@@ -217,61 +262,6 @@ def test_archiving_a_conversation_also_unpins_it() -> None:
     db.flush.assert_called()
 
 
-@pytest.mark.asyncio
-async def test_chat_scope_is_rejected_before_rate_or_concurrency_leases(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    conversation = Conversation(
-        id=uuid.uuid4(),
-        title="Paper",
-        user_id=1,
-        scope_type="paper",
-        document_id=uuid.uuid4(),
-    )
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.conversation_chat_data.has_token_credits",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        conversation_repository,
-        "require_owned",
-        lambda *_args, **_kwargs: conversation,
-    )
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.conversation_chat_data.conversation_policy.require_can_continue",
-        lambda *_args, **_kwargs: None,
-    )
-    enforce_rate_limit = MagicMock()
-    acquire_concurrency = MagicMock()
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.conversation_chat.enforce_rate_limit",
-        enforce_rate_limit,
-    )
-    monkeypatch.setattr(
-        "app.bootstrap.adapters.conversation_chat.acquire_concurrency",
-        acquire_concurrency,
-    )
-    with pytest.raises(AppError) as exc_info:
-        db = MagicMock(spec=Session)
-        executor = SqlAlchemyApplicationExecutor(
-            MagicMock(return_value=db),
-            lambda session: ApplicationCapabilities(session, AppSettings()),
-        )
-        await chat_message_multipaper(
-            request=MultiPaperChatRequest(
-                conversation_id=str(conversation.id),
-                user_query="Question",
-            ),
-            client_ip="127.0.0.1",
-            executor=executor,
-            current_user=_current_user(),
-        )
-
-    assert exc_info.value.code == "conversation_scope_mismatch"
-    enforce_rate_limit.assert_not_called()
-    acquire_concurrency.assert_not_called()
-
-
 def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:
     with pytest.raises(ValidationError):
         ConversationCreateRequest.model_validate({"scope_type": "project"})
@@ -282,6 +272,140 @@ def test_conversation_scope_payloads_reject_inconsistent_ids() -> None:
                 "scope_id": str(uuid.uuid4()),
             }
         )
+
+
+def test_selected_paper_context_deduplicates_and_sorts_ids() -> None:
+    first = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    second = uuid.UUID("00000000-0000-0000-0000-000000000002")
+
+    context = SelectedPaperContext.model_validate(
+        {
+            "project_ids": [str(second), str(first), str(second)],
+            "document_ids": [str(second), str(first), str(first)],
+        }
+    )
+
+    assert context.project_ids == [first, second]
+    assert context.document_ids == [first, second]
+
+
+def test_library_paper_context_rejects_selection_fields() -> None:
+    with pytest.raises(ValidationError):
+        LibraryPaperContext.model_validate(
+            {"kind": "library", "document_ids": [str(uuid.uuid4())]}
+        )
+
+
+def test_conversation_context_keeps_anchor_and_drops_lost_extra_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_project = uuid.uuid4()
+    lost_project = uuid.uuid4()
+    accessible_document = uuid.uuid4()
+    lost_document = uuid.uuid4()
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        title="Project chat",
+        user_id=1,
+        scope_type="project",
+        project_id=anchor_project,
+        paper_context_kind="selection",
+    )
+    db = MagicMock(spec=Session)
+    project_rows = MagicMock()
+    project_rows.all.return_value = [lost_project]
+    document_rows = MagicMock()
+    document_rows.all.return_value = [accessible_document, lost_document]
+    db.scalars.side_effect = [project_rows, document_rows]
+    monkeypatch.setattr(
+        "app.bootstrap.adapters.conversation_repository.get_project_access",
+        lambda _db, *, project_id, user_id: (
+            object() if project_id == anchor_project else None
+        ),
+    )
+    monkeypatch.setattr(
+        "app.bootstrap.adapters.conversation_repository.get_document_access",
+        lambda _db, *, document_id, user_id: (
+            object() if document_id == accessible_document else None
+        ),
+    )
+
+    context = conversation_repository.paper_context(
+        db,
+        conversation=conversation,
+        user_id=1,
+    )
+
+    assert context.kind == "selection"
+    assert context.project_ids == [anchor_project]
+    assert context.document_ids == [accessible_document]
+
+
+def test_global_conversation_defaults_to_personal_library_context() -> None:
+    db = MagicMock(spec=Session)
+
+    conversation = conversation_repository.create(
+        db,
+        request=ConversationCreateRequest(scope_type="global"),
+        user_id=1,
+        refresh_result=False,
+    )
+
+    assert conversation.paper_context_kind == "library"
+    db.commit.assert_not_called()
+    db.flush.assert_called()
+
+
+def test_paper_context_snapshot_only_loads_anchor_full_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_id = uuid.uuid4()
+    extra_id = uuid.uuid4()
+    papers = {
+        anchor_id: MagicMock(
+            id=anchor_id,
+            title="Anchor",
+            abstract="Anchor abstract",
+            raw_content="Anchor full text",
+            keywords=["anchor"],
+            authors=["A"],
+            publish_date=None,
+        ),
+        extra_id: MagicMock(
+            id=extra_id,
+            title="Extra",
+            abstract="Must not be injected",
+            raw_content="Must not be injected",
+            keywords=["extra"],
+            authors=["B"],
+            publish_date=None,
+        ),
+    }
+    monkeypatch.setattr(
+        "app.bootstrap.adapters.conversation_chat_data.document_repository.find_accessible",
+        lambda _db, *, document_id, user: papers.get(document_id),
+    )
+    db = MagicMock(spec=Session)
+    db.execute.return_value.all.return_value = []
+    adapter = SqlAlchemyConversationChatData(db)
+
+    snapshot = adapter.context(
+        actor=_current_user(),
+        scope=ConversationChatScope(
+            scope_type=ConversationScopeType.PAPER,
+            project_id=None,
+            document_id=anchor_id,
+            paper_context=SelectedPaperContext(
+                document_ids=[anchor_id, extra_id],
+            ),
+        ),
+    )
+
+    by_id = {paper.document_id: paper for paper in snapshot.papers}
+    assert by_id[anchor_id].raw_content == "Anchor full text"
+    assert by_id[anchor_id].abstract == "Anchor abstract"
+    assert by_id[extra_id].raw_content is None
+    assert by_id[extra_id].abstract is None
 
 
 def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -> None:

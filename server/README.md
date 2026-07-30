@@ -114,12 +114,12 @@ The response agent works by sending off an agent with access to a series of rese
 
 ![knowledge base research diagram](./lr_research_diagram.png)
 
-Multi-paper chat workflow:
+Unified Conversation agent workflow:
 
 ```
 +----------------+      +-------------------------------------------------+    +-------------------+
 |      User      |----->|             FastAPI Server                    |----->|        LLM        |
-+----------------+      |       (multi_paper_operations.py)             |      +-------------------+
++----------------+      |         (conversation_agent.py)               |      +-------------------+
         ^             |                                                 |              ^
         |             |  1. gather_evidence(question)                   |              |
         |             |     - Iteratively calls LLM with tools:         |              |
@@ -128,7 +128,7 @@ Multi-paper chat workflow:
         |             |       - ...                                     |
         |             |     - Compacts evidence if it gets too large    |
         |             |                                                 |
-        |             |  2. chat_with_papers(question, evidence)        |
+        |             |  2. stream_answer(question, evidence)           |
         |             |     - Sends evidence and question to LLM        |--------------+
         |             |     - Streams response back to user             |              |
         |             |     - Parses citations from response            |              |

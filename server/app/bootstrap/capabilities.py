@@ -20,8 +20,8 @@ from app.bootstrap.container import (
     build_paper_ingestion,
     build_paper_library,
     build_paper_search,
+    build_paper_search_access,
     build_paper_topics,
-    build_project_document_visibility,
     build_projects,
     build_research_generation,
     build_research_items,
@@ -78,7 +78,7 @@ class ApplicationCapabilities:
                 db=self._session,
             ),
             SearchCursorCodec(self._settings.paper_search_cursor_secret),
-            build_project_document_visibility(db=self._session),
+            build_paper_search_access(db=self._session),
         )
 
     @cached_property
@@ -87,8 +87,7 @@ class ApplicationCapabilities:
             build_paper_search(
                 backend=self._settings.paper_search_backend,
                 db=self._session,
-            ),
-            build_project_document_visibility(db=self._session),
+            )
         )
 
     @cached_property

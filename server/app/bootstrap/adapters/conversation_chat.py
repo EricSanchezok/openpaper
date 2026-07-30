@@ -5,9 +5,8 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.shared.domain import JsonValue
 from app.database.telemetry import track_event
-from app.shared.domain import AppError, FailureKind
+from app.shared.domain import AppError, FailureKind, JsonValue
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
@@ -16,17 +15,13 @@ from app.helpers.ai_limits import (
 )
 from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_operations import conversation_operations
-from app.llm.multi_paper_operations import multi_paper_operations
-from app.llm.paper_operations import paper_operations
+from app.llm.conversation_agent import conversation_agent_runtime
 from app.llm.token_credits import llm_usage_context
 from app.modules.conversations.application.contracts.messages import (
-    ChatMessageRequest,
     ConversationMessageRequest,
     EvidenceCollection,
-    MultiPaperChatRequest,
 )
 from app.shared.application import Actor, ApplicationExecutor
-from app.shared.domain.enums import ConversationScopeType
 from app.modules.conversations.infrastructure.chat_streaming import (
     stream_with_stable_error,
 )
@@ -139,9 +134,10 @@ async def _stream_chat_chunks(
             yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
 
 
-async def chat_message_multipaper(
-    request: MultiPaperChatRequest,
+async def stream_conversation_agent(
+    request: ConversationMessageRequest,
     *,
+    conversation_id: uuid.UUID,
     client_ip: str,
     executor: ApplicationExecutor[ApplicationCapabilities],
     current_user: Actor,
@@ -149,25 +145,15 @@ async def chat_message_multipaper(
     """
     Send a chat message and stream the response from the LLM.
 
-    This searches over the entire corpus of papers and returns a response based on the user's query.
-    The response includes both the content and any relevant evidence gathered.
+    Search and read within the Conversation's server-bound paper context, then
+    stream one cited answer through the shared runtime.
     """
-    conversation_id = uuid.UUID(request.conversation_id)
     conversation_scope = executor.query(
         lambda capabilities: capabilities.conversation_chat_data.prepare(
             actor=current_user,
             conversation_id=conversation_id,
         )
     )
-    if conversation_scope.scope_type not in {
-        ConversationScopeType.GLOBAL,
-        ConversationScopeType.PROJECT,
-    }:
-        raise AppError(
-            code="conversation_scope_mismatch",
-            message="This conversation cannot be used for a library chat",
-            kind=FailureKind.CONFLICT,
-        )
     project_id = conversation_scope.project_id
     try:
         await enforce_rate_limit(
@@ -195,31 +181,50 @@ async def chat_message_multipaper(
         evidence_container: EvidenceState = {"evidence": None}
         evidence_collection: EvidenceCollection | None = None
 
-        # @-mention scoping: resolve mentioned papers/projects/highlights
-        # into a flat set of in-scope paper ids (None == no scoping), a
-        # denormalized snapshot to persist on the user message, and the
-        # highlight passages to inject into the answer.
-        mention_request = ConversationMessageRequest.model_validate(
-            request.model_dump(exclude={"conversation_id"})
-        )
         mentions = executor.query(
             lambda capabilities: capabilities.conversation_chat_data.mentions(
                 actor=current_user,
-                request=mention_request,
-                project_id=project_id,
+                request=request,
             )
         )
-        scoped_document_ids = mentions.document_ids
-        scope_snapshot = mentions.snapshot
         mentioned_highlights = mentions.highlights
+        context_snapshot = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.context(
+                actor=current_user,
+                scope=conversation_scope,
+            )
+        )
+        scope_snapshot: list[dict[str, JsonValue]] = []
+        if conversation_scope.paper_context.kind == "library":
+            scope_snapshot.append(
+                {"kind": "library", "id": "library", "title": "Library"}
+            )
+        else:
+            scope_snapshot.extend(
+                {
+                    "kind": "project",
+                    "id": str(project.project_id),
+                    "title": project.title,
+                }
+                for project in context_snapshot.projects
+            )
+            scope_snapshot.extend(
+                {
+                    "kind": "paper",
+                    "id": str(paper.document_id),
+                    "title": paper.title,
+                }
+                for paper in context_snapshot.papers
+            )
+        if mentions.snapshot:
+            scope_snapshot.extend(mentions.snapshot)
 
-        async for chunk in multi_paper_operations.gather_evidence(
-            conversation_id=request.conversation_id,
+        async for chunk in conversation_agent_runtime.gather_evidence(
+            conversation_id=str(conversation_id),
             question=request.user_query,
             current_user=current_user,
             executor=executor,
-            project_id=str(project_id) if project_id is not None else None,
-            restrict_to_document_ids=scoped_document_ids,
+            conversation_scope=conversation_scope,
         ):
             # Parse the chunk as a dictionary
             if isinstance(chunk, dict):
@@ -240,9 +245,18 @@ async def chat_message_multipaper(
 
         # Artifacts (e.g. a citation card from find_citation) count as
         # a real outcome — only short-circuit if we have neither.
+        anchor_paper = next(
+            (
+                paper
+                for paper in context_snapshot.papers
+                if paper.document_id == conversation_scope.document_id
+            ),
+            None,
+        )
         if evidence_collection is None or (
             len(evidence_collection.evidence) == 0
             and len(evidence_collection.artifacts) == 0
+            and (anchor_paper is None or not anchor_paper.raw_content)
         ):
             json_response = json.dumps(
                 {
@@ -255,29 +269,18 @@ async def chat_message_multipaper(
 
         yield f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}{END_DELIMITER}"
 
-        all_papers = executor.query(
-            lambda capabilities: capabilities.conversation_chat_data.papers(
-                actor=current_user,
-                project_id=project_id,
-            )
-        )
-
-        # Keep the answer-generation paper set aligned with the scoped
-        # evidence space so citations can't reference out-of-scope papers.
-        if scoped_document_ids is not None:
-            allowed_ids = set(scoped_document_ids)
-            all_papers = [
-                paper for paper in all_papers if str(paper.document_id) in allowed_ids
-            ]
-
-        chat_generator = multi_paper_operations.chat_with_papers(
+        chat_generator = conversation_agent_runtime.stream_answer(
             question=request.user_query,
             reasoning_level=request.reasoning_level,
             user_references=request.user_references,
             evidence_gathered=evidence_collection,
-            conversation_id=request.conversation_id,
+            conversation_id=str(conversation_id),
             current_user=current_user,
-            all_papers=all_papers,
+            all_papers=context_snapshot.papers,
+            anchor_paper=anchor_paper,
+            context_snapshot=context_snapshot,
+            scope_type=conversation_scope.scope_type,
+            response_style=request.style,
             mentioned_highlights=mentioned_highlights,
             executor=executor,
         )
@@ -365,29 +368,18 @@ async def chat_message_multipaper(
                 )
             )
 
-        # @-mention scoping usage: whether the client asked to scope,
-        # what actually resolved (by entity type), and the effective
-        # search-space size after resolution.
         scope_items = scope_snapshot or []
         mention_scope_props = {
-            "requested_mention_scope": bool(
-                request.mentioned_document_ids
-                or request.mentioned_project_ids
-                or request.mentioned_highlight_ids
-            ),
-            "used_mention_scope": len(scope_items) > 0,
-            "num_mentioned_papers": sum(
+            "num_context_papers": sum(
                 1 for i in scope_items if i.get("kind") == "paper"
             ),
-            "num_mentioned_projects": sum(
+            "num_context_projects": sum(
                 1 for i in scope_items if i.get("kind") == "project"
             ),
             "num_mentioned_highlights": sum(
                 1 for i in scope_items if i.get("kind") == "highlight"
             ),
-            "num_scoped_papers": (
-                len(scoped_document_ids) if scoped_document_ids is not None else 0
-            ),
+            "uses_library_context": conversation_scope.paper_context.kind == "library",
         }
 
         # Track chat message event
@@ -409,171 +401,16 @@ async def chat_message_multipaper(
         try:
             with llm_usage_context(
                 user_id=int(current_user.id),
-                feature="chat_multi_paper",
+                feature="chat",
             ):
                 async for event in stream_with_stable_error(
                     run_response_generator(),
                     delimiter=END_DELIMITER,
-                    event_name="everything_chat_message_error",
+                    event_name="conversation_chat_message_error",
                     user_id=current_user.id,
                     properties={
-                        "type": "everything",
-                        "conversation_id": request.conversation_id,
-                    },
-                ):
-                    yield event
-        finally:
-            await release_concurrency(concurrency_lease)
-
-    return response_generator()
-
-
-async def chat_message_stream(
-    request: ChatMessageRequest,
-    *,
-    client_ip: str,
-    executor: ApplicationExecutor[ApplicationCapabilities],
-    current_user: Actor,
-) -> AsyncGenerator[str, None]:
-    """
-    Send a chat message and stream the response from the LLM
-
-    The response style can be:
-    - normal: Standard balanced response
-    - concise: Short and to the point
-    - detailed: Comprehensive and thorough
-    """
-    conversation_id = uuid.UUID(request.conversation_id)
-    conversation_scope = executor.query(
-        lambda capabilities: capabilities.conversation_chat_data.prepare(
-            actor=current_user,
-            conversation_id=conversation_id,
-        )
-    )
-    if (
-        conversation_scope.scope_type is not ConversationScopeType.PAPER
-        or conversation_scope.document_id is None
-    ):
-        raise AppError(
-            code="conversation_scope_mismatch",
-            message="This conversation cannot be used for a paper chat",
-            kind=FailureKind.CONFLICT,
-        )
-    document_id = str(conversation_scope.document_id)
-    try:
-        await enforce_rate_limit(
-            user_id=int(current_user.id),
-            ip_address=client_ip,
-            feature="chat",
-        )
-        concurrency_lease = await acquire_concurrency(
-            user_id=int(current_user.id),
-            category="interactive",
-        )
-    except AILimitExceeded as exc:
-        raise AppError(
-            code=exc.code,
-            message="AI request limit exceeded",
-            kind=FailureKind.RATE_LIMITED,
-        ) from None
-
-    async def run_response_generator() -> AsyncGenerator[str, None]:
-        content_chunks: list[str] = []
-        reasoning_chunks: list[str] = []
-        start_time = datetime.now(timezone.utc)
-        evidence_container: EvidenceState = {"evidence": None}
-        chat_generator = paper_operations.chat_with_paper(
-            document_id=document_id,
-            conversation_id=request.conversation_id,
-            question=request.user_query,
-            current_user=current_user,
-            reasoning_level=request.reasoning_level,
-            user_references=request.user_references,
-            response_style=request.style,
-            executor=executor,
-        )
-
-        async for chunk in _stream_chat_chunks(
-            chunk_generator=chat_generator,
-            content_chunks=content_chunks,
-            evidence_container=evidence_container,
-            reasoning_chunks=reasoning_chunks,
-        ):
-            yield chunk
-
-        evidence = evidence_container["evidence"]
-
-        # Save the complete message to the database
-        full_content = "".join(content_chunks)
-        assistant_trace = (
-            {"reasoning_content": "".join(reasoning_chunks)}
-            if reasoning_chunks
-            else None
-        )
-        if assistant_trace:
-            yield f"{json.dumps({'type': 'trace', 'content': assistant_trace})}{END_DELIMITER}"
-
-        formatted_references = (
-            CitationHandler.convert_references_to_dict(
-                references=request.user_references
-            )
-            if request.user_references
-            else None
-        )
-
-        executor.command(
-            lambda capabilities: capabilities.conversation_chat_data.save_turn(
-                actor=current_user,
-                conversation_id=conversation_id,
-                user_content=request.user_query,
-                user_references=(
-                    _JSON_OBJECT.validate_python(formatted_references)
-                    if formatted_references is not None
-                    else None
-                ),
-                scope=None,
-                assistant_content=full_content,
-                assistant_references=(
-                    _JSON_OBJECT.validate_python(evidence) if evidence else None
-                ),
-                assistant_trace=(
-                    _JSON_OBJECT.validate_python(assistant_trace)
-                    if assistant_trace is not None
-                    else None
-                ),
-                artifacts=[],
-            )
-        )
-
-        # Track chat message event
-        track_event(
-            "did_chat_message",
-            properties={
-                "response_style": (request.style.value if request.style else "normal"),
-                "has_user_references": bool(request.user_references),
-                "has_evidence": bool(evidence),
-                "reasoning_level": request.reasoning_level.value,
-                "time_taken": (datetime.now(timezone.utc) - start_time).total_seconds(),
-                "document_id": document_id,
-                "type": "paper",
-            },
-            user_id=str(current_user.id),
-        )
-
-    async def response_generator() -> AsyncGenerator[str, None]:
-        try:
-            with llm_usage_context(
-                user_id=int(current_user.id),
-                feature="chat_paper",
-            ):
-                async for event in stream_with_stable_error(
-                    run_response_generator(),
-                    delimiter=END_DELIMITER,
-                    event_name="chat_message_error",
-                    user_id=current_user.id,
-                    properties={
-                        "document_id": document_id,
-                        "conversation_id": request.conversation_id,
+                        "type": conversation_scope.scope_type.value,
+                        "conversation_id": str(conversation_id),
                     },
                 ):
                     yield event
@@ -584,7 +421,7 @@ async def chat_message_stream(
 
 
 class DefaultConversationChatGateway:
-    """Adapts the legacy LLM engine to the stable Conversation use case."""
+    """Runs every Conversation scope through the shared agent runtime."""
 
     def __init__(
         self,
@@ -600,35 +437,9 @@ class DefaultConversationChatGateway:
         request: ConversationMessageRequest,
         client_ip: str,
     ) -> AsyncGenerator[str, None]:
-        scope = self._executor.query(
-            lambda capabilities: capabilities.conversation_chat_data.prepare(
-                actor=actor,
-                conversation_id=conversation_id,
-            )
-        )
-        if scope.scope_type is ConversationScopeType.PAPER:
-            return await chat_message_stream(
-                ChatMessageRequest(
-                    conversation_id=str(conversation_id),
-                    user_query=request.user_query,
-                    user_references=request.user_references,
-                    style=request.style,
-                    reasoning_level=request.reasoning_level,
-                ),
-                client_ip=client_ip,
-                executor=self._executor,
-                current_user=actor,
-            )
-        return await chat_message_multipaper(
-            MultiPaperChatRequest(
-                conversation_id=str(conversation_id),
-                user_query=request.user_query,
-                user_references=request.user_references,
-                reasoning_level=request.reasoning_level,
-                mentioned_document_ids=request.mentioned_document_ids,
-                mentioned_project_ids=request.mentioned_project_ids,
-                mentioned_highlight_ids=request.mentioned_highlight_ids,
-            ),
+        return await stream_conversation_agent(
+            request,
+            conversation_id=conversation_id,
             client_ip=client_ip,
             executor=self._executor,
             current_user=actor,

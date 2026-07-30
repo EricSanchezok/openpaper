@@ -64,48 +64,6 @@ class CitationHandler:
         )
 
     @staticmethod
-    def parse_evidence_block(evidence_text: str) -> list["CitationPayload"]:
-        """
-        Parse evidence block into structured citations
-        Handles multi-line citations between @cite markers
-
-        Incoming format of evidence_text:
-        @cite[1]
-        "First piece of evidence"
-        @cite[2]
-        "Second piece of evidence"
-        """
-        citations: list[CitationPayload] = []
-        lines = evidence_text.strip().split("\n")
-        current_citation: CitationPayload | None = None
-        current_text_lines: list[str] = []
-
-        for line in lines:
-            line = line.strip()
-            if line.startswith("@cite["):
-                # If we have a previous citation pending, save it
-                if current_citation is not None:
-                    current_citation["reference"] = " ".join(current_text_lines).strip()
-                    citations.append(current_citation)
-
-                # Start new citation
-                match = re.search(r"@cite\[(\d+)\]", line)
-                if match:
-                    number = int(match.group(1))
-                    current_citation = {"key": number, "reference": ""}
-                    current_text_lines = []
-            elif current_citation is not None and line:
-                # Accumulate lines for the current citation
-                current_text_lines.append(line)
-
-        # Don't forget to save the last citation
-        if current_citation is not None and current_text_lines:
-            current_citation["reference"] = " ".join(current_text_lines).strip()
-            citations.append(current_citation)
-
-        return citations
-
-    @staticmethod
     def convert_response_citation_to_paper_citation(
         response_citations: list[ResponseCitation],
     ) -> "CitationCollection":
@@ -122,7 +80,7 @@ class CitationHandler:
         return {"citations": citations}
 
     @staticmethod
-    def parse_multi_paper_evidence_block(evidence_text: str) -> list["CitationPayload"]:
+    def parse_evidence_block(evidence_text: str) -> list["CitationPayload"]:
         """
         Parse evidence block into structured citations from multiple papers.
         Handles multi-line citations between @cite markers

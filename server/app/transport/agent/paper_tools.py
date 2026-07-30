@@ -3,29 +3,32 @@ from logging import getLogger
 from time import time
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import create_paper_ingestion_workflow
 from app.modules.papers.application.contracts.search import (
+    LibraryPaperCollection,
     PaperSearchFilters,
     PaperSearchRequest,
-    PaperSearchScope,
+    SelectedPaperCollection,
 )
+from app.modules.conversations.application.chat import ConversationChatScope
 from app.shared.application import Actor, ApplicationExecutor
 
 logger = getLogger(__name__)
 
 
 def _ensure_paper_in_scope(
-    document_id: str, restrict_to_document_ids: list[str] | None
+    document_id: str,
+    current_user: Actor,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    conversation_scope: ConversationChatScope,
 ) -> None:
-    """Hard-fence a per-paper tool call to the @-mention scope when one is set.
-
-    The evidence loop already withholds out-of-scope papers from the model's
-    available-papers list, but this is a defense-in-depth check so a tool can
-    never operate on a paper outside the scoped set.
-    """
-    if (
-        restrict_to_document_ids is not None
-        and document_id not in restrict_to_document_ids
+    if not executor.query(
+        lambda capabilities: (
+            capabilities.conversation_chat_data.context_contains_document(
+                actor=current_user,
+                scope=conversation_scope,
+                document_id=uuid.UUID(document_id),
+            )
+        )
     ):
         raise ValueError("Paper is not in the scoped set for this conversation")
 
@@ -128,18 +131,16 @@ def read_file(
     document_id: str,
     current_user: Actor,
     executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
+    conversation_scope: ConversationChatScope,
 ) -> str:
     """
     Read the content of a file associated with a paper.
     """
-    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
+    _ensure_paper_in_scope(document_id, current_user, executor, conversation_scope)
     paper = executor.query(
         lambda capabilities: capabilities.paper_content.read(
             actor=current_user,
             document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id) if project_id else None,
         )
     )
     file_content = paper.raw_content
@@ -154,20 +155,18 @@ def search_file(
     query: str,
     current_user: Actor,
     executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
+    conversation_scope: ConversationChatScope,
 ) -> list[str]:
     """
     Search for a specific query (as regex) in the file content of a paper.
     Returns matching lines with line numbers.
     """
-    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
+    _ensure_paper_in_scope(document_id, current_user, executor, conversation_scope)
     return executor.query(
         lambda capabilities: capabilities.paper_content.search_document(
             actor=current_user,
             document_id=uuid.UUID(document_id),
             query=query,
-            project_id=uuid.UUID(project_id) if project_id else None,
         )
     )
 
@@ -176,36 +175,33 @@ def search_all_files(
     query: str,
     current_user: Actor,
     executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
+    conversation_scope: ConversationChatScope,
 ) -> dict[str, list[str]]:
     """
     Search for a specific query in the file content of all papers using full-text search.
     Returns a list of matching lines with paper IDs and line numbers.
 
-    When restrict_to_document_ids is provided (e.g. from @-mention scoping), the
-    search space is hard-limited to those papers.
+    The active Conversation paper collection is bound by the server; the model
+    only supplies its search query.
     """
     start_time = time()
 
+    context = conversation_scope.paper_context
+    collection = (
+        LibraryPaperCollection()
+        if context.kind == "library"
+        else SelectedPaperCollection(
+            project_ids=context.project_ids,
+            document_ids=context.document_ids,
+        )
+    )
     response = executor.query(
         lambda capabilities: capabilities.paper_search(
             actor=current_user,
             request=PaperSearchRequest(
                 query=query.replace("|", " OR "),
-                scope=(
-                    PaperSearchScope.PROJECTS
-                    if project_id is not None
-                    else PaperSearchScope.ALL
-                ),
-                filters=PaperSearchFilters(
-                    project_id=uuid.UUID(project_id) if project_id else None,
-                    document_ids=(
-                        [uuid.UUID(item) for item in restrict_to_document_ids]
-                        if restrict_to_document_ids is not None
-                        else None
-                    ),
-                ),
+                collection=collection,
+                filters=PaperSearchFilters(),
                 limit=100,
             ),
         )
@@ -234,18 +230,16 @@ def view_file(
     range_end: int,
     current_user: Actor,
     executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
+    conversation_scope: ConversationChatScope,
 ) -> str:
     """
     View a specific range of lines from the file content of a paper.
     """
-    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
+    _ensure_paper_in_scope(document_id, current_user, executor, conversation_scope)
     paper = executor.query(
         lambda capabilities: capabilities.paper_content.read(
             actor=current_user,
             document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id) if project_id else None,
         )
     )
     file_content = paper.raw_content
@@ -269,18 +263,16 @@ def read_abstract(
     document_id: str,
     current_user: Actor,
     executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
+    conversation_scope: ConversationChatScope,
 ) -> str:
     """
     Read the abstract of a paper.
     """
-    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
+    _ensure_paper_in_scope(document_id, current_user, executor, conversation_scope)
     paper = executor.query(
         lambda capabilities: capabilities.paper_content.read(
             actor=current_user,
             document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id) if project_id else None,
         )
     )
     abstract = paper.abstract
@@ -288,40 +280,3 @@ def read_abstract(
         return f"Abstract for {paper.title} not found"
 
     return f"Abstract:\n\n{abstract.strip()}\n\n"
-
-
-def get_download_url(
-    document_id: str,
-    current_user: Actor,
-    executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
-) -> dict[str, object]:
-    """Agent adapter over the same authorized download use case as HTTP."""
-    _ensure_paper_in_scope(document_id, restrict_to_document_ids)
-    result = executor.query(
-        lambda capabilities: capabilities.paper_download(
-            actor=current_user,
-            document_id=uuid.UUID(document_id),
-            project_id=uuid.UUID(project_id) if project_id else None,
-        )
-    )
-    return result.model_dump()
-
-
-async def ingest_paper_from_url(
-    url: str,
-    current_user: Actor,
-    executor: ApplicationExecutor[ApplicationCapabilities],
-    project_id: str | None = None,
-    idempotency_key: str | None = None,
-) -> dict[str, object]:
-    """Agent adapter over the same idempotent ingestion use case as HTTP."""
-    result = await create_paper_ingestion_workflow(executor).from_url(
-        actor=current_user,
-        url=url,
-        project_id=uuid.UUID(project_id) if project_id else None,
-        idempotency_key=idempotency_key,
-        ip_address="agent",
-    )
-    return result.model_dump()

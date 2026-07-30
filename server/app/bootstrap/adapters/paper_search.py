@@ -1,4 +1,4 @@
-"""PostgreSQL FTS adapter for canonical papers and parsed passages."""
+"""Cross-domain PostgreSQL projection for canonical paper search."""
 
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ from app.modules.papers.application.contracts.search import (
     PaperSearchQuery,
     PaperSearchResponse,
     PaperSearchResult,
-    PaperSearchScope,
+    LibraryPaperCollection,
+    SelectedPaperCollection,
     PaperSearchSnippet,
     PaperSearchSort,
     PaperSearchStats,
@@ -20,24 +21,49 @@ from app.modules.papers.infrastructure.models import (
     DocumentPassage,
     LibraryPaper,
 )
+from app.modules.projects.infrastructure.models import (
+    Project,
+    ProjectCollaborator,
+    ProjectPaper,
+)
 from app.shared.application import Actor
-from sqlalchemy import ColumnElement, and_, func, or_, select
+from sqlalchemy import ColumnElement, and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 
 def _visibility_condition(
     *,
     actor: Actor,
-    scope: PaperSearchScope,
-    project_document_ids: tuple[UUID, ...],
+    collection: LibraryPaperCollection | SelectedPaperCollection,
 ) -> ColumnElement[bool]:
     in_library = LibraryPaper.user_id == actor.id
-    in_projects = Document.id.in_(project_document_ids)
-    if scope is PaperSearchScope.LIBRARY:
+    if isinstance(collection, LibraryPaperCollection):
         return in_library
-    if scope is PaperSearchScope.PROJECTS:
-        return in_projects
-    return or_(in_library, in_projects)
+    conditions: list[ColumnElement[bool]] = []
+    if collection.document_ids:
+        conditions.append(Document.id.in_(collection.document_ids))
+    if collection.project_ids:
+        in_projects = exists(
+            select(ProjectPaper.document_id)
+            .join(Project, Project.id == ProjectPaper.project_id)
+            .outerjoin(
+                ProjectCollaborator,
+                and_(
+                    ProjectCollaborator.project_id == Project.id,
+                    ProjectCollaborator.user_id == actor.id,
+                ),
+            )
+            .where(
+                ProjectPaper.document_id == Document.id,
+                ProjectPaper.project_id.in_(collection.project_ids),
+                or_(
+                    Project.owner_id == actor.id,
+                    ProjectCollaborator.user_id == actor.id,
+                ),
+            )
+        )
+        conditions.append(in_projects)
+    return or_(*conditions)
 
 
 def _matching_fields(document: Document, query: str, *, has_passage: bool) -> list[str]:
@@ -141,8 +167,7 @@ class PostgresPaperSearch:
         text_query = func.websearch_to_tsquery("pg_catalog.english", request.query)
         visibility = _visibility_condition(
             actor=actor,
-            scope=request.scope,
-            project_document_ids=request.accessible_project_document_ids,
+            collection=request.collection,
         )
         statement = (
             select(Document, LibraryPaper)
@@ -166,9 +191,6 @@ class PostgresPaperSearch:
             statement = statement.where(
                 Document.publish_date <= request.filters.published_to
             )
-        if request.filters.document_ids is not None:
-            statement = statement.where(Document.id.in_(request.filters.document_ids))
-
         rank = func.ts_rank_cd(Document.ts_vector, text_query)
         if request.sort is PaperSearchSort.RECENT:
             statement = statement.order_by(
@@ -242,7 +264,6 @@ class PostgresPaperSearch:
         self,
         *,
         actor: Actor,
-        accessible_project_document_ids: tuple[UUID, ...],
     ) -> PaperSearchStats:
         total = int(
             self._db.scalar(
@@ -254,12 +275,7 @@ class PostgresPaperSearch:
                         LibraryPaper.user_id == actor.id,
                     ),
                 )
-                .where(
-                    or_(
-                        LibraryPaper.user_id == actor.id,
-                        Document.id.in_(accessible_project_document_ids),
-                    )
-                )
+                .where(LibraryPaper.user_id == actor.id)
             )
             or 0
         )

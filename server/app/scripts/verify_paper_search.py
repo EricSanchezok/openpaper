@@ -8,16 +8,17 @@ from uuid import UUID
 from app.database.database import SessionLocal
 from app.database.models import AuthUser
 from app.modules.papers.application.contracts.search import (
-    PaperSearchFilters,
+    LibraryPaperCollection,
     PaperSearchRequest,
-    PaperSearchScope,
+    SelectedPaperCollection,
 )
+from app.bootstrap.adapters.paper_search_access import SqlPaperSearchAccess
 from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
 from app.modules.papers.application.content import PaperContentCapabilities
 from app.modules.papers.infrastructure.content_gateway import (
     SqlAlchemyPaperContentGateway,
 )
-from app.modules.papers.infrastructure.knowledge_search import PostgresPaperSearch
+from app.bootstrap.adapters.paper_search import PostgresPaperSearch
 from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
 )
@@ -54,7 +55,7 @@ def _search(db: Session) -> SearchPapers:
     return SearchPapers(
         PostgresPaperSearch(db),
         SearchCursorCodec("integration-search-cursor-secret-value"),
-        ListAccessibleProjectDocuments(SqlProjectDocumentVisibility(db)),
+        SqlPaperSearchAccess(db),
     )
 
 
@@ -77,7 +78,7 @@ def verify() -> None:
             actor=owner,
             request=PaperSearchRequest(query="neural retrieval", limit=1),
         )
-        assert first.total == 3
+        assert first.total == 2
         assert first.items[0].document_id == TITLE_DOCUMENT_ID
         assert first.items[0].matched_fields == ["title"]
         assert first.next_cursor is not None
@@ -97,7 +98,7 @@ def verify() -> None:
             actor=owner,
             request=PaperSearchRequest(
                 query="neural retrieval",
-                scope=PaperSearchScope.LIBRARY,
+                collection=LibraryPaperCollection(),
             ),
         )
         assert {item.document_id for item in library.items} == {
@@ -113,8 +114,7 @@ def verify() -> None:
             actor=collaborator,
             request=PaperSearchRequest(
                 query="neural retrieval",
-                scope=PaperSearchScope.PROJECTS,
-                filters=PaperSearchFilters(project_id=PROJECT_ID),
+                collection=SelectedPaperCollection(project_ids=[PROJECT_ID]),
             ),
         )
         assert [item.document_id for item in project.items] == [PROJECT_DOCUMENT_ID]
@@ -130,7 +130,7 @@ def verify() -> None:
             actor=owner,
             request=PaperSearchRequest(
                 query="neural retrieval",
-                filters=PaperSearchFilters(document_ids=[BODY_DOCUMENT_ID]),
+                collection=SelectedPaperCollection(document_ids=[BODY_DOCUMENT_ID]),
             ),
         )
         assert [item.document_id for item in restricted.items] == [BODY_DOCUMENT_ID]

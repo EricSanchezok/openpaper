@@ -7,13 +7,15 @@ from typing import cast
 
 from app.bootstrap.adapters.conversation_access import conversation_policy
 from app.bootstrap.adapters.conversation_repository import conversation_repository
-from app.bootstrap.adapters.project_documents import project_document_repository
 from app.bootstrap.adapters.research_repository import research_repository
 from app.database.models import Conversation
+from app.database.models import LibraryPaper, Project, ProjectPaper
 from app.llm.token_credits import has_token_credits
 from app.modules.conversations.application.chat import (
     ChatHistoryMessage,
     ChatPaperSnapshot,
+    ChatProjectSnapshot,
+    ConversationContextSnapshot,
     ConversationChatDataGateway,
     ConversationChatScope,
     MentionScope,
@@ -29,11 +31,11 @@ from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.projects.infrastructure.access import get_project_access
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, JsonValue
 from app.shared.domain.enums import ConversationScopeType
 from sqlalchemy.orm import Session
+from sqlalchemy import func, select
 
 
 class SqlAlchemyConversationChatData(ConversationChatDataGateway):
@@ -61,6 +63,122 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             scope_type=ConversationScopeType(conversation.scope_type),
             project_id=conversation.project_id,
             document_id=conversation.document_id,
+            paper_context=conversation_repository.paper_context(
+                self._session,
+                conversation=conversation,
+                user_id=actor.id,
+            ),
+        )
+
+    def context(
+        self,
+        *,
+        actor: Actor,
+        scope: ConversationChatScope,
+    ) -> ConversationContextSnapshot:
+        context = scope.paper_context
+        document_ids = (
+            set(context.document_ids) if context.kind == "selection" else set()
+        )
+        if scope.document_id is not None:
+            document_ids.add(scope.document_id)
+        papers: list[ChatPaperSnapshot] = []
+        for document_id in sorted(document_ids, key=str):
+            paper = document_repository.find_accessible(
+                self._session,
+                document_id=document_id,
+                user=actor,
+            )
+            if paper is None:
+                continue
+            papers.append(
+                ChatPaperSnapshot(
+                    document_id=paper.id,
+                    title=paper.title,
+                    abstract=paper.abstract if paper.id == scope.document_id else None,
+                    raw_content=(
+                        paper.raw_content if paper.id == scope.document_id else None
+                    ),
+                    keywords=paper.keywords,
+                    authors=paper.authors,
+                    publish_date=paper.publish_date,
+                )
+            )
+
+        project_ids = context.project_ids if context.kind == "selection" else []
+        project_rows = self._session.execute(
+            select(
+                Project.id,
+                Project.title,
+                Project.description,
+                func.count(ProjectPaper.document_id),
+            )
+            .outerjoin(ProjectPaper, ProjectPaper.project_id == Project.id)
+            .where(Project.id.in_(project_ids))
+            .group_by(Project.id)
+            .order_by(Project.id)
+        ).all()
+        projects = [
+            ChatProjectSnapshot(
+                project_id=project_id,
+                title=title,
+                description=description,
+                document_count=int(document_count),
+            )
+            for project_id, title, description, document_count in project_rows
+        ]
+        library_count = (
+            int(
+                self._session.scalar(
+                    select(func.count())
+                    .select_from(LibraryPaper)
+                    .where(LibraryPaper.user_id == actor.id)
+                )
+                or 0
+            )
+            if context.kind == "library"
+            else None
+        )
+        return ConversationContextSnapshot(
+            papers=papers,
+            projects=projects,
+            library_document_count=library_count,
+        )
+
+    def context_contains_document(
+        self,
+        *,
+        actor: Actor,
+        scope: ConversationChatScope,
+        document_id: uuid.UUID,
+    ) -> bool:
+        if scope.document_id == document_id:
+            return True
+        context = scope.paper_context
+        if context.kind == "library":
+            return (
+                self._session.scalar(
+                    select(LibraryPaper.id).where(
+                        LibraryPaper.user_id == actor.id,
+                        LibraryPaper.document_id == document_id,
+                    )
+                )
+                is not None
+            )
+        if document_id in context.document_ids:
+            return True
+        if not context.project_ids:
+            return False
+        return (
+            self._session.scalar(
+                select(ProjectPaper.document_id)
+                .where(
+                    ProjectPaper.document_id == document_id,
+                    ProjectPaper.project_id.in_(context.project_ids),
+                )
+                .limit(1)
+            )
+            is not None
         )
 
     def history(
@@ -78,109 +196,16 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             )
         ]
 
-    def papers(
-        self,
-        *,
-        actor: Actor,
-        project_id: uuid.UUID | None,
-    ) -> list[ChatPaperSnapshot]:
-        if project_id is None:
-            papers = document_repository.list_available_library_documents(
-                self._session,
-                user=actor,
-            )
-        else:
-            if (
-                get_project_access(
-                    self._session,
-                    project_id=project_id,
-                    user_id=actor.id,
-                )
-                is None
-            ):
-                return []
-            papers = project_document_repository.get_all_papers_by_project_id(
-                self._session,
-                project_id=project_id,
-                user=actor,
-            )
-        return [
-            ChatPaperSnapshot(
-                document_id=paper.id,
-                title=paper.title,
-                abstract=paper.abstract,
-                raw_content=paper.raw_content,
-                keywords=paper.keywords,
-                authors=paper.authors,
-                publish_date=paper.publish_date,
-            )
-            for paper in papers
-        ]
-
     def mentions(
         self,
         *,
         actor: Actor,
         request: ConversationMessageRequest,
-        project_id: uuid.UUID | None,
     ) -> MentionScope:
-        if (
-            not request.mentioned_document_ids
-            and not request.mentioned_project_ids
-            and not request.mentioned_highlight_ids
-        ):
-            return MentionScope(None, None, None)
+        if not request.mentioned_highlight_ids:
+            return MentionScope(None, None)
 
-        scoped: set[str] = set()
         snapshot: list[dict[str, JsonValue]] = []
-        for document_id in request.mentioned_document_ids or []:
-            if project_id is not None:
-                paper = project_document_repository.get_paper_by_project(
-                    self._session,
-                    document_id=uuid.UUID(document_id),
-                    project_id=project_id,
-                    user=actor,
-                )
-            else:
-                paper = document_repository.find_accessible(
-                    self._session,
-                    document_id=document_id,
-                    user=actor,
-                )
-            if paper is not None:
-                scoped.add(str(paper.id))
-                snapshot.append(
-                    {
-                        "kind": "paper",
-                        "id": str(paper.id),
-                        "title": paper.title,
-                    }
-                )
-
-        for mentioned_project_id in request.mentioned_project_ids or []:
-            project_access = get_project_access(
-                self._session,
-                project_id=uuid.UUID(mentioned_project_id),
-                user_id=actor.id,
-            )
-            if project_access is None:
-                continue
-            document_ids = (
-                project_document_repository.get_project_document_ids_by_project_id(
-                    self._session,
-                    project_id=uuid.UUID(mentioned_project_id),
-                    user=actor,
-                )
-            )
-            scoped.update(str(document_id) for document_id in document_ids)
-            snapshot.append(
-                {
-                    "kind": "project",
-                    "id": str(project_access.project.id),
-                    "title": project_access.project.title,
-                }
-            )
-
         highlights_by_paper: dict[str, dict[str, JsonValue]] = {}
         for highlight_id in request.mentioned_highlight_ids or []:
             try:
@@ -195,7 +220,6 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             if highlight is None or item.document_id is None:
                 continue
             document_id = str(item.document_id)
-            scoped.add(document_id)
             group = highlights_by_paper.get(document_id)
             if group is None:
                 paper = document_repository.find_accessible(
@@ -234,7 +258,6 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
                 }
             )
         return MentionScope(
-            document_ids=list(scoped),
             snapshot=snapshot,
             highlights=list(highlights_by_paper.values()),
         )

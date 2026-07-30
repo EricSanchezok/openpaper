@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.modules.papers.application.search import PaperSearchPort
+from app.modules.papers.application.search import PaperSearchAccessPort, PaperSearchPort
 from app.modules.papers.application.content import PaperContentCapabilities
 from app.modules.papers.infrastructure.content_gateway import (
     SqlAlchemyPaperContentGateway,
@@ -25,7 +25,7 @@ from app.bootstrap.adapters.paper_ingestion import (
     SafePdfUrlSource,
     SqlPaperIngestionGateway,
 )
-from app.modules.papers.infrastructure.knowledge_search import PostgresPaperSearch
+from app.bootstrap.adapters.paper_search import PostgresPaperSearch
 from app.modules.projects.application.document_visibility import (
     ListAccessibleProjectDocuments,
 )
@@ -140,6 +140,12 @@ def build_paper_search(
     if backend == "postgres_fts":
         return PostgresPaperSearch(db)
     raise ValueError(f"Unsupported paper search backend: {backend}")
+
+
+def build_paper_search_access(*, db: Session) -> PaperSearchAccessPort:
+    from app.bootstrap.adapters.paper_search_access import SqlPaperSearchAccess
+
+    return SqlPaperSearchAccess(db)
 
 
 def build_project_document_visibility(

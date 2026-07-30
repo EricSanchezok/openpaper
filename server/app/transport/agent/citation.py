@@ -7,6 +7,8 @@ from uuid import UUID
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.shared.application import Actor, ApplicationExecutor
+from app.modules.conversations.application.chat import ConversationChatScope
+from app.transport.agent.paper_tools import _ensure_paper_in_scope
 
 find_citation_function = {
     "name": "find_citation",
@@ -38,21 +40,15 @@ def run_find_citation(
     document_id: str,
     current_user: Actor,
     executor: ApplicationExecutor[ApplicationCapabilities],
+    conversation_scope: ConversationChatScope,
     style: str = "APA",
-    project_id: str | None = None,
-    restrict_to_document_ids: list[str] | None = None,
 ) -> CitationResult:
     """Match the evidence loop's tool-call signature."""
-    if (
-        restrict_to_document_ids is not None
-        and document_id not in restrict_to_document_ids
-    ):
-        raise ValueError("Paper is not in the scoped set for this conversation")
+    _ensure_paper_in_scope(document_id, current_user, executor, conversation_scope)
     return executor.query(
         lambda capabilities: capabilities.citations(
             actor=current_user,
             document_id=UUID(document_id),
             style=style,
-            project_id=UUID(project_id) if project_id else None,
         )
     )

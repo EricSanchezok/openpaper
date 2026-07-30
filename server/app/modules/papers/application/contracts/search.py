@@ -4,15 +4,43 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-class PaperSearchScope(StrEnum):
-    ALL = "all"
-    LIBRARY = "library"
-    PROJECTS = "projects"
+class LibraryPaperCollection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["library"] = "library"
+
+
+class SelectedPaperCollection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["selection"] = "selection"
+    project_ids: list[UUID] = Field(default_factory=list, max_length=20)
+    document_ids: list[UUID] = Field(default_factory=list, max_length=50)
+
+    @field_validator("project_ids", "document_ids", mode="before")
+    @classmethod
+    def normalize_ids(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return sorted({str(UUID(str(item))) for item in value})
+
+    @model_validator(mode="after")
+    def require_nonempty(self) -> SelectedPaperCollection:
+        if not self.project_ids and not self.document_ids:
+            raise ValueError("A selected paper collection cannot be empty")
+        return self
+
+
+PaperCollection = Annotated[
+    LibraryPaperCollection | SelectedPaperCollection,
+    Field(discriminator="kind"),
+]
 
 
 class PaperSearchSort(StrEnum):
@@ -21,8 +49,8 @@ class PaperSearchSort(StrEnum):
 
 
 class PaperSearchFilters(BaseModel):
-    project_id: UUID | None = None
-    document_ids: list[UUID] | None = Field(default=None, max_length=500)
+    model_config = ConfigDict(extra="forbid")
+
     published_from: datetime | None = None
     published_to: datetime | None = None
 
@@ -38,35 +66,25 @@ class PaperSearchFilters(BaseModel):
 
 
 class PaperSearchRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     query: str = Field(min_length=2, max_length=1_000)
-    scope: PaperSearchScope = PaperSearchScope.ALL
+    collection: PaperCollection = Field(default_factory=LibraryPaperCollection)
     filters: PaperSearchFilters = Field(default_factory=PaperSearchFilters)
     sort: PaperSearchSort = PaperSearchSort.RELEVANCE
     limit: int = Field(default=50, ge=1, le=100)
     cursor: str | None = Field(default=None, max_length=1_024)
-
-    @model_validator(mode="after")
-    def validate_scope(self) -> PaperSearchRequest:
-        if (
-            self.filters.project_id is not None
-            and self.scope is PaperSearchScope.LIBRARY
-        ):
-            raise ValueError("project_id cannot be used with library scope")
-        return self
 
 
 class PaperSearchQuery(BaseModel):
     """Internal request supplied to a replaceable search adapter."""
 
     query: str
-    scope: PaperSearchScope
+    collection: PaperCollection
     filters: PaperSearchFilters
     sort: PaperSearchSort
     limit: int
     offset: int = Field(ge=0)
-    accessible_project_document_ids: tuple[UUID, ...] = ()
 
 
 class PaperSearchSnippet(BaseModel):

@@ -7,49 +7,56 @@ from typing import (
     Any,
     AsyncGenerator,
     Iterator,
-    Literal,
     Sequence,
 )
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.models import ReasoningLevel
 from app.llm.citation_handler import CitationHandler
+from app.llm.conversation_prompts import scope_system_instructions
 from app.llm.evidence_operations import EvidenceOperations
 from app.llm.prompts import (
     ANSWER_EVIDENCE_BASED_QUESTION_MESSAGE,
     ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT,
-    GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY,
+    CONCISE_MODE_INSTRUCTIONS,
+    DETAILED_MODE_INSTRUCTIONS,
+    NORMAL_MODE_INSTRUCTIONS,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
-from app.modules.conversations.application.chat import ChatPaperSnapshot
-from app.modules.conversations.application.contracts.messages import EvidenceCollection
-from app.modules.papers.application.contracts.extraction import AudioOverviewForLLM
+from app.modules.conversations.application.chat import (
+    ChatPaperSnapshot,
+    ConversationContextSnapshot,
+)
+from app.modules.conversations.application.contracts.messages import (
+    EvidenceCollection,
+    ResponseStyle,
+)
 from app.shared.application import Actor, ApplicationExecutor
+from app.shared.domain.enums import ConversationScopeType
 
 logger = logging.getLogger(__name__)
 
 
-class MultiPaperOperations(EvidenceOperations):
-    """Operations related to multi-paper analysis and chat functionality.
+class ConversationAgentRuntime(EvidenceOperations):
+    """Shared evidence and answer runtime for every conversation entry point."""
 
-    Inherits evidence gathering and compaction methods from EvidenceOperations.
-    """
-
-    async def chat_with_papers(
+    async def stream_answer(
         self,
         conversation_id: str,
         question: str,
         current_user: Actor,
         all_papers: list[ChatPaperSnapshot],
+        anchor_paper: ChatPaperSnapshot | None,
+        context_snapshot: ConversationContextSnapshot,
+        scope_type: ConversationScopeType,
         evidence_gathered: EvidenceCollection,
         executor: ApplicationExecutor[ApplicationCapabilities],
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,
         mentioned_highlights: list[dict[str, Any]] | None = None,
+        response_style: ResponseStyle | None = ResponseStyle.NORMAL,
     ) -> AsyncGenerator[str | dict[str, Any], None]:
-        """
-        Chat with everything in the user's knowledge base using the specified model
-        """
+        """Stream the final answer from bounded context and collected evidence."""
         user_citations = (
             CitationHandler.convert_references_to_citations(user_references)
             if user_references
@@ -71,8 +78,45 @@ class MultiPaperOperations(EvidenceOperations):
 
         logger.debug(f"Evidence gathered: {evidence_gathered.get_evidence_dict()}")
 
-        formatted_system_prompt = ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT.format(
-            available_papers=formatted_paper_options,
+        style_instructions = (
+            DETAILED_MODE_INSTRUCTIONS
+            if response_style is ResponseStyle.DETAILED
+            else CONCISE_MODE_INSTRUCTIONS
+            if response_style is ResponseStyle.CONCISE
+            else NORMAL_MODE_INSTRUCTIONS
+        )
+        context_guidance = {
+            "papers": [
+                {
+                    "document_id": str(paper.document_id),
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "keywords": paper.keywords,
+                    "publish_date": (
+                        paper.publish_date.isoformat()
+                        if paper.publish_date is not None
+                        else None
+                    ),
+                }
+                for paper in context_snapshot.papers
+            ],
+            "projects": [
+                {
+                    "project_id": str(project.project_id),
+                    "title": project.title,
+                    "description": project.description,
+                    "document_count": project.document_count,
+                }
+                for project in context_snapshot.projects
+            ],
+            "library_document_count": context_snapshot.library_document_count,
+        }
+        formatted_system_prompt = (
+            ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT.format(
+                available_papers=formatted_paper_options,
+            )
+            + style_instructions
+            + scope_system_instructions(scope_type)
         )
 
         formatted_prompt = ANSWER_EVIDENCE_BASED_QUESTION_MESSAGE.format(
@@ -89,11 +133,23 @@ class MultiPaperOperations(EvidenceOperations):
         # Build multipart message: supplementary evidence + user question
         message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
+                content=json.dumps(context_guidance, indent=2),
+                label="conversation_context",
+            ),
+            SupplementaryContent(
                 content=json.dumps(evidence_gathered.get_evidence_dict(), indent=2),
                 label="collected_evidence",
             ),
             TextContent(text=formatted_prompt),
         ]
+        if anchor_paper is not None and anchor_paper.raw_content:
+            message_content.insert(
+                0,
+                SupplementaryContent(
+                    content=anchor_paper.raw_content,
+                    label="anchor_paper_full_text",
+                ),
+            )
 
         # @-mentioned highlights are exact passages the user attached to ground
         # this question. Inject them directly so the answer model always sees
@@ -221,8 +277,8 @@ class MultiPaperOperations(EvidenceOperations):
                         delimiter_pos + len(END_DELIMITER) :
                     ]
 
-                    structured_evidence = (
-                        CitationHandler.parse_multi_paper_evidence_block(evidence_part)
+                    structured_evidence = CitationHandler.parse_evidence_block(
+                        evidence_part
                     )
 
                     # Resolve compacted citations to original snippets if evidence was compacted
@@ -283,10 +339,8 @@ class MultiPaperOperations(EvidenceOperations):
 
             if reconstructed_buffer:
                 try:
-                    structured_evidence = (
-                        CitationHandler.parse_multi_paper_evidence_block(
-                            reconstructed_buffer
-                        )
+                    structured_evidence = CitationHandler.parse_evidence_block(
+                        reconstructed_buffer
                     )
 
                     # Resolve compacted citations to original snippets if evidence was compacted
@@ -314,85 +368,5 @@ class MultiPaperOperations(EvidenceOperations):
         if text_buffer:
             yield {"type": "content", "content": text_buffer}
 
-    async def create_multi_paper_narrative_summary(
-        self,
-        current_user: Actor,
-        executor: ApplicationExecutor[ApplicationCapabilities],
-        additional_instructions: str | None = None,
-        length: Literal["short", "medium", "long"] | None = "medium",
-        project_id: str | None = None,
-    ) -> AudioOverviewForLLM:
-        """
-        Create a narrative summary across multiple papers using evidence gathering
-        """
-        evidence_collection: EvidenceCollection | None = None
 
-        summary_request = (
-            additional_instructions
-            or "Provide a comprehensive narrative summary of the key findings, contributions, and insights from the papers in this collection. Synthesize the information to highlight overarching themes and significant advancements."
-        )
-
-        # Word count targets for audio durations at ~150 words/min
-        # short: ~3 min, medium: ~7 min, long: ~14 min
-        word_count_map = {
-            "short": 450,
-            "medium": 1000,
-            "long": 2000,
-        }
-
-        # Use the existing evidence gathering system
-        async for result in self.gather_evidence(
-            question=f"{summary_request}",
-            current_user=current_user,
-            project_id=project_id,
-            executor=executor,
-        ):
-            if result.get("type") == "evidence_gathered":
-                content = result.get("content")
-                if isinstance(content, EvidenceCollection):
-                    evidence_collection = content
-                    break
-
-        if evidence_collection is None:
-            evidence_collection = EvidenceCollection()
-
-        # Get paper metadata for context
-        all_papers = executor.query(
-            lambda capabilities: capabilities.conversation_chat_data.papers(
-                actor=current_user,
-                project_id=uuid.UUID(project_id) if project_id else None,
-            )
-        )
-
-        paper_metadata = {
-            str(paper.document_id): {
-                "title": paper.title,
-                "authors": paper.authors,
-                "published": paper.publish_date,
-            }
-            for paper in all_papers
-        }
-
-        # Generate the narrative summary
-        audio_overview_schema = AudioOverviewForLLM.model_json_schema()
-
-        formatted_prompt = GENERATE_MULTI_PAPER_NARRATIVE_SUMMARY.format(
-            summary_request=summary_request,
-            evidence_gathered=evidence_collection.get_evidence_dict(),
-            length=word_count_map.get(str(length), word_count_map["medium"]),
-            paper_metadata=paper_metadata,
-            additional_instructions=additional_instructions or "",
-            schema=audio_overview_schema,
-        )
-
-        message_content = [TextContent(text=formatted_prompt)]
-
-        response = self.generate_content(
-            contents=message_content,
-            response_model=AudioOverviewForLLM,
-        )
-
-        return AudioOverviewForLLM.model_validate_json(response.text)
-
-
-multi_paper_operations = MultiPaperOperations()
+conversation_agent_runtime = ConversationAgentRuntime()

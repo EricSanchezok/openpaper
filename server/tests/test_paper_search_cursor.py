@@ -1,19 +1,18 @@
 from datetime import UTC, datetime
 from typing import Callable
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from app.modules.papers.application.contracts.search import (
+    PaperCollection,
     PaperSearchQuery,
     PaperSearchRequest,
     PaperSearchResponse,
     PaperSearchResult,
     PaperSearchStats,
+    SelectedPaperCollection,
 )
 from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
-from app.modules.projects.application.document_visibility import (
-    ListAccessibleProjectDocuments,
-)
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind
 
@@ -61,19 +60,18 @@ class _SearchBackend:
         self,
         *,
         actor: Actor,
-        accessible_project_document_ids: tuple[UUID, ...],
     ) -> PaperSearchStats:
         raise AssertionError("stats is not used by this test")
 
 
-class _ProjectDocuments:
-    def list_accessible_document_ids(
+class _SearchAccess:
+    def require_collection_access(
         self,
         *,
         actor: Actor,
-        project_id: UUID | None = None,
-    ) -> tuple[UUID, ...]:
-        return ()
+        collection: PaperCollection,
+    ) -> None:
+        pass
 
 
 def test_search_cursor_round_trip_uses_backend_neutral_offset() -> None:
@@ -81,7 +79,7 @@ def test_search_cursor_round_trip_uses_backend_neutral_offset() -> None:
     search = SearchPapers(
         backend,
         SearchCursorCodec("x" * 32),
-        ListAccessibleProjectDocuments(_ProjectDocuments()),
+        _SearchAccess(),
     )
 
     first_page = search(
@@ -129,3 +127,35 @@ def test_search_cursor_rejects_tampering_and_query_reuse(
 
     assert error.value.code == "search_cursor_expired"
     assert error.value.kind is FailureKind.CONFLICT
+
+
+def test_search_cursor_is_bound_to_the_selected_collection() -> None:
+    backend = _SearchBackend()
+    search = SearchPapers(
+        backend,
+        SearchCursorCodec("x" * 32),
+        _SearchAccess(),
+    )
+    first_document = uuid4()
+    first_page = search(
+        actor=_actor(),
+        request=PaperSearchRequest(
+            query="graph retrieval",
+            limit=1,
+            collection=SelectedPaperCollection(document_ids=[first_document]),
+        ),
+    )
+
+    assert first_page.next_cursor is not None
+    with pytest.raises(AppError) as error:
+        search(
+            actor=_actor(),
+            request=PaperSearchRequest(
+                query="graph retrieval",
+                limit=1,
+                cursor=first_page.next_cursor,
+                collection=SelectedPaperCollection(document_ids=[uuid4()]),
+            ),
+        )
+
+    assert error.value.code == "search_cursor_expired"

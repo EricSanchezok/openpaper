@@ -15,6 +15,7 @@ from typing import (
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
+from app.llm.conversation_prompts import scope_system_instructions
 from app.transport.agent.citation import find_citation_function, run_find_citation
 from app.llm.prompts import (
     EVIDENCE_COMPACTION_PROMPT,
@@ -23,7 +24,7 @@ from app.llm.prompts import (
     KEYWORD_EXTRACTION_PROMPT,
     TOOL_RESULT_COMPACTION_PROMPT,
 )
-from app.llm.backend import TextContent
+from app.llm.backend import SupplementaryContent, TextContent
 from app.transport.agent.paper_tools import (
     read_abstract,
     read_abstract_function,
@@ -45,6 +46,7 @@ from app.modules.conversations.application.contracts.messages import (
     ToolResultCompactionResponse,
 )
 from app.shared.application import Actor, ApplicationExecutor
+from app.modules.conversations.application.chat import ConversationChatScope
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +107,8 @@ class EvidenceOperations(BaseLLMClient):
         question: str,
         current_user: Actor,
         executor: ApplicationExecutor[ApplicationCapabilities],
+        conversation_scope: ConversationChatScope,
         conversation_id: str | None = None,
-        project_id: str | None = None,
-        restrict_to_document_ids: list[str] | None = None,
     ) -> AsyncGenerator[
         Mapping[str, str | dict[str, list[str]] | EvidenceCollection], None
     ]:
@@ -133,32 +134,34 @@ class EvidenceOperations(BaseLLMClient):
         n_iterations = 0
         max_iterations = 4
 
-        all_papers = executor.query(
-            lambda capabilities: capabilities.conversation_chat_data.papers(
+        context_snapshot = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.context(
                 actor=current_user,
-                project_id=uuid.UUID(project_id) if project_id else None,
+                scope=conversation_scope,
             )
         )
-
-        # @-mention scoping: hard-limit the available papers to the mentioned
-        # set. Withholding out-of-scope papers from formatted_paper_options
-        # means the model is never offered them, and the per-paper tools reject
-        # any id that isn't listed here (see the guard in the tool-call loop).
-        if restrict_to_document_ids is not None:
-            allowed_ids = set(restrict_to_document_ids)
-            all_papers = [
-                paper for paper in all_papers if str(paper.document_id) in allowed_ids
-            ]
 
         formatted_paper_options = {
             str(paper.document_id): {
                 "title": paper.title,
-                "length": len(str(paper.raw_content)),
+                "length": len(paper.raw_content) if paper.raw_content else None,
                 "keywords": paper.keywords or [],
                 "authors": paper.authors,
                 "published": paper.publish_date,
             }
-            for paper in all_papers
+            for paper in context_snapshot.papers
+        }
+        formatted_context = {
+            "papers": formatted_paper_options,
+            "projects": {
+                str(project.project_id): {
+                    "title": project.title,
+                    "description": project.description,
+                    "document_count": project.document_count,
+                }
+                for project in context_snapshot.projects
+            },
+            "library_document_count": context_snapshot.library_document_count,
         }
 
         function_declarations = [
@@ -206,18 +209,34 @@ class EvidenceOperations(BaseLLMClient):
                 )
 
             evidence_gathering_prompt = EVIDENCE_GATHERING_SYSTEM_PROMPT.format(
-                available_papers=formatted_paper_options,
+                available_papers=formatted_context,
                 n_iteration=n_iterations,
                 max_iterations=max_iterations,
-            )
+            ) + scope_system_instructions(conversation_scope.scope_type)
 
             formatted_prompt = EVIDENCE_GATHERING_MESSAGE.format(
                 question=question,
             )
 
-            message_content = [
+            message_content: list[TextContent | SupplementaryContent] = [
                 TextContent(text=formatted_prompt),
             ]
+            anchor_paper = next(
+                (
+                    paper
+                    for paper in context_snapshot.papers
+                    if paper.document_id == conversation_scope.document_id
+                ),
+                None,
+            )
+            if anchor_paper is not None and anchor_paper.raw_content:
+                message_content.insert(
+                    0,
+                    SupplementaryContent(
+                        label="anchor_paper_full_text",
+                        content=anchor_paper.raw_content,
+                    ),
+                )
 
             yield {
                 "type": "status",
@@ -282,19 +301,6 @@ class EvidenceOperations(BaseLLMClient):
                             else "knowledge base"
                         )
 
-                        if (
-                            document_id_arg
-                            and document_id_arg not in formatted_paper_options
-                        ):
-                            logger.warning(
-                                f"Paper ID {document_id_arg} not found in available papers."
-                            )
-                            evidence_collection.add_tool_call_result(
-                                fn_selected,
-                                f"Error: Paper ID {document_id_arg} not found",
-                            )
-                            continue
-
                         display_query = f" '{query_arg}'" if query_arg else ""
                         pretty_fn_name = fn_name.replace("_", " ").title()
 
@@ -316,8 +322,7 @@ class EvidenceOperations(BaseLLMClient):
                             return selected_fn(
                                 **selected_args,
                                 current_user=current_user,
-                                project_id=project_id,
-                                restrict_to_document_ids=restrict_to_document_ids,
+                                conversation_scope=conversation_scope,
                                 executor=executor,
                             )
 
@@ -404,7 +409,7 @@ class EvidenceOperations(BaseLLMClient):
                     {
                         "function_name": fn_name,
                         "duration_ms": (end_time - start_time) * 1000,
-                        "project_type": project_id is not None,
+                        "conversation_scope_type": conversation_scope.scope_type.value,
                     },
                     user_id=str(current_user.id),
                 )
@@ -436,8 +441,7 @@ class EvidenceOperations(BaseLLMClient):
                             query=keyword,
                             current_user=current_user,
                             executor=executor,
-                            project_id=project_id,
-                            restrict_to_document_ids=restrict_to_document_ids,
+                            conversation_scope=conversation_scope,
                         )
 
                         if search_results:

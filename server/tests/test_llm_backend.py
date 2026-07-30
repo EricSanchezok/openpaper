@@ -8,8 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.conversations.application.contracts.messages import (
-    ChatMessageRequest,
-    MultiPaperChatRequest,
+    ConversationMessageRequest,
 )
 from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
@@ -155,29 +154,34 @@ def test_stream_records_unknown_usage_when_final_usage_is_missing(
 
 def test_chat_requests_reject_legacy_provider_fields() -> None:
     base = {
-        "conversation_id": "00000000-0000-0000-0000-000000000002",
         "user_query": "Explain the result",
     }
     with pytest.raises(ValidationError):
-        ChatMessageRequest.model_validate({**base, "llm_provider": "gemini"})
+        ConversationMessageRequest.model_validate({**base, "llm_provider": "gemini"})
     with pytest.raises(ValidationError):
-        ChatMessageRequest.model_validate(
+        ConversationMessageRequest.model_validate(
             {
                 **base,
                 "document_id": "00000000-0000-0000-0000-000000000001",
             }
         )
     with pytest.raises(ValidationError):
-        MultiPaperChatRequest.model_validate(
+        ConversationMessageRequest.model_validate(
             {
                 **base,
                 "project_id": "00000000-0000-0000-0000-000000000003",
             }
         )
     with pytest.raises(ValidationError):
-        MultiPaperChatRequest.model_validate(
+        ConversationMessageRequest.model_validate(
             {
-                "conversation_id": base["conversation_id"],
+                **base,
+                "mentioned_document_ids": ["00000000-0000-0000-0000-000000000001"],
+            }
+        )
+    with pytest.raises(ValidationError):
+        ConversationMessageRequest.model_validate(
+            {
                 "user_query": base["user_query"],
                 "reasoning_level": "extreme",
             }

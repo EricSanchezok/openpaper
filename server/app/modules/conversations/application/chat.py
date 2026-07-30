@@ -11,6 +11,9 @@ from uuid import UUID
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
 )
+from app.modules.conversations.application.contracts.conversations import (
+    PaperContext,
+)
 from app.shared.application import Actor
 from app.shared.domain import JsonValue
 from app.shared.domain.enums import ConversationScopeType
@@ -39,13 +42,28 @@ class ConversationChatScope:
     scope_type: ConversationScopeType
     project_id: UUID | None
     document_id: UUID | None
+    paper_context: PaperContext
 
 
 @dataclass(frozen=True, slots=True)
 class MentionScope:
-    document_ids: list[str] | None
     snapshot: list[dict[str, JsonValue]] | None
     highlights: list[dict[str, JsonValue]] | None
+
+
+@dataclass(frozen=True, slots=True)
+class ChatProjectSnapshot:
+    project_id: UUID
+    title: str
+    description: str | None
+    document_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationContextSnapshot:
+    papers: list[ChatPaperSnapshot]
+    projects: list[ChatProjectSnapshot]
+    library_document_count: int | None
 
 
 class ConversationChatDataGateway(Protocol):
@@ -63,19 +81,26 @@ class ConversationChatDataGateway(Protocol):
         conversation_id: UUID,
     ) -> list[ChatHistoryMessage]: ...
 
-    def papers(
+    def context(
         self,
         *,
         actor: Actor,
-        project_id: UUID | None,
-    ) -> list[ChatPaperSnapshot]: ...
+        scope: ConversationChatScope,
+    ) -> ConversationContextSnapshot: ...
+
+    def context_contains_document(
+        self,
+        *,
+        actor: Actor,
+        scope: ConversationChatScope,
+        document_id: UUID,
+    ) -> bool: ...
 
     def mentions(
         self,
         *,
         actor: Actor,
         request: ConversationMessageRequest,
-        project_id: UUID | None,
     ) -> MentionScope: ...
 
     def save_turn(
@@ -123,25 +148,36 @@ class ConversationChatData:
     ) -> list[ChatHistoryMessage]:
         return self._gateway.history(actor=actor, conversation_id=conversation_id)
 
-    def papers(
+    def context(
         self,
         *,
         actor: Actor,
-        project_id: UUID | None,
-    ) -> list[ChatPaperSnapshot]:
-        return self._gateway.papers(actor=actor, project_id=project_id)
+        scope: ConversationChatScope,
+    ) -> ConversationContextSnapshot:
+        return self._gateway.context(actor=actor, scope=scope)
+
+    def context_contains_document(
+        self,
+        *,
+        actor: Actor,
+        scope: ConversationChatScope,
+        document_id: UUID,
+    ) -> bool:
+        return self._gateway.context_contains_document(
+            actor=actor,
+            scope=scope,
+            document_id=document_id,
+        )
 
     def mentions(
         self,
         *,
         actor: Actor,
         request: ConversationMessageRequest,
-        project_id: UUID | None,
     ) -> MentionScope:
         return self._gateway.mentions(
             actor=actor,
             request=request,
-            project_id=project_id,
         )
 
     def save_turn(
