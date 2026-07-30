@@ -119,7 +119,7 @@ class AccessKeys:
         if len(records) > limit and page:
             anchor = page[-1]
             next_cursor = self._cursors.encode_keyset(
-                fingerprint=self._cursor_fingerprint(actor),
+                fingerprint=self._cursor_binding(actor),
                 values=(anchor.created_at.isoformat(), str(anchor.id)),
             )
         return AccessKeyListResponse(
@@ -233,7 +233,7 @@ class AccessKeys:
         try:
             created_at_raw, id_raw = self._cursors.decode_keyset(
                 cursor=cursor,
-                fingerprint=self._cursor_fingerprint(actor),
+                fingerprint=self._cursor_binding(actor),
                 arity=2,
             )
             created_at = datetime.fromisoformat(created_at_raw)
@@ -251,7 +251,7 @@ class AccessKeys:
             ) from error
 
     @staticmethod
-    def _cursor_fingerprint(actor: Actor) -> str:
+    def _cursor_binding(actor: Actor) -> str:
         return f"{ACCESS_KEY_CURSOR_FINGERPRINT}:{actor.id}"
 
 
