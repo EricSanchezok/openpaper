@@ -1,6 +1,6 @@
 "use client";
 
-import { Conversation } from "@/lib/schema";
+import { ConversationSummary } from "@/lib/schema";
 import { formatDate } from "@/lib/utils";
 import { ArrowRight, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +18,7 @@ import {
 import { Button } from "./ui/button";
 
 interface ConversationCardProps {
-	convo: Conversation;
+	convo: ConversationSummary;
 	href: string;
 	onDelete: (conversationId: string) => void;
 	// Slim single-line row instead of a boxed card (used in dense lists).

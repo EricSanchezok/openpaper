@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Conversation } from "@/lib/schema";
+import { ConversationSummary } from "@/lib/schema";
 import { Input } from "@/components/ui/input";
 import ConversationCard from "@/components/ConversationCard";
 
 interface ConversationHistoryProps {
-  conversations: Conversation[];
+  conversations: ConversationSummary[];
   onDelete: (conversationId: string) => void;
   baseHref?: string;
-  hrefGenerator?: (conversation: Conversation) => string;
+  hrefGenerator?: (conversation: ConversationSummary) => string;
   // Render slim rows instead of boxed cards.
   compact?: boolean;
 }
@@ -27,7 +27,7 @@ export default function ConversationHistory({
     conversation.title?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getHref = (conversation: Conversation) => {
+  const getHref = (conversation: ConversationSummary) => {
     if (hrefGenerator) {
       return hrefGenerator(conversation);
     }

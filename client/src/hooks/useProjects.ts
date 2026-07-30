@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchFromApi } from "@/lib/api";
-import { Project, PaperItem, Conversation, ConversationListResponse, ProjectListResponse } from "@/lib/schema";
+import { Project, PaperItem, ConversationSummary, ConversationListResponse, ProjectListResponse } from "@/lib/schema";
 
 interface UseProjectsResult {
     projects: Project[];
@@ -153,14 +153,14 @@ export function useProjectPapers(
 }
 
 interface UseProjectConversationsResult {
-    conversations: Conversation[];
+    conversations: ConversationSummary[];
     isLoading: boolean;
     error: Error | null;
     refetch: () => Promise<void>;
 }
 
 export function useProjectConversations(projectId?: string): UseProjectConversationsResult {
-    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [conversations, setConversations] = useState<ConversationSummary[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 

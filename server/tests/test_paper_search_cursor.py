@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from app.modules.papers.application.contracts.search import (
+    LibraryPaperCollection,
     PaperCollection,
     PaperSearchQuery,
     PaperSearchRequest,
@@ -13,8 +14,10 @@ from app.modules.papers.application.contracts.search import (
     SelectedPaperCollection,
 )
 from app.modules.papers.application.search import SearchCursorCodec, SearchPapers
+from app.bootstrap.adapters.paper_search import _visibility_condition
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind
+from sqlalchemy.dialects import postgresql
 
 
 def _actor() -> Actor:
@@ -159,3 +162,21 @@ def test_search_cursor_is_bound_to_the_selected_collection() -> None:
         )
 
     assert error.value.code == "search_cursor_expired"
+
+
+def test_library_visibility_includes_personal_and_project_access() -> None:
+    statement = str(
+        _visibility_condition(
+            actor=_actor(),
+            collection=LibraryPaperCollection(),
+        ).compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+
+    assert "library_papers" in statement
+    assert "project_papers" in statement
+    assert "projects" in statement
+    assert "project_collaborators" in statement
+    assert "owner_id" in statement

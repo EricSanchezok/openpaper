@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
     ChatMessage,
     CitationArtifact,
-    Conversation,
+    ConversationDetail,
     ConversationMessagesResponse,
     MessageTrace,
     Reference,
@@ -19,9 +19,11 @@ import { PaperItem } from "@/lib/schema";
 import { toast } from "sonner";
 import { ConversationView } from '@/components/ConversationView';
 import {
-    MentionSelection,
-    EMPTY_MENTION_SELECTION,
-    selectionToScopeItems,
+    EMPTY_PAPER_CONTEXT_SELECTION,
+    EMPTY_TURN_ATTACHMENTS,
+    PaperContextSelection,
+    TurnAttachments,
+    contextAndAttachmentsToScopeItems,
 } from '@/components/chat/MentionAutocomplete';
 
 interface ChatRequestBody {
@@ -60,11 +62,14 @@ function ProjectConversationPageContent() {
         collapseArtifacts,
     } = useProjectWorkspace();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [conversation, setConversation] = useState<Conversation | null>(null);
-    const [mentionSelection, setMentionSelection] = useState<MentionSelection>({
-        ...EMPTY_MENTION_SELECTION,
+    const [conversation, setConversation] = useState<ConversationDetail | null>(null);
+    const [paperContextSelection, setPaperContextSelection] = useState<PaperContextSelection>({
+        ...EMPTY_PAPER_CONTEXT_SELECTION,
         projectIds: [projectId],
     });
+    const [turnAttachments, setTurnAttachments] = useState<TurnAttachments>(
+        EMPTY_TURN_ATTACHMENTS,
+    );
     const [libraryContext, setLibraryContext] = useState(false);
     const { projects } = useProjects();
 
@@ -152,7 +157,7 @@ function ProjectConversationPageContent() {
     const fetchMessages = useCallback(async (id: string) => {
         try {
             const [detail, response] = await Promise.all([
-                fetchFromApi<Conversation>(`/conversations/${id}`),
+                fetchFromApi<ConversationDetail>(`/conversations/${id}`),
                 fetchFromApi<ConversationMessagesResponse>(
                     `/conversations/${id}/messages?limit=100`,
                 ),
@@ -160,17 +165,17 @@ function ProjectConversationPageContent() {
             if (response?.items) {
                 setMessages(response.items);
                 setConversation(detail);
-                if (detail.paper_context?.kind === 'selection') {
+                if (detail.paper_context.kind === 'selection') {
                     setLibraryContext(false);
-                    setMentionSelection({
+                    setPaperContextSelection({
                         projectIds: detail.paper_context.project_ids,
                         documentIds: detail.paper_context.document_ids,
-                        highlights: [],
                     });
                 } else {
                     setLibraryContext(true);
-                    setMentionSelection(EMPTY_MENTION_SELECTION);
+                    setPaperContextSelection(EMPTY_PAPER_CONTEXT_SELECTION);
                 }
+                setTurnAttachments(EMPTY_TURN_ATTACHMENTS);
                 setConversationId(id);
                 setIsCentered(false);
             }
@@ -194,33 +199,58 @@ function ProjectConversationPageContent() {
             const pendingQuery = localStorage.getItem(`pending-query-${conversationIdFromUrl}`);
             if (pendingQuery) {
                 // Apply the initial context selection carried over from the project page.
-                const pendingMentionsRaw = localStorage.getItem(`pending-mentions-${conversationIdFromUrl}`);
+                const pendingPaperContextRaw = localStorage.getItem(
+                    `pending-paper-context-${conversationIdFromUrl}`,
+                );
+                const pendingTurnAttachmentsRaw = localStorage.getItem(
+                    `pending-turn-attachments-${conversationIdFromUrl}`,
+                );
                 // If mentions were carried over, wait for project papers to load so
                 // their titles resolve — otherwise they persist as "Untitled paper".
                 // Keep the localStorage keys until then; this effect re-runs when
                 // isPapersLoading flips to false.
-                if (pendingMentionsRaw && isPapersLoading) {
+                if ((pendingPaperContextRaw || pendingTurnAttachmentsRaw) && isPapersLoading) {
                     return;
                 }
                 setIsSessionLoading(false);
                 localStorage.removeItem(`pending-query-${conversationIdFromUrl}`);
-                localStorage.removeItem(`pending-mentions-${conversationIdFromUrl}`);
-                let pendingMentions: MentionSelection | undefined;
-                if (pendingMentionsRaw) {
+                localStorage.removeItem(`pending-paper-context-${conversationIdFromUrl}`);
+                localStorage.removeItem(`pending-turn-attachments-${conversationIdFromUrl}`);
+                let pendingPaperContext: PaperContextSelection | undefined;
+                let pendingTurnAttachments: TurnAttachments | undefined;
+                if (pendingPaperContextRaw) {
                     try {
-                        const selection = JSON.parse(pendingMentionsRaw) as MentionSelection;
+                        const selection = JSON.parse(
+                            pendingPaperContextRaw,
+                        ) as PaperContextSelection;
                         if (
                             Array.isArray(selection.documentIds)
                             && Array.isArray(selection.projectIds)
-                            && Array.isArray(selection.highlights)
                         ) {
-                            pendingMentions = selection;
+                            pendingPaperContext = selection;
                         }
                     } catch {
-                        // ignore malformed pending mentions
+                        // Ignore malformed pending paper context.
                     }
                 }
-                handleSubmit(null, pendingQuery, pendingMentions);
+                if (pendingTurnAttachmentsRaw) {
+                    try {
+                        const attachments = JSON.parse(
+                            pendingTurnAttachmentsRaw,
+                        ) as TurnAttachments;
+                        if (Array.isArray(attachments.highlights)) {
+                            pendingTurnAttachments = attachments;
+                        }
+                    } catch {
+                        // Ignore malformed pending turn attachments.
+                    }
+                }
+                handleSubmit(
+                    null,
+                    pendingQuery,
+                    pendingPaperContext,
+                    pendingTurnAttachments,
+                );
             } else if (messages.length === 0 && isSessionLoading && !isStreaming) {
                 fetchMessages(conversationIdFromUrl);
             }
@@ -286,7 +316,12 @@ function ProjectConversationPageContent() {
         }
     }, [isStreaming]);
 
-    const handleSubmit = useCallback(async (e: FormEvent | null = null, message?: string, mentionsOverride?: MentionSelection) => {
+    const handleSubmit = useCallback(async (
+        e: FormEvent | null = null,
+        message?: string,
+        paperContextOverride?: PaperContextSelection,
+        turnAttachmentsOverride?: TurnAttachments,
+    ) => {
         if (e) {
             e.preventDefault();
         }
@@ -304,9 +339,13 @@ function ProjectConversationPageContent() {
         collapseArtifacts();
 
         // Paper/project context persists; highlights remain the only per-turn input.
-        const submittedMentions = mentionsOverride ?? mentionSelection;
-        if (mentionsOverride) {
-            setMentionSelection(submittedMentions);
+        const submittedPaperContext = paperContextOverride ?? paperContextSelection;
+        const submittedAttachments = turnAttachmentsOverride ?? turnAttachments;
+        if (paperContextOverride) {
+            setPaperContextSelection(submittedPaperContext);
+        }
+        if (turnAttachmentsOverride) {
+            setTurnAttachments(submittedAttachments);
         }
         const userMessage: ChatMessage = {
             role: 'user',
@@ -315,15 +354,16 @@ function ProjectConversationPageContent() {
                 ...(libraryContext
                     ? [{ kind: 'library' as const, id: 'library', title: 'Library' }]
                     : []),
-                ...selectionToScopeItems(
-                    submittedMentions,
+                ...contextAndAttachmentsToScopeItems(
+                    submittedPaperContext,
+                    submittedAttachments,
                     papers,
                     projects,
                 ),
             ],
         };
         setMessages(prev => [...prev, userMessage]);
-        setMentionSelection((selection) => ({ ...selection, highlights: [] }));
+        setTurnAttachments(EMPTY_TURN_ATTACHMENTS);
 
         if (!message) {
             setCurrentMessage('');
@@ -339,8 +379,8 @@ function ProjectConversationPageContent() {
             user_query: query,
             reasoning_level: reasoningLevel,
         };
-        if (submittedMentions.highlights.length > 0) {
-            requestBody.mentioned_highlight_ids = submittedMentions.highlights.map(
+        if (submittedAttachments.highlights.length > 0) {
+            requestBody.mentioned_highlight_ids = submittedAttachments.highlights.map(
                 (highlight) => highlight.id,
             );
         }
@@ -353,8 +393,8 @@ function ProjectConversationPageContent() {
                         ? { kind: 'library' }
                         : {
                             kind: 'selection',
-                            project_ids: submittedMentions.projectIds,
-                            document_ids: submittedMentions.documentIds,
+                            project_ids: submittedPaperContext.projectIds,
+                            document_ids: submittedPaperContext.documentIds,
                         },
                 ),
             });
@@ -534,7 +574,7 @@ function ProjectConversationPageContent() {
 
             setMessages(prev => prev.slice(0, -1));
             setCurrentMessage(query);
-            setMentionSelection(submittedMentions);
+            setTurnAttachments(submittedAttachments);
             setError(`Streaming error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsStreaming(false);
@@ -551,7 +591,7 @@ function ProjectConversationPageContent() {
         currentMessage,
         isStreaming,
         libraryContext,
-        mentionSelection,
+        paperContextSelection,
         papers,
         project,
         projectId,
@@ -559,6 +599,7 @@ function ProjectConversationPageContent() {
         reasoningLevel,
         refetchSubscription,
         router,
+        turnAttachments,
     ]);
 
     const [error, setError] = useState<string | null>(null);
@@ -601,27 +642,28 @@ function ProjectConversationPageContent() {
                     authLoading={authLoading}
                     onRefreshPaperUrl={refreshPaperUrl}
                     onOpenDocumentExternal={openDocument}
-                    mentionSelection={mentionSelection}
-                    onMentionSelectionChange={(selection) => {
-                        if (selection.documentIds.length > 0 || selection.projectIds.length > 0) {
-                            setLibraryContext(false);
-                        }
-                        setMentionSelection(selection);
+                    paperContextSelection={paperContextSelection}
+                    onPaperContextSelectionChange={(selection) => {
+                        setLibraryContext(false);
+                        setPaperContextSelection({
+                            ...selection,
+                            projectIds: Array.from(
+                                new Set([projectId, ...selection.projectIds]),
+                            ),
+                        });
                     }}
+                    turnAttachments={turnAttachments}
+                    onTurnAttachmentsChange={setTurnAttachments}
                     libraryContext={libraryContext}
                     onLibraryContextChange={(selected) => {
                         setLibraryContext(selected);
                         if (selected) {
-                            setMentionSelection((selection) => ({
-                                ...EMPTY_MENTION_SELECTION,
-                                highlights: selection.highlights,
-                            }));
+                            setPaperContextSelection(EMPTY_PAPER_CONTEXT_SELECTION);
                         } else {
-                            setMentionSelection((selection) => ({
-                                ...EMPTY_MENTION_SELECTION,
+                            setPaperContextSelection({
+                                ...EMPTY_PAPER_CONTEXT_SELECTION,
                                 projectIds: [projectId],
-                                highlights: selection.highlights,
-                            }));
+                            });
                         }
                     }}
                     projects={projects}

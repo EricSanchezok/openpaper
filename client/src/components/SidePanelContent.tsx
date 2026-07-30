@@ -1030,13 +1030,13 @@ export function SidePanelContent({
                                                 <div className="flex flex-row gap-2">
                                                     <Button
                                                         type="button"
-                                                        variant={conversation?.paper_context?.kind === 'library' ? 'secondary' : 'ghost'}
+                                                        variant={conversation?.paper_context.kind === 'library' ? 'secondary' : 'ghost'}
                                                         className="w-fit gap-1.5 text-sm"
                                                         title="Use entire library"
                                                         disabled={isStreaming || !conversationId}
                                                         onClick={async () => {
                                                             if (!conversationId) return;
-                                                            const useLibrary = conversation?.paper_context?.kind !== 'library';
+                                                            const useLibrary = conversation?.paper_context.kind !== 'library';
                                                             const paperContext = await fetchFromApi<import("@/lib/schema").ConversationPaperContext>(
                                                                 `/conversations/${encodeURIComponent(conversationId)}/context`,
                                                                 {

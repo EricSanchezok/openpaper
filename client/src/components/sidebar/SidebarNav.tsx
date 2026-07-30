@@ -12,15 +12,15 @@ import { Badge } from "@/components/ui/badge";
 import { CollapsibleSidebarMenu } from "../CollapsibleSidebarMenu";
 import { navItems } from "./navItems";
 import { User } from "@/lib/auth";
-import { Conversation, PaperItem, Project } from "@/lib/schema";
+import { ConversationSummary, PaperItem, Project } from "@/lib/schema";
 import { ConversationSidebarMenu } from "./ConversationSidebarMenu";
 
 interface SidebarNavProps {
     user: User | null;
     papers: PaperItem[];
-    conversations: Conversation[];
+    conversations: ConversationSummary[];
     projects: Project[];
-    onConversationChanged: (conversation: Conversation | string) => void;
+    onConversationChanged: (conversation: ConversationSummary | string) => void;
 }
 
 export function SidebarNav({

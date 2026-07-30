@@ -161,7 +161,7 @@ class EvidenceOperations(BaseLLMClient):
                 }
                 for project in context_snapshot.projects
             },
-            "library_document_count": context_snapshot.library_document_count,
+            "available_document_count": context_snapshot.available_document_count,
         }
 
         function_declarations = [

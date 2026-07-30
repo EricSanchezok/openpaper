@@ -21,6 +21,7 @@ from app.modules.papers.infrastructure.models import (
     DocumentPassage,
     LibraryPaper,
 )
+from app.modules.papers.infrastructure.access import accessible_document_condition
 from app.modules.projects.infrastructure.models import (
     Project,
     ProjectCollaborator,
@@ -36,9 +37,8 @@ def _visibility_condition(
     actor: Actor,
     collection: LibraryPaperCollection | SelectedPaperCollection,
 ) -> ColumnElement[bool]:
-    in_library = LibraryPaper.user_id == actor.id
     if isinstance(collection, LibraryPaperCollection):
-        return in_library
+        return accessible_document_condition(user_id=actor.id)
     conditions: list[ColumnElement[bool]] = []
     if collection.document_ids:
         conditions.append(Document.id.in_(collection.document_ids))
@@ -267,15 +267,9 @@ class PostgresPaperSearch:
     ) -> PaperSearchStats:
         total = int(
             self._db.scalar(
-                select(func.count(Document.id.distinct()))
-                .outerjoin(
-                    LibraryPaper,
-                    and_(
-                        LibraryPaper.document_id == Document.id,
-                        LibraryPaper.user_id == actor.id,
-                    ),
+                select(func.count(Document.id)).where(
+                    accessible_document_condition(user_id=actor.id)
                 )
-                .where(LibraryPaper.user_id == actor.id)
             )
             or 0
         )

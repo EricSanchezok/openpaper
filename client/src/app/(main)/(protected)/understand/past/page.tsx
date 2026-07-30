@@ -6,10 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchFromApi } from "@/lib/api";
-import type { Conversation, ConversationListResponse } from "@/lib/schema";
+import type { ConversationListResponse, ConversationSummary } from "@/lib/schema";
 import { cn, formatDate } from "@/lib/utils";
 
-function conversationUrl(conversation: Conversation): string {
+function conversationUrl(conversation: ConversationSummary): string {
     if (conversation.scope_type === "project" && conversation.scope_id) {
         return `/projects/${conversation.scope_id}/conversations/${conversation.id}`;
     }
@@ -21,7 +21,7 @@ function conversationUrl(conversation: Conversation): string {
 
 export default function PastConversationsPage() {
     const [archived, setArchived] = useState(false);
-    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [conversations, setConversations] = useState<ConversationSummary[]>([]);
     const [loading, setLoading] = useState(true);
 
     const refresh = useCallback(async () => {
@@ -41,7 +41,7 @@ export default function PastConversationsPage() {
     }, [refresh]);
 
     const setArchivedState = async (
-        conversation: Conversation,
+        conversation: ConversationSummary,
         nextArchived: boolean,
     ) => {
         await fetchFromApi(`/conversations/${conversation.id}`, {
@@ -53,7 +53,7 @@ export default function PastConversationsPage() {
         );
     };
 
-    const remove = async (conversation: Conversation) => {
+    const remove = async (conversation: ConversationSummary) => {
         if (!window.confirm(`Delete “${conversation.title}”?`)) return;
         await fetchFromApi(`/conversations/${conversation.id}`, {
             method: "DELETE",

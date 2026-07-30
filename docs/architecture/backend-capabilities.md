@@ -106,6 +106,14 @@ A future embedding or hybrid implementation is added as another adapter and
 selected only in the composition root; HTTP, Agent, and MCP contracts do not
 change.
 
+The search collection named `library` is a computed access view, not a synonym
+for `LibraryPaper` membership. It contains the user's personal-library papers
+plus papers available through Projects they own or collaborate on. Access is
+re-evaluated for each operation, and the outer `Document` query keeps papers
+that are reachable through several paths unique. Personal-library listing,
+tags, storage accounting, and ingestion ownership continue to use
+`LibraryPaper`; no Project paper is copied into the personal library.
+
 ## Adding a capability or adapter
 
 1. Define transport-neutral request/response contracts and a port in the

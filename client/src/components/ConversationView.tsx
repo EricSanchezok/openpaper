@@ -23,8 +23,10 @@ import { ChatMessage, Reference, PaperItem, CitationArtifact, Project } from "@/
 import { MentionInput } from "@/components/chat/MentionInput";
 import {
 	MentionContextBar,
-	MentionSelection,
-	EMPTY_MENTION_SELECTION,
+	PaperContextSelection,
+	TurnAttachments,
+	EMPTY_PAPER_CONTEXT_SELECTION,
+	EMPTY_TURN_ATTACHMENTS,
 	scopeItemsToEntities,
 } from "@/components/chat/MentionAutocomplete";
 import ReferencePaperCards from "@/components/ReferencePaperCards";
@@ -68,12 +70,14 @@ interface ConversationViewProps {
 	// When provided, papers open in the caller's reader (e.g. the project
 	// workspace panel) instead of this view's private side-by-side PDF split.
 	onOpenDocumentExternal?: (paper: PaperItem, searchText: string | null) => void;
-	// @-mention scoping (optional). When onMentionSelectionChange is provided,
+	// @-mention scoping (optional). When context/attachment callbacks are provided,
 	// the input gains a Google-Docs-style "@" dropdown for scoping the chat to
 	// specific papers/projects.
 	projects?: Project[];
-	mentionSelection?: MentionSelection;
-	onMentionSelectionChange?: (selection: MentionSelection) => void;
+	paperContextSelection?: PaperContextSelection;
+	onPaperContextSelectionChange?: (selection: PaperContextSelection) => void;
+	turnAttachments?: TurnAttachments;
+	onTurnAttachmentsChange?: (attachments: TurnAttachments) => void;
 	libraryContext?: boolean;
 	onLibraryContextChange?: (selected: boolean) => void;
 	lockedDocumentIds?: string[];
@@ -113,8 +117,10 @@ export const ConversationView = ({
 	onRefreshPaperUrl,
 	onOpenDocumentExternal,
 	projects = [],
-	mentionSelection = EMPTY_MENTION_SELECTION,
-	onMentionSelectionChange,
+	paperContextSelection = EMPTY_PAPER_CONTEXT_SELECTION,
+	onPaperContextSelectionChange,
+	turnAttachments = EMPTY_TURN_ATTACHMENTS,
+	onTurnAttachmentsChange,
 	libraryContext = false,
 	onLibraryContextChange,
 	lockedDocumentIds = [],
@@ -533,8 +539,10 @@ export const ConversationView = ({
 							papers={papers}
 							projects={projects}
 							papersOnly={mentionPapersOnly}
-							selection={mentionSelection}
-							onSelectionChange={onMentionSelectionChange}
+							paperContext={paperContextSelection}
+							onPaperContextChange={onPaperContextSelectionChange}
+							turnAttachments={turnAttachments}
+							onTurnAttachmentsChange={onTurnAttachmentsChange}
 							librarySelected={libraryContext}
 							onLibrarySelectedChange={onLibraryContextChange}
 							lockedDocumentIds={lockedDocumentIds}

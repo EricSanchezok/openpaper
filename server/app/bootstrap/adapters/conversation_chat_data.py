@@ -9,7 +9,7 @@ from app.bootstrap.adapters.conversation_access import conversation_policy
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.bootstrap.adapters.research_repository import research_repository
 from app.database.models import Conversation
-from app.database.models import LibraryPaper, Project, ProjectPaper
+from app.database.models import Document, Project, ProjectPaper
 from app.llm.token_credits import has_token_credits
 from app.modules.conversations.application.chat import (
     ChatHistoryMessage,
@@ -31,6 +31,10 @@ from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.modules.papers.infrastructure.repository import document_repository
+from app.modules.papers.infrastructure.access import (
+    accessible_document_condition,
+    get_document_access,
+)
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, JsonValue
 from app.shared.domain.enums import ConversationScopeType
@@ -127,12 +131,12 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             )
             for project_id, title, description, document_count in project_rows
         ]
-        library_count = (
+        available_document_count = (
             int(
                 self._session.scalar(
-                    select(func.count())
-                    .select_from(LibraryPaper)
-                    .where(LibraryPaper.user_id == actor.id)
+                    select(func.count(Document.id)).where(
+                        accessible_document_condition(user_id=actor.id)
+                    )
                 )
                 or 0
             )
@@ -142,7 +146,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
         return ConversationContextSnapshot(
             papers=papers,
             projects=projects,
-            library_document_count=library_count,
+            available_document_count=available_document_count,
         )
 
     def context_contains_document(
@@ -157,11 +161,10 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
         context = scope.paper_context
         if context.kind == "library":
             return (
-                self._session.scalar(
-                    select(LibraryPaper.id).where(
-                        LibraryPaper.user_id == actor.id,
-                        LibraryPaper.document_id == document_id,
-                    )
+                get_document_access(
+                    self._session,
+                    document_id=document_id,
+                    user_id=actor.id,
                 )
                 is not None
             )

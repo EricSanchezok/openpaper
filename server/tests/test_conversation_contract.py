@@ -341,7 +341,7 @@ def test_conversation_context_keeps_anchor_and_drops_lost_extra_access(
     assert context.document_ids == [accessible_document]
 
 
-def test_global_conversation_defaults_to_personal_library_context() -> None:
+def test_global_conversation_defaults_to_accessible_library_context() -> None:
     db = MagicMock(spec=Session)
 
     conversation = conversation_repository.create(
@@ -406,6 +406,45 @@ def test_paper_context_snapshot_only_loads_anchor_full_text(
     assert by_id[anchor_id].abstract == "Anchor abstract"
     assert by_id[extra_id].raw_content is None
     assert by_id[extra_id].abstract is None
+
+
+def test_library_context_accepts_project_shared_document_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shared_document_id = uuid.uuid4()
+    actor = _current_user()
+    db = MagicMock(spec=Session)
+    adapter = SqlAlchemyConversationChatData(db)
+    scope = ConversationChatScope(
+        scope_type=ConversationScopeType.GLOBAL,
+        project_id=None,
+        document_id=None,
+        paper_context=LibraryPaperContext(),
+    )
+    access = MagicMock()
+    monkeypatch.setattr(
+        "app.bootstrap.adapters.conversation_chat_data.get_document_access",
+        lambda _db, *, document_id, user_id: (
+            access
+            if document_id == shared_document_id and user_id == actor.id
+            else None
+        ),
+    )
+
+    assert adapter.context_contains_document(
+        actor=actor,
+        scope=scope,
+        document_id=shared_document_id,
+    )
+    monkeypatch.setattr(
+        "app.bootstrap.adapters.conversation_chat_data.get_document_access",
+        lambda _db, *, document_id, user_id: None,
+    )
+    assert not adapter.context_contains_document(
+        actor=actor,
+        scope=scope,
+        document_id=shared_document_id,
+    )
 
 
 def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -> None:

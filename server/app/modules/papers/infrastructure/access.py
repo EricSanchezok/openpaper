@@ -15,7 +15,7 @@ from app.modules.papers.domain import (
     classify_document_access,
 )
 from app.shared.domain import AppError, FailureKind
-from sqlalchemy import and_, or_, select
+from sqlalchemy import ColumnElement, and_, exists, or_, select
 from sqlalchemy.orm import Session
 
 
@@ -24,6 +24,41 @@ class ResolvedDocumentAccess:
     document: Document
     library_paper: LibraryPaper | None
     decision: DocumentAccessDecision
+
+
+def accessible_document_condition(*, user_id: int) -> ColumnElement[bool]:
+    """SQL predicate for every document the user may currently read.
+
+    A Library collection is an access view: personal LibraryPaper membership
+    plus papers reachable through an owned or collaborative Project. The
+    correlated EXISTS clauses keep Document as the unique outer row.
+    """
+
+    in_personal_library = exists(
+        select(LibraryPaper.id).where(
+            LibraryPaper.document_id == Document.id,
+            LibraryPaper.user_id == user_id,
+        )
+    )
+    in_accessible_project = exists(
+        select(ProjectPaper.document_id)
+        .join(Project, Project.id == ProjectPaper.project_id)
+        .outerjoin(
+            ProjectCollaborator,
+            and_(
+                ProjectCollaborator.project_id == Project.id,
+                ProjectCollaborator.user_id == user_id,
+            ),
+        )
+        .where(
+            ProjectPaper.document_id == Document.id,
+            or_(
+                Project.owner_id == user_id,
+                ProjectCollaborator.user_id == user_id,
+            ),
+        )
+    )
+    return or_(in_personal_library, in_accessible_project)
 
 
 def get_library_paper(

@@ -78,7 +78,7 @@ def verify() -> None:
             actor=owner,
             request=PaperSearchRequest(query="neural retrieval", limit=1),
         )
-        assert first.total == 2
+        assert first.total == 3
         assert first.items[0].document_id == TITLE_DOCUMENT_ID
         assert first.items[0].matched_fields == ["title"]
         assert first.next_cursor is not None
@@ -104,6 +104,7 @@ def verify() -> None:
         assert {item.document_id for item in library.items} == {
             TITLE_DOCUMENT_ID,
             BODY_DOCUMENT_ID,
+            PROJECT_DOCUMENT_ID,
         }
         body = next(
             item for item in library.items if item.document_id == BODY_DOCUMENT_ID
@@ -118,6 +119,16 @@ def verify() -> None:
             ),
         )
         assert [item.document_id for item in project.items] == [PROJECT_DOCUMENT_ID]
+        collaborator_library = search(
+            actor=collaborator,
+            request=PaperSearchRequest(
+                query="neural retrieval",
+                collection=LibraryPaperCollection(),
+            ),
+        )
+        assert [item.document_id for item in collaborator_library.items] == [
+            PROJECT_DOCUMENT_ID
+        ]
         project_paper = content.read(
             actor=collaborator,
             document_id=PROJECT_DOCUMENT_ID,

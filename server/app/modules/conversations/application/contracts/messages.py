@@ -41,13 +41,6 @@ class ConversationMessageRequest(BaseModel):
             raise ValueError("Reference text exceeds maximum length")
         return value
 
-    @field_validator("user_references")
-    @classmethod
-    def validate_reference_lengths(cls, value: list[str] | None) -> list[str] | None:
-        if value is not None and any(len(item) > 5_000 for item in value):
-            raise ValueError("Reference text exceeds maximum length")
-        return value
-
 
 class Evidence(BaseModel):
     """Model for managing evidence gathered from papers"""

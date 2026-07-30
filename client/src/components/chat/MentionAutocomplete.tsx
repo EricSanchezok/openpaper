@@ -66,27 +66,25 @@ export interface MentionEntity {
 	locked?: boolean;
 }
 
-export interface MentionSelection {
+export interface PaperContextSelection {
 	documentIds: string[];
 	projectIds: string[];
+}
+
+export interface TurnAttachments {
 	// Highlights aren't a client-side list, so we keep the resolved entities
 	// (label + parent paper) rather than just ids.
 	highlights: MentionEntity[];
 }
 
-export const EMPTY_MENTION_SELECTION: MentionSelection = {
+export const EMPTY_PAPER_CONTEXT_SELECTION: PaperContextSelection = {
 	documentIds: [],
 	projectIds: [],
-	highlights: [],
 };
 
-export function mentionSelectionIsEmpty(selection: MentionSelection): boolean {
-	return (
-		selection.documentIds.length === 0 &&
-		selection.projectIds.length === 0 &&
-		selection.highlights.length === 0
-	);
-}
+export const EMPTY_TURN_ATTACHMENTS: TurnAttachments = {
+	highlights: [],
+};
 
 export function entityIcon(kind: MentionKind) {
 	if (kind === "library") return Library;
@@ -96,29 +94,30 @@ export function entityIcon(kind: MentionKind) {
 }
 
 /**
- * Build the denormalized scope snapshot ([{kind, id, title}]) from a live
- * selection, mirroring what the backend persists — used to show context on the
- * just-sent message immediately, before the server round-trip.
+ * Build the denormalized scope snapshot ([{kind, id, title}]) from persistent
+ * paper context and per-turn attachments. This mirrors what the backend saves
+ * and lets the just-sent message render before the server round-trip.
  */
-export function selectionToScopeItems(
-	selection: MentionSelection,
+export function contextAndAttachmentsToScopeItems(
+	paperContext: PaperContextSelection,
+	turnAttachments: TurnAttachments,
 	papers: PaperItem[],
 	projects: Project[],
 ): MessageScopeItem[] {
 	const paperById = new Map(papers.map((p) => [p.document_id, p]));
 	const projectById = new Map(projects.map((p) => [p.id, p]));
 	return [
-		...selection.documentIds.map((id) => ({
+		...paperContext.documentIds.map((id) => ({
 			kind: "paper" as const,
 			id,
 			title: paperById.get(id)?.title || "Untitled paper",
 		})),
-		...selection.projectIds.map((id) => ({
+		...paperContext.projectIds.map((id) => ({
 			kind: "project" as const,
 			id,
 			title: projectById.get(id)?.title || "Untitled project",
 		})),
-		...selection.highlights.map((h) => ({
+		...turnAttachments.highlights.map((h) => ({
 			kind: "highlight" as const,
 			id: h.id,
 			title: h.label,
@@ -198,8 +197,10 @@ interface UseMentionAutocompleteArgs {
 	projects: Project[];
 	value: string;
 	onValueChange: (value: string) => void;
-	selection: MentionSelection;
-	onSelectionChange: (selection: MentionSelection) => void;
+	paperContext: PaperContextSelection;
+	onPaperContextChange: (selection: PaperContextSelection) => void;
+	turnAttachments: TurnAttachments;
+	onTurnAttachmentsChange: (attachments: TurnAttachments) => void;
 	textareaRef: RefObject<HTMLTextAreaElement | null>;
 	// Project chat scopes mentions to papers only, so highlight search is off.
 	enableHighlights?: boolean;
@@ -213,8 +214,10 @@ export function useMentionAutocomplete({
 	projects,
 	value,
 	onValueChange,
-	selection,
-	onSelectionChange,
+	paperContext,
+	onPaperContextChange,
+	turnAttachments,
+	onTurnAttachmentsChange,
 	textareaRef,
 	enableHighlights = true,
 	enableProjects = true,
@@ -226,16 +229,16 @@ export function useMentionAutocomplete({
 	const query = token?.query ?? "";
 
 	const selectedDocumentIds = useMemo(
-		() => new Set(selection.documentIds),
-		[selection.documentIds],
+		() => new Set(paperContext.documentIds),
+		[paperContext.documentIds],
 	);
 	const selectedProjectIds = useMemo(
-		() => new Set(selection.projectIds),
-		[selection.projectIds],
+		() => new Set(paperContext.projectIds),
+		[paperContext.projectIds],
 	);
 	const selectedHighlightIds = useMemo(
-		() => new Set(selection.highlights.map((h) => h.id)),
-		[selection.highlights],
+		() => new Set(turnAttachments.highlights.map((h) => h.id)),
+		[turnAttachments.highlights],
 	);
 	const lockedDocuments = useMemo(
 		() => new Set(lockedDocumentIds),
@@ -384,19 +387,18 @@ export function useMentionAutocomplete({
 			}
 
 			if (entity.kind === "paper" && !selectedDocumentIds.has(entity.id)) {
-				onSelectionChange({
-					...selection,
-					documentIds: [...selection.documentIds, entity.id],
+				onPaperContextChange({
+					...paperContext,
+					documentIds: [...paperContext.documentIds, entity.id],
 				});
 			} else if (entity.kind === "project" && !selectedProjectIds.has(entity.id)) {
-				onSelectionChange({
-					...selection,
-					projectIds: [...selection.projectIds, entity.id],
+				onPaperContextChange({
+					...paperContext,
+					projectIds: [...paperContext.projectIds, entity.id],
 				});
 			} else if (entity.kind === "highlight" && !selectedHighlightIds.has(entity.id)) {
-				onSelectionChange({
-					...selection,
-					highlights: [...selection.highlights, entity],
+				onTurnAttachmentsChange({
+					highlights: [...turnAttachments.highlights, entity],
 				});
 			}
 
@@ -406,8 +408,10 @@ export function useMentionAutocomplete({
 			token,
 			value,
 			onValueChange,
-			selection,
-			onSelectionChange,
+			paperContext,
+			onPaperContextChange,
+			turnAttachments,
+			onTurnAttachmentsChange,
 			selectedDocumentIds,
 			selectedProjectIds,
 			selectedHighlightIds,
@@ -453,24 +457,30 @@ export function useMentionAutocomplete({
 			}
 			if (kind === "paper") {
 				if (lockedDocuments.has(id)) return;
-				onSelectionChange({
-					...selection,
-					documentIds: selection.documentIds.filter((p) => p !== id),
+				onPaperContextChange({
+					...paperContext,
+					documentIds: paperContext.documentIds.filter((p) => p !== id),
 				});
 			} else if (kind === "project") {
 				if (lockedProjects.has(id)) return;
-				onSelectionChange({
-					...selection,
-					projectIds: selection.projectIds.filter((p) => p !== id),
+				onPaperContextChange({
+					...paperContext,
+					projectIds: paperContext.projectIds.filter((p) => p !== id),
 				});
 			} else {
-				onSelectionChange({
-					...selection,
-					highlights: selection.highlights.filter((h) => h.id !== id),
+				onTurnAttachmentsChange({
+					highlights: turnAttachments.highlights.filter((h) => h.id !== id),
 				});
 			}
 		},
-		[selection, onSelectionChange, lockedDocuments, lockedProjects],
+		[
+			paperContext,
+			onPaperContextChange,
+			turnAttachments,
+			onTurnAttachmentsChange,
+			lockedDocuments,
+			lockedProjects,
+		],
 	);
 
 	// Resolve selected ids back to entities for the chips row. Papers/projects
@@ -479,21 +489,28 @@ export function useMentionAutocomplete({
 		const paperById = new Map(papers.map((p) => [p.document_id, p]));
 		const projectById = new Map(projects.map((p) => [p.id, p]));
 		return [
-			...selection.documentIds.map((id) => {
+			...paperContext.documentIds.map((id) => {
 				const p = paperById.get(id);
 				return p
 					? { ...paperToEntity(p), locked: lockedDocuments.has(id) }
 					: { kind: "paper" as const, id, label: "Paper", locked: lockedDocuments.has(id) };
 			}),
-			...selection.projectIds.map((id) => {
+			...paperContext.projectIds.map((id) => {
 				const p = projectById.get(id);
 				return p
 					? { ...projectToEntity(p), locked: lockedProjects.has(id) }
 					: { kind: "project" as const, id, label: "Project", locked: lockedProjects.has(id) };
 			}),
-			...selection.highlights,
+			...turnAttachments.highlights,
 		];
-	}, [selection, papers, projects, lockedDocuments, lockedProjects]);
+	}, [
+		paperContext,
+		turnAttachments,
+		papers,
+		projects,
+		lockedDocuments,
+		lockedProjects,
+	]);
 
 	return {
 		isOpen,

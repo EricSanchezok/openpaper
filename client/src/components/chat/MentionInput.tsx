@@ -9,8 +9,10 @@ import {
 	useMentionAutocomplete,
 	MentionDropdown,
 	MentionContextBar,
-	MentionSelection,
-	EMPTY_MENTION_SELECTION,
+	PaperContextSelection,
+	TurnAttachments,
+	EMPTY_PAPER_CONTEXT_SELECTION,
+	EMPTY_TURN_ATTACHMENTS,
 } from "@/components/chat/MentionAutocomplete";
 
 interface MentionInputProps {
@@ -21,9 +23,10 @@ interface MentionInputProps {
 	projects?: Project[];
 	// Papers-only mode (project chat): no projects/highlights in the menu.
 	papersOnly?: boolean;
-	selection?: MentionSelection;
-	// Providing this enables @-mentions; omit it for a plain input.
-	onSelectionChange?: (selection: MentionSelection) => void;
+	paperContext?: PaperContextSelection;
+	onPaperContextChange?: (selection: PaperContextSelection) => void;
+	turnAttachments?: TurnAttachments;
+	onTurnAttachmentsChange?: (attachments: TurnAttachments) => void;
 	librarySelected?: boolean;
 	onLibrarySelectedChange?: (selected: boolean) => void;
 	lockedDocumentIds?: string[];
@@ -51,8 +54,10 @@ export function MentionInput({
 	papers,
 	projects = [],
 	papersOnly = false,
-	selection = EMPTY_MENTION_SELECTION,
-	onSelectionChange,
+	paperContext = EMPTY_PAPER_CONTEXT_SELECTION,
+	onPaperContextChange,
+	turnAttachments = EMPTY_TURN_ATTACHMENTS,
+	onTurnAttachmentsChange,
 	librarySelected = false,
 	onLibrarySelectedChange,
 	lockedDocumentIds = [],
@@ -68,22 +73,37 @@ export function MentionInput({
 	const internalRef = useRef<HTMLTextAreaElement>(null);
 	const taRef = textareaRef ?? internalRef;
 
-	const mentionsEnabled = !!onSelectionChange;
+	const mentionsEnabled = !!onPaperContextChange || !!onTurnAttachmentsChange;
 	const mention = useMentionAutocomplete({
 		papers,
 		projects,
 		value,
 		onValueChange,
-		selection,
-		onSelectionChange: onSelectionChange ?? (() => { }),
+		paperContext,
+		onPaperContextChange: onPaperContextChange ?? (() => { }),
+		turnAttachments,
+		onTurnAttachmentsChange: onTurnAttachmentsChange ?? (() => { }),
 		textareaRef: taRef,
 		enableHighlights: !papersOnly,
 		enableProjects: !papersOnly,
 		lockedDocumentIds,
 		lockedProjectIds,
 	});
+	const displayedContext = librarySelected
+		? [
+			{
+				kind: "library" as const,
+				id: "library",
+				label: "Entire library",
+				locked: true,
+			},
+			...mention.selectedEntities.filter(
+				(entity) => entity.kind === "highlight",
+			),
+		]
+		: mention.selectedEntities;
 	const hasSelectedMentions =
-		mentionsEnabled && mention.selectedEntities.length > 0;
+		mentionsEnabled && displayedContext.length > 0;
 
 	return (
 		<div className="relative w-full rounded-md bg-secondary dark:bg-accent focus-within:ring-1 focus-within:ring-blue-400/30 transition-all duration-300 ease-in-out">
@@ -101,7 +121,7 @@ export function MentionInput({
 			{mentionsEnabled && hasSelectedMentions && (
 				<div className="px-3 pt-2.5">
 					<MentionContextBar
-						entities={mention.selectedEntities}
+						entities={displayedContext}
 						onRemove={mention.removeMention}
 					/>
 				</div>
@@ -145,19 +165,19 @@ export function MentionInput({
 							<AtSign className="w-4 h-4" />
 						</Button>
 					)}
-					{onLibrarySelectedChange && (
+					{onLibrarySelectedChange && !librarySelected && (
 						<Button
 							type="button"
 							size="sm"
-							variant={librarySelected ? "secondary" : "ghost"}
-							onClick={() => onLibrarySelectedChange(!librarySelected)}
-							title="Use entire library"
-							aria-label="Use entire library"
+							variant="ghost"
+							onClick={() => onLibrarySelectedChange(true)}
+							title="Switch to entire library"
+							aria-label="Switch to entire library"
 							className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
 							disabled={disabled}
 						>
 							<Library className="h-4 w-4" />
-							Library
+							Use Library
 						</Button>
 					)}
 				</div>

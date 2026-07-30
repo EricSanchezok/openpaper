@@ -9,7 +9,7 @@ import { useIsDarkMode } from "@/hooks/useDarkMode";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useActivePapers } from "@/hooks/useActivePapers";
-import { Conversation, ConversationListResponse, Project, ProjectListResponse } from "@/lib/schema";
+import { ConversationListResponse, ConversationSummary, Project, ProjectListResponse } from "@/lib/schema";
 import { SidebarNav } from "./SidebarNav";
 import { AppSidebarFooter } from "./SidebarFooter";
 import { getSubscriptionWarning } from "./subscriptionWarning";
@@ -19,7 +19,7 @@ export function AppSidebar() {
     const { user, logout } = useAuth();
     const { papers: allPapers } = useActivePapers(!!user);
     const [projects, setProjects] = useState<Project[]>([]);
-    const [everythingConversations, setEverythingConversations] = useState<Conversation[]>([]);
+    const [everythingConversations, setEverythingConversations] = useState<ConversationSummary[]>([]);
     const { darkMode, toggleDarkMode } = useIsDarkMode();
     const { subscription, loading: subscriptionLoading } = useSubscription();
     const [dismissedWarning, setDismissedWarning] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export function AppSidebar() {
         router.push('/login');
     }
 
-    const handleConversationChanged = (conversation: Conversation | string) => {
+    const handleConversationChanged = (conversation: ConversationSummary | string) => {
         setEverythingConversations((current) => {
             if (typeof conversation === "string") {
                 return current.filter((item) => item.id !== conversation);

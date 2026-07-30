@@ -11,7 +11,7 @@ import {
 } from "react";
 import { fetchFromApi, getProjectPaperFileUrl } from "@/lib/api";
 import {
-    Conversation,
+    ConversationSummary,
     MinimalJob,
     PaperItem,
     PendingPaperJobListResponse,
@@ -42,7 +42,7 @@ interface ProjectWorkspaceValue {
     isPapersLoading: boolean;
     refetchPapers: () => Promise<void>;
     updatePaper: (documentId: string, patch: Partial<PaperItem>) => void;
-    conversations: Conversation[];
+    conversations: ConversationSummary[];
     isConversationsLoading: boolean;
     refetchConversations: () => Promise<void>;
     // In-page reader panel (open papers as tabs).

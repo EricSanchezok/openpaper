@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class LibraryPaperCollection(BaseModel):
+    """All documents readable through personal or Project-based access."""
+
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["library"] = "library"

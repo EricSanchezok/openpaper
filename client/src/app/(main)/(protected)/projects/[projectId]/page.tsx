@@ -9,14 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MentionInput } from "@/components/chat/MentionInput";
 import {
-    MentionSelection,
-    EMPTY_MENTION_SELECTION,
+    EMPTY_PAPER_CONTEXT_SELECTION,
+    EMPTY_TURN_ATTACHMENTS,
+    PaperContextSelection,
+    TurnAttachments,
 } from "@/components/chat/MentionAutocomplete";
 import { AnimatedGradientText } from "@/components/magicui/animated-gradient-text";
 import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
 import { useProjects } from "@/hooks/useProjects";
-import type { Conversation } from "@/lib/schema";
+import type { ConversationDetail } from "@/lib/schema";
 
 // Project home is the new-chat surface: a centered composer over the project's
 // papers. Navigation to existing chats lives in the workspace rail.
@@ -37,10 +39,13 @@ export default function ProjectPage() {
     const [error, setError] = useState<string | null>(null);
     const [newQuery, setNewQuery] = useState("");
     const { projects: allProjects } = useProjects();
-    const [mentionSelection, setMentionSelection] = useState<MentionSelection>({
-        ...EMPTY_MENTION_SELECTION,
+    const [paperContextSelection, setPaperContextSelection] = useState<PaperContextSelection>({
+        ...EMPTY_PAPER_CONTEXT_SELECTION,
         projectIds: [projectId],
     });
+    const [turnAttachments, setTurnAttachments] = useState<TurnAttachments>(
+        EMPTY_TURN_ATTACHMENTS,
+    );
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { subscription } = useSubscription();
 
@@ -65,7 +70,7 @@ export default function ProjectPage() {
 
         setIsSubmitting(true);
         try {
-            const newConversation = await fetchFromApi<Conversation>("/conversations", {
+            const newConversation = await fetchFromApi<ConversationDetail>("/conversations", {
                 method: "POST",
                 body: JSON.stringify({
                     title: "New conversation",
@@ -73,15 +78,19 @@ export default function ProjectPage() {
                     scope_id: projectId,
                     paper_context: {
                         kind: "selection",
-                        project_ids: [projectId],
-                        document_ids: mentionSelection.documentIds,
+                        project_ids: paperContextSelection.projectIds,
+                        document_ids: paperContextSelection.documentIds,
                     },
                 }),
             });
             localStorage.setItem(`pending-query-${newConversation.id}`, newQuery);
             localStorage.setItem(
-                `pending-mentions-${newConversation.id}`,
-                JSON.stringify(mentionSelection),
+                `pending-paper-context-${newConversation.id}`,
+                JSON.stringify(paperContextSelection),
+            );
+            localStorage.setItem(
+                `pending-turn-attachments-${newConversation.id}`,
+                JSON.stringify(turnAttachments),
             );
             router.push(`/projects/${projectId}/conversations/${newConversation.id}`);
         } catch (err) {
@@ -192,8 +201,10 @@ export default function ProjectPage() {
                             onSubmit={handleNewQuery}
                             papers={papers}
                             projects={allProjects}
-                            selection={mentionSelection}
-                            onSelectionChange={setMentionSelection}
+                            paperContext={paperContextSelection}
+                            onPaperContextChange={setPaperContextSelection}
+                            turnAttachments={turnAttachments}
+                            onTurnAttachmentsChange={setTurnAttachments}
                             lockedProjectIds={[projectId]}
                             placeholder={aiDisabled ? "You have used this week's Token Credits. Upgrade your plan to continue." : "Ask a question about your papers, analyze findings, or explore new ideas..."}
                             disabled={aiDisabled || isSubmitting}

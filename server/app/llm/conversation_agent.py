@@ -109,7 +109,7 @@ class ConversationAgentRuntime(EvidenceOperations):
                 }
                 for project in context_snapshot.projects
             ],
-            "library_document_count": context_snapshot.library_document_count,
+            "available_document_count": context_snapshot.available_document_count,
         }
         formatted_system_prompt = (
             ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT.format(

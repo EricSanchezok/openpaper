@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchFromApi } from "@/lib/api";
-import type { ChatMessage, Conversation } from "@/lib/schema";
+import type {
+	ChatMessage,
+	ConversationDetail,
+	ConversationSummary,
+} from "@/lib/schema";
 
 interface ConversationListResponse {
-	items: Conversation[];
+	items: ConversationSummary[];
 }
 
 interface MessagePageResponse {
@@ -24,7 +28,7 @@ export function useConversationHistory({
 	initialConversationId,
 }: UseConversationHistoryOptions) {
 	const [conversationId, setConversationId] = useState<string | null>(null);
-	const [conversation, setConversation] = useState<Conversation | null>(null);
+	const [conversation, setConversation] = useState<ConversationDetail | null>(null);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [hasMoreMessages, setHasMoreMessages] = useState(true);
 	const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
@@ -96,7 +100,7 @@ export function useConversationHistory({
 				if (id) {
 					const detail = await fetchFromApi(
 						`/conversations/${id}`,
-					) as Conversation;
+					) as ConversationDetail;
 					if (!cancelled) {
 						setConversationId(id);
 						setConversation(detail);
@@ -115,7 +119,7 @@ export function useConversationHistory({
 				if (id) {
 					const detail = await fetchFromApi(
 						`/conversations/${id}`,
-					) as Conversation;
+					) as ConversationDetail;
 					if (!cancelled) {
 						setConversationId(id);
 						setConversation(detail);
@@ -132,7 +136,7 @@ export function useConversationHistory({
 								scope_id: documentId,
 							}),
 						},
-					)) as Conversation;
+					)) as ConversationDetail;
 					if (!cancelled) {
 						setConversationId(created.id);
 						setConversation(created);

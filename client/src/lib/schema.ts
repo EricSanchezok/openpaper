@@ -254,7 +254,7 @@ export interface Citation {
     reference: string;
 }
 
-export interface Conversation {
+export interface ConversationSummary {
     id: string;
     title: string;
     updated_at: string;
@@ -276,15 +276,18 @@ export interface Conversation {
         delete: boolean;
         send: boolean;
     };
-    paper_context?: ConversationPaperContext;
 }
 
 export type ConversationPaperContext =
     | { kind: 'library' }
     | { kind: 'selection'; project_ids: string[]; document_ids: string[] };
 
+export interface ConversationDetail extends ConversationSummary {
+    paper_context: ConversationPaperContext;
+}
+
 export interface ConversationListResponse {
-    items: Conversation[];
+    items: ConversationSummary[];
     next_cursor: string | null;
 }
 

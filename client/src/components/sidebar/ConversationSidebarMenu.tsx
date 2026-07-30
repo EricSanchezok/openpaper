@@ -39,15 +39,15 @@ import {
     SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { fetchFromApi } from "@/lib/api";
-import type { Conversation, Project } from "@/lib/schema";
+import type { ConversationSummary, Project } from "@/lib/schema";
 
 interface ConversationSidebarMenuProps {
-    conversations: Conversation[];
+    conversations: ConversationSummary[];
     projects: Project[];
-    onChanged: (conversation: Conversation | string) => void;
+    onChanged: (conversation: ConversationSummary | string) => void;
 }
 
-function conversationUrl(conversation: Conversation): string {
+function conversationUrl(conversation: ConversationSummary): string {
     if (conversation.scope_type === "project" && conversation.scope_id) {
         return `/projects/${conversation.scope_id}/conversations/${conversation.id}`;
     }
@@ -66,15 +66,15 @@ function ConversationActions({
     projects,
     onChanged,
 }: {
-    conversation: Conversation;
+    conversation: ConversationSummary;
     projects: Project[];
-    onChanged: (conversation: Conversation | string) => void;
+    onChanged: (conversation: ConversationSummary | string) => void;
 }) {
     const patch = async (body: Record<string, unknown>) => {
         const updated = await fetchFromApi(`/conversations/${conversation.id}`, {
             method: "PATCH",
             body: JSON.stringify(body),
-        }) as Conversation;
+        }) as ConversationSummary;
         onChanged(updated);
     };
 
@@ -88,7 +88,7 @@ function ConversationActions({
                     scope_id: scopeId ?? null,
                 }),
             },
-        ) as Conversation;
+        ) as ConversationSummary;
         onChanged(updated);
     };
 
@@ -195,9 +195,9 @@ function ConversationSection({
     defaultOpen,
 }: {
     label: string;
-    conversations: Conversation[];
+    conversations: ConversationSummary[];
     projects: Project[];
-    onChanged: (conversation: Conversation | string) => void;
+    onChanged: (conversation: ConversationSummary | string) => void;
     defaultOpen: boolean;
 }) {
     if (conversations.length === 0) return null;

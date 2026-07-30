@@ -63,7 +63,7 @@ class ChatProjectSnapshot:
 class ConversationContextSnapshot:
     papers: list[ChatPaperSnapshot]
     projects: list[ChatProjectSnapshot]
-    library_document_count: int | None
+    available_document_count: int | None
 
 
 class ConversationChatDataGateway(Protocol):

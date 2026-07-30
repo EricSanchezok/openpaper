@@ -8,9 +8,11 @@ import { useSearchParams } from 'next/navigation';
 import { usePapers } from '@/hooks/usePapers';
 import { useProjects } from '@/hooks/useProjects';
 import {
-    MentionSelection,
-    EMPTY_MENTION_SELECTION,
-    selectionToScopeItems,
+    EMPTY_PAPER_CONTEXT_SELECTION,
+    EMPTY_TURN_ATTACHMENTS,
+    PaperContextSelection,
+    TurnAttachments,
+    contextAndAttachmentsToScopeItems,
 } from '@/components/chat/MentionAutocomplete';
 
 import { toast } from "sonner";
@@ -18,7 +20,7 @@ import { toast } from "sonner";
 import {
     ChatMessage,
     CitationArtifact,
-    Conversation,
+    ConversationDetail,
     ConversationMessagesResponse,
     MessageTrace,
     Reference,
@@ -52,7 +54,10 @@ function UnderstandPageContent() {
     // (via refreshPaperUrl) when a citation/reference is opened.
     const { papers: fetchedPapers, isLoading: isPapersLoading, error: papersError } = usePapers();
     const { projects } = useProjects();
-    const [mentionSelection, setMentionSelection] = useState<MentionSelection>(EMPTY_MENTION_SELECTION);
+    const [paperContextSelection, setPaperContextSelection] =
+        useState<PaperContextSelection>(EMPTY_PAPER_CONTEXT_SELECTION);
+    const [turnAttachments, setTurnAttachments] =
+        useState<TurnAttachments>(EMPTY_TURN_ATTACHMENTS);
     const [libraryContext, setLibraryContext] = useState(true);
 
     const papers = useMemo(() => {
@@ -74,7 +79,7 @@ function UnderstandPageContent() {
     const [currentMessage, setCurrentMessage] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
-    const [conversation, setConversation] = useState<Conversation | null>(null);
+    const [conversation, setConversation] = useState<ConversationDetail | null>(null);
     const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
     const [streamingReferences, setStreamingReferences] = useState<Reference | undefined>(undefined);
     const [streamingArtifacts, setStreamingArtifacts] = useState<CitationArtifact[]>([]);
@@ -130,24 +135,24 @@ function UnderstandPageContent() {
     const fetchMessages = useCallback(async (id: string) => {
         try {
             const [detail, response] = await Promise.all([
-                fetchFromApi<Conversation>(`/conversations/${id}`),
+                fetchFromApi<ConversationDetail>(`/conversations/${id}`),
                 fetchFromApi<ConversationMessagesResponse>(
                     `/conversations/${id}/messages?limit=100`,
                 ),
             ]);
             if (response?.items) {
                 setConversation(detail);
-                if (detail.paper_context?.kind === 'selection') {
+                if (detail.paper_context.kind === 'selection') {
                     setLibraryContext(false);
-                    setMentionSelection({
+                    setPaperContextSelection({
                         projectIds: detail.paper_context.project_ids,
                         documentIds: detail.paper_context.document_ids,
-                        highlights: [],
                     });
                 } else {
                     setLibraryContext(true);
-                    setMentionSelection(EMPTY_MENTION_SELECTION);
+                    setPaperContextSelection(EMPTY_PAPER_CONTEXT_SELECTION);
                 }
+                setTurnAttachments(EMPTY_TURN_ATTACHMENTS);
                 setMessages(response.items);
                 setConversationId(id);
                 setIsCentered(false);
@@ -258,7 +263,8 @@ function UnderstandPageContent() {
         ) return;
 
         // Highlights are per-turn attachments; paper/project context persists.
-        const submittedMentions = mentionSelection;
+        const submittedPaperContext = paperContextSelection;
+        const submittedAttachments = turnAttachments;
         const userMessage: ChatMessage = {
             role: 'user',
             content: currentMessage,
@@ -266,12 +272,17 @@ function UnderstandPageContent() {
                 ...(libraryContext
                     ? [{ kind: 'library' as const, id: 'library', title: 'Library' }]
                     : []),
-                ...selectionToScopeItems(submittedMentions, papers, projects),
+                ...contextAndAttachmentsToScopeItems(
+                    submittedPaperContext,
+                    submittedAttachments,
+                    papers,
+                    projects,
+                ),
             ],
         };
         setMessages(prev => [...prev, userMessage]);
         setCurrentMessage('');
-        setMentionSelection((selection) => ({ ...selection, highlights: [] }));
+        setTurnAttachments(EMPTY_TURN_ATTACHMENTS);
 
         setIsStreaming(true);
         setStreamingChunks([]);
@@ -283,7 +294,7 @@ function UnderstandPageContent() {
 
         if (!currentConversationId) {
             try {
-                const newConversationResponse = await fetchFromApi<Conversation>('/conversations', {
+                const newConversationResponse = await fetchFromApi<ConversationDetail>('/conversations', {
                     method: 'POST',
                     body: JSON.stringify({
                         scope_type: 'global',
@@ -291,8 +302,8 @@ function UnderstandPageContent() {
                             ? { kind: 'library' }
                             : {
                                 kind: 'selection',
-                                project_ids: submittedMentions.projectIds,
-                                document_ids: submittedMentions.documentIds,
+                                project_ids: submittedPaperContext.projectIds,
+                                document_ids: submittedPaperContext.documentIds,
                             },
                     }),
                 });
@@ -305,7 +316,7 @@ function UnderstandPageContent() {
                 toast.error("Failed to start a new conversation.");
                 setMessages(prev => prev.slice(0, -1));
                 setCurrentMessage(userMessage.content);
-                setMentionSelection(submittedMentions);
+                setTurnAttachments(submittedAttachments);
                 setIsStreaming(false);
                 setError('Failed to start a new conversation.');
                 return;
@@ -319,8 +330,8 @@ function UnderstandPageContent() {
             user_query: userMessage.content,
             reasoning_level: reasoningLevel,
         };
-        if (submittedMentions.highlights.length > 0) {
-            requestBody.mentioned_highlight_ids = submittedMentions.highlights.map(
+        if (submittedAttachments.highlights.length > 0) {
+            requestBody.mentioned_highlight_ids = submittedAttachments.highlights.map(
                 (h) => h.id,
             );
         }
@@ -334,8 +345,8 @@ function UnderstandPageContent() {
                             ? { kind: 'library' }
                             : {
                                 kind: 'selection',
-                                project_ids: submittedMentions.projectIds,
-                                document_ids: submittedMentions.documentIds,
+                                project_ids: submittedPaperContext.projectIds,
+                                document_ids: submittedPaperContext.documentIds,
                             },
                     ),
                 });
@@ -428,7 +439,7 @@ function UnderstandPageContent() {
             toast.error("An error occurred while processing your request.");
             setMessages(prev => prev.slice(0, -1));
             setCurrentMessage(userMessage.content);
-            setMentionSelection(submittedMentions);
+            setTurnAttachments(submittedAttachments);
             setError('An error occurred while processing your request.');
         } finally {
             setIsStreaming(false);
@@ -441,10 +452,11 @@ function UnderstandPageContent() {
         currentMessage,
         isStreaming,
         libraryContext,
-        mentionSelection,
+        paperContextSelection,
         papers,
         projects,
         reasoningLevel,
+        turnAttachments,
     ]);
 
     const [error, setError] = useState<string | null>(null);
@@ -513,28 +525,25 @@ function UnderstandPageContent() {
                 authLoading={authLoading}
                 onRefreshPaperUrl={refreshPaperUrl}
                 projects={projects}
-                mentionSelection={mentionSelection}
-                onMentionSelectionChange={(selection) => {
-                    if (selection.documentIds.length > 0 || selection.projectIds.length > 0) {
+                paperContextSelection={paperContextSelection}
+                onPaperContextSelectionChange={(selection) => {
+                    const hasExplicitContext =
+                        selection.documentIds.length > 0
+                        || selection.projectIds.length > 0;
+                    if (hasExplicitContext) {
                         setLibraryContext(false);
+                    } else {
+                        setLibraryContext(true);
                     }
-                    setMentionSelection(selection);
+                    setPaperContextSelection(selection);
                 }}
+                turnAttachments={turnAttachments}
+                onTurnAttachmentsChange={setTurnAttachments}
                 libraryContext={libraryContext}
                 onLibraryContextChange={(selected) => {
-                    if (
-                        !selected
-                        && mentionSelection.documentIds.length === 0
-                        && mentionSelection.projectIds.length === 0
-                    ) {
-                        return;
-                    }
                     setLibraryContext(selected);
                     if (selected) {
-                        setMentionSelection((selection) => ({
-                            ...EMPTY_MENTION_SELECTION,
-                            highlights: selection.highlights,
-                        }));
+                        setPaperContextSelection(EMPTY_PAPER_CONTEXT_SELECTION);
                     }
                 }}
             />
