@@ -20,6 +20,7 @@ class ConversationMessageRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    turn_id: uuid.UUID
     user_query: str = Field(min_length=1, max_length=20_000)
     user_references: list[str] | None = Field(default=None, max_length=50)
     style: ResponseStyle | None = ResponseStyle.NORMAL
@@ -42,8 +43,8 @@ class ConversationMessageRequest(BaseModel):
         return value
 
 
-class Evidence(BaseModel):
-    """Model for managing evidence gathered from papers"""
+class PaperEvidence(BaseModel):
+    """Evidence collected from one paper during a tool run."""
 
     document_id: str = Field(
         ...,
@@ -106,13 +107,13 @@ class CitationIndex(BaseModel):
     )
 
 
-class EvidenceCollection(BaseModel):
-    """Collection of evidence from multiple papers"""
+class ToolRunState(BaseModel):
+    """Typed state produced by one Conversation tool loop."""
 
-    evidence: dict[str, Evidence] = Field(
+    evidence: dict[str, PaperEvidence] = Field(
         default_factory=dict, description="Mapping of paper IDs to their evidence"
     )
-    previous_tool_calls: list[ToolCall] = Field(
+    tool_calls: list[ToolCall] = Field(
         default_factory=list,
         description="List of previous tool calls made during evidence gathering",
     )
@@ -132,6 +133,13 @@ class EvidenceCollection(BaseModel):
         default_factory=list,
         description="First-party artifacts produced during gathering (e.g. citations)",
     )
+    action_results: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Successful state-changing tool outcomes.",
+    )
+
+    def add_action_result(self, result: dict[str, Any]) -> None:
+        self.action_results.append(result)
 
     def add_artifact(self, artifact: CitationResult) -> None:
         """Record a first-party artifact (e.g. a resolved citation)."""
@@ -143,9 +151,7 @@ class EvidenceCollection(BaseModel):
     def to_trace_dict(self) -> dict[str, Any] | None:
         """Compact trajectory of this turn for user-facing inspection: the tool
         calls made and, for any citation subagent runs, their internal steps."""
-        tool_calls = [
-            {"name": tc.name, "args": tc.args} for tc in self.previous_tool_calls
-        ]
+        tool_calls = [{"name": tc.name, "args": tc.args} for tc in self.tool_calls]
         citations = [
             {
                 "document_id": a.document_id,
@@ -156,13 +162,17 @@ class EvidenceCollection(BaseModel):
             for a in self.artifacts
         ]
         if not tool_calls and not citations:
-            return None
-        return {"tool_calls": tool_calls, "citations": citations}
+            return {"actions": self.action_results} if self.action_results else None
+        return {
+            "tool_calls": tool_calls,
+            "citations": citations,
+            "actions": self.action_results,
+        }
 
     def load_from_dict(self, evidence_dict: dict[str, list[str]]) -> None:
         """Load evidence from a dictionary format"""
         for document_id, content in evidence_dict.items():
-            self.evidence[document_id] = Evidence(
+            self.evidence[document_id] = PaperEvidence(
                 document_id=document_id, content=content
             )
 
@@ -174,19 +184,22 @@ class EvidenceCollection(BaseModel):
     ) -> None:
         """Add evidence for a specific paper"""
         if document_id not in self.evidence:
-            self.evidence[document_id] = Evidence(document_id=document_id, content=[])
+            self.evidence[document_id] = PaperEvidence(
+                document_id=document_id,
+                content=[],
+            )
         self.evidence[document_id].add_content(
             content, with_line_numbers=preserve_line_numbers
         )
 
     def add_tool_call(self, tool_call: ToolCall) -> None:
         """Add a tool call to the collection"""
-        self.previous_tool_calls.append(tool_call)
+        self.tool_calls.append(tool_call)
 
     def add_tool_call_result(
         self,
         tool_call: ToolCall,
-        result: str | list[Any] | dict[str, Any] | None,
+        result: Any,
     ) -> None:
         """Add a tool call result for proper multi-turn function calling"""
         self.tool_call_results.append(
@@ -222,9 +235,8 @@ class EvidenceCollection(BaseModel):
         """Check if any evidence has been collected"""
         return bool(self.evidence)
 
-    def has_previous_tool_calls(self) -> bool:
-        """Check if there are any previous tool calls"""
-        return bool(self.previous_tool_calls)
+    def has_tool_calls(self) -> bool:
+        return bool(self.tool_calls)
 
     def get_tool_results_size(self) -> int:
         """Calculate the total character size of all tool call results"""
@@ -296,7 +308,7 @@ class EvidenceCollection(BaseModel):
         # Clear existing evidence and load compacted version
         self.evidence.clear()
         for document_id, snippets in compacted_evidence.items():
-            self.evidence[document_id] = Evidence(
+            self.evidence[document_id] = PaperEvidence(
                 document_id=document_id, content=snippets
             )
 
@@ -354,7 +366,7 @@ class EvidenceSummaryResponse(BaseModel):
 class EvidenceCompactionResponse(BaseModel):
     """Response structure for evidence compaction before chat response.
 
-    The format matches EvidenceCollection.get_evidence_dict() output:
+    The format matches ToolRunState.get_evidence_dict() output:
     Dict[str, List[str]] mapping document_id to list of evidence strings.
     """
 

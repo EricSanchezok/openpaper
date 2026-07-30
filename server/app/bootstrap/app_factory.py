@@ -59,13 +59,15 @@ from app.modules.identity.infrastructure.cloud_auth import (
 from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.execution import (
     create_application_executor,
+    create_conversation_agent_runtime,
     create_conversation_chat,
+    create_job_completion_processor,
     create_onboarding_finisher,
     create_paper_ingestion_workflow,
     create_research_generation_workflow,
-    create_zotero_workflow,
-    create_job_completion_processor,
     create_stripe_webhook_processor,
+    create_workspace_tooling,
+    create_zotero_workflow,
 )
 from app.bootstrap.settings import (
     INTERNAL_API_PREFIX,
@@ -148,12 +150,25 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     application.state.settings = runtime_settings
     executor = create_application_executor(runtime_settings)
     application.state.application_executor = executor
-    application.state.conversation_chat = create_conversation_chat(executor)
+    ingestion_workflow = create_paper_ingestion_workflow(executor)
+    tool_catalog, tool_dispatcher = create_workspace_tooling(
+        executor=executor,
+        ingestion=ingestion_workflow,
+    )
+    conversation_runtime = create_conversation_agent_runtime(
+        catalog=tool_catalog,
+        dispatcher=tool_dispatcher,
+    )
+    application.state.tool_catalog = tool_catalog
+    application.state.tool_dispatcher = tool_dispatcher
+    application.state.conversation_agent_runtime = conversation_runtime
+    application.state.conversation_chat = create_conversation_chat(
+        executor,
+        conversation_runtime,
+    )
     application.state.onboarding_finisher = create_onboarding_finisher()
     application.state.stripe_webhook_processor = create_stripe_webhook_processor()
-    application.state.paper_ingestion_workflow = create_paper_ingestion_workflow(
-        executor
-    )
+    application.state.paper_ingestion_workflow = ingestion_workflow
     application.state.research_generation_workflow = (
         create_research_generation_workflow(executor)
     )

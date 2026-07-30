@@ -192,7 +192,10 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
 
     assert first.payload == {"value": "same"}
     assert second.payload == {"value": "same"}
-    assert second.action == {"replayed": True}
+    assert second.action == {
+        "replayed": True,
+        "result": {"value": "same"},
+    }
     assert capabilities.writes == 1
     assert executor.commands == 2
 

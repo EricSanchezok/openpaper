@@ -3,67 +3,45 @@ import json
 import logging
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from typing import (
-    Any,
-    AsyncGenerator,
-    Callable,
-    Mapping,
-    cast,
-)
+from typing import Any, AsyncGenerator
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
 from app.llm.conversation_prompts import scope_system_instructions
-from app.transport.agent.citation import find_citation_function, run_find_citation
 from app.llm.prompts import (
     EVIDENCE_COMPACTION_PROMPT,
-    EVIDENCE_GATHERING_MESSAGE,
-    EVIDENCE_GATHERING_SYSTEM_PROMPT,
     KEYWORD_EXTRACTION_PROMPT,
+    TOOL_LOOP_MESSAGE,
+    TOOL_LOOP_SYSTEM_PROMPT,
     TOOL_RESULT_COMPACTION_PROMPT,
 )
 from app.llm.backend import SupplementaryContent, TextContent
-from app.transport.agent.paper_tools import (
-    read_abstract,
-    read_abstract_function,
-    read_file,
-    read_file_function,
-    search_all_files,
-    search_all_files_function,
-    search_file,
-    search_file_function,
-    view_file,
-    view_file_function,
-)
-from app.transport.agent.meta_tools import stop_function
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.conversations.application.contracts.messages import (
-    EvidenceCollection,
     EvidenceSummaryResponse,
     OriginalSnippet,
+    ToolRunState,
     ToolResultCompactionResponse,
 )
 from app.shared.application import Actor, ApplicationExecutor
 from app.modules.conversations.application.chat import ConversationChatScope
+from app.shared.domain import AppError
+from app.tooling import ToolCallContext, ToolCatalog, ToolDispatcher
+from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 
 logger = logging.getLogger(__name__)
 
 # Conservative backend-independent limits leave room for system prompts,
 # history, and responses while keeping cost and latency bounded.
 # At ~4 chars/token: 150k chars ≈ 37.5k tokens, 400k chars ≈ 100k tokens
-CONTENT_LIMIT_EVIDENCE_GATHERING = (
-    150000  # Character limit for tool results during evidence gathering
-)
+CONTENT_LIMIT_TOOL_RESULTS = 150000
 CONTENT_LIMIT_CHAT_EVIDENCE = (
     300000  # Character limit for evidence in chat response prompt
 )
 HEARTBEAT_INTERVAL_SECONDS = (
     15  # Keep streaming connections alive during long operations
 )
-
-_tool_executor = ThreadPoolExecutor(max_workers=4)
 
 # Structured-output schema for the fallback keyword extractor — provider
 # constrains the response to this shape so we never have to scrape JSON out of
@@ -99,37 +77,38 @@ def _summarize_citation(result: CitationResult) -> str:
     )
 
 
-class EvidenceOperations(BaseLLMClient):
-    """Operations related to evidence gathering and compaction from multiple papers."""
+class ConversationToolLoop(BaseLLMClient):
+    """Shared model-tool loop for every Conversation entry point."""
 
-    async def gather_evidence(
+    def __init__(
+        self,
+        *,
+        catalog: ToolCatalog[ApplicationCapabilities],
+        dispatcher: ToolDispatcher[ApplicationCapabilities],
+    ) -> None:
+        super().__init__()
+        self._catalog = catalog
+        self._dispatcher = dispatcher
+
+    async def run_tools(
         self,
         question: str,
         current_user: Actor,
         executor: ApplicationExecutor[ApplicationCapabilities],
         conversation_scope: ConversationChatScope,
-        conversation_id: str | None = None,
-    ) -> AsyncGenerator[
-        Mapping[str, str | dict[str, list[str]] | EvidenceCollection], None
-    ]:
-        """
-        Gather evidence from multiple papers based on the user's question.
-        This function will interact with the LLM to gather relevant information
-        and citations from the user's knowledge base.
-        """
-        conversation_history = (
-            executor.query(
-                lambda capabilities: capabilities.conversation_chat_data.history(
-                    actor=current_user,
-                    conversation_id=uuid.UUID(conversation_id),
-                )
+        conversation_id: uuid.UUID,
+        turn_id: uuid.UUID,
+        client_ip: str,
+    ) -> AsyncGenerator[dict[str, object], None]:
+        """Use the shared catalog to gather evidence or perform requested actions."""
+        conversation_history = executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.history(
+                actor=current_user,
+                conversation_id=conversation_id,
             )
-            if conversation_id
-            else []
         )
 
-        # Initialize evidence collection
-        evidence_collection = EvidenceCollection()
+        tool_state = ToolRunState()
 
         n_iterations = 0
         max_iterations = 4
@@ -164,25 +143,9 @@ class EvidenceOperations(BaseLLMClient):
             "available_document_count": context_snapshot.available_document_count,
         }
 
-        function_declarations = [
-            read_file_function,
-            search_file_function,
-            view_file_function,
-            read_abstract_function,
-            search_all_files_function,
-            find_citation_function,
-            stop_function,
-        ]
-
-        function_maps = {
-            "read_file": read_file,
-            "search_file": search_file,
-            "view_file": view_file,
-            "read_abstract": read_abstract,
-            "search_all_files": search_all_files,
-            "find_citation": run_find_citation,
-            "stop": lambda: None,
-        }
+        tool_declarations = self._catalog.provider_declarations(
+            CONVERSATION_TOOL_PROFILE
+        )
 
         prev_queries = set()
         should_stop = False
@@ -191,30 +154,30 @@ class EvidenceOperations(BaseLLMClient):
             n_iterations += 1
 
             # If tool call results are very large, compact them to avoid context overflow
-            tool_results_size = evidence_collection.get_tool_results_size()
+            tool_results_size = tool_state.get_tool_results_size()
 
-            if tool_results_size > CONTENT_LIMIT_EVIDENCE_GATHERING:
+            if tool_results_size > CONTENT_LIMIT_TOOL_RESULTS:
                 yield {
                     "type": "status",
                     "content": "Gathered a lot of data. Compacting tool results...",
                 }
                 logger.info(
-                    f"Tool results size exceeded {CONTENT_LIMIT_EVIDENCE_GATHERING} "
+                    f"Tool results size exceeded {CONTENT_LIMIT_TOOL_RESULTS} "
                     f"characters ({tool_results_size}), compacting."
                 )
                 await self.compact_tool_call_results(
-                    evidence_collection,
+                    tool_state,
                     question,
                     current_user,
                 )
 
-            evidence_gathering_prompt = EVIDENCE_GATHERING_SYSTEM_PROMPT.format(
+            tool_loop_prompt = TOOL_LOOP_SYSTEM_PROMPT.format(
                 available_papers=formatted_context,
                 n_iteration=n_iterations,
                 max_iterations=max_iterations,
             ) + scope_system_instructions(conversation_scope.scope_type)
 
-            formatted_prompt = EVIDENCE_GATHERING_MESSAGE.format(
+            formatted_prompt = TOOL_LOOP_MESSAGE.format(
                 question=question,
             )
 
@@ -245,181 +208,151 @@ class EvidenceOperations(BaseLLMClient):
 
             # Get tool call results from previous iterations
             tool_call_results = (
-                evidence_collection.get_tool_call_results()
-                if evidence_collection.has_previous_tool_calls()
+                tool_state.get_tool_call_results()
+                if tool_state.has_tool_calls()
                 else None
             )
 
             llm_response = self.generate_content(
-                system_prompt=evidence_gathering_prompt,
+                system_prompt=tool_loop_prompt,
                 history=conversation_history,
                 contents=message_content,
-                function_declarations=function_declarations,
+                function_declarations=tool_declarations,
                 tool_call_results=tool_call_results,
             )
 
             if len(llm_response.tool_calls) == 0:
-                logger.info(
-                    "No tool calls returned from LLM, ending evidence gathering."
-                )
+                logger.info("No tool calls returned from LLM, ending tool loop.")
                 break
 
-            for fn_selected in llm_response.tool_calls:
+            dispatches = []
+            for tool_call in llm_response.tool_calls:
                 start_time = time.time()
-
-                fn_name_raw = fn_selected.name
-                fn_name = fn_name_raw.lower() if fn_name_raw else fn_name_raw
-                fn_args = fn_selected.args
-
-                if fn_name == "stop":
-                    logger.info(
-                        "Received STOP signal from LLM. Will stop after processing "
-                        "remaining tool calls in this batch."
-                    )
-                    should_stop = True
-                    continue
-
-                if f"{fn_name}:{fn_args}" in prev_queries:
-                    logger.info(
-                        f"Function call {fn_name} with args {fn_args} has already "
-                        "been made, skipping to avoid repetition."
-                    )
-                    continue
-
-                prev_queries.add(f"{fn_name}:{fn_args}")
-                evidence_collection.add_tool_call(fn_selected)
-
-                if fn_name in function_maps:
-                    try:
-                        document_id_arg = fn_args.get("document_id")
-                        query_arg = fn_args.get("query")
-                        paper_name = (
-                            formatted_paper_options.get(str(document_id_arg), {}).get(
-                                "title", "knowledge base"
-                            )
-                            if document_id_arg
-                            else "knowledge base"
-                        )
-
-                        display_query = f" '{query_arg}'" if query_arg else ""
-                        pretty_fn_name = fn_name.replace("_", " ").title()
-
-                        yield {
-                            "type": "status",
-                            "content": f"{pretty_fn_name} - {paper_name}{display_query}",
-                        }
-
-                        logger.debug(f"Thinking process - {llm_response.thinking}")
-
-                        # Run the tool call in a thread so we can yield
-                        # heartbeats and keep the streaming connection alive.
-                        selected_fn = cast(
-                            Callable[..., object], function_maps[fn_name]
-                        )
-                        selected_args: Mapping[str, Any] = fn_args
-
-                        def _run_tool() -> object:
-                            return selected_fn(
-                                **selected_args,
-                                current_user=current_user,
-                                conversation_scope=conversation_scope,
-                                executor=executor,
-                            )
-
-                        loop = asyncio.get_event_loop()
-                        future = loop.run_in_executor(_tool_executor, _run_tool)
-
-                        while True:
-                            try:
-                                result = await asyncio.wait_for(
-                                    asyncio.shield(future),
-                                    timeout=HEARTBEAT_INTERVAL_SECONDS,
-                                )
-                                break
-                            except asyncio.TimeoutError:
-                                yield {
-                                    "type": "status",
-                                    "content": f"{pretty_fn_name} - {paper_name}{display_query}",
-                                }
-
-                        if fn_name == "find_citation" and isinstance(
-                            result, CitationResult
-                        ):
-                            # Citations are first-party artifacts (rendered as a
-                            # card client-side), not evidence. Capture the
-                            # structured result and feed the model a short
-                            # summary so it can reference but not re-paste it.
-                            evidence_collection.add_artifact(result)
-                            evidence_collection.add_tool_call_result(
-                                fn_selected, _summarize_citation(result)
-                            )
-                        else:
-                            tool_result = (
-                                result
-                                if isinstance(result, (str, list, dict))
-                                or result is None
-                                else str(result)
-                            )
-                            evidence_collection.add_tool_call_result(
-                                fn_selected, tool_result
-                            )
-
-                            preserve_line_numbers = fn_name in [
-                                "search_file",
-                                "search_all_files",
-                            ]
-
-                            if fn_name == "search_all_files" and isinstance(
-                                result, dict
-                            ):
-                                for document_id, lines in result.items():
-                                    evidence_collection.add_evidence(
-                                        document_id, lines, preserve_line_numbers=True
-                                    )
-
-                            document_id = fn_args.get("document_id")
-                            if document_id and (
-                                isinstance(result, str) or isinstance(result, list)
-                            ):
-                                evidence_collection.add_evidence(
-                                    document_id,
-                                    result,
-                                    preserve_line_numbers=preserve_line_numbers,
-                                )
-
-                    except Exception:
-                        logger.exception(
-                            "Evidence tool execution failed",
-                            extra={"tool_name": fn_name},
-                        )
-                        evidence_collection.add_tool_call_result(
-                            fn_selected, "Error: tool_execution_failed"
-                        )
-                        yield {"type": "error", "content": "tool_execution_failed"}
-                else:
-                    logger.warning(f"Unknown function called: {fn_name_raw}")
-                    yield {
-                        "type": "error",
-                        "content": f"Unknown function: {fn_name_raw}",
-                    }
-
-                end_time = time.time()
-                track_event(
-                    "function_call",
+                tool_name = tool_call.name.lower()
+                tool_arguments = tool_call.args
+                call_signature = json.dumps(
                     {
-                        "function_name": fn_name,
-                        "duration_ms": (end_time - start_time) * 1000,
+                        "name": tool_name,
+                        "arguments": tool_arguments,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                if call_signature in prev_queries:
+                    logger.info(
+                        "Skipping repeated tool call",
+                        extra={"tool_name": tool_name},
+                    )
+                    continue
+                prev_queries.add(call_signature)
+                tool_state.add_tool_call(tool_call)
+                document_id_arg = tool_arguments.get("document_id")
+                query_arg = tool_arguments.get("query")
+                paper_name = (
+                    formatted_paper_options.get(str(document_id_arg), {}).get(
+                        "title",
+                        "workspace",
+                    )
+                    if document_id_arg
+                    else "workspace"
+                )
+                display_query = f" '{query_arg}'" if query_arg else ""
+                display_name = tool_name.replace("_", " ").title()
+                status = f"{display_name} - {paper_name}{display_query}"
+                yield {"type": "status", "content": status}
+                logger.debug("Tool-loop reasoning: %s", llm_response.thinking)
+
+                dispatch_task = asyncio.create_task(
+                    self._dispatcher.dispatch(
+                        name=tool_name,
+                        raw_arguments=tool_arguments,
+                        context=ToolCallContext(
+                            actor=current_user,
+                            paper_collection=conversation_scope.paper_context,
+                            anchor_document_id=conversation_scope.document_id,
+                            source="conversation",
+                            invocation_id=f"conversation:{conversation_id}:{turn_id}",
+                            client_ip=client_ip,
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                        ),
+                    )
+                )
+                dispatches.append(
+                    (tool_call, tool_name, status, start_time, dispatch_task)
+                )
+
+            for tool_call, tool_name, status, start_time, dispatch_task in dispatches:
+                try:
+                    while True:
+                        try:
+                            outcome = await asyncio.wait_for(
+                                asyncio.shield(dispatch_task),
+                                timeout=HEARTBEAT_INTERVAL_SECONDS,
+                            )
+                            break
+                        except asyncio.TimeoutError:
+                            yield {"type": "status", "content": status}
+
+                    tool_result = outcome.payload
+                    for artifact_payload in outcome.artifacts:
+                        artifact = CitationResult.model_validate(artifact_payload)
+                        tool_state.add_artifact(artifact)
+                        tool_result = _summarize_citation(artifact)
+                    for document_id, lines in outcome.evidence.items():
+                        tool_state.add_evidence(
+                            document_id,
+                            lines,
+                            preserve_line_numbers=True,
+                        )
+                    if outcome.action is not None:
+                        tool_state.add_action_result(outcome.action)
+                    tool_state.add_tool_call_result(tool_call, tool_result)
+                    if outcome.stop:
+                        should_stop = True
+                except AppError as exc:
+                    logger.info(
+                        "Tool call rejected",
+                        extra={"tool_name": tool_name, "error_code": exc.code},
+                    )
+                    tool_state.add_tool_call_result(
+                        tool_call,
+                        {
+                            "error": {
+                                "code": exc.code,
+                                "message": exc.message,
+                                "details": exc.details,
+                            }
+                        },
+                    )
+                    yield {"type": "error", "content": exc.code}
+                except Exception:
+                    logger.exception(
+                        "Conversation tool execution failed",
+                        extra={"tool_name": tool_name},
+                    )
+                    tool_state.add_tool_call_result(
+                        tool_call,
+                        {"error": {"code": "tool_execution_failed"}},
+                    )
+                    yield {"type": "error", "content": "tool_execution_failed"}
+
+                track_event(
+                    "tool_call",
+                    {
+                        "tool_name": tool_name,
+                        "duration_ms": (time.time() - start_time) * 1000,
                         "conversation_scope_type": conversation_scope.scope_type.value,
                     },
                     user_id=str(current_user.id),
                 )
 
-        # Fallback: if no evidence was gathered AND no artifacts (e.g. a pure
-        # citation request that produced a card but no excerpt), try keyword-
-        # based search. Artifacts count as a real outcome — don't waste a call.
+        # A successful action or artifact is already a complete tool-loop
+        # outcome. Only pure unanswered questions receive a keyword fallback.
         if (
-            not evidence_collection.has_evidence()
-            and not evidence_collection.get_artifacts()
+            not tool_state.has_evidence()
+            and not tool_state.get_artifacts()
+            and not tool_state.action_results
         ):
             logger.info(
                 "No evidence gathered through normal flow. "
@@ -437,29 +370,39 @@ class EvidenceOperations(BaseLLMClient):
                     logger.info(f"Fallback search with keywords: {keywords}")
 
                     for keyword in keywords:
-                        search_results = search_all_files(
-                            query=keyword,
-                            current_user=current_user,
-                            executor=executor,
-                            conversation_scope=conversation_scope,
+                        outcome = await self._dispatcher.dispatch(
+                            name="search_papers",
+                            raw_arguments={"query": keyword},
+                            context=ToolCallContext(
+                                actor=current_user,
+                                paper_collection=conversation_scope.paper_context,
+                                anchor_document_id=conversation_scope.document_id,
+                                source="conversation",
+                                invocation_id=(
+                                    f"conversation:{conversation_id}:{turn_id}:fallback"
+                                ),
+                                client_ip=client_ip,
+                                conversation_id=conversation_id,
+                                turn_id=turn_id,
+                            ),
                         )
+                        for document_id, lines in outcome.evidence.items():
+                            tool_state.add_evidence(
+                                document_id,
+                                lines,
+                                preserve_line_numbers=True,
+                            )
 
-                        if search_results:
-                            for document_id, lines in search_results.items():
-                                evidence_collection.add_evidence(
-                                    document_id, lines, preserve_line_numbers=True
-                                )
-
-                    if evidence_collection.has_evidence():
+                    if tool_state.has_evidence():
                         logger.info(
                             f"Fallback search found evidence from "
-                            f"{len(evidence_collection.evidence)} papers"
+                            f"{len(tool_state.evidence)} papers"
                         )
                         track_event(
                             "fallback_search_success",
                             {
                                 "keywords": keywords,
-                                "papers_found": len(evidence_collection.evidence),
+                                "papers_found": len(tool_state.evidence),
                             },
                             user_id=str(current_user.id),
                         )
@@ -479,7 +422,7 @@ class EvidenceOperations(BaseLLMClient):
                 )
 
         # Compact evidence if it exceeds the limit for chat response
-        evidence_size = evidence_collection.get_evidence_size()
+        evidence_size = tool_state.get_evidence_size()
         if evidence_size > CONTENT_LIMIT_CHAT_EVIDENCE:
             yield {
                 "type": "status",
@@ -489,35 +432,33 @@ class EvidenceOperations(BaseLLMClient):
                 f"Evidence size ({evidence_size} chars) exceeds limit "
                 f"({CONTENT_LIMIT_CHAT_EVIDENCE} chars). Compacting."
             )
-            async for status in self.compact_evidence(
-                evidence_collection,
+            async for compaction_status in self.compact_evidence(
+                tool_state,
                 question,
                 current_user,
             ):
-                yield status
+                yield compaction_status
 
         yield {
-            "type": "evidence_gathered",
-            "content": evidence_collection,  # Full object preserves is_compacted and citation_index
+            "type": "tool_run_completed",
+            "content": tool_state,
         }
 
     async def compact_tool_call_results(
         self,
-        evidence_collection: EvidenceCollection,
+        tool_state: ToolRunState,
         original_question: str,
         current_user: Actor,
     ) -> None:
         """
         Compact tool call results by summarizing them to reduce context size.
-        Modifies the evidence_collection in place.
+        Modifies the tool run state in place.
         """
         start_time = time.time()
-        original_size = evidence_collection.get_tool_results_size()
-        original_count = len(evidence_collection.tool_call_results)
+        original_size = tool_state.get_tool_results_size()
+        original_count = len(tool_state.tool_call_results)
 
-        tool_results_for_compaction = (
-            evidence_collection.get_tool_results_for_compaction()
-        )
+        tool_results_for_compaction = tool_state.get_tool_results_for_compaction()
 
         formatted_prompt = TOOL_RESULT_COMPACTION_PROMPT.format(
             question=original_question,
@@ -539,11 +480,11 @@ class EvidenceOperations(BaseLLMClient):
                     llm_response.text
                 )
 
-                evidence_collection.apply_compacted_results(
+                tool_state.apply_compacted_results(
                     compaction_response.compacted_results
                 )
 
-                new_size = evidence_collection.get_tool_results_size()
+                new_size = tool_state.get_tool_results_size()
                 logger.info(
                     f"Tool result compaction complete. "
                     f"Original: {original_count} results ({original_size} chars), "
@@ -571,19 +512,19 @@ class EvidenceOperations(BaseLLMClient):
 
     async def compact_evidence(
         self,
-        evidence_collection: EvidenceCollection,
+        tool_state: ToolRunState,
         original_question: str,
         current_user: Actor,
-    ) -> AsyncGenerator[dict[str, str | dict[str, list[str]]], None]:
+    ) -> AsyncGenerator[dict[str, object], None]:
         """
         Compact evidence to reduce context size for chat response.
-        Modifies the evidence_collection in place.
+        Modifies the tool run state in place.
 
         Single-pass compaction: summarizes all evidence per paper in one LLM call.
         """
         start_time = time.time()
-        original_size = evidence_collection.get_evidence_size()
-        evidence_dict = evidence_collection.get_evidence_dict()
+        original_size = tool_state.get_evidence_size()
+        evidence_dict = tool_state.get_evidence_dict()
         original_count = sum(len(snippets) for snippets in evidence_dict.values())
 
         yield {
@@ -604,12 +545,12 @@ class EvidenceOperations(BaseLLMClient):
 
         # Store original snippets in citation_index sidecar BEFORE compaction
         for document_id, snippets in papers_by_evidence:
-            evidence_obj = evidence_collection.evidence.get(document_id)
+            evidence_obj = tool_state.evidence.get(document_id)
             line_numbers = evidence_obj.get_line_numbers() if evidence_obj else []
 
             for i, snippet in enumerate(snippets):
                 key = f"{document_id}:{i}"
-                evidence_collection.citation_index.index[key] = OriginalSnippet(
+                tool_state.citation_index.index[key] = OriginalSnippet(
                     document_id=document_id,
                     text=snippet,  # Full original text preserved
                     line_number=line_numbers[i] if i < len(line_numbers) else None,
@@ -689,10 +630,10 @@ class EvidenceOperations(BaseLLMClient):
                     f"(summarized) {' '.join(snippets)[:500]}..."
                 ]
 
-        evidence_collection.apply_compacted_evidence(all_compacted)
-        evidence_collection.is_compacted = True
+        tool_state.apply_compacted_evidence(all_compacted)
+        tool_state.is_compacted = True
 
-        new_size = evidence_collection.get_evidence_size()
+        new_size = tool_state.get_evidence_size()
         new_count = sum(len(snippets) for snippets in all_compacted.values())
 
         logger.info(

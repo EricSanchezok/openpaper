@@ -6,6 +6,7 @@ from typing import cast
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
+from app.llm.conversation_agent import ConversationAgentRuntime
 from app.database.database import SessionLocal
 from app.modules.conversations.application.chat import ConversationChat
 from app.modules.identity.application.onboarding import FinishOnboarding
@@ -16,6 +17,7 @@ from app.bootstrap.workflows.zotero import ZoteroWorkflow
 from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
 from app.shared.application import ApplicationExecutor
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
+from app.tooling import ToolCatalog, ToolDispatcher
 from fastapi import Request
 
 
@@ -30,12 +32,35 @@ def create_application_executor(
 
 def create_conversation_chat(
     executor: ApplicationExecutor[ApplicationCapabilities],
+    runtime: ConversationAgentRuntime,
 ) -> ConversationChat:
     from app.bootstrap.adapters.conversation_chat import (
         DefaultConversationChatGateway,
     )
 
-    return ConversationChat(DefaultConversationChatGateway(executor))
+    return ConversationChat(DefaultConversationChatGateway(executor, runtime))
+
+
+def create_workspace_tooling(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    ingestion: PaperIngestionWorkflow,
+) -> tuple[
+    ToolCatalog[ApplicationCapabilities],
+    ToolDispatcher[ApplicationCapabilities],
+]:
+    from app.tooling.workspace import build_workspace_tool_catalog
+
+    catalog = build_workspace_tool_catalog(ingestion=ingestion)
+    return catalog, ToolDispatcher(catalog=catalog, executor=executor)
+
+
+def create_conversation_agent_runtime(
+    *,
+    catalog: ToolCatalog[ApplicationCapabilities],
+    dispatcher: ToolDispatcher[ApplicationCapabilities],
+) -> ConversationAgentRuntime:
+    return ConversationAgentRuntime(catalog=catalog, dispatcher=dispatcher)
 
 
 def create_onboarding_finisher() -> FinishOnboarding:
@@ -98,6 +123,24 @@ def get_application_executor(
 
 def get_conversation_chat(request: Request) -> ConversationChat:
     return cast(ConversationChat, request.app.state.conversation_chat)
+
+
+def get_tool_catalog(
+    request: Request,
+) -> ToolCatalog[ApplicationCapabilities]:
+    return cast(
+        ToolCatalog[ApplicationCapabilities],
+        request.app.state.tool_catalog,
+    )
+
+
+def get_tool_dispatcher(
+    request: Request,
+) -> ToolDispatcher[ApplicationCapabilities]:
+    return cast(
+        ToolDispatcher[ApplicationCapabilities],
+        request.app.state.tool_dispatcher,
+    )
 
 
 def get_onboarding_finisher(request: Request) -> FinishOnboarding:

@@ -27,6 +27,7 @@ import {
 } from '@/components/chat/MentionAutocomplete';
 
 interface ChatRequestBody {
+    turn_id: string;
     user_query: string;
     mentioned_highlight_ids?: string[];
     reasoning_level: "standard" | "deep";
@@ -376,6 +377,7 @@ function ProjectConversationPageContent() {
         setError(null);
 
         const requestBody: ChatRequestBody = {
+            turn_id: crypto.randomUUID(),
             user_query: query,
             reasoning_level: reasoningLevel,
         };

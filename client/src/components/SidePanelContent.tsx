@@ -82,6 +82,7 @@ interface SidePanelContentProps {
 }
 
 interface ChatRequestBody {
+    turn_id: string;
     user_query: string;
     user_references: string[];
     reasoning_level: 'standard' | 'deep';
@@ -358,6 +359,7 @@ export function SidePanelContent({
         setStreamingReferences(undefined); // Clear previous references
 
         const requestBody: ChatRequestBody = {
+            turn_id: crypto.randomUUID(),
             user_query: userMessage.content,
             user_references: userMessageReferences,
             reasoning_level: reasoningLevel,

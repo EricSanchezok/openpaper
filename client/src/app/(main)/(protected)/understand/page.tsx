@@ -28,6 +28,7 @@ import {
 import { useAuth } from '@/lib/auth';
 
 interface ChatRequestBody {
+    turn_id: string;
     user_query: string;
     mentioned_highlight_ids?: string[];
     reasoning_level: "standard" | "deep";
@@ -327,6 +328,7 @@ function UnderstandPageContent() {
         }
 
         const requestBody: ChatRequestBody = {
+            turn_id: crypto.randomUUID(),
             user_query: userMessage.content,
             reasoning_level: reasoningLevel,
         };

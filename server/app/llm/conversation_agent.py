@@ -14,11 +14,11 @@ from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.models import ReasoningLevel
 from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_prompts import scope_system_instructions
-from app.llm.evidence_operations import EvidenceOperations
+from app.llm.conversation_tool_loop import ConversationToolLoop
 from app.llm.prompts import (
-    ANSWER_EVIDENCE_BASED_QUESTION_MESSAGE,
-    ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT,
     CONCISE_MODE_INSTRUCTIONS,
+    CONVERSATION_ANSWER_MESSAGE,
+    CONVERSATION_ANSWER_SYSTEM_PROMPT,
     DETAILED_MODE_INSTRUCTIONS,
     NORMAL_MODE_INSTRUCTIONS,
 )
@@ -28,8 +28,8 @@ from app.modules.conversations.application.chat import (
     ConversationContextSnapshot,
 )
 from app.modules.conversations.application.contracts.messages import (
-    EvidenceCollection,
     ResponseStyle,
+    ToolRunState,
 )
 from app.shared.application import Actor, ApplicationExecutor
 from app.shared.domain.enums import ConversationScopeType
@@ -37,7 +37,7 @@ from app.shared.domain.enums import ConversationScopeType
 logger = logging.getLogger(__name__)
 
 
-class ConversationAgentRuntime(EvidenceOperations):
+class ConversationAgentRuntime(ConversationToolLoop):
     """Shared evidence and answer runtime for every conversation entry point."""
 
     async def stream_answer(
@@ -49,7 +49,7 @@ class ConversationAgentRuntime(EvidenceOperations):
         anchor_paper: ChatPaperSnapshot | None,
         context_snapshot: ConversationContextSnapshot,
         scope_type: ConversationScopeType,
-        evidence_gathered: EvidenceCollection,
+        tool_state: ToolRunState,
         executor: ApplicationExecutor[ApplicationCapabilities],
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,
@@ -76,7 +76,7 @@ class ConversationAgentRuntime(EvidenceOperations):
             str(paper.document_id): str(paper.title) for paper in all_papers
         }
 
-        logger.debug(f"Evidence gathered: {evidence_gathered.get_evidence_dict()}")
+        logger.debug("Tool run completed: %s calls", len(tool_state.tool_calls))
 
         style_instructions = (
             DETAILED_MODE_INSTRUCTIONS
@@ -112,14 +112,14 @@ class ConversationAgentRuntime(EvidenceOperations):
             "available_document_count": context_snapshot.available_document_count,
         }
         formatted_system_prompt = (
-            ANSWER_EVIDENCE_BASED_QUESTION_SYSTEM_PROMPT.format(
+            CONVERSATION_ANSWER_SYSTEM_PROMPT.format(
                 available_papers=formatted_paper_options,
             )
             + style_instructions
             + scope_system_instructions(scope_type)
         )
 
-        formatted_prompt = ANSWER_EVIDENCE_BASED_QUESTION_MESSAGE.format(
+        formatted_prompt = CONVERSATION_ANSWER_MESSAGE.format(
             question=f"{question}\n\n{user_citations}" if user_citations else question,
         )
 
@@ -137,8 +137,12 @@ class ConversationAgentRuntime(EvidenceOperations):
                 label="conversation_context",
             ),
             SupplementaryContent(
-                content=json.dumps(evidence_gathered.get_evidence_dict(), indent=2),
+                content=json.dumps(tool_state.get_evidence_dict(), indent=2),
                 label="collected_evidence",
+            ),
+            SupplementaryContent(
+                content=json.dumps(tool_state.action_results, indent=2),
+                label="completed_actions",
             ),
             TextContent(text=formatted_prompt),
         ]
@@ -166,7 +170,7 @@ class ConversationAgentRuntime(EvidenceOperations):
         # Surface any citation artifacts produced during evidence gathering as
         # first-party cards, and give the answer model the resolved data so it
         # can reference (but not re-paste) them.
-        citation_artifacts = evidence_gathered.get_artifacts()
+        citation_artifacts = tool_state.get_artifacts()
         if citation_artifacts:
             artifact_payloads = [
                 {
@@ -282,11 +286,11 @@ class ConversationAgentRuntime(EvidenceOperations):
                     )
 
                     # Resolve compacted citations to original snippets if evidence was compacted
-                    if evidence_gathered.is_compacted:
+                    if tool_state.is_compacted:
                         structured_evidence = (
                             CitationHandler.resolve_compacted_citations(
                                 structured_evidence,
-                                evidence_gathered.citation_index,
+                                tool_state.citation_index,
                             )
                         )
 
@@ -344,11 +348,11 @@ class ConversationAgentRuntime(EvidenceOperations):
                     )
 
                     # Resolve compacted citations to original snippets if evidence was compacted
-                    if evidence_gathered.is_compacted:
+                    if tool_state.is_compacted:
                         structured_evidence = (
                             CitationHandler.resolve_compacted_citations(
                                 structured_evidence,
-                                evidence_gathered.citation_index,
+                                tool_state.citation_index,
                             )
                         )
 
@@ -367,6 +371,3 @@ class ConversationAgentRuntime(EvidenceOperations):
         # Yield any remaining text buffer content
         if text_buffer:
             yield {"type": "content", "content": text_buffer}
-
-
-conversation_agent_runtime = ConversationAgentRuntime()

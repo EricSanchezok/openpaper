@@ -15,11 +15,11 @@ from app.helpers.ai_limits import (
 )
 from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_operations import conversation_operations
-from app.llm.conversation_agent import conversation_agent_runtime
+from app.llm.conversation_agent import ConversationAgentRuntime
 from app.llm.token_credits import llm_usage_context
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
-    EvidenceCollection,
+    ToolRunState,
 )
 from app.shared.application import Actor, ApplicationExecutor
 from app.modules.conversations.infrastructure.chat_streaming import (
@@ -141,6 +141,7 @@ async def stream_conversation_agent(
     client_ip: str,
     executor: ApplicationExecutor[ApplicationCapabilities],
     current_user: Actor,
+    runtime: ConversationAgentRuntime,
 ) -> AsyncGenerator[str, None]:
     """
     Send a chat message and stream the response from the LLM.
@@ -179,7 +180,7 @@ async def stream_conversation_agent(
         reasoning_chunks: list[str] = []
         start_time = datetime.now(timezone.utc)
         evidence_container: EvidenceState = {"evidence": None}
-        evidence_collection: EvidenceCollection | None = None
+        tool_state: ToolRunState | None = None
 
         mentions = executor.query(
             lambda capabilities: capabilities.conversation_chat_data.mentions(
@@ -219,8 +220,10 @@ async def stream_conversation_agent(
         if mentions.snapshot:
             scope_snapshot.extend(mentions.snapshot)
 
-        async for chunk in conversation_agent_runtime.gather_evidence(
-            conversation_id=str(conversation_id),
+        async for chunk in runtime.run_tools(
+            conversation_id=conversation_id,
+            turn_id=request.turn_id,
+            client_ip=client_ip,
             question=request.user_query,
             current_user=current_user,
             executor=executor,
@@ -231,20 +234,20 @@ async def stream_conversation_agent(
                 chunk_type = chunk.get("type")
                 chunk_content = chunk.get("content", "")
 
-                if chunk_type == "evidence_gathered":
-                    # Use the EvidenceCollection directly (preserves is_compacted and citation_index)
-                    assert isinstance(chunk_content, EvidenceCollection), (
-                        "Chunk content must be an EvidenceCollection"
+                if chunk_type == "tool_run_completed":
+                    assert isinstance(chunk_content, ToolRunState), (
+                        "Chunk content must be a ToolRunState"
                     )
-                    evidence_collection = chunk_content
+                    tool_state = chunk_content
                 elif chunk_type == "status":
-                    _append_status(status_messages, chunk_content)
-                    yield f"{json.dumps({'type': 'status', 'content': chunk_content})}{END_DELIMITER}"
+                    status_content = str(chunk_content)
+                    _append_status(status_messages, status_content)
+                    yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
                 else:
                     logger.debug(f"received chunks: {chunk}")
 
-        # Artifacts (e.g. a citation card from find_citation) count as
-        # a real outcome — only short-circuit if we have neither.
+        # Artifacts and completed actions are real outcomes. Only short-circuit
+        # when the loop and the paper anchor supplied no usable information.
         anchor_paper = next(
             (
                 paper
@@ -253,9 +256,10 @@ async def stream_conversation_agent(
             ),
             None,
         )
-        if evidence_collection is None or (
-            len(evidence_collection.evidence) == 0
-            and len(evidence_collection.artifacts) == 0
+        if tool_state is None or (
+            len(tool_state.evidence) == 0
+            and len(tool_state.artifacts) == 0
+            and len(tool_state.action_results) == 0
             and (anchor_paper is None or not anchor_paper.raw_content)
         ):
             json_response = json.dumps(
@@ -269,11 +273,11 @@ async def stream_conversation_agent(
 
         yield f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}{END_DELIMITER}"
 
-        chat_generator = conversation_agent_runtime.stream_answer(
+        chat_generator = runtime.stream_answer(
             question=request.user_query,
             reasoning_level=request.reasoning_level,
             user_references=request.user_references,
-            evidence_gathered=evidence_collection,
+            tool_state=tool_state,
             conversation_id=str(conversation_id),
             current_user=current_user,
             all_papers=context_snapshot.papers,
@@ -299,9 +303,7 @@ async def stream_conversation_agent(
         # Save the complete message to the database
         full_content = "".join(content_chunks)
 
-        assistant_trace = (
-            evidence_collection.to_trace_dict() if evidence_collection else None
-        )
+        assistant_trace = tool_state.to_trace_dict() if tool_state else None
         # Fold in the live status messages (the "thinking trace") so it
         # survives reloads, even when there were no tool calls.
         if status_messages:
@@ -426,8 +428,10 @@ class DefaultConversationChatGateway:
     def __init__(
         self,
         executor: ApplicationExecutor[ApplicationCapabilities],
+        runtime: ConversationAgentRuntime,
     ) -> None:
         self._executor = executor
+        self._runtime = runtime
 
     async def stream(
         self,
@@ -443,4 +447,5 @@ class DefaultConversationChatGateway:
             client_ip=client_ip,
             executor=self._executor,
             current_user=actor,
+            runtime=self._runtime,
         )

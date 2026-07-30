@@ -11,9 +11,7 @@ from uuid import UUID
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
 )
-from app.modules.conversations.application.contracts.conversations import (
-    PaperContext,
-)
+from app.modules.papers.application.contracts.search import PaperCollection
 from app.shared.application import Actor
 from app.shared.domain import JsonValue
 from app.shared.domain.enums import ConversationScopeType
@@ -42,7 +40,7 @@ class ConversationChatScope:
     scope_type: ConversationScopeType
     project_id: UUID | None
     document_id: UUID | None
-    paper_context: PaperContext
+    paper_context: PaperCollection
 
 
 @dataclass(frozen=True, slots=True)

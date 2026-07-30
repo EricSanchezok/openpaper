@@ -76,7 +76,7 @@ RECOVERY_SYSTEM_PROMPT = (
     "Critically verify that a source describes THE SAME paper by matching its "
     "title and authors.\n\n"
     "Be decisive and efficient — you usually need only ONE or TWO searches. As "
-    "soon as a result reveals the venue/publisher/DOI, STOP searching and call "
+    "soon as a result reveals the venue/publisher/DOI, stop searching and call "
     "submit_findings; do not keep searching for perfection. You have a strict, "
     "small number of steps. Always finish by calling submit_findings exactly "
     "once: include the fields you are confident about with an honest confidence "
@@ -397,7 +397,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 filled[f] = value
                 provenance[f] = {
                     "source_url": source_url,
-                    "filled_by": "find_citation",
+                    "filled_by": "get_paper_citation",
                     "confidence": confidence,
                     "filled_at": now_iso,
                 }

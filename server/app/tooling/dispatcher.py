@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from typing import Generic, Protocol, TypeVar, cast
@@ -59,34 +60,36 @@ class ToolDispatcher(Generic[CapabilitiesT]):
             return ToolOutcome(payload={"completed": True}, stop=True)
         if definition.execution is ToolExecutionKind.QUERY:
             handler = cast(ToolHandler[CapabilitiesT], definition.handler)
-            return self._executor.query(
-                lambda capabilities: handler(
-                    capabilities,
-                    context,
-                    arguments,
-                )
+            return await asyncio.to_thread(
+                self._executor.query,
+                lambda capabilities: handler(capabilities, context, arguments),
             )
         if definition.execution is ToolExecutionKind.WORKFLOW:
             workflow_handler = definition.workflow_handler
             assert workflow_handler is not None
             fingerprint = _arguments_hash(arguments)
             invocation_key = f"{context.invocation_id}:{name}:{fingerprint}"
-            replay = self._executor.query(
+            replay = await asyncio.to_thread(
+                self._executor.query,
                 lambda capabilities: capabilities.tool_invocations.replay(
                     actor_id=context.actor.id,
                     invocation_key=invocation_key,
                     tool_name=name,
                     arguments_hash=fingerprint,
-                )
+                ),
             )
             if replay is not None:
-                return ToolOutcome(payload=replay, action={"replayed": True})
+                return ToolOutcome(
+                    payload=replay,
+                    action={"replayed": True, "result": replay},
+                )
             outcome = await workflow_handler(
                 context,
                 arguments,
                 invocation_key,
             )
-            self._executor.command(
+            await asyncio.to_thread(
+                self._executor.command,
                 lambda capabilities: capabilities.tool_invocations.complete(
                     actor_id=context.actor.id,
                     invocation_key=invocation_key,
@@ -94,7 +97,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                     tool_name=name,
                     arguments_hash=fingerprint,
                     result=_JSON_VALUE.validate_python(outcome.payload),
-                )
+                ),
             )
             return outcome
 
@@ -111,7 +114,10 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                 arguments_hash=fingerprint,
             )
             if replay is not None:
-                return ToolOutcome(payload=replay, action={"replayed": True})
+                return ToolOutcome(
+                    payload=replay,
+                    action={"replayed": True, "result": replay},
+                )
             outcome = command_handler(capabilities, context, arguments)
             capabilities.tool_invocations.complete(
                 actor_id=context.actor.id,
@@ -123,4 +129,4 @@ class ToolDispatcher(Generic[CapabilitiesT]):
             )
             return outcome
 
-        return self._executor.command(execute)
+        return await asyncio.to_thread(self._executor.command, execute)

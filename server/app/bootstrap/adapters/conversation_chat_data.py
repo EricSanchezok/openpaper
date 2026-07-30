@@ -35,6 +35,10 @@ from app.modules.papers.infrastructure.access import (
     accessible_document_condition,
     get_document_access,
 )
+from app.modules.papers.application.contracts.search import (
+    LibraryPaperCollection,
+    SelectedPaperCollection,
+)
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, JsonValue
 from app.shared.domain.enums import ConversationScopeType
@@ -63,15 +67,24 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             self._session,
             conversation=conversation,
         )
+        paper_context = conversation_repository.paper_context(
+            self._session,
+            conversation=conversation,
+            user_id=actor.id,
+        )
+        search_collection = (
+            LibraryPaperCollection()
+            if paper_context.kind == "library"
+            else SelectedPaperCollection(
+                project_ids=paper_context.project_ids,
+                document_ids=paper_context.document_ids,
+            )
+        )
         return ConversationChatScope(
             scope_type=ConversationScopeType(conversation.scope_type),
             project_id=conversation.project_id,
             document_id=conversation.document_id,
-            paper_context=conversation_repository.paper_context(
-                self._session,
-                conversation=conversation,
-                user_id=actor.id,
-            ),
+            paper_context=search_collection,
         )
 
     def context(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -154,6 +155,7 @@ def test_stream_records_unknown_usage_when_final_usage_is_missing(
 
 def test_chat_requests_reject_legacy_provider_fields() -> None:
     base = {
+        "turn_id": str(uuid4()),
         "user_query": "Explain the result",
     }
     with pytest.raises(ValidationError):
@@ -182,7 +184,7 @@ def test_chat_requests_reject_legacy_provider_fields() -> None:
     with pytest.raises(ValidationError):
         ConversationMessageRequest.model_validate(
             {
-                "user_query": base["user_query"],
+                **base,
                 "reasoning_level": "extreme",
             }
         )
