@@ -7,8 +7,9 @@ from typing import Any, cast
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.shared.application import Actor
-from app.shared.domain import AppError, FailureKind
+from app.shared.domain import AppError, FailureKind, WorkspacePermission
 from app.tooling import (
+    ToolAccess,
     ToolCatalog,
     ToolCallContext,
     ToolDefinition,
@@ -30,7 +31,9 @@ from starlette.routing import Route
 
 class RecordingDispatcher:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, object], ToolCallContext]] = []
+        self.calls: list[
+            tuple[str, dict[str, object], ToolCallContext, ToolAccess]
+        ] = []
         self.error: AppError | None = None
 
     async def dispatch(
@@ -39,8 +42,9 @@ class RecordingDispatcher:
         name: str,
         raw_arguments: dict[str, object],
         context: ToolCallContext,
+        access: ToolAccess,
     ) -> ToolOutcome:
-        self.calls.append((name, raw_arguments, context))
+        self.calls.append((name, raw_arguments, context, access))
         if self.error is not None:
             raise self.error
         return ToolOutcome(payload={"tool": name, "arguments": raw_arguments})
@@ -204,13 +208,14 @@ async def test_mcp_lists_catalog_tools_and_dispatches_with_bound_actor() -> None
         "tool": "list_projects",
         "arguments": {"limit": 10},
     }
-    name, arguments, context = dispatcher.calls[0]
+    name, arguments, context, access = dispatcher.calls[0]
     assert name == "list_projects"
     assert arguments == {"limit": 10}
     assert context.actor.id == 7
     assert context.source == "mcp"
     assert context.paper_collection.kind == "library"
     assert context.anchor_document_id is None
+    assert access.permissions == frozenset(WorkspacePermission)
 
 
 @pytest.mark.asyncio
@@ -261,6 +266,7 @@ async def test_mcp_call_runs_through_the_shared_dispatcher() -> None:
                 description="Return the authenticated actor.",
                 input_model=EmptyInput,
                 execution=ToolExecutionKind.QUERY,
+                required_permission=WorkspacePermission.READ,
                 handler=lambda _capabilities, context, _arguments: ToolOutcome(
                     payload={"actor_id": context.actor.id}
                 ),
@@ -287,6 +293,4 @@ async def test_mcp_call_runs_through_the_shared_dispatcher() -> None:
                 },
             )
 
-    assert response.json()["result"]["structuredContent"]["result"] == {
-        "actor_id": 7
-    }
+    assert response.json()["result"]["structuredContent"]["result"] == {"actor_id": 7}

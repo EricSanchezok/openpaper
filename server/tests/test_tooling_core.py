@@ -10,8 +10,15 @@ import pytest
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.shared.application import Actor
-from app.shared.domain import AppError, FailureKind, JsonValue
+from app.shared.domain import (
+    WORKSPACE_PERMISSION_ORDER,
+    AppError,
+    FailureKind,
+    JsonValue,
+    WorkspacePermission,
+)
 from app.tooling import (
+    ToolAccess,
     ToolCallContext,
     ToolCatalog,
     ToolDefinition,
@@ -122,12 +129,23 @@ def _context() -> ToolCallContext:
     )
 
 
+def _access(
+    profile_name: str = "conversation",
+    *permissions: WorkspacePermission,
+) -> ToolAccess:
+    return ToolAccess(
+        profile_name=profile_name,
+        permissions=frozenset(permissions or WORKSPACE_PERMISSION_ORDER),
+    )
+
+
 def test_profiles_are_independent_and_validate_references() -> None:
     query = ToolDefinition[Capabilities](
         name="query_tool",
         description="query",
         input_model=Arguments,
         execution=ToolExecutionKind.QUERY,
+        required_permission=WorkspacePermission.READ,
         handler=lambda capabilities, context, arguments: ToolOutcome(
             payload={"value": arguments.value}
         ),
@@ -140,8 +158,10 @@ def test_profiles_are_independent_and_validate_references() -> None:
         ],
     )
 
-    assert catalog.definitions_for("conversation") == []
-    assert [item.name for item in catalog.definitions_for("mcp")] == ["query_tool"]
+    assert catalog.definitions_for(_access("conversation")) == []
+    assert [item.name for item in catalog.definitions_for(_access("mcp"))] == [
+        "query_tool"
+    ]
     with pytest.raises(ValueError, match="missing tools"):
         ToolCatalog(
             [query],
@@ -156,6 +176,7 @@ async def test_dispatcher_maps_unknown_tools_and_invalid_arguments() -> None:
         description="query",
         input_model=Arguments,
         execution=ToolExecutionKind.QUERY,
+        required_permission=WorkspacePermission.READ,
         handler=lambda capabilities, context, arguments: ToolOutcome(
             payload={"value": arguments.value}
         ),
@@ -174,6 +195,7 @@ async def test_dispatcher_maps_unknown_tools_and_invalid_arguments() -> None:
             name="missing",
             raw_arguments={},
             context=_context(),
+            access=_access(),
         )
     assert unknown.value.code == "tool_not_found"
 
@@ -182,6 +204,7 @@ async def test_dispatcher_maps_unknown_tools_and_invalid_arguments() -> None:
             name="query_tool",
             raw_arguments={},
             context=_context(),
+            access=_access(),
         )
     assert invalid.value.code == "tool_arguments_invalid"
     assert invalid.value.kind is FailureKind.INVALID_ARGUMENT
@@ -209,6 +232,7 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
         description="write",
         input_model=Arguments,
         execution=ToolExecutionKind.COMMAND,
+        required_permission=WorkspacePermission.WRITE,
         handler=write,
     )
     catalog = ToolCatalog(
@@ -223,11 +247,13 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
         name="write_tool",
         raw_arguments={"value": "same"},
         context=_context(),
+        access=_access(),
     )
     second = await dispatcher.dispatch(
         name="write_tool",
         raw_arguments={"value": "same"},
         context=_context(),
+        access=_access(),
     )
 
     assert first.payload == {"value": "same"}
@@ -243,6 +269,7 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
             name="write_tool",
             raw_arguments={"value": "different"},
             context=_context(),
+            access=_access(),
         )
     assert conflict.value.code == "tool_invocation_conflict"
     assert capabilities.writes == 1
@@ -252,8 +279,8 @@ def test_workspace_profiles_share_one_canonical_definition_set() -> None:
     catalog = build_workspace_tool_catalog(
         ingestion=MagicMock(spec=PaperIngestionWorkflow)
     )
-    conversation = catalog.definitions_for(CONVERSATION_TOOL_PROFILE)
-    mcp = catalog.definitions_for(MCP_TOOL_PROFILE)
+    conversation = catalog.definitions_for(_access(CONVERSATION_TOOL_PROFILE))
+    mcp = catalog.definitions_for(_access(MCP_TOOL_PROFILE))
     conversation_by_name = {tool.name: tool for tool in conversation}
     mcp_by_name = {tool.name: tool for tool in mcp}
 
@@ -261,10 +288,7 @@ def test_workspace_profiles_share_one_canonical_definition_set() -> None:
     assert "STOP" not in conversation_by_name
     assert "read_file" not in conversation_by_name
     assert len(mcp_by_name) == 32
-    assert (
-        mcp_by_name["get_paper_citation"].execution
-        is ToolExecutionKind.COMMAND
-    )
+    assert mcp_by_name["get_paper_citation"].execution is ToolExecutionKind.COMMAND
     for name, mcp_tool in mcp_by_name.items():
         conversation_tool = conversation_by_name[name]
         assert conversation_tool is mcp_tool

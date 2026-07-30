@@ -8,6 +8,7 @@ import { fetchFromApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MentionInput } from "@/components/chat/MentionInput";
+import { WorkspacePermissionPicker } from "@/components/permissions/WorkspacePermissionPicker";
 import {
     EMPTY_PAPER_CONTEXT_SELECTION,
     EMPTY_TURN_ATTACHMENTS,
@@ -18,7 +19,12 @@ import { AnimatedGradientText } from "@/components/magicui/animated-gradient-tex
 import { isTokenCreditAtLimit, useSubscription } from "@/hooks/useSubscription";
 import { useProjectWorkspace } from "@/components/project/ProjectWorkspaceProvider";
 import { useProjects } from "@/hooks/useProjects";
-import type { ConversationDetail } from "@/lib/schema";
+import type { ConversationCreateRequest, ConversationDetail } from "@/lib/schema";
+import {
+    DEFAULT_CONVERSATION_TOOL_PERMISSIONS,
+    serializeWorkspacePermissions,
+    type WorkspacePermission,
+} from "@/lib/workspace-permissions";
 
 // Project home is the new-chat surface: a centered composer over the project's
 // papers. Navigation to existing chats lives in the workspace rail.
@@ -47,6 +53,9 @@ export default function ProjectPage() {
         EMPTY_TURN_ATTACHMENTS,
     );
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [toolPermissions, setToolPermissions] = useState<WorkspacePermission[]>(
+        () => [...DEFAULT_CONVERSATION_TOOL_PERMISSIONS],
+    );
     const { subscription } = useSubscription();
 
     const aiDisabled = isTokenCreditAtLimit(subscription);
@@ -70,18 +79,20 @@ export default function ProjectPage() {
 
         setIsSubmitting(true);
         try {
+            const createRequest: ConversationCreateRequest = {
+                title: "New conversation",
+                scope_type: "project",
+                scope_id: projectId,
+                paper_context: {
+                    kind: "selection",
+                    project_ids: paperContextSelection.projectIds,
+                    document_ids: paperContextSelection.documentIds,
+                },
+                tool_permissions: serializeWorkspacePermissions(toolPermissions),
+            };
             const newConversation = await fetchFromApi<ConversationDetail>("/conversations", {
                 method: "POST",
-                body: JSON.stringify({
-                    title: "New conversation",
-                    scope_type: "project",
-                    scope_id: projectId,
-                    paper_context: {
-                        kind: "selection",
-                        project_ids: paperContextSelection.projectIds,
-                        document_ids: paperContextSelection.documentIds,
-                    },
-                }),
+                body: JSON.stringify(createRequest),
             });
             localStorage.setItem(`pending-query-${newConversation.id}`, newQuery);
             localStorage.setItem(
@@ -212,6 +223,14 @@ export default function ProjectPage() {
                             busy={isSubmitting}
                             autoFocus
                         />
+                        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+                            <span className="text-xs font-medium text-foreground">Agent tools</span>
+                            <WorkspacePermissionPicker
+                                value={toolPermissions}
+                                onChange={setToolPermissions}
+                                disabled={isSubmitting}
+                            />
+                        </div>
                         <p className="mt-3 text-center text-xs text-muted-foreground">
                             {papers.length} paper{papers.length === 1 ? "" : "s"} in context · pick up past chats from the sidebar
                         </p>

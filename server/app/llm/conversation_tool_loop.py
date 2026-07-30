@@ -28,7 +28,7 @@ from app.modules.conversations.application.contracts.messages import (
 from app.shared.application import Actor, ApplicationExecutor
 from app.modules.conversations.application.chat import ConversationChatScope
 from app.shared.domain import AppError
-from app.tooling import ToolCallContext, ToolCatalog, ToolDispatcher
+from app.tooling import ToolAccess, ToolCallContext, ToolCatalog, ToolDispatcher
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 
 logger = logging.getLogger(__name__)
@@ -144,9 +144,11 @@ class ConversationToolLoop(BaseLLMClient):
             "available_document_count": context_snapshot.available_document_count,
         }
 
-        tool_declarations = self._catalog.provider_declarations(
-            CONVERSATION_TOOL_PROFILE
+        tool_access = ToolAccess(
+            profile_name=CONVERSATION_TOOL_PROFILE,
+            permissions=conversation_scope.tool_permissions,
         )
+        tool_declarations = self._catalog.provider_declarations(tool_access)
 
         prev_queries = set()
         should_stop = False
@@ -280,6 +282,7 @@ class ConversationToolLoop(BaseLLMClient):
                             conversation_id=conversation_id,
                             turn_id=turn_id,
                         ),
+                        access=tool_access,
                     )
                 )
                 dispatches.append(
@@ -357,6 +360,7 @@ class ConversationToolLoop(BaseLLMClient):
             not tool_state.has_evidence()
             and not tool_state.get_artifacts()
             and not tool_state.action_results
+            and self._catalog.is_available(tool_access, "search_papers")
         ):
             logger.info(
                 "No evidence gathered through normal flow. "
@@ -389,6 +393,7 @@ class ConversationToolLoop(BaseLLMClient):
                                 conversation_id=conversation_id,
                                 turn_id=turn_id,
                             ),
+                            access=tool_access,
                         )
                         for document_id, lines in outcome.evidence.items():
                             tool_state.add_evidence(

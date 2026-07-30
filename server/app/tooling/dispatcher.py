@@ -12,6 +12,7 @@ from app.shared.domain import AppError, FailureKind, JsonValue
 from app.tooling.catalog import ToolCatalog
 from app.tooling.contracts import (
     ToolCallContext,
+    ToolAccess,
     ToolExecutionKind,
     ToolHandler,
     ToolOutcome,
@@ -91,15 +92,15 @@ class ToolDispatcher(Generic[CapabilitiesT]):
         name: str,
         raw_arguments: dict[str, object],
         context: ToolCallContext,
+        access: ToolAccess,
     ) -> ToolOutcome:
         try:
-            definition = self._catalog.definition(name)
+            definition = self._catalog.definition_for(access, name)
         except KeyError as exc:
             raise AppError(
                 kind=FailureKind.NOT_FOUND,
                 code="tool_not_found",
                 message="Tool not found",
-                details={"tool_name": name},
             ) from exc
         try:
             arguments = definition.input_model.model_validate(raw_arguments)

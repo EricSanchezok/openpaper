@@ -13,7 +13,7 @@ from app.modules.conversations.application.contracts.messages import (
 )
 from app.modules.papers.application.contracts.search import PaperCollection
 from app.shared.application import Actor
-from app.shared.domain import JsonValue
+from app.shared.domain import JsonValue, WorkspacePermission
 from app.shared.domain.enums import ConversationScopeType
 from app.shared.domain.enums import ReasoningLevel
 
@@ -41,6 +41,7 @@ class ConversationChatScope:
     project_id: UUID | None
     document_id: UUID | None
     paper_context: PaperCollection
+    tool_permissions: frozenset[WorkspacePermission]
 
 
 @dataclass(frozen=True, slots=True)

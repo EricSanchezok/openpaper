@@ -10,7 +10,11 @@ from uuid import UUID
 
 from app.modules.papers.application.contracts.search import PaperCollection
 from app.shared.application import Actor
-from app.shared.domain import JsonValue
+from app.shared.domain import (
+    JsonValue,
+    WorkspacePermission,
+    normalize_workspace_permissions,
+)
 from pydantic import BaseModel
 
 CapabilitiesT = TypeVar("CapabilitiesT")
@@ -52,11 +56,25 @@ WorkflowToolHandler = Callable[
 
 
 @dataclass(frozen=True, slots=True)
+class ToolAccess:
+    profile_name: str
+    permissions: frozenset[WorkspacePermission]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "permissions",
+            normalize_workspace_permissions(self.permissions),
+        )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ToolDefinition(Generic[CapabilitiesT]):
     name: str
     description: str
     input_model: type[BaseModel]
     execution: ToolExecutionKind
+    required_permission: WorkspacePermission | None
     handler: ToolHandler[CapabilitiesT] | None = None
     workflow_handler: WorkflowToolHandler | None = None
 
@@ -68,9 +86,13 @@ class ToolDefinition(Generic[CapabilitiesT]):
         ):
             raise ValueError("tool names must be non-empty lowercase identifiers")
         if self.execution is ToolExecutionKind.CONTROL:
+            if self.required_permission is not None:
+                raise ValueError("control tools cannot require workspace permission")
             if self.handler is not None or self.workflow_handler is not None:
                 raise ValueError("control tools cannot define handlers")
             return
+        if self.required_permission is None:
+            raise ValueError("business tools require one workspace permission")
         if self.execution is ToolExecutionKind.WORKFLOW:
             if self.workflow_handler is None or self.handler is not None:
                 raise ValueError("workflow tools require exactly one workflow handler")

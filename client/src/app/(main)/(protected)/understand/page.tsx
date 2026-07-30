@@ -20,12 +20,18 @@ import { toast } from "sonner";
 import {
     ChatMessage,
     CitationArtifact,
+    ConversationCreateRequest,
     ConversationDetail,
     ConversationMessagesResponse,
     MessageTrace,
     Reference,
 } from '@/lib/schema';
 import { useAuth } from '@/lib/auth';
+import {
+    DEFAULT_CONVERSATION_TOOL_PERMISSIONS,
+    serializeWorkspacePermissions,
+    type WorkspacePermission,
+} from '@/lib/workspace-permissions';
 
 interface ChatRequestBody {
     turn_id: string;
@@ -60,6 +66,10 @@ function UnderstandPageContent() {
     const [turnAttachments, setTurnAttachments] =
         useState<TurnAttachments>(EMPTY_TURN_ATTACHMENTS);
     const [libraryContext, setLibraryContext] = useState(true);
+    const [newConversationToolPermissions, setNewConversationToolPermissions] =
+        useState<WorkspacePermission[]>(() => [
+            ...DEFAULT_CONVERSATION_TOOL_PERMISSIONS,
+        ]);
 
     const papers = useMemo(() => {
         if (!fetchedPapers) return [];
@@ -179,6 +189,9 @@ function UnderstandPageContent() {
             setMessages([]);
             setConversationId(null);
             setConversation(null);
+            setNewConversationToolPermissions([
+                ...DEFAULT_CONVERSATION_TOOL_PERMISSIONS,
+            ]);
             setIsCentered(true);
             setIsSessionLoading(false);
 
@@ -295,18 +308,22 @@ function UnderstandPageContent() {
 
         if (!currentConversationId) {
             try {
+                const createRequest: ConversationCreateRequest = {
+                    scope_type: 'global',
+                    paper_context: libraryContext
+                        ? { kind: 'library' }
+                        : {
+                            kind: 'selection',
+                            project_ids: submittedPaperContext.projectIds,
+                            document_ids: submittedPaperContext.documentIds,
+                        },
+                    tool_permissions: serializeWorkspacePermissions(
+                        newConversationToolPermissions,
+                    ),
+                };
                 const newConversationResponse = await fetchFromApi<ConversationDetail>('/conversations', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        scope_type: 'global',
-                        paper_context: libraryContext
-                            ? { kind: 'library' }
-                            : {
-                                kind: 'selection',
-                                project_ids: submittedPaperContext.projectIds,
-                                document_ids: submittedPaperContext.documentIds,
-                            },
-                    }),
+                    body: JSON.stringify(createRequest),
                 });
                 currentConversationId = newConversationResponse.id;
                 setConversationId(currentConversationId);
@@ -454,6 +471,7 @@ function UnderstandPageContent() {
         currentMessage,
         isStreaming,
         libraryContext,
+        newConversationToolPermissions,
         paperContextSelection,
         papers,
         projects,
@@ -526,6 +544,10 @@ function UnderstandPageContent() {
                 setHighlightedInfo={setHighlightedInfo}
                 authLoading={authLoading}
                 onRefreshPaperUrl={refreshPaperUrl}
+                conversation={conversation}
+                onConversationChange={setConversation}
+                newConversationToolPermissions={newConversationToolPermissions}
+                onNewConversationToolPermissionsChange={setNewConversationToolPermissions}
                 projects={projects}
                 paperContextSelection={paperContextSelection}
                 onPaperContextSelectionChange={(selection) => {

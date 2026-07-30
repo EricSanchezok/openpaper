@@ -14,6 +14,8 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    ConversationToolPermissionsRequest,
+    ConversationToolPermissionsResponse,
     PaperContext,
     MessageResponse,
 )
@@ -79,6 +81,14 @@ class ConversationGateway(Protocol):
         conversation_id: UUID,
         request: PaperContext,
     ) -> PaperContext: ...
+
+    def update_tool_permissions(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        request: ConversationToolPermissionsRequest,
+    ) -> ConversationToolPermissionsResponse: ...
 
 
 class ConversationTitleGenerator(Protocol):
@@ -241,6 +251,19 @@ class Conversations:
         request: PaperContext,
     ) -> PaperContext:
         return self._gateway.update_paper_context(
+            user_id=actor.id,
+            conversation_id=conversation_id,
+            request=request,
+        )
+
+    def update_tool_permissions(
+        self,
+        *,
+        actor: Actor,
+        conversation_id: UUID,
+        request: ConversationToolPermissionsRequest,
+    ) -> ConversationToolPermissionsResponse:
+        return self._gateway.update_tool_permissions(
             user_id=actor.id,
             conversation_id=conversation_id,
             request=request,

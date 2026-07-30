@@ -2,5 +2,20 @@
 
 from .errors import AppError, FailureKind
 from .types import JsonScalar, JsonValue
+from .workspace_permissions import (
+    WORKSPACE_PERMISSION_ORDER,
+    WorkspacePermission,
+    normalize_workspace_permissions,
+    ordered_workspace_permissions,
+)
 
-__all__ = ["AppError", "FailureKind", "JsonScalar", "JsonValue"]
+__all__ = [
+    "WORKSPACE_PERMISSION_ORDER",
+    "AppError",
+    "FailureKind",
+    "JsonScalar",
+    "JsonValue",
+    "WorkspacePermission",
+    "normalize_workspace_permissions",
+    "ordered_workspace_permissions",
+]

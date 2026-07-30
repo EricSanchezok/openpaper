@@ -41,6 +41,7 @@ from app.modules.papers.application.contracts.search import (
 )
 from app.shared.application import Actor
 from app.shared.domain import AppError, FailureKind, JsonValue
+from app.shared.domain import normalize_workspace_permissions
 from app.shared.domain.enums import ConversationScopeType
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
@@ -85,6 +86,9 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             project_id=conversation.project_id,
             document_id=conversation.document_id,
             paper_context=search_collection,
+            tool_permissions=normalize_workspace_permissions(
+                conversation.tool_permissions
+            ),
         )
 
     def context(

@@ -27,6 +27,12 @@ from app.modules.conversations.application.contracts.conversations import (
     SelectedPaperContext,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    ConversationToolPermissionsRequest,
+    ConversationToolPermissionsResponse,
+)
+from app.shared.domain import (
+    WorkspacePermission,
+    ordered_workspace_permissions,
 )
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
@@ -76,6 +82,12 @@ def _decode_cursor(cursor: str) -> tuple[datetime | None, datetime, uuid.UUID]:
 
 
 class ConversationRepository:
+    @staticmethod
+    def tool_permissions(
+        conversation: Conversation,
+    ) -> list[WorkspacePermission]:
+        return ordered_workspace_permissions(conversation.tool_permissions)
+
     def paper_context(
         self,
         db: Session,
@@ -220,6 +232,25 @@ class ConversationRepository:
             request=request,
         )
 
+    def update_tool_permissions(
+        self,
+        db: Session,
+        *,
+        conversation_id: uuid.UUID,
+        user_id: int,
+        request: ConversationToolPermissionsRequest,
+    ) -> ConversationToolPermissionsResponse:
+        conversation = self.require_owned(
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        permissions = ordered_workspace_permissions(request.permissions)
+        conversation.tool_permissions = [permission.value for permission in permissions]
+        db.flush()
+        return ConversationToolPermissionsResponse(permissions=permissions)
+
     def require_owned(
         self,
         db: Session,
@@ -319,6 +350,12 @@ class ConversationRepository:
             document_id = request.scope_id
             scope_label = document_access.document.title
 
+        requested_permissions = request.tool_permissions
+        if requested_permissions is None:
+            requested_permissions = [
+                WorkspacePermission.READ,
+                WorkspacePermission.WRITE,
+            ]
         conversation = Conversation(
             title=request.title,
             user_id=user_id,
@@ -331,6 +368,10 @@ class ConversationRepository:
                 if request.scope_type == ConversationScopeType.GLOBAL
                 else "selection"
             ),
+            tool_permissions=[
+                permission.value
+                for permission in ordered_workspace_permissions(requested_permissions)
+            ],
         )
         db.add(conversation)
         db.flush()

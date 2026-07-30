@@ -34,9 +34,30 @@ def upgrade() -> None:
         "paper_context_kind IN ('library', 'selection')",
         schema="scholens",
     )
-    op.execute(
-        "UPDATE scholens.conversations SET paper_context_kind = "
-        "CASE WHEN scope_type = 'global' THEN 'library' ELSE 'selection' END"
+    op.add_column(
+        "conversations",
+        sa.Column(
+            "tool_permissions",
+            postgresql.ARRAY(sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{read,write}'::text[]"),
+        ),
+        schema="scholens",
+    )
+    op.create_check_constraint(
+        "ck_conversations_tool_permissions",
+        "conversations",
+        "tool_permissions IN ("
+        "ARRAY[]::text[], "
+        "ARRAY['read']::text[], "
+        "ARRAY['write']::text[], "
+        "ARRAY['delete']::text[], "
+        "ARRAY['read','write']::text[], "
+        "ARRAY['read','delete']::text[], "
+        "ARRAY['write','delete']::text[], "
+        "ARRAY['read','write','delete']::text[]"
+        ")",
+        schema="scholens",
     )
     op.create_table(
         "conversation_context_projects",
@@ -117,6 +138,13 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("conversation_context_projects", schema="scholens")
+    op.drop_constraint(
+        "ck_conversations_tool_permissions",
+        "conversations",
+        schema="scholens",
+        type_="check",
+    )
+    op.drop_column("conversations", "tool_permissions", schema="scholens")
     op.drop_constraint(
         "ck_conversations_paper_context_kind",
         "conversations",

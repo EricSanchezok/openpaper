@@ -2,6 +2,7 @@
 
 from .catalog import ToolCatalog, ToolProfile
 from .contracts import (
+    ToolAccess,
     ToolCallContext,
     ToolDefinition,
     ToolExecutionKind,
@@ -11,6 +12,7 @@ from .dispatcher import ToolDispatcher
 
 __all__ = [
     "ToolCallContext",
+    "ToolAccess",
     "ToolCatalog",
     "ToolDefinition",
     "ToolDispatcher",

@@ -5,9 +5,20 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.modules.research.application.contracts import CitationSnapshot
-from app.shared.domain import JsonValue
+from app.shared.domain import (
+    JsonValue,
+    WorkspacePermission,
+    ordered_workspace_permissions,
+)
 from app.shared.domain.enums import ConversationScopeType
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class LibraryPaperContext(BaseModel):
@@ -37,6 +48,10 @@ PaperContext = Annotated[
     LibraryPaperContext | SelectedPaperContext,
     Field(discriminator="kind"),
 ]
+OrderedWorkspacePermissions = Annotated[
+    list[WorkspacePermission],
+    BeforeValidator(ordered_workspace_permissions),
+]
 
 
 class ConversationCreateRequest(BaseModel):
@@ -46,6 +61,7 @@ class ConversationCreateRequest(BaseModel):
     scope_id: UUID | None = None
     title: str = Field(default="New conversation", min_length=1, max_length=240)
     paper_context: PaperContext | None = None
+    tool_permissions: OrderedWorkspacePermissions | None = None
 
     @model_validator(mode="after")
     def validate_scope(self) -> ConversationCreateRequest:
@@ -121,6 +137,17 @@ class ConversationListResponse(BaseModel):
 
 class ConversationDetailResponse(ConversationSummaryResponse):
     paper_context: PaperContext
+    tool_permissions: OrderedWorkspacePermissions
+
+
+class ConversationToolPermissionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    permissions: OrderedWorkspacePermissions
+
+
+class ConversationToolPermissionsResponse(BaseModel):
+    permissions: OrderedWorkspacePermissions
 
 
 class MessageResponse(BaseModel):

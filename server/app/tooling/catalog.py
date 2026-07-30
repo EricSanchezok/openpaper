@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from app.tooling.contracts import ToolDefinition
+from app.tooling.contracts import (
+    ToolAccess,
+    ToolDefinition,
+    ToolExecutionKind,
+)
 
 CapabilitiesT = TypeVar("CapabilitiesT")
 
@@ -46,25 +50,62 @@ class ToolCatalog(Generic[CapabilitiesT]):
                 )
             self._profiles[profile.name] = profile
 
-    def definition(self, name: str) -> ToolDefinition[CapabilitiesT]:
+    def _profile(self, profile_name: str) -> ToolProfile:
         try:
-            return self._definitions[name]
-        except KeyError as exc:
-            raise KeyError(f"unknown tool: {name}") from exc
-
-    def definitions_for(self, profile_name: str) -> list[ToolDefinition[CapabilitiesT]]:
-        try:
-            profile = self._profiles[profile_name]
+            return self._profiles[profile_name]
         except KeyError as exc:
             raise KeyError(f"unknown tool profile: {profile_name}") from exc
-        return [self._definitions[name] for name in sorted(profile.tool_names)]
 
-    def provider_declarations(self, profile_name: str) -> list[dict[str, object]]:
+    @staticmethod
+    def _is_authorized(
+        definition: ToolDefinition[CapabilitiesT],
+        access: ToolAccess,
+    ) -> bool:
+        return (
+            definition.execution is ToolExecutionKind.CONTROL
+            or definition.required_permission in access.permissions
+        )
+
+    def definitions_for(
+        self,
+        access: ToolAccess,
+    ) -> list[ToolDefinition[CapabilitiesT]]:
+        profile = self._profile(access.profile_name)
+        return [
+            definition
+            for name in sorted(profile.tool_names)
+            if self._is_authorized(
+                definition := self._definitions[name],
+                access,
+            )
+        ]
+
+    def definition_for(
+        self,
+        access: ToolAccess,
+        name: str,
+    ) -> ToolDefinition[CapabilitiesT]:
+        profile = self._profile(access.profile_name)
+        if name not in profile.tool_names:
+            raise KeyError(f"tool unavailable: {name}")
+        definition = self._definitions[name]
+        if not self._is_authorized(definition, access):
+            raise KeyError(f"tool unavailable: {name}")
+        return definition
+
+    def is_available(self, access: ToolAccess, name: str) -> bool:
+        try:
+            self.definition_for(access, name)
+        except KeyError:
+            return False
+        return True
+
+    def provider_declarations(self, access: ToolAccess) -> list[dict[str, object]]:
         return [
             {
                 "name": definition.name,
                 "description": definition.description,
                 "parameters": definition.input_model.model_json_schema(),
             }
-            for definition in self.definitions_for(profile_name)
+            for definition in self.definitions_for(access)
         ]

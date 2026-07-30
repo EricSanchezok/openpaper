@@ -51,6 +51,7 @@ import { Avatar, AvatarFallback } from './ui/avatar';
 import { getAlphaHashToBackgroundColor, getInitials } from '@/lib/utils';
 import { MessageTraceViewer } from '@/components/MessageTraceViewer';
 import { useConversationHistory } from '@/components/side-panel/useConversationHistory';
+import { ConversationToolPermissionControl } from '@/components/chat/ConversationToolPermissionControl';
 
 
 interface SidePanelContentProps {
@@ -1009,6 +1010,15 @@ export function SidePanelContent({
                                         <div
                                             className='rounded-md p-0.5 flex flex-col gap-2 bg-secondary'
                                         >
+                                            {conversation && (
+                                                <div className="px-2 pt-2">
+                                                    <ConversationToolPermissionControl
+                                                        conversation={conversation}
+                                                        onConversationChange={setConversation}
+                                                        disabled={isStreaming}
+                                                    />
+                                                </div>
+                                            )}
                                             {/* User message input area */}
                                             <Textarea
                                                 value={currentMessage}

@@ -12,7 +12,7 @@ from app.database.models import (
     ConversationContextProject,
     Message,
 )
-from app.shared.domain import AppError, FailureKind
+from app.shared.domain import AppError, FailureKind, WorkspacePermission
 from app.main import app
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.bootstrap.adapters.conversation_lifecycle import (
@@ -398,6 +398,7 @@ def test_paper_context_snapshot_only_loads_anchor_full_text(
             paper_context=SelectedPaperContext(
                 document_ids=[anchor_id, extra_id],
             ),
+            tool_permissions=frozenset(WorkspacePermission),
         ),
     )
 
@@ -420,6 +421,7 @@ def test_library_context_accepts_project_shared_document_access(
         project_id=None,
         document_id=None,
         paper_context=LibraryPaperContext(),
+        tool_permissions=frozenset(WorkspacePermission),
     )
     access = MagicMock()
     monkeypatch.setattr(

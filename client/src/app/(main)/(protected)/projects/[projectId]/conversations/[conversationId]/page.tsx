@@ -642,6 +642,8 @@ function ProjectConversationPageContent() {
                     highlightedInfo={highlightedInfo}
                     setHighlightedInfo={setHighlightedInfo}
                     authLoading={authLoading}
+                    conversation={conversation}
+                    onConversationChange={setConversation}
                     onRefreshPaperUrl={refreshPaperUrl}
                     onOpenDocumentExternal={openDocument}
                     paperContextSelection={paperContextSelection}

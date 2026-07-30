@@ -12,17 +12,24 @@ from app.modules.conversations.application.contracts.messages import ToolRunStat
 from app.modules.papers.application.contracts.extraction import ToolCall
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
 from app.shared.application import Actor
+from app.shared.domain import WorkspacePermission
 from app.shared.domain.enums import ConversationScopeType
-from app.tooling import ToolOutcome
+from app.tooling import ToolAccess, ToolOutcome
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 import pytest
 
 
 class Catalog:
     @staticmethod
-    def provider_declarations(profile: str) -> list[dict[str, object]]:
-        assert profile == CONVERSATION_TOOL_PROFILE
+    def provider_declarations(access: ToolAccess) -> list[dict[str, object]]:
+        assert access.profile_name == CONVERSATION_TOOL_PROFILE
         return [{"name": "create_project", "parameters": {"type": "object"}}]
+
+    @staticmethod
+    def is_available(access: ToolAccess, name: str) -> bool:
+        return (
+            name == "search_papers" and WorkspacePermission.READ in access.permissions
+        )
 
 
 class Executor:
@@ -99,6 +106,7 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
                 project_id=None,
                 document_id=None,
                 paper_context=LibraryPaperCollection(),
+                tool_permissions=frozenset(WorkspacePermission),
             ),
             conversation_id=uuid4(),
             turn_id=uuid4(),
@@ -106,9 +114,7 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
         )
     ]
 
-    completed = next(
-        event for event in events if event["type"] == "tool_run_completed"
-    )
+    completed = next(event for event in events if event["type"] == "tool_run_completed")
     state = completed["content"]
     assert isinstance(state, ToolRunState)
     assert state.action_results == [{"kind": "project_created"}]

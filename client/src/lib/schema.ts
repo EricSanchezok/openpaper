@@ -1,5 +1,6 @@
 import { PaperStatus } from "@/components/utils/PdfStatus";
 import { BasicUser } from "./auth";
+import type { WorkspacePermission } from "./workspace-permissions";
 
 export type HighlightType = 'topic' | 'motivation' | 'method' | 'evidence' | 'result' | 'impact' | 'general';
 
@@ -284,6 +285,15 @@ export type ConversationPaperContext =
 
 export interface ConversationDetail extends ConversationSummary {
     paper_context: ConversationPaperContext;
+    tool_permissions: WorkspacePermission[];
+}
+
+export interface ConversationCreateRequest {
+    scope_type: ConversationSummary['scope_type'];
+    scope_id?: string | null;
+    title?: string;
+    paper_context?: ConversationPaperContext;
+    tool_permissions?: WorkspacePermission[];
 }
 
 export interface ConversationListResponse {

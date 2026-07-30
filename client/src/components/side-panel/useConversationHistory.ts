@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchFromApi } from "@/lib/api";
 import type {
 	ChatMessage,
+	ConversationCreateRequest,
 	ConversationDetail,
 	ConversationSummary,
 } from "@/lib/schema";
@@ -127,14 +128,15 @@ export function useConversationHistory({
 					return;
 				}
 				try {
+					const createRequest: ConversationCreateRequest = {
+						scope_type: "paper",
+						scope_id: documentId,
+					};
 					const created = (await fetchFromApi(
 						"/conversations",
 						{
 							method: "POST",
-							body: JSON.stringify({
-								scope_type: "paper",
-								scope_id: documentId,
-							}),
+							body: JSON.stringify(createRequest),
 						},
 					)) as ConversationDetail;
 					if (!cancelled) {

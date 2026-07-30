@@ -15,6 +15,8 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    ConversationToolPermissionsRequest,
+    ConversationToolPermissionsResponse,
     PaperContext,
 )
 from app.shared.application import Actor, ApplicationExecutor
@@ -162,6 +164,27 @@ def update_conversation_paper_context(
 ) -> PaperContext:
     return executor.command(
         lambda capabilities: capabilities.conversations.update_paper_context(
+            actor=current_user,
+            conversation_id=conversation_id,
+            request=request,
+        )
+    )
+
+
+@conversation_router.put(
+    "/{conversation_id}/tool-permissions",
+    response_model=ConversationToolPermissionsResponse,
+)
+def update_conversation_tool_permissions(
+    conversation_id: UUID,
+    request: ConversationToolPermissionsRequest,
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
+    current_user: Actor = Depends(get_required_user),
+) -> ConversationToolPermissionsResponse:
+    return executor.command(
+        lambda capabilities: capabilities.conversations.update_tool_permissions(
             actor=current_user,
             conversation_id=conversation_id,
             request=request,

@@ -16,7 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.domain import JsonValue
@@ -119,6 +119,19 @@ class Conversation(Base):
             "paper_context_kind IN ('library', 'selection')",
             name="ck_conversations_paper_context_kind",
         ),
+        CheckConstraint(
+            "tool_permissions IN ("
+            "ARRAY[]::text[], "
+            "ARRAY['read']::text[], "
+            "ARRAY['write']::text[], "
+            "ARRAY['delete']::text[], "
+            "ARRAY['read','write']::text[], "
+            "ARRAY['read','delete']::text[], "
+            "ARRAY['write','delete']::text[], "
+            "ARRAY['read','write','delete']::text[]"
+            ")",
+            name="ck_conversations_tool_permissions",
+        ),
         Index(
             "ix_conversations_user_archive_activity",
             "user_id",
@@ -146,6 +159,12 @@ class Conversation(Base):
     )
     paper_context_kind: Mapped[str] = mapped_column(
         String(16), nullable=False, default="selection", server_default="selection"
+    )
+    tool_permissions: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        default=lambda: ["read", "write"],
+        server_default="{read,write}",
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

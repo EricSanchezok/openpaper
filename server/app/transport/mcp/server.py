@@ -13,8 +13,13 @@ import mcp.types as mcp_types
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
 from app.shared.application import Actor
-from app.shared.domain import AppError, FailureKind, JsonValue
-from app.tooling import ToolCallContext, ToolCatalog, ToolDispatcher
+from app.shared.domain import (
+    WORKSPACE_PERMISSION_ORDER,
+    AppError,
+    FailureKind,
+    JsonValue,
+)
+from app.tooling import ToolAccess, ToolCallContext, ToolCatalog, ToolDispatcher
 from app.tooling.workspace import MCP_TOOL_PROFILE
 from fastapi import HTTPException
 from mcp.server import Server
@@ -33,6 +38,10 @@ CallToolHandler = Callable[
 ]
 
 _actor_context: ContextVar[Actor | None] = ContextVar("mcp_actor", default=None)
+_tool_access_context: ContextVar[ToolAccess | None] = ContextVar(
+    "mcp_tool_access",
+    default=None,
+)
 _client_ip_context: ContextVar[str] = ContextVar("mcp_client_ip", default="mcp")
 _session_context: ContextVar[str] = ContextVar("mcp_session", default="anonymous")
 
@@ -147,6 +156,12 @@ class AuthenticatedMcpApplication:
         session_id = headers.get("mcp-session-id") or headers.get("x-request-id")
         session_id = session_id or hashlib.sha256(token.encode()).hexdigest()[:32]
         actor_token = _actor_context.set(actor)
+        access_token = _tool_access_context.set(
+            ToolAccess(
+                profile_name=MCP_TOOL_PROFILE,
+                permissions=frozenset(WORKSPACE_PERMISSION_ORDER),
+            )
+        )
         client_token = _client_ip_context.set(client_ip)
         session_token = _session_context.set(session_id)
         try:
@@ -154,6 +169,7 @@ class AuthenticatedMcpApplication:
         finally:
             _session_context.reset(session_token)
             _client_ip_context.reset(client_token)
+            _tool_access_context.reset(access_token)
             _actor_context.reset(actor_token)
 
     @staticmethod
@@ -193,9 +209,6 @@ def build_mcp_transport(
         version="1.0.0",
         instructions="Research and manage the authenticated user's Scholens workspace.",
     )
-    definitions = catalog.definitions_for(MCP_TOOL_PROFILE)
-    allowed_names = frozenset(definition.name for definition in definitions)
-
     register_list_tools = cast(
         Callable[[], Callable[[ListToolsHandler], ListToolsHandler]],
         server.list_tools,
@@ -203,13 +216,16 @@ def build_mcp_transport(
 
     @register_list_tools()
     async def list_tools() -> list[mcp_types.Tool]:
+        access = _tool_access_context.get()
+        if access is None:
+            return []
         return [
             mcp_types.Tool(
                 name=definition.name,
                 description=definition.description,
                 inputSchema=definition.input_model.model_json_schema(),
             )
-            for definition in definitions
+            for definition in catalog.definitions_for(access)
         ]
 
     register_call_tool = cast(
@@ -222,15 +238,9 @@ def build_mcp_transport(
         name: str,
         arguments: dict[str, object],
     ) -> mcp_types.CallToolResult:
-        if name not in allowed_names:
-            return _error_result(
-                kind=FailureKind.NOT_FOUND,
-                code="tool_not_found",
-                message="Tool not found",
-                details={"tool_name": name},
-            )
         actor = _actor_context.get()
-        if actor is None:
+        access = _tool_access_context.get()
+        if actor is None or access is None:
             return _error_result(
                 kind=FailureKind.UNAUTHENTICATED,
                 code="mcp_authentication_required",
@@ -250,6 +260,7 @@ def build_mcp_transport(
                     invocation_id=invocation_id,
                     client_ip=_client_ip_context.get(),
                 ),
+                access=access,
             )
         except AppError as exc:
             return _error_result(

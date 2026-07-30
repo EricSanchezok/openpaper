@@ -1,6 +1,14 @@
 "use client";
 
-import { FormEvent, useCallback, useRef, useState, useEffect } from "react";
+import {
+	type Dispatch,
+	type FormEvent,
+	type SetStateAction,
+	useCallback,
+	useRef,
+	useState,
+	useEffect,
+} from "react";
 import { useIsMobile } from "@/lib/useMobile";
 import { AnimatedMarkdown, CopyableTable } from "@/components/AnimatedMarkdown";
 import { Button } from "@/components/ui/button";
@@ -19,8 +27,18 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { ChatMessageActions } from "@/components/ChatMessageActions";
-import { ChatMessage, Reference, PaperItem, CitationArtifact, Project } from "@/lib/schema";
+import {
+	ChatMessage,
+	Reference,
+	PaperItem,
+	CitationArtifact,
+	Project,
+	ConversationDetail,
+} from "@/lib/schema";
 import { MentionInput } from "@/components/chat/MentionInput";
+import { ConversationToolPermissionControl } from "@/components/chat/ConversationToolPermissionControl";
+import { WorkspacePermissionPicker } from "@/components/permissions/WorkspacePermissionPicker";
+import type { WorkspacePermission } from "@/lib/workspace-permissions";
 import {
 	MentionContextBar,
 	PaperContextSelection,
@@ -84,6 +102,10 @@ interface ConversationViewProps {
 	lockedProjectIds?: string[];
 	// Project chat scopes mentions to papers only (no projects/highlights).
 	mentionPapersOnly?: boolean;
+	conversation?: ConversationDetail | null;
+	onConversationChange?: Dispatch<SetStateAction<ConversationDetail | null>>;
+	newConversationToolPermissions?: readonly WorkspacePermission[];
+	onNewConversationToolPermissionsChange?: (permissions: WorkspacePermission[]) => void;
 }
 
 export const ConversationView = ({
@@ -126,6 +148,10 @@ export const ConversationView = ({
 	lockedDocumentIds = [],
 	lockedProjectIds = [],
 	mentionPapersOnly = false,
+	conversation,
+	onConversationChange,
+	newConversationToolPermissions,
+	onNewConversationToolPermissionsChange,
 }: ConversationViewProps) => {
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -554,7 +580,25 @@ export const ConversationView = ({
 							autoFocus
 							textareaRef={inputMessageRef}
 						/>
-						<div className="mt-2 flex justify-end">
+						<div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+							{conversation && onConversationChange ? (
+								<ConversationToolPermissionControl
+									conversation={conversation}
+									onConversationChange={onConversationChange}
+									disabled={isStreaming}
+								/>
+							) : newConversationToolPermissions && onNewConversationToolPermissionsChange ? (
+								<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+									<span className="text-xs font-medium text-foreground">Agent tools</span>
+									<WorkspacePermissionPicker
+										value={newConversationToolPermissions}
+										onChange={onNewConversationToolPermissionsChange}
+										disabled={isStreaming}
+									/>
+								</div>
+							) : (
+								<span />
+							)}
 							<label className="flex items-center gap-2 text-xs text-muted-foreground">
 								Reasoning
 								<select

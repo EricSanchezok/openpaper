@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from app.database.models import Conversation
 from app.database.telemetry import track_event
 from app.llm.conversation_operations import conversation_operations
 from app.modules.conversations.application.contracts.conversations import (
@@ -13,6 +14,8 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
+    ConversationToolPermissionsRequest,
+    ConversationToolPermissionsResponse,
     PaperContext,
     MessageResponse,
 )
@@ -29,6 +32,26 @@ from sqlalchemy.orm import Session
 class SqlAlchemyConversationGateway:
     def __init__(self, db: Session) -> None:
         self._db = db
+
+    def _detail(
+        self,
+        *,
+        conversation: Conversation,
+        user_id: int,
+    ) -> ConversationDetailResponse:
+        summary = conversation_repository.summarize(
+            self._db,
+            conversation=conversation,
+        )
+        return ConversationDetailResponse(
+            **summary.model_dump(),
+            paper_context=conversation_repository.paper_context(
+                self._db,
+                conversation=conversation,
+                user_id=user_id,
+            ),
+            tool_permissions=conversation_repository.tool_permissions(conversation),
+        )
 
     def list_conversations(
         self,
@@ -67,18 +90,7 @@ class SqlAlchemyConversationGateway:
             request=request,
             user_id=user_id,
         )
-        summary = conversation_repository.summarize(
-            self._db,
-            conversation=conversation,
-        )
-        return ConversationDetailResponse(
-            **summary.model_dump(),
-            paper_context=conversation_repository.paper_context(
-                self._db,
-                conversation=conversation,
-                user_id=user_id,
-            ),
-        )
+        return self._detail(conversation=conversation, user_id=user_id)
 
     def get(
         self,
@@ -91,18 +103,7 @@ class SqlAlchemyConversationGateway:
             conversation_id=conversation_id,
             user_id=user_id,
         )
-        summary = conversation_repository.summarize(
-            self._db,
-            conversation=conversation,
-        )
-        return ConversationDetailResponse(
-            **summary.model_dump(),
-            paper_context=conversation_repository.paper_context(
-                self._db,
-                conversation=conversation,
-                user_id=user_id,
-            ),
-        )
+        return self._detail(conversation=conversation, user_id=user_id)
 
     def messages(
         self,
@@ -180,6 +181,20 @@ class SqlAlchemyConversationGateway:
         request: PaperContext,
     ) -> PaperContext:
         return conversation_repository.update_paper_context(
+            self._db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            request=request,
+        )
+
+    def update_tool_permissions(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        request: ConversationToolPermissionsRequest,
+    ) -> ConversationToolPermissionsResponse:
+        return conversation_repository.update_tool_permissions(
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
