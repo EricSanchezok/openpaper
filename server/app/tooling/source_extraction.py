@@ -18,6 +18,7 @@ _EXCERPT_FIELDS = ("excerpt", "snippet", "content", "text", "description", "summ
 _MAX_SOURCE_URL_CHARS = 2_048
 _MAX_SOURCE_EXCERPT_CHARS = 8_000
 _MAX_SOURCES_PER_RESULT = 256
+_MAX_ARGUMENT_BOUND_EXCERPTS = 32
 _SOURCE_QUALITY_ARGUMENT_BOUND = 1
 _SOURCE_QUALITY_RESULT_TEXT = 2
 _SOURCE_QUALITY_STRUCTURED_RESULT = 3
@@ -54,6 +55,21 @@ def extract_external_sources(
 ) -> tuple[ExternalSourceCandidate, ...]:
     """Extract URL-bound sources without knowing the provider or tool name."""
     candidates: dict[tuple[str, str], tuple[ExternalSourceCandidate, int]] = {}
+
+    def has_resource_url(value: Any) -> bool:
+        if isinstance(value, dict):
+            if any(
+                isinstance(value.get(field), str)
+                and normalize_external_url(value[field]) is not None
+                for field in _URL_FIELDS
+            ):
+                return True
+            return any(has_resource_url(nested) for nested in value.values())
+        if isinstance(value, list):
+            return any(has_resource_url(nested) for nested in value)
+        return False
+
+    argument_resource_url = has_resource_url(arguments)
 
     def first_payload_excerpt(
         value: Any,
@@ -92,6 +108,77 @@ def extract_external_sources(
         excerpt = stripped[:_MAX_SOURCE_EXCERPT_CHARS]
         return excerpt, start, start + len(excerpt)
 
+    def title_from_block(value: str) -> str | None:
+        return next(
+            (
+                re.sub(
+                    r"^(?:(?:#+|[-*>])\s*)?(?:\d+[.)]\s*)?",
+                    "",
+                    line.strip(),
+                )[:500]
+                for line in value.splitlines()
+                if line.strip()
+                and _URL_PATTERN.search(line) is None
+                and _DOI_PATTERN.search(line) is None
+            ),
+            None,
+        )
+
+    def payload_excerpt_slices(
+        value: Any,
+        path: tuple[str | int, ...] = (),
+    ) -> list[tuple[tuple[str | int, ...], str, tuple[int, int], str | None]]:
+        slices: list[
+            tuple[tuple[str | int, ...], str, tuple[int, int], str | None]
+        ] = []
+
+        def visit_payload(item: Any, item_path: tuple[str | int, ...]) -> None:
+            if len(slices) >= _MAX_ARGUMENT_BOUND_EXCERPTS:
+                return
+            if isinstance(item, dict):
+                preferred = [
+                    (key, item[key])
+                    for key in _EXCERPT_FIELDS
+                    if key in item
+                ]
+                entries = preferred or list(item.items())
+                for key, nested in entries:
+                    visit_payload(nested, (*item_path, key))
+                return
+            if isinstance(item, list):
+                for index, nested in enumerate(item):
+                    visit_payload(nested, (*item_path, index))
+                return
+            if not isinstance(item, str) or not item.strip():
+                return
+
+            start = 0
+            while start < len(item) and len(slices) < _MAX_ARGUMENT_BOUND_EXCERPTS:
+                end = min(len(item), start + _MAX_SOURCE_EXCERPT_CHARS)
+                if end < len(item):
+                    boundary = item.rfind("\n\n", start + 1, end)
+                    if boundary > start:
+                        end = boundary
+                selected = bounded_slice(item, (start, end))
+                if selected is not None:
+                    excerpt, excerpt_start, excerpt_end = selected
+                    slices.append(
+                        (
+                            item_path,
+                            item,
+                            (excerpt_start, excerpt_end),
+                            title_from_block(excerpt),
+                        )
+                    )
+                start = max(end, start + 1)
+
+        visit_payload(value, path)
+        return slices
+
+    argument_bound_excerpts = (
+        payload_excerpt_slices(payload) if argument_resource_url else []
+    )
+
     def text_source_block(
         value: str,
         *,
@@ -103,20 +190,7 @@ def extract_external_sources(
         end_boundary = value.find("\n\n", identity_end)
         end = len(value) if end_boundary < 0 else end_boundary
         block = value[start:end]
-        title = next(
-            (
-                re.sub(
-                    r"^(?:(?:#+|[-*])\s*)?(?:\d+[.)]\s*)?",
-                    "",
-                    line.strip(),
-                )[:500]
-                for line in block.splitlines()
-                if line.strip()
-                and _URL_PATTERN.search(line) is None
-                and _DOI_PATTERN.search(line) is None
-            ),
-            None,
-        )
+        title = title_from_block(block)
         return (start, end), title or None
 
     def normalized_url_slice(value: str) -> tuple[str, int, int] | None:
@@ -193,6 +267,11 @@ def extract_external_sources(
     ) -> None:
         if len(candidates) >= _MAX_SOURCES_PER_RESULT:
             return
+        # A fetch/extract call's explicit resource URL owns the returned payload.
+        # Links inside that payload are references made by the fetched resource,
+        # not alternative identities for the returned text.
+        if origin_name == "payload" and argument_resource_url:
+            return
         if isinstance(value, dict):
             url_entry = next(
                 (
@@ -224,34 +303,57 @@ def extract_external_sources(
                 if url_slice is not None:
                     normalized, url_start, url_end = url_slice
                     structured_excerpt: tuple[tuple[str | int, ...], str] | None
+                    if origin_name == "arguments" and argument_bound_excerpts:
+                        for (
+                            excerpt_path,
+                            excerpt_value,
+                            bound_excerpt_range,
+                            inferred_title,
+                        ) in argument_bound_excerpts:
+                            add(
+                                normalized,
+                                url_origin=origin_name,
+                                url_path=(*path, url_field),
+                                url_start=url_start,
+                                url_end=url_end,
+                                title=title or inferred_title,
+                                excerpt_value=excerpt_value,
+                                excerpt_path=excerpt_path,
+                                excerpt_bounds=bound_excerpt_range,
+                                quality=_SOURCE_QUALITY_ARGUMENT_BOUND,
+                            )
+                        structured_excerpt = None
+                    else:
+                        structured_excerpt = fallback_payload_excerpt
                     if origin_name == "payload" and excerpt is not None:
                         excerpt_field, excerpt_value = excerpt
                         structured_excerpt = ((*path, excerpt_field), str(excerpt_value))
-                    else:
-                        structured_excerpt = fallback_payload_excerpt
-                    add(
-                        normalized,
-                        url_origin=origin_name,
-                        url_path=(*path, url_field),
-                        url_start=url_start,
-                        url_end=url_end,
-                        title=title,
-                        excerpt_value=(
-                            structured_excerpt[1]
-                            if structured_excerpt is not None
-                            else None
-                        ),
-                        excerpt_path=(
-                            structured_excerpt[0]
-                            if structured_excerpt is not None
-                            else None
-                        ),
-                        quality=(
-                            _SOURCE_QUALITY_STRUCTURED_RESULT
-                            if origin_name == "payload" and excerpt is not None
-                            else _SOURCE_QUALITY_ARGUMENT_BOUND
-                        ),
-                    )
+                    if structured_excerpt is not None or (
+                        origin_name == "arguments" and not argument_bound_excerpts
+                    ):
+                        add(
+                            normalized,
+                            url_origin=origin_name,
+                            url_path=(*path, url_field),
+                            url_start=url_start,
+                            url_end=url_end,
+                            title=title,
+                            excerpt_value=(
+                                structured_excerpt[1]
+                                if structured_excerpt is not None
+                                else None
+                            ),
+                            excerpt_path=(
+                                structured_excerpt[0]
+                                if structured_excerpt is not None
+                                else None
+                            ),
+                            quality=(
+                                _SOURCE_QUALITY_STRUCTURED_RESULT
+                                if origin_name == "payload" and excerpt is not None
+                                else _SOURCE_QUALITY_ARGUMENT_BOUND
+                            ),
+                        )
             for key, nested in value.items():
                 if key in _URL_FIELDS and isinstance(nested, str):
                     continue
@@ -297,10 +399,10 @@ def extract_external_sources(
                 )
             for match in _DOI_PATTERN.finditer(value):
                 doi = match.group(0)
-                excerpt_bounds = None
+                doi_excerpt_bounds: tuple[int, int] | None = None
                 doi_title = f"DOI {doi}"
                 if origin_name == "payload":
-                    excerpt_bounds, block_title = text_source_block(
+                    doi_excerpt_bounds, block_title = text_source_block(
                         value,
                         identity_start=match.start(),
                         identity_end=match.end(),
@@ -319,7 +421,7 @@ def extract_external_sources(
                     excerpt_path=(
                         leaf_excerpt[0] if leaf_excerpt is not None else None
                     ),
-                    excerpt_bounds=excerpt_bounds,
+                    excerpt_bounds=doi_excerpt_bounds,
                     quality=(
                         _SOURCE_QUALITY_RESULT_TEXT
                         if origin_name == "payload"

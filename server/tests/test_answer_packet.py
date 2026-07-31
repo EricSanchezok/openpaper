@@ -17,7 +17,10 @@ from app.tooling import (
     ExternalSourceCandidate,
     ToolOutcome,
 )
-from app.tooling.source_extraction import extract_external_sources
+from app.tooling.source_extraction import (
+    extract_external_sources,
+    verify_external_source,
+)
 
 
 def test_answer_packet_keeps_general_materials_actions_and_typed_sources() -> None:
@@ -145,6 +148,36 @@ def test_external_url_argument_is_bound_to_result_excerpt_not_to_itself() -> Non
     assert len(sources) == 1
     assert sources[0].url == "https://example.org/paper"
     assert sources[0].excerpt == "The returned page supports the result."
+
+
+def test_resource_url_owns_returned_content_instead_of_embedded_links() -> None:
+    sources = extract_external_sources(
+        arguments={"url": "https://example.org/paper"},
+        payload={
+            "content": (
+                "# Paper\n\nThe paper reports a result and links to "
+                "https://github.com/example/code for its implementation."
+            )
+        },
+    )
+
+    assert {source.url for source in sources} == {"https://example.org/paper"}
+    assert any("reports a result" in (source.excerpt or "") for source in sources)
+
+
+def test_long_resource_content_is_split_into_verifiable_source_excerpts() -> None:
+    content = "A" * 9_000 + "\n\n" + "B" * 2_000
+    arguments = {"url": "https://example.org/paper"}
+    payload = {"content": content}
+
+    sources = extract_external_sources(arguments=arguments, payload=payload)
+
+    assert len(sources) >= 2
+    assert {source.url for source in sources} == {"https://example.org/paper"}
+    assert all(
+        verify_external_source(source, arguments=arguments, payload=payload)
+        for source in sources
+    )
 
 
 def test_external_source_preserves_multiline_quotes_and_unicode() -> None:
