@@ -303,7 +303,10 @@ class ConnectorToolResolver:
                     issue_message = (
                         f"{connection.display_name} exposed invalid tools"
                     )
-                elif credentials_invalid:
+                elif (
+                    credentials_invalid
+                    and provider is not ConnectorProvider.SCHOLIGHT
+                ):
                     issue_code = "connector_credentials_invalid"
                     issue_message = (
                         f"{connection.display_name} credentials are no longer valid"

@@ -295,3 +295,33 @@ async def test_resolver_isolates_failures_and_routes_by_bound_provider(
         "connector_unavailable",
         "connector_tool_name_conflict",
     }
+
+
+@pytest.mark.asyncio
+async def test_system_connector_auth_failure_is_not_reported_as_user_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver = ConnectorToolResolver(
+        credential_loader=lambda _actor: (),
+        settings=_ScholightSettings(),
+    )
+    request = httpx.Request("POST", "https://scholight.example/mcp")
+    response = httpx.Response(401, request=request)
+
+    async def reject_delegation(*_args: object, **_kwargs: object) -> object:
+        raise httpx.HTTPStatusError(
+            "unauthorized",
+            request=request,
+            response=response,
+        )
+
+    monkeypatch.setattr(resolver, "_discover", reject_delegation)
+
+    resolved = await resolver.resolve(
+        actor=_actor(),
+        permissions=frozenset({WorkspacePermission.READ}),
+    )
+
+    assert [(issue.provider, issue.code) for issue in resolved.issues] == [
+        (ConnectorProvider.SCHOLIGHT, "connector_unavailable")
+    ]
