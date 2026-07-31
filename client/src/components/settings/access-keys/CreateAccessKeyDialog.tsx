@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Check, Copy, KeyRound, Loader2 } from "lucide-react";
 
 import { WorkspacePermissionPicker } from "@/components/permissions/WorkspacePermissionPicker";
@@ -16,7 +16,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { createAccessKey } from "@/lib/api";
+import type { AccessKeyExpiration } from "@/lib/schema";
 import {
 	serializeWorkspacePermissions,
 	type WorkspacePermission,
@@ -28,13 +36,15 @@ interface CreateAccessKeyDialogProps {
 	onCreated: () => void;
 }
 
-function minimumExpiration(): string {
-	const minimum = new Date(Date.now() + 60_000);
-	const local = new Date(
-		minimum.getTime() - minimum.getTimezoneOffset() * 60_000,
-	);
-	return local.toISOString().slice(0, 16);
-}
+const EXPIRATION_OPTIONS: readonly {
+	value: AccessKeyExpiration;
+	label: string;
+}[] = [
+	{ value: "7_days", label: "7 days" },
+	{ value: "30_days", label: "30 days" },
+	{ value: "90_days", label: "90 days" },
+	{ value: "never", label: "Never" },
+];
 
 export function CreateAccessKeyDialog({
 	open,
@@ -42,17 +52,17 @@ export function CreateAccessKeyDialog({
 	onCreated,
 }: CreateAccessKeyDialogProps) {
 	const [name, setName] = useState("");
-	const [expiration, setExpiration] = useState("");
+	const [expiration, setExpiration] =
+		useState<AccessKeyExpiration>("30_days");
 	const [permissions, setPermissions] = useState<WorkspacePermission[]>(["read"]);
 	const [secret, setSecret] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isCopied, setIsCopied] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const minExpiration = useMemo(() => minimumExpiration(), [open]);
 
 	const reset = () => {
 		setName("");
-		setExpiration("");
+		setExpiration("30_days");
 		setPermissions(["read"]);
 		setSecret(null);
 		setIsCopied(false);
@@ -82,26 +92,13 @@ export function CreateAccessKeyDialog({
 			return;
 		}
 
-		let expiresAt: string | undefined;
-		if (expiration) {
-			const expirationDate = new Date(expiration);
-			if (
-				Number.isNaN(expirationDate.getTime()) ||
-				expirationDate.getTime() <= Date.now()
-			) {
-				setError("Choose an expiration time in the future.");
-				return;
-			}
-			expiresAt = expirationDate.toISOString();
-		}
-
 		setIsSubmitting(true);
 		setError(null);
 		try {
 			const response = await createAccessKey({
 				name: trimmedName,
 				permissions: normalizedPermissions,
-				...(expiresAt ? { expires_at: expiresAt } : {}),
+				expiration,
 			});
 			setSecret(response.secret);
 			onCreated();
@@ -214,16 +211,29 @@ export function CreateAccessKeyDialog({
 
 						<div className="space-y-2">
 							<Label htmlFor="access-key-expiration">Expiration</Label>
-							<Input
-								id="access-key-expiration"
-								type="datetime-local"
+							<Select
 								value={expiration}
-								min={minExpiration}
 								disabled={isSubmitting}
-								onChange={(event) => setExpiration(event.target.value)}
-							/>
+								onValueChange={(value) =>
+									setExpiration(value as AccessKeyExpiration)
+								}
+							>
+								<SelectTrigger
+									id="access-key-expiration"
+									className="w-full"
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{EXPIRATION_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 							<p className="text-xs text-muted-foreground">
-								Leave empty for a key that does not expire.
+								The expiration cannot be changed after the key is created.
 							</p>
 						</div>
 

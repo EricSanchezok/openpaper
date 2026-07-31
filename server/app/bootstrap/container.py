@@ -120,6 +120,7 @@ from app.modules.access_keys.infrastructure import (
 )
 from app.modules.operation_journal.application import OperationJournal
 from app.shared.infrastructure import SystemClock
+from app.shared.domain import FailureKind
 from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
 from app.modules.papers.application.topics import PaperTopics
 from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
@@ -482,8 +483,9 @@ def build_access_keys(
         clock=SystemClock(),
         cursors=SignedCursorCodec(
             cursor_secret,
-            revision="access-keys-v1",
+            revision="access-keys-v2",
             error_code="access_key_cursor_invalid",
+            error_kind=FailureKind.INVALID_ARGUMENT,
         ),
         journal=journal,
     )

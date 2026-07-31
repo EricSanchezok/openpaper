@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
+from enum import StrEnum
 from typing import Annotated
 from typing import cast
 from uuid import UUID
@@ -16,12 +17,10 @@ from app.shared.domain import (
     ordered_workspace_permissions,
 )
 from pydantic import (
-    AwareDatetime,
     BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
-    field_validator,
     model_validator,
 )
 
@@ -50,20 +49,19 @@ AccessKeyPermissions = Annotated[
 ]
 
 
+class AccessKeyExpiration(StrEnum):
+    SEVEN_DAYS = "7_days"
+    THIRTY_DAYS = "30_days"
+    NINETY_DAYS = "90_days"
+    NEVER = "never"
+
+
 class AccessKeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: AccessKeyName
     permissions: AccessKeyPermissions
-    expires_at: AwareDatetime | None = None
-
-    @field_validator("expires_at")
-    @classmethod
-    def normalize_expiration(
-        cls,
-        value: datetime | None,
-    ) -> datetime | None:
-        return value.astimezone(timezone.utc) if value is not None else None
+    expiration: AccessKeyExpiration = AccessKeyExpiration.THIRTY_DAYS
 
 
 class AccessKeyUpdateRequest(BaseModel):
@@ -102,6 +100,7 @@ class AccessKeyCreateResponse(BaseModel):
 
 class AccessKeyListResponse(BaseModel):
     items: list[AccessKeyResponse]
+    previous_cursor: str | None = None
     next_cursor: str | None = None
 
 

@@ -230,13 +230,16 @@ export interface AccessKeyResponse {
 
 export interface AccessKeyListResponse {
     items: AccessKeyResponse[];
+    previous_cursor: string | null;
     next_cursor: string | null;
 }
+
+export type AccessKeyExpiration = '7_days' | '30_days' | '90_days' | 'never';
 
 export interface AccessKeyCreateRequest {
     name: string;
     permissions: WorkspacePermission[];
-    expires_at?: string;
+    expiration?: AccessKeyExpiration;
 }
 
 export interface AccessKeyCreateResponse {

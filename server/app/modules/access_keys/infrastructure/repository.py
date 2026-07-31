@@ -6,6 +6,8 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from app.modules.access_keys.application.ports import (
+    AccessKeyListDirection,
+    AccessKeyListPage,
     AccessKeyListPosition,
     AccessKeyRecord,
 )
@@ -80,26 +82,47 @@ class SqlAlchemyAccessKeyGateway:
         *,
         user_id: int,
         limit: int,
-        before: AccessKeyListPosition | None,
-    ) -> list[AccessKeyRecord]:
+        direction: AccessKeyListDirection,
+        position: AccessKeyListPosition | None,
+    ) -> AccessKeyListPage:
         statement = select(AccessKey).where(AccessKey.user_id == user_id)
-        if before is not None:
-            statement = statement.where(
-                or_(
-                    AccessKey.created_at < before.created_at,
-                    and_(
-                        AccessKey.created_at == before.created_at,
-                        AccessKey.id < before.id,
-                    ),
+        if position is not None:
+            if direction is AccessKeyListDirection.OLDER:
+                statement = statement.where(
+                    or_(
+                        AccessKey.created_at < position.created_at,
+                        and_(
+                            AccessKey.created_at == position.created_at,
+                            AccessKey.id < position.id,
+                        ),
+                    )
                 )
-            )
-        models = self._db.scalars(
-            statement.order_by(
-                AccessKey.created_at.desc(),
-                AccessKey.id.desc(),
-            ).limit(limit)
-        ).all()
-        return [_record(model) for model in models]
+            else:
+                statement = statement.where(
+                    or_(
+                        AccessKey.created_at > position.created_at,
+                        and_(
+                            AccessKey.created_at == position.created_at,
+                            AccessKey.id > position.id,
+                        ),
+                    )
+                )
+        order = (
+            (AccessKey.created_at.desc(), AccessKey.id.desc())
+            if direction is AccessKeyListDirection.OLDER
+            else (AccessKey.created_at.asc(), AccessKey.id.asc())
+        )
+        models = list(
+            self._db.scalars(statement.order_by(*order).limit(limit + 1)).all()
+        )
+        has_more = len(models) > limit
+        page_models = models[:limit]
+        if direction is AccessKeyListDirection.NEWER:
+            page_models.reverse()
+        return AccessKeyListPage(
+            records=tuple(_record(model) for model in page_models),
+            has_more=has_more,
+        )
 
     def lock_owned(
         self,

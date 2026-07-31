@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
@@ -29,6 +30,23 @@ class AccessKeyRecord:
 class AccessKeyListPosition:
     created_at: datetime
     id: UUID
+
+
+class AccessKeyListDirection(StrEnum):
+    OLDER = "older"
+    NEWER = "newer"
+
+
+@dataclass(frozen=True, slots=True)
+class AccessKeyListCursor:
+    direction: AccessKeyListDirection
+    position: AccessKeyListPosition
+
+
+@dataclass(frozen=True, slots=True)
+class AccessKeyListPage:
+    records: tuple[AccessKeyRecord, ...]
+    has_more: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,8 +78,9 @@ class AccessKeyGateway(Protocol):
         *,
         user_id: int,
         limit: int,
-        before: AccessKeyListPosition | None,
-    ) -> list[AccessKeyRecord]: ...
+        direction: AccessKeyListDirection,
+        position: AccessKeyListPosition | None,
+    ) -> AccessKeyListPage: ...
 
     def lock_owned(
         self,

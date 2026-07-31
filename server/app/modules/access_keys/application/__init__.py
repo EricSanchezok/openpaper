@@ -2,6 +2,7 @@ from .access_keys import AccessKeys
 from .contracts import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
+    AccessKeyExpiration,
     AccessKeyListResponse,
     AccessKeyResponse,
     AccessKeyUpdateRequest,
@@ -11,6 +12,7 @@ from .contracts import (
 __all__ = [
     "AccessKeyCreateRequest",
     "AccessKeyCreateResponse",
+    "AccessKeyExpiration",
     "AccessKeyListResponse",
     "AccessKeyResponse",
     "AccessKeyUpdateRequest",

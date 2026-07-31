@@ -19,10 +19,12 @@ class SignedCursorCodec:
         *,
         revision: str,
         error_code: str,
+        error_kind: FailureKind = FailureKind.CONFLICT,
     ) -> None:
         self._secret = secret.encode()
         self._revision = revision
         self._error_code = error_code
+        self._error_kind = error_kind
 
     def encode(self, *, fingerprint: str, offset: int) -> str:
         return self._encode(
@@ -117,5 +119,5 @@ class SignedCursorCodec:
         raise AppError(
             code=self._error_code,
             message="The cursor is invalid or expired",
-            kind=FailureKind.CONFLICT,
+            kind=self._error_kind,
         )

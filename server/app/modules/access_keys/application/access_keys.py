@@ -9,6 +9,7 @@ from uuid import UUID
 from app.modules.access_keys.application.contracts import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
+    AccessKeyExpiration,
     AccessKeyListResponse,
     AccessKeyResponse,
     AccessKeyUpdateRequest,
@@ -16,6 +17,8 @@ from app.modules.access_keys.application.contracts import (
 )
 from app.modules.access_keys.application.ports import (
     AccessKeyGateway,
+    AccessKeyListCursor,
+    AccessKeyListDirection,
     AccessKeyListPosition,
     AccessKeyRecord,
     AccessKeySecrets,
@@ -42,6 +45,11 @@ ACCESS_KEY_CURSOR_FINGERPRINT = "access-key-management"
 ACCESS_KEY_CREATED = OperationAction("access_key.created")
 ACCESS_KEY_UPDATED = OperationAction("access_key.updated")
 ACCESS_KEY_REVOKED = OperationAction("access_key.revoked")
+_EXPIRATION_DELTAS = {
+    AccessKeyExpiration.SEVEN_DAYS: timedelta(days=7),
+    AccessKeyExpiration.THIRTY_DAYS: timedelta(days=30),
+    AccessKeyExpiration.NINETY_DAYS: timedelta(days=90),
+}
 
 
 class AccessKeys:
@@ -70,13 +78,6 @@ class AccessKeys:
         request: AccessKeyCreateRequest,
     ) -> AccessKeyCreateResponse:
         now = self._clock.now()
-        if request.expires_at is not None and request.expires_at <= now:
-            raise AppError(
-                code="access_key_expiration_invalid",
-                message="Access key expiration must be in the future",
-                kind=FailureKind.INVALID_ARGUMENT,
-            )
-
         permissions = _require_permissions(request.permissions)
         generated = self._secrets.generate()
         self._gateway.acquire_creation_lock(user_id=actor.id)
@@ -94,7 +95,7 @@ class AccessKeys:
             secret_hash=generated.secret_hash,
             key_prefix=generated.key_prefix,
             permissions=permissions,
-            expires_at=request.expires_at,
+            expires_at=_expiration_time(request.expiration, now=now),
             now=now,
         )
         self._journal.append(
@@ -122,23 +123,59 @@ class AccessKeys:
                 kind=FailureKind.INVALID_ARGUMENT,
             )
         now = self._clock.now()
-        before = self._decode_cursor(actor=actor, cursor=cursor)
-        records = self._gateway.list_owned(
-            user_id=actor.id,
-            limit=limit + 1,
-            before=before,
+        decoded = self._decode_cursor(actor=actor, limit=limit, cursor=cursor)
+        direction = (
+            decoded.direction if decoded is not None else AccessKeyListDirection.OLDER
         )
-        page = records[:limit]
-        next_cursor = None
-        if len(records) > limit and page:
-            anchor = page[-1]
-            next_cursor = self._cursors.encode_keyset(
-                fingerprint=self._cursor_binding(actor),
-                values=(anchor.created_at.isoformat(), str(anchor.id)),
-            )
+        position = decoded.position if decoded is not None else None
+        result = self._gateway.list_owned(
+            user_id=actor.id,
+            limit=limit,
+            direction=direction,
+            position=position,
+        )
+        page = result.records
+        if not page:
+            return AccessKeyListResponse(items=[])
+
+        has_newer = (
+            result.has_more
+            if direction is AccessKeyListDirection.NEWER
+            else position is not None
+        )
+        has_older = (
+            result.has_more
+            if direction is AccessKeyListDirection.OLDER
+            else position is not None
+        )
         return AccessKeyListResponse(
             items=[_response(record, now=now) for record in page],
-            next_cursor=next_cursor,
+            previous_cursor=(
+                self._encode_cursor(
+                    actor=actor,
+                    limit=limit,
+                    direction=AccessKeyListDirection.NEWER,
+                    position=AccessKeyListPosition(
+                        created_at=page[0].created_at,
+                        id=page[0].id,
+                    ),
+                )
+                if has_newer
+                else None
+            ),
+            next_cursor=(
+                self._encode_cursor(
+                    actor=actor,
+                    limit=limit,
+                    direction=AccessKeyListDirection.OLDER,
+                    position=AccessKeyListPosition(
+                        created_at=page[-1].created_at,
+                        id=page[-1].id,
+                    ),
+                )
+                if has_older
+                else None
+            ),
         )
 
     def update(
@@ -257,33 +294,57 @@ class AccessKeys:
         self,
         *,
         actor: Actor,
+        limit: int,
         cursor: str | None,
-    ) -> AccessKeyListPosition | None:
+    ) -> AccessKeyListCursor | None:
         if cursor is None:
             return None
         try:
-            created_at_raw, id_raw = self._cursors.decode_keyset(
+            direction_raw, created_at_raw, id_raw = self._cursors.decode_keyset(
                 cursor=cursor,
-                fingerprint=self._cursor_binding(actor),
-                arity=2,
+                fingerprint=self._cursor_binding(actor, limit=limit),
+                arity=3,
             )
             created_at = datetime.fromisoformat(created_at_raw)
             if created_at.tzinfo is None:
                 raise ValueError("cursor datetime must be timezone-aware")
-            return AccessKeyListPosition(
-                created_at=created_at,
-                id=UUID(id_raw),
+            return AccessKeyListCursor(
+                direction=AccessKeyListDirection(direction_raw),
+                position=AccessKeyListPosition(
+                    created_at=created_at,
+                    id=UUID(id_raw),
+                ),
             )
         except (TypeError, ValueError) as error:
             raise AppError(
                 code="access_key_cursor_invalid",
                 message="The access key cursor is invalid or expired",
-                kind=FailureKind.CONFLICT,
+                kind=FailureKind.INVALID_ARGUMENT,
             ) from error
 
+    def _encode_cursor(
+        self,
+        *,
+        actor: Actor,
+        limit: int,
+        direction: AccessKeyListDirection,
+        position: AccessKeyListPosition,
+    ) -> str:
+        return self._cursors.encode_keyset(
+            fingerprint=self._cursor_binding(actor, limit=limit),
+            values=(
+                direction.value,
+                position.created_at.isoformat(),
+                str(position.id),
+            ),
+        )
+
     @staticmethod
-    def _cursor_binding(actor: Actor) -> str:
-        return f"{ACCESS_KEY_CURSOR_FINGERPRINT}:{actor.id}"
+    def _cursor_binding(actor: Actor, *, limit: int) -> str:
+        return (
+            f"{ACCESS_KEY_CURSOR_FINGERPRINT}:v2:{actor.id}:"
+            f"created_at-desc:id-desc:limit={limit}"
+        )
 
 
 def _require_permissions(
@@ -297,6 +358,16 @@ def _require_permissions(
             kind=FailureKind.INVALID_ARGUMENT,
         )
     return normalized
+
+
+def _expiration_time(
+    expiration: AccessKeyExpiration,
+    *,
+    now: datetime,
+) -> datetime | None:
+    if expiration is AccessKeyExpiration.NEVER:
+        return None
+    return now + _EXPIRATION_DELTAS[expiration]
 
 
 def _status(record: AccessKeyRecord, *, now: datetime) -> AccessKeyStatus:
