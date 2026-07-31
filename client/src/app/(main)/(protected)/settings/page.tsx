@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { AccessKeySettingsSection } from "@/components/settings/access-keys/AccessKeySettingsSection";
+import { ConnectorSettingsSection } from "@/components/settings/connectors/ConnectorSettingsSection";
 import { ZoteroIntegrationCard } from "@/components/zotero";
 import { useAuth } from "@/lib/auth";
 import { Loader2 } from "lucide-react";
@@ -107,6 +108,8 @@ function SettingsContent() {
 				</div>
 
 				<ZoteroIntegrationCard />
+
+				<ConnectorSettingsSection />
 			</div>
 		</div>
 	);

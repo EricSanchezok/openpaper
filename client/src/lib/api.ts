@@ -10,6 +10,9 @@ import type {
     AccessKeyListResponse,
     AccessKeyResponse,
     AccessKeyUpdateRequest,
+    ConnectorListResponse,
+    ConnectorProvider,
+    ConnectorResponse,
     Project,
     ProjectListResponse,
 } from "./schema";
@@ -209,6 +212,45 @@ export async function updateAccessKey(
 export async function revokeAccessKey(accessKeyId: string): Promise<void> {
     await fetchFromApi<void>(
         `/me/access-keys/${encodeURIComponent(accessKeyId)}`,
+        { method: "DELETE" },
+    );
+}
+
+export async function listConnectors(): Promise<ConnectorListResponse> {
+    return fetchFromApi<ConnectorListResponse>("/me/connectors");
+}
+
+export async function connectConnector(
+    provider: ConnectorProvider,
+    apiKey: string,
+): Promise<ConnectorResponse> {
+    return fetchFromApi<ConnectorResponse>(
+        `/me/connectors/${encodeURIComponent(provider)}`,
+        {
+            method: "PUT",
+            body: JSON.stringify({ api_key: apiKey }),
+        },
+    );
+}
+
+export async function updateConnector(
+    provider: ConnectorProvider,
+    enabled: boolean,
+): Promise<ConnectorResponse> {
+    return fetchFromApi<ConnectorResponse>(
+        `/me/connectors/${encodeURIComponent(provider)}`,
+        {
+            method: "PATCH",
+            body: JSON.stringify({ enabled }),
+        },
+    );
+}
+
+export async function disconnectConnector(
+    provider: ConnectorProvider,
+): Promise<void> {
+    await fetchFromApi<void>(
+        `/me/connectors/${encodeURIComponent(provider)}`,
         { method: "DELETE" },
     );
 }

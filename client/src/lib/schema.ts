@@ -252,6 +252,26 @@ export interface AccessKeyUpdateRequest {
     permissions?: WorkspacePermission[];
 }
 
+export type ConnectorProvider =
+    | 'scholight'
+    | 'anysearch'
+    | 'tavily'
+    | 'exa'
+    | 'firecrawl';
+
+export interface ConnectorResponse {
+    provider: ConnectorProvider;
+    display_name: string;
+    built_in: boolean;
+    connected: boolean;
+    enabled: boolean;
+    verified_at: string | null;
+}
+
+export interface ConnectorListResponse {
+    items: ConnectorResponse[];
+}
+
 export interface ResearchItemListResponse {
     items: ResearchItem[];
     next_cursor: string | null;
