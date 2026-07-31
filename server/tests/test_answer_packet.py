@@ -199,6 +199,31 @@ def test_external_source_keeps_distinct_excerpts_from_the_same_url() -> None:
     assert [source.excerpt for source in sources] == ["First result", "Second result"]
 
 
+def test_plain_text_search_results_bind_each_url_to_its_local_result_block() -> None:
+    payload = """## Search Results
+
+### 1. First Paper
+- **URL**: https://example.org/first
+- First paper finding.
+
+### 2. Second Paper
+- **URL**: https://example.org/second
+- Second paper finding.
+"""
+
+    sources = extract_external_sources(arguments={"query": "test"}, payload=payload)
+
+    by_url = {source.url: source for source in sources}
+    first = by_url["https://example.org/first"]
+    second = by_url["https://example.org/second"]
+    assert first.title == "First Paper"
+    assert second.title == "Second Paper"
+    assert first.excerpt is not None and "First paper finding" in first.excerpt
+    assert "Second paper finding" not in first.excerpt
+    assert second.excerpt is not None and "Second paper finding" in second.excerpt
+    assert "First paper finding" not in second.excerpt
+
+
 def test_external_source_never_uses_argument_text_as_excerpt() -> None:
     sources = extract_external_sources(
         arguments={

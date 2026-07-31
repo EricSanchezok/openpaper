@@ -79,13 +79,45 @@ def extract_external_sources(
 
     fallback_payload_excerpt = first_payload_excerpt(payload)
 
-    def bounded_slice(value: str) -> tuple[str, int, int] | None:
-        stripped = value.strip()
+    def bounded_slice(
+        value: str,
+        bounds: tuple[int, int] | None = None,
+    ) -> tuple[str, int, int] | None:
+        lower, upper = bounds or (0, len(value))
+        selected = value[lower:upper]
+        stripped = selected.strip()
         if not stripped:
             return None
-        start = value.find(stripped)
+        start = lower + selected.find(stripped)
         excerpt = stripped[:_MAX_SOURCE_EXCERPT_CHARS]
         return excerpt, start, start + len(excerpt)
+
+    def text_source_block(
+        value: str,
+        *,
+        identity_start: int,
+        identity_end: int,
+    ) -> tuple[tuple[int, int], str | None]:
+        start_boundary = value.rfind("\n\n", 0, identity_start)
+        start = 0 if start_boundary < 0 else start_boundary + 2
+        end_boundary = value.find("\n\n", identity_end)
+        end = len(value) if end_boundary < 0 else end_boundary
+        block = value[start:end]
+        title = next(
+            (
+                re.sub(
+                    r"^(?:(?:#+|[-*])\s*)?(?:\d+[.)]\s*)?",
+                    "",
+                    line.strip(),
+                )[:500]
+                for line in block.splitlines()
+                if line.strip()
+                and _URL_PATTERN.search(line) is None
+                and _DOI_PATTERN.search(line) is None
+            ),
+            None,
+        )
+        return (start, end), title or None
 
     def normalized_url_slice(value: str) -> tuple[str, int, int] | None:
         stripped = value.strip().rstrip(".,;:!?")
@@ -105,12 +137,15 @@ def extract_external_sources(
         title: str | None = None,
         excerpt_value: str | None = None,
         excerpt_path: tuple[str | int, ...] | None = None,
+        excerpt_bounds: tuple[int, int] | None = None,
         quality: int = 0,
     ) -> None:
         normalized = normalize_external_url(url)
         if normalized is None:
             return
-        excerpt_slice = bounded_slice(excerpt_value) if excerpt_value else None
+        excerpt_slice = (
+            bounded_slice(excerpt_value, excerpt_bounds) if excerpt_value else None
+        )
         clean_excerpt = excerpt_slice[0] if excerpt_slice is not None else None
         candidate = ExternalSourceCandidate(
             url=normalized,
@@ -232,18 +267,28 @@ def extract_external_sources(
             )
             for match in _URL_PATTERN.finditer(value):
                 raw_url = match.group(0).rstrip(".,;:!?")
+                excerpt_bounds: tuple[int, int] | None = None
+                text_title: str | None = None
+                if origin_name == "payload":
+                    excerpt_bounds, text_title = text_source_block(
+                        value,
+                        identity_start=match.start(),
+                        identity_end=match.end(),
+                    )
                 add(
                     raw_url,
                     url_origin=origin_name,
                     url_path=path,
                     url_start=match.start(),
                     url_end=match.start() + len(raw_url),
+                    title=text_title,
                     excerpt_value=(
                         leaf_excerpt[1] if leaf_excerpt is not None else None
                     ),
                     excerpt_path=(
                         leaf_excerpt[0] if leaf_excerpt is not None else None
                     ),
+                    excerpt_bounds=excerpt_bounds,
                     quality=(
                         _SOURCE_QUALITY_RESULT_TEXT
                         if origin_name == "payload"
@@ -252,19 +297,29 @@ def extract_external_sources(
                 )
             for match in _DOI_PATTERN.finditer(value):
                 doi = match.group(0)
+                excerpt_bounds = None
+                doi_title = f"DOI {doi}"
+                if origin_name == "payload":
+                    excerpt_bounds, block_title = text_source_block(
+                        value,
+                        identity_start=match.start(),
+                        identity_end=match.end(),
+                    )
+                    doi_title = block_title or doi_title
                 add(
                     f"https://doi.org/{doi}",
                     url_origin=origin_name,
                     url_path=path,
                     url_start=match.start(),
                     url_end=match.end(),
-                    title=f"DOI {doi}",
+                    title=doi_title,
                     excerpt_value=(
                         leaf_excerpt[1] if leaf_excerpt is not None else None
                     ),
                     excerpt_path=(
                         leaf_excerpt[0] if leaf_excerpt is not None else None
                     ),
+                    excerpt_bounds=excerpt_bounds,
                     quality=(
                         _SOURCE_QUALITY_RESULT_TEXT
                         if origin_name == "payload"
