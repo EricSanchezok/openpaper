@@ -360,6 +360,28 @@ def test_grounded_answer_parser_strips_marker_with_missing_nonce() -> None:
     assert parser.metrics().protocol_errors == 1
 
 
+def test_grounded_answer_parser_accepts_provider_normalized_single_brackets() -> None:
+    source = ExternalAnswerSource(
+        key=7,
+        url="https://example.org/paper",
+        reference="Verified excerpt",
+    )
+    value = "Grounded claim.[SCHOLENS_CITE:fixed:7] End."
+
+    for split in range(len(value) + 1):
+        parser = GroundedAnswerStreamParser([source], nonce="fixed")
+        rendered = parser.feed(value[:split]) + parser.feed(value[split:])
+        rendered += parser.finish()
+        references = parser.references()
+
+        assert rendered == "Grounded claim. End."
+        assert references is not None
+        assert references.annotations[0].source_keys == [1]
+        assert rendered[
+            references.annotations[0].start_offset : references.annotations[0].end_offset
+        ] == "Grounded claim."
+
+
 def test_grounded_answer_parser_maps_each_marker_to_the_preceding_passage() -> None:
     sources = [
         ExternalAnswerSource(

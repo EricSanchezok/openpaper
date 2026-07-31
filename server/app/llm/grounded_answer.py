@@ -24,11 +24,12 @@ class GroundedAnswerMetrics:
 class GroundedAnswerStreamParser:
     """Strip private citation markers and map them to preceding text passages."""
 
+    _SINGLE_MARKER_PREFIX = "[SCHOLENS_CITE:"
+    _DOUBLE_MARKER_PREFIX = "[[SCHOLENS_CITE:"
+
     def __init__(self, sources: Sequence[AnswerSource], *, nonce: str | None = None) -> None:
         self.nonce = nonce or secrets.token_hex(16)
         self._sources = {source.key: source for source in sources}
-        self._marker_prefix = "[[SCHOLENS_CITE:"
-        self._valid_marker_prefix = f"{self._marker_prefix}{self.nonce}:"
         self._buffer = ""
         self._output = ""
         self._paragraph_start = 0
@@ -66,17 +67,31 @@ class GroundedAnswerStreamParser:
         self._buffer += value
         rendered: list[str] = []
         while self._buffer:
-            marker_at = self._buffer.find(self._marker_prefix)
+            marker_at, double_bracketed = self._find_marker(self._buffer)
             if marker_at >= 0:
                 self._emit(self._buffer[:marker_at], rendered)
-                marker_end = self._buffer.find("]]", marker_at + len(self._marker_prefix))
+                marker_prefix = (
+                    self._DOUBLE_MARKER_PREFIX
+                    if double_bracketed
+                    else self._SINGLE_MARKER_PREFIX
+                )
+                marker_suffix = "]]" if double_bracketed else "]"
+                marker_end = self._buffer.find(
+                    marker_suffix,
+                    marker_at + len(marker_prefix),
+                )
                 if marker_end < 0:
                     self._buffer = self._buffer[marker_at:]
                     break
-                raw_marker = self._buffer[marker_at : marker_end + 2]
-                self._buffer = self._buffer[marker_end + 2 :]
-                if raw_marker.startswith(self._valid_marker_prefix):
-                    raw_keys = raw_marker[len(self._valid_marker_prefix) : -2]
+                raw_marker = self._buffer[
+                    marker_at : marker_end + len(marker_suffix)
+                ]
+                self._buffer = self._buffer[marker_end + len(marker_suffix) :]
+                valid_marker_prefix = f"{marker_prefix}{self.nonce}:"
+                if raw_marker.startswith(valid_marker_prefix):
+                    raw_keys = raw_marker[
+                        len(valid_marker_prefix) : -len(marker_suffix)
+                    ]
                     self._annotate(raw_keys)
                 else:
                     # Never leak forged, stale, or model-damaged private protocol
@@ -84,7 +99,7 @@ class GroundedAnswerStreamParser:
                     self._protocol_errors += 1
                 continue
 
-            hold = self._partial_suffix_length(self._buffer, self._marker_prefix)
+            hold = self._partial_marker_suffix_length(self._buffer)
             ready = self._buffer[:-hold] if hold else self._buffer
             self._buffer = self._buffer[-hold:] if hold else ""
             self._emit(ready, rendered)
@@ -97,11 +112,13 @@ class GroundedAnswerStreamParser:
         self._finished = True
         remaining = self._buffer
         self._buffer = ""
-        if remaining.startswith(self._marker_prefix):
+        if remaining.startswith(
+            (self._SINGLE_MARKER_PREFIX, self._DOUBLE_MARKER_PREFIX)
+        ):
             remaining = ""
             self._protocol_errors += 1
         else:
-            partial = self._partial_suffix_length(remaining, self._marker_prefix)
+            partial = self._partial_marker_suffix_length(remaining)
             if partial:
                 remaining = remaining[:-partial]
                 self._protocol_errors += 1
@@ -203,3 +220,20 @@ class GroundedAnswerStreamParser:
             if value.endswith(token[:length]):
                 return length
         return 0
+
+    @classmethod
+    def _partial_marker_suffix_length(cls, value: str) -> int:
+        return max(
+            cls._partial_suffix_length(value, cls._SINGLE_MARKER_PREFIX),
+            cls._partial_suffix_length(value, cls._DOUBLE_MARKER_PREFIX),
+        )
+
+    @classmethod
+    def _find_marker(cls, value: str) -> tuple[int, bool]:
+        single_at = value.find(cls._SINGLE_MARKER_PREFIX)
+        double_at = value.find(cls._DOUBLE_MARKER_PREFIX)
+        if double_at >= 0 and (single_at < 0 or double_at < single_at):
+            return double_at, True
+        if single_at >= 0:
+            return single_at, False
+        return -1, False
