@@ -100,6 +100,12 @@ class BaseLLMClient:
             logger.exception("DeepSeek generation failed")
             raise
 
+    def model_revision(
+        self,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+    ) -> str:
+        return self.backend.model_revision(reasoning_level)
+
     def send_message_stream(
         self,
         message: MessageParam,

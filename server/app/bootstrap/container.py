@@ -124,6 +124,13 @@ from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
 from app.modules.papers.application.topics import PaperTopics
 from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
 from app.modules.integrations.zotero.application.zotero import Zotero
+from app.modules.translations.application import Translations
+from app.modules.translations.infrastructure.repository import (
+    SqlAlchemyTranslationPreferences,
+)
+from app.modules.translations.infrastructure.entitlements import (
+    SqlTranslationEntitlements,
+)
 from app.bootstrap.adapters.zotero_gateway import (
     DefaultZoteroGateway,
 )
@@ -409,6 +416,18 @@ def build_research_generation(
 
 def build_generation_capacity() -> RedisGenerationCapacity:
     return RedisGenerationCapacity()
+
+
+def build_translations(
+    *,
+    db: Session,
+    journal: OperationJournal,
+) -> Translations:
+    return Translations(
+        gateway=SqlAlchemyTranslationPreferences(db),
+        entitlements=SqlTranslationEntitlements(db),
+        journal=journal,
+    )
 
 
 def build_conversations(

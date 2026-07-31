@@ -29,6 +29,7 @@ from app.bootstrap.container import (
     build_research_items,
     build_research_search,
     build_save_onboarding,
+    build_translations,
     build_zotero,
 )
 from app.bootstrap.settings import AppSettings
@@ -67,6 +68,7 @@ from app.modules.operation_journal.application import OperationJournal
 from app.modules.operation_journal.infrastructure import (
     SqlAlchemyOperationJournalStore,
 )
+from app.modules.translations.application import Translations
 from app.shared.infrastructure import SystemClock
 
 
@@ -216,3 +218,7 @@ class ApplicationCapabilities:
     @cached_property
     def zotero(self) -> Zotero:
         return build_zotero(db=self._session, journal=self._journal)
+
+    @cached_property
+    def translations(self) -> Translations:
+        return build_translations(db=self._session, journal=self._journal)

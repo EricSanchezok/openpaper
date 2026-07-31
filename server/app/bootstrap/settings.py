@@ -22,6 +22,8 @@ class AppSettings(BaseSettings):
         default="development-only-search-cursor-secret",
         min_length=32,
     )
+    ai_limit_redis_url: str | None = None
+    translation_cache_redis_url: str | None = None
 
     @model_validator(mode="after")
     def reject_development_secrets_in_production(self) -> AppSettings:

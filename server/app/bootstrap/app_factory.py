@@ -53,6 +53,10 @@ from app.transport.http.public_v1.research_search import research_search_router
 from app.transport.http.public_v1.billing import subscription_router
 from app.transport.http.webhooks_v1.stripe import router as stripe_webhook_router
 from app.transport.http.public_v1.zotero import zotero_oauth_router, zotero_router
+from app.transport.http.public_v1.translations import (
+    paper_translations_router,
+    translation_preferences_router,
+)
 from app.modules.identity.infrastructure.cloud_auth import (
     cloud_auth_router,
     cloud_user_router,
@@ -72,6 +76,7 @@ from app.bootstrap.execution import (
     create_paper_ingestion_workflow,
     create_research_generation_workflow,
     create_stripe_webhook_processor,
+    create_translation_workflow,
     create_workspace_tooling,
     create_zotero_workflow,
 )
@@ -120,6 +125,7 @@ def _public_router() -> APIRouter:
     router.include_router(library_project_papers_router, prefix="/library")
     router.include_router(library_tags_router, prefix="/library")
     router.include_router(document_router, prefix="/papers")
+    router.include_router(paper_translations_router, prefix="/papers")
     router.include_router(paper_projects_router, prefix="/papers")
     router.include_router(public_document_router, prefix="/shares")
     router.include_router(projects_router, prefix="/projects")
@@ -138,6 +144,7 @@ def _public_router() -> APIRouter:
     router.include_router(jobs_router, prefix="/jobs")
     router.include_router(subscription_router, prefix="/billing")
     router.include_router(onboarding_router, prefix="/me/onboarding")
+    router.include_router(translation_preferences_router, prefix="/me")
     router.include_router(
         access_keys_router,
         prefix="/me/access-keys",
@@ -221,6 +228,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     application.state.research_generation_workflow = (
         create_research_generation_workflow(executor, operation_context_factory)
+    )
+    application.state.translation_workflow = create_translation_workflow(
+        executor,
+        runtime_settings,
     )
     application.state.zotero_workflow = create_zotero_workflow(
         executor,

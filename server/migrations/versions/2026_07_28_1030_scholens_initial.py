@@ -516,6 +516,46 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
+        "translation_preferences",
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("target_language", sa.String(length=35), nullable=False),
+        sa.Column("custom_instructions", sa.Text(), nullable=True),
+        sa.Column(
+            "auto_translate_selection",
+            sa.Boolean(),
+            server_default=sa.text("true"),
+            nullable=False,
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "length(target_language) BETWEEN 2 AND 35 "
+            "AND target_language = btrim(target_language)",
+            name="ck_translation_preferences_language",
+        ),
+        sa.CheckConstraint(
+            "custom_instructions IS NULL "
+            "OR (length(custom_instructions) BETWEEN 1 AND 2000 "
+            "AND custom_instructions = btrim(custom_instructions))",
+            name="ck_translation_preferences_instructions",
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["auth.users.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("user_id"),
+        schema="scholens",
+    )
+    op.create_table(
         "zotero_connections",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
@@ -1914,6 +1954,7 @@ def downgrade() -> None:
     )
     op.drop_table("zotero_oauth_pending", schema="scholens")
     op.drop_table("zotero_connections", schema="scholens")
+    op.drop_table("translation_preferences", schema="scholens")
     op.drop_table("user_profiles", schema="scholens")
     op.drop_table("token_weekly_usage", schema="scholens")
     op.drop_index(

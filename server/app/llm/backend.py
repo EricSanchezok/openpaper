@@ -51,6 +51,12 @@ class HistoryMessage(Protocol):
 
 class LLMBackend(ABC):
     @abstractmethod
+    def model_revision(
+        self,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+    ) -> str: ...
+
+    @abstractmethod
     def generate_content(
         self,
         contents: MessageParam,
@@ -106,6 +112,12 @@ class DeepSeekBackend(LLMBackend):
         if reasoning_level == ReasoningLevel.DEEP:
             return self._deep_model
         return self._default_model
+
+    def model_revision(
+        self,
+        reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
+    ) -> str:
+        return f"deepseek:{self._model(reasoning_level)}"
 
     def _thinking_body(self, reasoning_level: ReasoningLevel) -> dict[str, Any]:
         if reasoning_level == ReasoningLevel.DEEP:

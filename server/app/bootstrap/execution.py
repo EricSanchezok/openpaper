@@ -21,6 +21,7 @@ from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
 from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.discovery import PaperDiscoveryWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
+from app.bootstrap.workflows.translation import TranslationWorkflow
 from app.bootstrap.workflows.zotero import (
     ZoteroPostprocessWorkflow,
     ZoteroWorkflow,
@@ -250,6 +251,28 @@ def create_research_generation_workflow(
     )
 
 
+def create_translation_workflow(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    settings: AppSettings,
+) -> TranslationWorkflow:
+    from app.modules.translations.infrastructure.cache import RedisTranslationCache
+    from app.modules.translations.infrastructure.capacity import (
+        RedisTranslationCapacity,
+    )
+    from app.modules.translations.infrastructure.provider import (
+        LLMTranslationStreamProvider,
+    )
+
+    return TranslationWorkflow(
+        executor=executor,
+        cache=RedisTranslationCache(
+            settings.translation_cache_redis_url or settings.ai_limit_redis_url
+        ),
+        provider=LLMTranslationStreamProvider(),
+        capacity=RedisTranslationCapacity(),
+    )
+
+
 def create_zotero_workflow(
     executor: ApplicationExecutor[ApplicationCapabilities],
     operation_factory: OperationContextFactory,
@@ -366,6 +389,10 @@ def get_research_generation_workflow(
         ResearchGenerationWorkflow,
         request.app.state.research_generation_workflow,
     )
+
+
+def get_translation_workflow(request: Request) -> TranslationWorkflow:
+    return cast(TranslationWorkflow, request.app.state.translation_workflow)
 
 
 def get_zotero_workflow(request: Request) -> ZoteroWorkflow:

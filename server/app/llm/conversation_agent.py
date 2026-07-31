@@ -6,7 +6,6 @@ from contextlib import suppress
 from typing import (
     Any,
     AsyncGenerator,
-    Iterator,
     Sequence,
 )
 
@@ -23,6 +22,7 @@ from app.llm.prompts import (
     NORMAL_MODE_INSTRUCTIONS,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
+from app.llm.streaming import iterate_in_thread
 from app.modules.conversations.application.chat import (
     ChatPaperSnapshot,
     ConversationContextSnapshot,
@@ -210,15 +210,6 @@ class ConversationAgentRuntime(ConversationToolLoop):
 
         async def stream_reader() -> None:
             """Reads from the LLM stream and puts chunks into the queue."""
-
-            def get_next_chunk(
-                iterator: Iterator[StreamChunk],
-            ) -> StreamChunk | None:
-                try:
-                    return next(iterator)
-                except StopIteration:
-                    return None
-
             try:
                 blocking_iterator = self.send_message_stream(
                     message=message_content,
@@ -226,10 +217,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
                     history=conversation_history,
                     reasoning_level=reasoning_level,
                 )
-                while True:
-                    chunk = await asyncio.to_thread(get_next_chunk, blocking_iterator)
-                    if chunk is None:
-                        break
+                async for chunk in iterate_in_thread(blocking_iterator):
                     await queue.put(chunk)
             finally:
                 await queue.put(None)
