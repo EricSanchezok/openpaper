@@ -39,7 +39,7 @@ from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
-McpAuthenticator = Callable[[str], Awaitable[AuthenticatedAccessKey]]
+AccessKeyAuthenticator = Callable[[str], Awaitable[AuthenticatedAccessKey]]
 ListToolsHandler = Callable[[], Awaitable[list[mcp_types.Tool]]]
 CallToolHandler = Callable[
     [str, dict[str, object]],
@@ -123,7 +123,7 @@ class AuthenticatedMcpApplication:
         self,
         *,
         manager: StreamableHTTPSessionManager,
-        authenticate: McpAuthenticator,
+        authenticate: AccessKeyAuthenticator,
     ) -> None:
         self._manager = manager
         self._authenticate = authenticate
@@ -254,7 +254,7 @@ def build_mcp_transport(
     catalog: ToolCatalog[ApplicationCapabilities],
     dispatcher: ToolDispatcher[ApplicationCapabilities],
     security_settings: TransportSecuritySettings,
-    authenticate: McpAuthenticator,
+    authenticate: AccessKeyAuthenticator,
     operation_factory: OperationContextFactory,
 ) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
     server: Server[object] = Server(
@@ -393,6 +393,6 @@ def build_mcp_transport(
 
 __all__ = [
     "AuthenticatedMcpApplication",
-    "McpAuthenticator",
+    "AccessKeyAuthenticator",
     "build_mcp_transport",
 ]

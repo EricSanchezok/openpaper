@@ -78,6 +78,14 @@ class MinimalExecutor:
         return operation(MinimalCapabilities())
 
 
+def _unexpected_handler(
+    _capabilities: MinimalCapabilities,
+    _context: ToolExecutionContext,
+    _arguments: EmptyInput,
+) -> ToolOutcome:
+    raise AssertionError("an unavailable tool must not execute")
+
+
 def _actor() -> Actor:
     return Actor(
         id=7,
@@ -91,7 +99,9 @@ def _application(
     catalog: ToolCatalog[Any],
     dispatcher: object,
     *,
-    permissions: frozenset[WorkspacePermission] = frozenset(WorkspacePermission),
+    permissions: (
+        frozenset[WorkspacePermission] | Callable[[], frozenset[WorkspacePermission]]
+    ) = frozenset(WorkspacePermission),
 ) -> Starlette:
     async def authenticate(token: str) -> AuthenticatedAccessKey:
         if token != ACCESS_KEY_SECRET:
@@ -103,7 +113,7 @@ def _application(
         return AuthenticatedAccessKey(
             access_key_id=ACCESS_KEY_ID,
             actor=_actor(),
-            permissions=permissions,
+            permissions=permissions() if callable(permissions) else permissions,
         )
 
     manager, endpoint = build_mcp_transport(
@@ -285,6 +295,104 @@ async def test_mcp_tool_list_uses_access_key_permission_snapshot() -> None:
     assert "create_project" not in tool_names
     assert "delete_project" not in tool_names
     assert "finish_tool_use" not in tool_names
+
+
+@pytest.mark.asyncio
+async def test_mcp_reauthenticates_permissions_on_each_request() -> None:
+    catalog = build_workspace_tool_catalog(
+        ingestion=cast(PaperIngestionWorkflow, object()),
+        citations=cast(CitationWorkflow, object()),
+    )
+    current_permissions = frozenset({WorkspacePermission.READ})
+    application = _application(
+        catalog,
+        RecordingDispatcher(),
+        permissions=lambda: current_permissions,
+    )
+    async with application.router.lifespan_context(application):
+        async with AsyncClient(
+            transport=ASGITransport(app=application),
+            base_url="http://testserver",
+        ) as client:
+            headers = await _initialize(client)
+            before = await client.post(
+                "/mcp",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "list-before-permission-change",
+                    "method": "tools/list",
+                    "params": {},
+                },
+            )
+            current_permissions = frozenset(
+                {WorkspacePermission.READ, WorkspacePermission.WRITE}
+            )
+            after = await client.post(
+                "/mcp",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "list-after-permission-change",
+                    "method": "tools/list",
+                    "params": {},
+                },
+            )
+
+    before_names = {tool["name"] for tool in before.json()["result"]["tools"]}
+    after_names = {tool["name"] for tool in after.json()["result"]["tools"]}
+    assert "create_project" not in before_names
+    assert "create_project" in after_names
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_call_enforces_the_same_permission_snapshot() -> None:
+    catalog = ToolCatalog(
+        [
+            ToolDefinition(
+                name="write_only",
+                description="A write-only test tool.",
+                input_model=EmptyInput,
+                execution=ToolExecutionKind.QUERY,
+                required_permission=WorkspacePermission.WRITE,
+                handler=_unexpected_handler,
+            )
+        ],
+        [ToolProfile(name="mcp", tool_names=frozenset({"write_only"}))],
+    )
+    dispatcher = ToolDispatcher(catalog=catalog, executor=MinimalExecutor())
+    application = _application(
+        catalog,
+        dispatcher,
+        permissions=frozenset({WorkspacePermission.READ}),
+    )
+    async with application.router.lifespan_context(application):
+        async with AsyncClient(
+            transport=ASGITransport(app=application),
+            base_url="http://testserver",
+        ) as client:
+            headers = await _initialize(client)
+            response = await client.post(
+                "/mcp",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "call-unavailable-tool",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "write_only",
+                        "arguments": {"invalid": "must not be validated"},
+                    },
+                },
+            )
+
+    error = response.json()["result"]["structuredContent"]["error"]
+    assert error == {
+        "kind": "not_found",
+        "code": "tool_not_found",
+        "message": "Tool not found",
+        "details": None,
+    }
 
 
 @pytest.mark.asyncio

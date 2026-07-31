@@ -53,6 +53,8 @@ def test_mcp_has_no_cloud_auth_or_legacy_actor_authentication_path() -> None:
     assert "_actor_context" not in transport
     assert "_tool_access_context" not in transport
     assert "AuthenticatedAccessKey" in transport
+    assert "McpAuthenticator" not in transport
+    assert "AccessKeyAuthenticator" in transport
 
 
 def test_access_key_identity_is_not_added_to_tool_or_invocation_storage() -> None:
