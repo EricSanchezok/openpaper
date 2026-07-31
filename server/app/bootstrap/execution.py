@@ -269,7 +269,10 @@ def create_translation_workflow(
             settings.translation_cache_redis_url or settings.ai_limit_redis_url
         ),
         provider=LLMTranslationStreamProvider(),
-        capacity=RedisTranslationCapacity(),
+        capacity=RedisTranslationCapacity(
+            redis_url=settings.ai_limit_redis_url,
+            environment=settings.environment,
+        ),
     )
 
 

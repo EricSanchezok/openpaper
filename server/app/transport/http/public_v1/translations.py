@@ -31,6 +31,10 @@ translation_preferences_router = APIRouter(tags=["translations"])
 paper_translations_router = APIRouter(tags=["translations"])
 
 
+class TranslationEventStreamResponse(StreamingResponse):
+    media_type = "text/event-stream"
+
+
 @translation_preferences_router.get(
     "/translation-preferences",
     response_model=TranslationPreferencesResponse,
@@ -67,7 +71,20 @@ def update_translation_preferences(
     )
 
 
-@paper_translations_router.post("/{document_id}/translations")
+@paper_translations_router.post(
+    "/{document_id}/translations",
+    response_class=TranslationEventStreamResponse,
+    responses={
+        200: {
+            "description": "A server-sent stream of translation events.",
+            "content": {
+                "text/event-stream": {
+                    "schema": {"type": "string"},
+                }
+            },
+        }
+    },
+)
 async def stream_paper_translation(
     document_id: UUID,
     request: TranslationRequest,
@@ -75,7 +92,7 @@ async def stream_paper_translation(
     actor: Actor = Depends(get_required_user),
     operation: OperationContext = Depends(get_required_operation),
     workflow: TranslationWorkflow = Depends(get_translation_workflow),
-) -> StreamingResponse:
+) -> TranslationEventStreamResponse:
     events = await workflow.open_stream(
         actor=actor,
         operation=operation,
@@ -83,9 +100,8 @@ async def stream_paper_translation(
         request=request,
         client_ip=http_client_ip(http_request),
     )
-    return StreamingResponse(
+    return TranslationEventStreamResponse(
         _sse(events),
-        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",

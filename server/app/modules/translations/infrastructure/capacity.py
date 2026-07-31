@@ -16,6 +16,15 @@ from app.shared.domain import AppError, FailureKind
 
 
 class RedisTranslationCapacity:
+    def __init__(
+        self,
+        *,
+        redis_url: str | None,
+        environment: str,
+    ) -> None:
+        self._redis_url = redis_url
+        self._environment = environment
+
     async def enforce_rate(
         self,
         *,
@@ -27,6 +36,8 @@ class RedisTranslationCapacity:
                 user_id=user_id,
                 ip_address=client_ip,
                 feature="translation",
+                redis_url=self._redis_url,
+                environment=self._environment,
             )
         except AILimitExceeded as exc:
             raise AppError(
@@ -46,6 +57,8 @@ class RedisTranslationCapacity:
                 user_id=user_id,
                 category="interactive",
                 operation_id=str(operation_id),
+                redis_url=self._redis_url,
+                environment=self._environment,
             )
         except AILimitExceeded as exc:
             raise AppError(
@@ -57,5 +70,6 @@ class RedisTranslationCapacity:
 
     async def release(self, lease: TranslationCapacityLease) -> None:
         await release_concurrency(
-            AIConcurrencyLease(key=lease.key, member=lease.member)
+            AIConcurrencyLease(key=lease.key, member=lease.member),
+            redis_url=self._redis_url,
         )

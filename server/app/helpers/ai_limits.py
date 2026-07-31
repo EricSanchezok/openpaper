@@ -11,7 +11,9 @@ from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
-_redis: Redis | None = None
+_redis_clients: dict[str, Redis] = {}
+_REDIS_CONNECT_TIMEOUT_SECONDS = 1.0
+_REDIS_OPERATION_TIMEOUT_SECONDS = 1.0
 
 _ACQUIRE_SCRIPT = """
 local key = KEYS[1]
@@ -35,14 +37,21 @@ class AILimitExceeded(Exception):
         super().__init__(code)
 
 
-def _redis_client() -> Redis | None:
-    global _redis
-    url = os.getenv("AI_LIMIT_REDIS_URL")
+def _redis_client(redis_url: str | None = None) -> Redis | None:
+    url = redis_url or os.getenv("AI_LIMIT_REDIS_URL")
     if not url:
         return None
-    if _redis is None:
-        _redis = Redis.from_url(url, decode_responses=True)
-    return _redis
+    client = _redis_clients.get(url)
+    if client is None:
+        client = Redis.from_url(
+            url,
+            decode_responses=True,
+            socket_connect_timeout=_REDIS_CONNECT_TIMEOUT_SECONDS,
+            socket_timeout=_REDIS_OPERATION_TIMEOUT_SECONDS,
+            retry_on_timeout=False,
+        )
+        _redis_clients[url] = client
+    return client
 
 
 async def enforce_rate_limit(
@@ -50,10 +59,12 @@ async def enforce_rate_limit(
     user_id: int,
     ip_address: str,
     feature: str,
+    redis_url: str | None = None,
+    environment: str | None = None,
 ) -> None:
-    client = _redis_client()
+    client = _redis_client(redis_url)
     if client is None:
-        if os.getenv("ENVIRONMENT") == "production":
+        if (environment or os.getenv("ENVIRONMENT")) == "production":
             raise RuntimeError("AI_LIMIT_REDIS_URL is required in production")
         return
 
@@ -91,12 +102,14 @@ async def acquire_concurrency(
     user_id: int,
     category: str,
     operation_id: str | None = None,
+    redis_url: str | None = None,
+    environment: str | None = None,
 ) -> AIConcurrencyLease:
-    client = _redis_client()
+    client = _redis_client(redis_url)
     member = operation_id or uuid.uuid4().hex
     key = f"scholens:concurrency:{category}:{user_id}"
     if client is None:
-        if os.getenv("ENVIRONMENT") == "production":
+        if (environment or os.getenv("ENVIRONMENT")) == "production":
             raise RuntimeError("AI_LIMIT_REDIS_URL is required in production")
         return AIConcurrencyLease(key="", member=member)
 
@@ -126,8 +139,12 @@ async def acquire_concurrency(
     return AIConcurrencyLease(key=key, member=member)
 
 
-async def release_concurrency(lease: AIConcurrencyLease) -> None:
-    client = _redis_client()
+async def release_concurrency(
+    lease: AIConcurrencyLease,
+    *,
+    redis_url: str | None = None,
+) -> None:
+    client = _redis_client(redis_url)
     if client is None or not lease.key:
         return
     try:
@@ -137,11 +154,16 @@ async def release_concurrency(lease: AIConcurrencyLease) -> None:
 
 
 async def release_concurrency_by_id(
-    *, user_id: int, category: str, operation_id: str
+    *,
+    user_id: int,
+    category: str,
+    operation_id: str,
+    redis_url: str | None = None,
 ) -> None:
     await release_concurrency(
         AIConcurrencyLease(
             key=f"scholens:concurrency:{category}:{user_id}",
             member=operation_id,
-        )
+        ),
+        redis_url=redis_url,
     )

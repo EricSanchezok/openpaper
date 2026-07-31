@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from enum import Enum
 from typing import Protocol
 from uuid import UUID
 
@@ -55,6 +56,18 @@ class TranslationStreamProvider(Protocol):
     def model_revision(self) -> str: ...
 
     def stream(self, spec: TranslationStreamSpec) -> AsyncIterator[str]: ...
+
+
+class TranslationStreamFailureKind(str, Enum):
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    USAGE_SETTLEMENT_FAILED = "usage_settlement_failed"
+    INTERRUPTED = "interrupted"
+
+
+class TranslationStreamFailure(RuntimeError):
+    def __init__(self, kind: TranslationStreamFailureKind) -> None:
+        self.kind = kind
+        super().__init__(kind.value)
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,6 +17,8 @@ from app.modules.translations.application import (
     TranslationCapacityLease,
     TranslationRequest,
     TranslationStreamEvent,
+    TranslationStreamFailure,
+    TranslationStreamFailureKind,
     TranslationStreamProvider,
     TranslationStreamSpec,
 )
@@ -25,6 +27,7 @@ from app.modules.translations.domain import (
     TranslationCacheIdentity,
     translation_cache_key,
     translation_instructions_hash,
+    translation_paper_title_hash,
     validate_translated_text,
 )
 from app.shared.application import Actor, ApplicationExecutor, OperationContext
@@ -34,6 +37,20 @@ logger = logging.getLogger(__name__)
 TRANSLATION_CACHE_SCHEMA_REVISION = "translation-cache-v1"
 SINGLE_FLIGHT_WAIT_ATTEMPTS = 20
 SINGLE_FLIGHT_WAIT_SECONDS = 0.1
+_STREAM_FAILURE_DETAILS = {
+    TranslationStreamFailureKind.PROVIDER_UNAVAILABLE: (
+        "translation_provider_unavailable",
+        "Translation provider is temporarily unavailable",
+    ),
+    TranslationStreamFailureKind.USAGE_SETTLEMENT_FAILED: (
+        "translation_usage_settlement_failed",
+        "Translation completed but usage recording failed",
+    ),
+    TranslationStreamFailureKind.INTERRUPTED: (
+        "translation_stream_interrupted",
+        "Translation stream was interrupted",
+    ),
+}
 
 
 class TranslationWorkflow:
@@ -77,6 +94,9 @@ class TranslationWorkflow:
                 prompt_revision=self._provider.prompt_revision(),
                 model_revision=self._provider.model_revision(),
                 document_id=prepared.document_id,
+                paper_title_hash=translation_paper_title_hash(
+                    prepared.paper_title
+                ),
                 source_text=prepared.source_text,
                 target_language=prepared.target_language,
                 custom_instructions_hash=translation_instructions_hash(
@@ -173,20 +193,39 @@ class TranslationWorkflow:
                 event="complete",
                 data={"cache_hit": False},
             )
-        except Exception:
+        except TranslationStreamFailure as exc:
             logger.exception(
                 "Translation stream failed",
                 extra={
                     "document_id": str(prepared.document_id),
                     "operation_id": str(operation.trace.operation_id),
+                    "failure_kind": exc.kind.value,
                 },
             )
-            yield TranslationStreamEvent(
-                event="error",
-                data={
-                    "code": "translation_unavailable",
-                    "message": "Translation is temporarily unavailable",
+            yield _error_event(*_STREAM_FAILURE_DETAILS[exc.kind])
+        except ValueError:
+            logger.exception(
+                "Translation provider returned an invalid result",
+                extra={
+                    "document_id": str(prepared.document_id),
+                    "operation_id": str(operation.trace.operation_id),
                 },
+            )
+            yield _error_event(
+                "translation_result_invalid",
+                "Translation provider returned an invalid result",
+            )
+        except Exception:
+            logger.exception(
+                "Unexpected translation stream failure",
+                extra={
+                    "document_id": str(prepared.document_id),
+                    "operation_id": str(operation.trace.operation_id),
+                },
+            )
+            yield _error_event(
+                "translation_stream_interrupted",
+                "Translation stream was interrupted",
             )
         finally:
             await self._capacity.release(capacity_lease)
@@ -230,4 +269,11 @@ async def _cached_stream(
     yield TranslationStreamEvent(
         event="complete",
         data={"cache_hit": True},
+    )
+
+
+def _error_event(code: str, message: str) -> TranslationStreamEvent:
+    return TranslationStreamEvent(
+        event="error",
+        data={"code": code, "message": message},
     )

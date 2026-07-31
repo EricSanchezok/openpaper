@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Iterator, Protocol, Sequence, cast
+from typing import Any, Generic, Iterator, Protocol, Sequence, TypeVar, cast
 
 import openai
 from app.database.models import ReasoningLevel
@@ -21,6 +23,71 @@ from app.modules.papers.application.contracts.extraction import (
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
+
+
+class LLMUsageSettlementError(RuntimeError):
+    """Provider usage was received but could not be durably recorded."""
+
+
+class _StreamCancellation:
+    """Thread-safe cancellation of the provider response, not its generator."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._cancelled = False
+        self._close_provider: Callable[[], None] | None = None
+
+    def attach(self, close_provider: Callable[[], None]) -> None:
+        with self._lock:
+            self._close_provider = close_provider
+            cancelled = self._cancelled
+        if cancelled:
+            close_provider()
+
+    def detach(self) -> None:
+        with self._lock:
+            self._close_provider = None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            close_provider = self._close_provider
+        if close_provider is not None:
+            close_provider()
+
+    @property
+    def cancelled(self) -> bool:
+        with self._lock:
+            return self._cancelled
+
+
+class _CancellableIterator(Iterator[T], Generic[T]):
+    """Keep generator ownership in its reader thread while exposing safe I/O cancel."""
+
+    def __init__(
+        self,
+        factory: Callable[[_StreamCancellation], Iterator[T]],
+    ) -> None:
+        self._cancellation = _StreamCancellation()
+        self._iterator = factory(self._cancellation)
+
+    def __iter__(self) -> _CancellableIterator[T]:
+        return self
+
+    def __next__(self) -> T:
+        if self._cancellation.cancelled:
+            raise StopIteration
+        return next(self._iterator)
+
+    def cancel(self) -> None:
+        self._cancellation.cancel()
+
+    def close(self) -> None:
+        self._cancellation.cancel()
+        close_iterator = getattr(self._iterator, "close", None)
+        if callable(close_iterator):
+            close_iterator()
 
 
 @dataclass(slots=True)
@@ -135,31 +202,40 @@ class DeepSeekBackend(LLMBackend):
         response_id: str | None,
         usage: Any,
     ) -> None:
-        if usage is None:
-            logger.warning("deepseek_response_missing_usage", extra={"model": model})
+        try:
+            if usage is None:
+                logger.warning("deepseek_response_missing_usage", extra={"model": model})
+                settle_token_usage(
+                    model=model,
+                    reasoning_level=reasoning_level.value,
+                    provider_request_id=response_id,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    total_tokens=0,
+                    idempotency_key=(
+                        f"deepseek:{response_id}" if response_id else None
+                    ),
+                    status="unknown",
+                )
+                return
             settle_token_usage(
                 model=model,
                 reasoning_level=reasoning_level.value,
                 provider_request_id=response_id,
-                prompt_tokens=0,
-                completion_tokens=0,
-                total_tokens=0,
-                idempotency_key=(f"deepseek:{response_id}" if response_id else None),
-                status="unknown",
+                prompt_tokens=_usage_value(usage, "prompt_tokens"),
+                completion_tokens=_usage_value(usage, "completion_tokens"),
+                reasoning_tokens=_completion_detail(usage, "reasoning_tokens"),
+                cache_hit_tokens=_usage_value(usage, "prompt_cache_hit_tokens"),
+                cache_miss_tokens=_usage_value(usage, "prompt_cache_miss_tokens"),
+                total_tokens=_usage_value(usage, "total_tokens"),
+                idempotency_key=(
+                    f"deepseek:{response_id}" if response_id else None
+                ),
             )
-            return
-        settle_token_usage(
-            model=model,
-            reasoning_level=reasoning_level.value,
-            provider_request_id=response_id,
-            prompt_tokens=_usage_value(usage, "prompt_tokens"),
-            completion_tokens=_usage_value(usage, "completion_tokens"),
-            reasoning_tokens=_completion_detail(usage, "reasoning_tokens"),
-            cache_hit_tokens=_usage_value(usage, "prompt_cache_hit_tokens"),
-            cache_miss_tokens=_usage_value(usage, "prompt_cache_miss_tokens"),
-            total_tokens=_usage_value(usage, "total_tokens"),
-            idempotency_key=(f"deepseek:{response_id}" if response_id else None),
-        )
+        except Exception as exc:
+            raise LLMUsageSettlementError(
+                "LLM token usage could not be settled"
+            ) from exc
 
     def generate_content(
         self,
@@ -240,46 +316,71 @@ class DeepSeekBackend(LLMBackend):
             file=file,
         )
         kwargs.setdefault("max_tokens", self._max_output_tokens)
-        stream = self._client.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            stream_options={"include_usage": True},
-            extra_body=self._thinking_body(reasoning_level),
-            **kwargs,
-        )
-        response_id: str | None = None
-        usage_received = False
-        try:
-            for chunk in stream:
-                response_id = getattr(chunk, "id", response_id)
-                if chunk.usage is not None:
-                    usage_received = True
-                    self._settle(
-                        model=model,
-                        reasoning_level=reasoning_level,
-                        response_id=response_id,
-                        usage=chunk.usage,
-                    )
-                if not chunk.choices:
-                    continue
-                choice = chunk.choices[0]
-                text = choice.delta.content or ""
-                thinking = getattr(choice.delta, "reasoning_content", None)
-                if text or thinking or choice.finish_reason is not None:
-                    yield StreamChunk(
-                        text=text,
-                        is_done=choice.finish_reason is not None,
-                        thinking=thinking if isinstance(thinking, str) else None,
-                    )
-        finally:
-            if not usage_received:
-                self._settle(
-                    model=model,
-                    reasoning_level=reasoning_level,
-                    response_id=response_id,
-                    usage=None,
-                )
+
+        def stream_chunks(
+            cancellation: _StreamCancellation,
+        ) -> Iterator[StreamChunk]:
+            stream = self._client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                extra_body=self._thinking_body(reasoning_level),
+                **kwargs,
+            )
+            close_provider = getattr(stream, "close", None)
+            if callable(close_provider):
+                cancellation.attach(close_provider)
+            response_id: str | None = None
+            usage_received = False
+            stream_failed = False
+            try:
+                if cancellation.cancelled:
+                    return
+                for chunk in stream:
+                    response_id = getattr(chunk, "id", response_id)
+                    if chunk.usage is not None:
+                        usage_received = True
+                        self._settle(
+                            model=model,
+                            reasoning_level=reasoning_level,
+                            response_id=response_id,
+                            usage=chunk.usage,
+                        )
+                    if not chunk.choices:
+                        continue
+                    choice = chunk.choices[0]
+                    text = choice.delta.content or ""
+                    thinking = getattr(choice.delta, "reasoning_content", None)
+                    if text or thinking or choice.finish_reason is not None:
+                        yield StreamChunk(
+                            text=text,
+                            is_done=choice.finish_reason is not None,
+                            thinking=(
+                                thinking if isinstance(thinking, str) else None
+                            ),
+                        )
+            except BaseException:
+                stream_failed = True
+                raise
+            finally:
+                cancellation.detach()
+                if not usage_received:
+                    try:
+                        self._settle(
+                            model=model,
+                            reasoning_level=reasoning_level,
+                            response_id=response_id,
+                            usage=None,
+                        )
+                    except LLMUsageSettlementError:
+                        if not stream_failed:
+                            raise
+                        logger.exception(
+                            "Token usage settlement failed after provider stream error"
+                        )
+
+        return _CancellableIterator(stream_chunks)
 
     def _convert_message_content(self, content: MessageParam) -> Any:
         if isinstance(content, str):
@@ -387,6 +488,7 @@ __all__ = [
     "FileContent",
     "LLMResponse",
     "LLMBackend",
+    "LLMUsageSettlementError",
     "MessageParam",
     "StreamChunk",
     "SupplementaryContent",

@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 TRANSLATION_CACHE_TTL_SECONDS = 3_600
 TRANSLATION_LEASE_TTL_SECONDS = 150
 MAX_CACHE_VALUE_BYTES = 65_536
+REDIS_CONNECT_TIMEOUT_SECONDS = 1.0
+REDIS_OPERATION_TIMEOUT_SECONDS = 1.0
 
 _RELEASE_LEASE_SCRIPT = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -31,7 +33,15 @@ return 0
 class RedisTranslationCache:
     def __init__(self, url: str | None) -> None:
         self._client = (
-            Redis.from_url(url, decode_responses=True) if url is not None else None
+            Redis.from_url(
+                url,
+                decode_responses=True,
+                socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+                socket_timeout=REDIS_OPERATION_TIMEOUT_SECONDS,
+                retry_on_timeout=False,
+            )
+            if url is not None
+            else None
         )
 
     async def get(self, key: str) -> TranslationCacheValue | None:

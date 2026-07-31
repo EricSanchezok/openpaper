@@ -111,6 +111,7 @@ class TranslationCacheIdentity:
     prompt_revision: str
     model_revision: str
     document_id: UUID
+    paper_title_hash: str
     source_text: str
     target_language: str
     custom_instructions_hash: str
@@ -130,3 +131,8 @@ def translation_cache_key(identity: TranslationCacheIdentity) -> str:
 
 def translation_instructions_hash(value: str | None) -> str:
     return hashlib.sha256((value or "").encode()).hexdigest()
+
+
+def translation_paper_title_hash(value: str | None) -> str:
+    normalized = unicodedata.normalize("NFC", value or "").strip()
+    return hashlib.sha256(normalized.encode()).hexdigest()

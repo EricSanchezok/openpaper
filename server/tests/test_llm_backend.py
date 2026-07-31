@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -14,7 +15,7 @@ from app.modules.conversations.application.contracts.messages import (
 from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
 from app.llm.backend import DeepSeekBackend
-from app.llm.backend import LLMResponse
+from app.llm.backend import LLMResponse, LLMUsageSettlementError
 from app.llm.token_credits import utc_week_start
 from pydantic import BaseModel
 
@@ -151,6 +152,76 @@ def test_stream_records_unknown_usage_when_final_usage_is_missing(
         response_id="request-3",
         usage=None,
     )
+
+
+class _BlockingProviderStream:
+    def __init__(self) -> None:
+        self.read_started = threading.Event()
+        self.closed = threading.Event()
+
+    def __iter__(self) -> _BlockingProviderStream:
+        return self
+
+    def __next__(self) -> object:
+        self.read_started.set()
+        self.closed.wait(timeout=5)
+        raise StopIteration
+
+    def close(self) -> None:
+        self.closed.set()
+
+
+def test_stream_cancel_closes_the_provider_without_cross_thread_generator_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = _backend(monkeypatch)
+    provider_stream = _BlockingProviderStream()
+    backend._client.chat.completions.create.return_value = provider_stream
+    iterator = backend.send_message_stream("question", [], "system")
+    errors: list[BaseException] = []
+
+    def consume() -> None:
+        try:
+            list(iterator)
+        except BaseException as exc:
+            errors.append(exc)
+
+    with patch.object(backend, "_settle"):
+        reader = threading.Thread(target=consume)
+        reader.start()
+        assert provider_stream.read_started.wait(timeout=1)
+        cancel = getattr(iterator, "cancel")
+        cancel()
+        reader.join(timeout=1)
+
+    assert not reader.is_alive()
+    assert provider_stream.closed.is_set()
+    assert errors == []
+
+
+def test_token_settlement_failure_has_a_stable_backend_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = _backend(monkeypatch)
+
+    with (
+        patch(
+            "app.llm.backend.settle_token_usage",
+            side_effect=RuntimeError("database offline"),
+        ),
+        pytest.raises(LLMUsageSettlementError),
+    ):
+        backend._settle(
+            model="standard-model",
+            reasoning_level=ReasoningLevel.STANDARD,
+            response_id="request-4",
+            usage=SimpleNamespace(
+                prompt_tokens=1,
+                completion_tokens=1,
+                total_tokens=2,
+                completion_tokens_details=None,
+            ),
+        )
 
 
 def test_chat_requests_reject_legacy_provider_fields() -> None:

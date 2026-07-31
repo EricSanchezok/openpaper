@@ -5,10 +5,16 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
+import openai
 from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
+from app.llm.backend import LLMUsageSettlementError
 from app.llm.streaming import iterate_in_thread
-from app.modules.translations.application import TranslationStreamSpec
+from app.modules.translations.application import (
+    TranslationStreamFailure,
+    TranslationStreamFailureKind,
+    TranslationStreamSpec,
+)
 
 TRANSLATION_PROMPT_REVISION = "academic-translation-v1"
 
@@ -56,6 +62,19 @@ class LLMTranslationStreamProvider:
             system_prompt=system_prompt,
             reasoning_level=ReasoningLevel.STANDARD,
         )
-        async for chunk in iterate_in_thread(blocking_stream):
-            if chunk.text:
-                yield chunk.text
+        try:
+            async for chunk in iterate_in_thread(blocking_stream):
+                if chunk.text:
+                    yield chunk.text
+        except LLMUsageSettlementError:
+            raise TranslationStreamFailure(
+                TranslationStreamFailureKind.USAGE_SETTLEMENT_FAILED
+            ) from None
+        except openai.APIError:
+            raise TranslationStreamFailure(
+                TranslationStreamFailureKind.PROVIDER_UNAVAILABLE
+            ) from None
+        except Exception:
+            raise TranslationStreamFailure(
+                TranslationStreamFailureKind.INTERRUPTED
+            ) from None
