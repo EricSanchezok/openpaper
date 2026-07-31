@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from uuid import UUID
 
@@ -43,6 +44,15 @@ _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 def _normalized_text(value: str) -> str:
     return " ".join(value.split())
+
+
+def _normalized_external_reference(value: str) -> str:
+    """Ignore provider-added result ordinals when identifying one source excerpt."""
+    return re.sub(
+        r"^(?:#{1,6}\s*)?(?:\d+[.)]\s*)",
+        "",
+        _normalized_text(value),
+    )
 
 
 def _document_chunks(value: str) -> list[str]:
@@ -175,7 +185,7 @@ class SourceRegistry:
             self.rejected_sources += 1
             return []
         fingerprint = hashlib.sha256(
-            f"external:{normalized_url}:{_normalized_text(excerpt)}".encode()
+            f"external:{normalized_url}:{_normalized_external_reference(excerpt)}".encode()
         ).hexdigest()
         existing = self._dedupe.get(fingerprint)
         if existing is not None:

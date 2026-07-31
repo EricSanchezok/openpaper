@@ -153,6 +153,8 @@ IMPORTANT: The closing ``` of a math block MUST be on its own line with nothing 
 
 10. Do not use HTML. Use Markdown, LaTeX, and code blocks only.
 
+11. Never emit an empty or invented Markdown image. Use image syntax only when the supplied material contains an exact, directly usable image URL that is relevant to the answer.
+
 Do not write a bibliography or visible citation syntax; citation rendering is handled by the server.
 """
 

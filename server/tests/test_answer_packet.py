@@ -1,7 +1,7 @@
 from dataclasses import replace
 from uuid import uuid4
 
-from app.llm.answer_packet import AnswerPacketBuilder
+from app.llm.answer_packet import AnswerPacketBuilder, SourceRegistry
 from app.llm.grounded_answer import GroundedAnswerStreamParser
 from app.modules.conversations.application.contracts.answer_packet import (
     ExternalAnswerSource,
@@ -148,6 +148,26 @@ def test_external_url_argument_is_bound_to_result_excerpt_not_to_itself() -> Non
     assert len(sources) == 1
     assert sources[0].url == "https://example.org/paper"
     assert sources[0].excerpt == "The returned page supports the result."
+
+
+def test_source_registry_deduplicates_provider_result_ordinals() -> None:
+    registry = SourceRegistry()
+
+    first = registry.add(
+        ExternalSourceCandidate(
+            url="https://example.org/paper",
+            excerpt="### 2. Paper title\n- Same verified source excerpt.",
+        )
+    )
+    second = registry.add(
+        ExternalSourceCandidate(
+            url="https://example.org/paper",
+            excerpt="### 7. Paper title\n- Same verified source excerpt.",
+        )
+    )
+
+    assert first == second == [1]
+    assert len(registry.sources) == 1
 
 
 def test_resource_url_owns_returned_content_instead_of_embedded_links() -> None:
