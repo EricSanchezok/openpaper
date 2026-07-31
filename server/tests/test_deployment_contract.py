@@ -198,35 +198,24 @@ def test_environment_catalog_covers_code_and_compose_references() -> None:
     assert compose_variables - generated_release_variables <= runtime_variables
 
 
-def test_migration_chain_preserves_non_orm_search_triggers() -> None:
+def test_single_baseline_contains_the_final_non_orm_schema() -> None:
     versions = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))
 
-    assert len(versions) >= 3
+    assert [path.name for path in versions] == ["2026_07_28_1030_scholens_initial.py"]
     baseline = versions[0].read_text(encoding="utf-8")
-    identifier_migration = versions[1].read_text(encoding="utf-8")
-    search_migration = versions[2].read_text(encoding="utf-8")
-    conversation_context_migration = next(
-        path
-        for path in versions
-        if path.name.endswith("_conversation_paper_context.py")
-    ).read_text(encoding="utf-8")
     assert "down_revision: str | None = None" in baseline
     assert "scholens.document_content_trigger" in baseline
-    assert "scholens.paper_passages_tsvector_trigger" in baseline
+    assert "scholens.document_passages_tsvector_trigger" in baseline
     assert "ON scholens.documents" in baseline
-    assert "ON scholens.paper_passages" in baseline
-    assert 'down_revision: str | None = "a21f80661812"' in identifier_migration
-    assert "document_passages_tsvector_trigger" in identifier_migration
-    assert "document_passages_tsvectorupdate" in identifier_migration
-    assert 'down_revision: str | None = "d9079f37cdb1"' in search_migration
-    assert (
-        'down_revision: str | None = "f6c2b752174e"' in conversation_context_migration
-    )
-    assert "conversation_context_projects" in conversation_context_migration
-    assert "conversation_context_documents" in conversation_context_migration
+    assert "ON scholens.document_passages" in baseline
+    assert "conversation_context_projects" in baseline
+    assert "conversation_context_documents" in baseline
+    assert '"tool_invocations"' in baseline
+    assert '"access_keys"' in baseline
     for field in ("title", "authors", "keywords", "abstract", "raw_content"):
-        assert f"NEW.{field}" in search_migration
-    assert "discover_searches" not in baseline + identifier_migration + search_migration
+        assert f"NEW.{field}" in baseline
+    assert "paper_passages" not in baseline
+    assert "discover_searches" not in baseline
 
 
 def test_global_discovery_surfaces_are_absent_from_client_sources() -> None:

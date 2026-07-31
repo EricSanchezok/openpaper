@@ -1,6 +1,6 @@
 """scholens initial
 
-Revision ID: a21f80661812
+Revision ID: b12d7d620e91
 Revises:
 Create Date: 2026-07-28 10:30:25.961708+00:00
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "a21f80661812"
+revision: str = "b12d7d620e91"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -71,6 +71,151 @@ def upgrade() -> None:
             name="ck_stripe_webhook_events_status",
         ),
         sa.PrimaryKeyConstraint("event_id"),
+        schema="scholens",
+    )
+    op.create_table(
+        "access_keys",
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
+        sa.Column("name", sa.String(length=80), nullable=False),
+        sa.Column("secret_hash", sa.CHAR(length=64), nullable=False),
+        sa.Column("key_prefix", sa.String(length=20), nullable=False),
+        sa.Column("permissions", postgresql.ARRAY(sa.Text()), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "length(name) BETWEEN 1 AND 80 AND name = btrim(name)",
+            name="ck_access_keys_name",
+        ),
+        sa.CheckConstraint(
+            "secret_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_access_keys_secret_hash",
+        ),
+        sa.CheckConstraint(
+            "length(key_prefix) = 20",
+            name="ck_access_keys_key_prefix",
+        ),
+        sa.CheckConstraint(
+            "permissions IN ("
+            "ARRAY['read']::text[], "
+            "ARRAY['write']::text[], "
+            "ARRAY['delete']::text[], "
+            "ARRAY['read','write']::text[], "
+            "ARRAY['read','delete']::text[], "
+            "ARRAY['write','delete']::text[], "
+            "ARRAY['read','write','delete']::text[]"
+            ")",
+            name="ck_access_keys_permissions",
+        ),
+        sa.CheckConstraint(
+            "expires_at IS NULL OR expires_at > created_at",
+            name="ck_access_keys_expiration",
+        ),
+        sa.CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at",
+            name="ck_access_keys_revoked_at",
+        ),
+        sa.CheckConstraint(
+            "last_used_at IS NULL OR last_used_at >= created_at",
+            name="ck_access_keys_last_used_at",
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["auth.users.id"],
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        schema="scholens",
+    )
+    op.create_index(
+        "uq_access_keys_secret_hash",
+        "access_keys",
+        ["secret_hash"],
+        unique=True,
+        schema="scholens",
+    )
+    op.execute(
+        "CREATE INDEX ix_access_keys_user_created "
+        "ON scholens.access_keys (user_id, created_at DESC, id DESC)"
+    )
+    op.create_index(
+        "ix_access_keys_user_revoked",
+        "access_keys",
+        ["user_id", "revoked_at"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_table(
+        "tool_invocations",
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("actor_id", sa.BigInteger(), nullable=False),
+        sa.Column("operation_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("invocation_key", sa.String(length=512), nullable=False),
+        sa.Column("tool_name", sa.String(length=128), nullable=False),
+        sa.Column("arguments_hash", sa.String(length=64), nullable=False),
+        sa.Column(
+            "status",
+            sa.String(length=32),
+            server_default="completed",
+            nullable=False,
+        ),
+        sa.Column("result", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "completed_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["actor_id"],
+            ["auth.users.id"],
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "actor_id",
+            "invocation_key",
+            name="uq_tool_invocations_actor_key",
+        ),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_tool_invocations_actor_id"),
+        "tool_invocations",
+        ["actor_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_tool_invocations_operation_id"),
+        "tool_invocations",
+        ["operation_id"],
+        unique=False,
         schema="scholens",
     )
     op.create_table(
@@ -431,6 +576,18 @@ def upgrade() -> None:
         sa.Column("title", sa.String(length=240), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("scope_type", sa.String(length=16), nullable=False),
+        sa.Column(
+            "paper_context_kind",
+            sa.String(length=16),
+            server_default="selection",
+            nullable=False,
+        ),
+        sa.Column(
+            "tool_permissions",
+            postgresql.ARRAY(sa.Text()),
+            server_default=sa.text("'{read,write}'::text[]"),
+            nullable=False,
+        ),
         sa.Column("project_id", sa.UUID(), nullable=True),
         sa.Column("document_id", sa.UUID(), nullable=True),
         sa.Column("scope_label_snapshot", sa.String(length=240), nullable=True),
@@ -452,6 +609,23 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "(scope_type = 'global' AND project_id IS NULL AND document_id IS NULL AND context_deleted_at IS NULL) OR (scope_type = 'project' AND document_id IS NULL AND ((project_id IS NOT NULL AND context_deleted_at IS NULL) OR (project_id IS NULL AND context_deleted_at IS NOT NULL))) OR (scope_type = 'paper' AND project_id IS NULL AND ((document_id IS NOT NULL AND context_deleted_at IS NULL) OR (document_id IS NULL AND context_deleted_at IS NOT NULL)))",
             name="ck_conversations_scope_consistency",
+        ),
+        sa.CheckConstraint(
+            "paper_context_kind IN ('library', 'selection')",
+            name="ck_conversations_paper_context_kind",
+        ),
+        sa.CheckConstraint(
+            "tool_permissions IN ("
+            "ARRAY[]::text[], "
+            "ARRAY['read']::text[], "
+            "ARRAY['write']::text[], "
+            "ARRAY['delete']::text[], "
+            "ARRAY['read','write']::text[], "
+            "ARRAY['read','delete']::text[], "
+            "ARRAY['write','delete']::text[], "
+            "ARRAY['read','write','delete']::text[]"
+            ")",
+            name="ck_conversations_tool_permissions",
         ),
         sa.ForeignKeyConstraint(
             ["document_id"], ["scholens.documents.id"], ondelete="SET NULL"
@@ -488,6 +662,70 @@ def upgrade() -> None:
         op.f("ix_scholens_conversations_project_id"),
         "conversations",
         ["project_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_table(
+        "conversation_context_projects",
+        sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("project_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["scholens.projects.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("conversation_id", "project_id"),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_conversation_context_projects_project_id"),
+        "conversation_context_projects",
+        ["project_id"],
+        unique=False,
+        schema="scholens",
+    )
+    op.create_table(
+        "conversation_context_documents",
+        sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["document_id"], ["scholens.documents.id"], ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("conversation_id", "document_id"),
+        schema="scholens",
+    )
+    op.create_index(
+        op.f("ix_scholens_conversation_context_documents_document_id"),
+        "conversation_context_documents",
+        ["document_id"],
         unique=False,
         schema="scholens",
     )
@@ -647,9 +885,9 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "paper_passages",
+        "document_passages",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=True), nullable=False),
-        sa.Column("paper_id", sa.UUID(), nullable=False),
+        sa.Column("document_id", sa.UUID(), nullable=False),
         sa.Column("start_line", sa.Integer(), nullable=False),
         sa.Column("end_line", sa.Integer(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
@@ -667,24 +905,24 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.documents.id"], ondelete="CASCADE"
+            ["document_id"], ["scholens.documents.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("paper_id", "start_line"),
+        sa.UniqueConstraint("document_id", "start_line"),
         schema="scholens",
     )
     op.create_index(
-        "ix_paper_passages_ts_vector",
-        "paper_passages",
+        "ix_document_passages_ts_vector",
+        "document_passages",
         ["ts_vector"],
         unique=False,
         schema="scholens",
         postgresql_using="gin",
     )
     op.create_index(
-        op.f("ix_scholens_paper_passages_paper_id"),
-        "paper_passages",
-        ["paper_id"],
+        op.f("ix_scholens_document_passages_document_id"),
+        "document_passages",
+        ["document_id"],
         unique=False,
         schema="scholens",
     )
@@ -1214,7 +1452,7 @@ def upgrade() -> None:
         sa.Column("zotero_attachment_key", sa.String(), nullable=True),
         sa.Column("import_source", sa.String(), nullable=False),
         sa.Column("source_url", sa.String(), nullable=True),
-        sa.Column("paper_id", sa.UUID(), nullable=True),
+        sa.Column("document_id", sa.UUID(), nullable=True),
         sa.Column("upload_job_id", sa.UUID(), nullable=True),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column(
@@ -1237,7 +1475,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["paper_id"], ["scholens.documents.id"], ondelete="SET NULL"
+            ["document_id"], ["scholens.documents.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
             ["upload_job_id"], ["scholens.upload_reservations.id"], ondelete="SET NULL"
@@ -1420,6 +1658,24 @@ def upgrade() -> None:
                     'A'
                 ) ||
                 setweight(
+                    to_tsvector(
+                        'pg_catalog.english',
+                        coalesce(array_to_string(NEW.authors, ' '), '')
+                    ),
+                    'A'
+                ) ||
+                setweight(
+                    to_tsvector(
+                        'pg_catalog.english',
+                        coalesce(array_to_string(NEW.keywords, ' '), '')
+                    ),
+                    'B'
+                ) ||
+                setweight(
+                    to_tsvector('pg_catalog.english', coalesce(NEW.abstract, '')),
+                    'C'
+                ) ||
+                setweight(
                     to_tsvector('pg_catalog.english', coalesce(NEW.raw_content, '')),
                     'D'
                 );
@@ -1438,7 +1694,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE FUNCTION scholens.paper_passages_tsvector_trigger()
+        CREATE FUNCTION scholens.document_passages_tsvector_trigger()
         RETURNS trigger AS $$
         BEGIN
             NEW.ts_vector :=
@@ -1450,10 +1706,10 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE TRIGGER paper_passages_tsvectorupdate
-            BEFORE INSERT OR UPDATE ON scholens.paper_passages
+        CREATE TRIGGER document_passages_tsvectorupdate
+            BEFORE INSERT OR UPDATE ON scholens.document_passages
             FOR EACH ROW
-            EXECUTE FUNCTION scholens.paper_passages_tsvector_trigger()
+            EXECUTE FUNCTION scholens.document_passages_tsvector_trigger()
         """
     )
     # ### end Alembic commands ###
@@ -1463,10 +1719,10 @@ def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
     op.execute(
-        "DROP TRIGGER IF EXISTS paper_passages_tsvectorupdate "
-        "ON scholens.paper_passages"
+        "DROP TRIGGER IF EXISTS document_passages_tsvectorupdate "
+        "ON scholens.document_passages"
     )
-    op.execute("DROP FUNCTION IF EXISTS scholens.paper_passages_tsvector_trigger()")
+    op.execute("DROP FUNCTION IF EXISTS scholens.document_passages_tsvector_trigger()")
     op.execute("DROP TRIGGER IF EXISTS tsvectorupdate ON scholens.documents")
     op.execute("DROP FUNCTION IF EXISTS scholens.document_content_trigger()")
     op.drop_index(
@@ -1574,17 +1830,17 @@ def downgrade() -> None:
     )
     op.drop_table("project_collaborators", schema="scholens")
     op.drop_index(
-        op.f("ix_scholens_paper_passages_paper_id"),
-        table_name="paper_passages",
+        op.f("ix_scholens_document_passages_document_id"),
+        table_name="document_passages",
         schema="scholens",
     )
     op.drop_index(
-        "ix_paper_passages_ts_vector",
-        table_name="paper_passages",
+        "ix_document_passages_ts_vector",
+        table_name="document_passages",
         schema="scholens",
         postgresql_using="gin",
     )
-    op.drop_table("paper_passages", schema="scholens")
+    op.drop_table("document_passages", schema="scholens")
     op.drop_index(
         op.f("ix_scholens_library_papers_user_id"),
         table_name="library_papers",
@@ -1620,6 +1876,18 @@ def downgrade() -> None:
     op.drop_index("ix_jobs_project_status", table_name="jobs", schema="scholens")
     op.drop_index("ix_jobs_document_status", table_name="jobs", schema="scholens")
     op.drop_table("jobs", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_conversation_context_documents_document_id"),
+        table_name="conversation_context_documents",
+        schema="scholens",
+    )
+    op.drop_table("conversation_context_documents", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_conversation_context_projects_project_id"),
+        table_name="conversation_context_projects",
+        schema="scholens",
+    )
+    op.drop_table("conversation_context_projects", schema="scholens")
     op.drop_index(
         op.f("ix_scholens_conversations_project_id"),
         table_name="conversations",
@@ -1676,6 +1944,33 @@ def downgrade() -> None:
         postgresql_using="gin",
     )
     op.drop_table("documents", schema="scholens")
+    op.drop_index(
+        op.f("ix_scholens_tool_invocations_operation_id"),
+        table_name="tool_invocations",
+        schema="scholens",
+    )
+    op.drop_index(
+        op.f("ix_scholens_tool_invocations_actor_id"),
+        table_name="tool_invocations",
+        schema="scholens",
+    )
+    op.drop_table("tool_invocations", schema="scholens")
+    op.drop_index(
+        "ix_access_keys_user_revoked",
+        table_name="access_keys",
+        schema="scholens",
+    )
+    op.drop_index(
+        "ix_access_keys_user_created",
+        table_name="access_keys",
+        schema="scholens",
+    )
+    op.drop_index(
+        "uq_access_keys_secret_hash",
+        table_name="access_keys",
+        schema="scholens",
+    )
+    op.drop_table("access_keys", schema="scholens")
     op.drop_table("stripe_webhook_events", schema="scholens")
     op.drop_table("jobs_webhook_nonces", schema="scholens")
     # ### end Alembic commands ###
