@@ -215,6 +215,19 @@ class ToolRunState(BaseModel):
         """Get all tool call results for passing to LLM"""
         return self.tool_call_results
 
+    def answer_tool_results(self) -> list[dict[str, Any]]:
+        """Successful informational results that the final answer may use."""
+        results: list[dict[str, Any]] = []
+        for item in self.tool_call_results:
+            value = item.result
+            if isinstance(value, dict) and "error" in value:
+                continue
+            results.append(item.model_dump(mode="json"))
+        return results
+
+    def has_informational_results(self) -> bool:
+        return bool(self.answer_tool_results())
+
     def get_evidence_dict(self) -> dict[str, list[str]]:
         """Return clean evidence content without line numbers."""
         return {

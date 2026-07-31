@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from urllib.parse import urlsplit
 
 from app.bootstrap.capabilities import ApplicationCapabilities
@@ -22,6 +22,7 @@ from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.discovery import PaperDiscoveryWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.bootstrap.workflows.translation import TranslationWorkflow
+from app.bootstrap.workflows.connectors import ConnectorWorkflow
 from app.bootstrap.workflows.zotero import (
     ZoteroPostprocessWorkflow,
     ZoteroWorkflow,
@@ -38,6 +39,11 @@ from fastapi import Request
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 
+if TYPE_CHECKING:
+    from app.modules.integrations.connectors.infrastructure.mcp import (
+        ConnectorToolResolver,
+    )
+
 
 def create_application_executor(
     settings: AppSettings,
@@ -46,6 +52,38 @@ def create_application_executor(
         SessionLocal,
         lambda session: ApplicationCapabilities(session, settings),
     )
+
+
+def create_connector_tool_resolver(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    settings: AppSettings,
+) -> ConnectorToolResolver:
+    from app.modules.integrations.connectors.infrastructure.mcp import (
+        ConnectorToolResolver,
+    )
+
+    return ConnectorToolResolver(
+        credential_loader=lambda actor: executor.query(
+            lambda capabilities: capabilities.connectors.enabled_credentials(
+                actor=actor
+            )
+        ),
+        settings=settings,
+    )
+
+
+def create_connector_workflow(
+    *,
+    executor: ApplicationExecutor[ApplicationCapabilities],
+    resolver: object,
+) -> ConnectorWorkflow:
+    from app.modules.integrations.connectors.infrastructure.mcp import (
+        ConnectorToolResolver,
+    )
+
+    assert isinstance(resolver, ConnectorToolResolver)
+    return ConnectorWorkflow(executor=executor, resolver=resolver)
 
 
 def create_conversation_chat(
@@ -82,13 +120,18 @@ def create_conversation_title_workflow(
 def create_citation_workflow(
     *,
     executor: ApplicationExecutor[ApplicationCapabilities],
+    connector_tools: object,
     operation_factory: OperationContextFactory,
 ) -> CitationWorkflow:
     from app.bootstrap.adapters.citation_provider import CitationMetadataProvider
+    from app.modules.integrations.connectors.infrastructure.mcp import (
+        ConnectorToolResolver,
+    )
 
+    assert isinstance(connector_tools, ConnectorToolResolver)
     return CitationWorkflow(
         executor=executor,
-        provider=CitationMetadataProvider(),
+        provider=CitationMetadataProvider(connector_tools),
         operation_factory=operation_factory,
     )
 
@@ -132,11 +175,18 @@ def create_conversation_agent_runtime(
     *,
     catalog: ToolCatalog[ApplicationCapabilities],
     dispatcher: ToolDispatcher[ApplicationCapabilities],
+    connector_tools: object,
     operation_factory: OperationContextFactory,
 ) -> ConversationAgentRuntime:
+    from app.modules.integrations.connectors.infrastructure.mcp import (
+        ConnectorToolResolver,
+    )
+
+    assert isinstance(connector_tools, ConnectorToolResolver)
     return ConversationAgentRuntime(
         catalog=catalog,
         dispatcher=dispatcher,
+        connector_tools=connector_tools,
         operation_factory=operation_factory,
     )
 
@@ -291,6 +341,7 @@ def create_zotero_workflow(
 
 def create_job_completion_processor(
     executor: ApplicationExecutor[ApplicationCapabilities],
+    connector_tools: object,
     operation_factory: OperationContextFactory,
 ) -> JobCompletionProcessor:
     from app.bootstrap.adapters.citation_provider import CitationMetadataProvider
@@ -298,7 +349,11 @@ def create_job_completion_processor(
         SqlAlchemyPdfPostprocessReader,
     )
     from app.bootstrap.adapters.zotero_operations import DefaultZoteroOperations
+    from app.modules.integrations.connectors.infrastructure.mcp import (
+        ConnectorToolResolver,
+    )
 
+    assert isinstance(connector_tools, ConnectorToolResolver)
     return JobCompletionProcessor(
         session_factory=SessionLocal,
         executor=executor,
@@ -306,7 +361,7 @@ def create_job_completion_processor(
         pdf_postprocess=PdfPostprocessWorkflow(
             executor=executor,
             reader=SqlAlchemyPdfPostprocessReader(SessionLocal),
-            provider=CitationMetadataProvider(),
+            provider=CitationMetadataProvider(connector_tools),
             operation_factory=operation_factory,
         ),
         zotero_postprocess=ZoteroPostprocessWorkflow(
@@ -324,6 +379,10 @@ def get_application_executor(
         ApplicationExecutor[ApplicationCapabilities],
         request.app.state.application_executor,
     )
+
+
+def get_connector_workflow(request: Request) -> ConnectorWorkflow:
+    return cast(ConnectorWorkflow, request.app.state.connector_workflow)
 
 
 def get_operation_context_factory(request: Request) -> OperationContextFactory:

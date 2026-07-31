@@ -25,6 +25,10 @@ from app.modules.conversations.application.contracts.messages import (
     ToolRunState,
     ToolResultCompactionResponse,
 )
+from app.modules.integrations.connectors.infrastructure.mcp import (
+    ConnectorToolResolver,
+    ResolvedConnectorToolSet,
+)
 from app.shared.application import (
     Actor,
     ApplicationExecutor,
@@ -34,7 +38,13 @@ from app.shared.application import (
 )
 from app.modules.conversations.application.chat import ConversationChatScope
 from app.shared.domain import AppError
-from app.tooling import ToolAccess, ToolExecutionContext, ToolCatalog, ToolDispatcher
+from app.tooling import (
+    ToolAccess,
+    ToolCatalog,
+    ToolDispatcher,
+    ToolExecutionContext,
+    ToolOutcome,
+)
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 
 logger = logging.getLogger(__name__)
@@ -92,11 +102,13 @@ class ConversationToolLoop(BaseLLMClient):
         *,
         catalog: ToolCatalog[ApplicationCapabilities],
         dispatcher: ToolDispatcher[ApplicationCapabilities],
+        connector_tools: ConnectorToolResolver,
         operation_factory: OperationContextFactory,
     ) -> None:
         super().__init__()
         self._catalog = catalog
         self._dispatcher = dispatcher
+        self._connector_tools = connector_tools
         self._operation_factory = operation_factory
 
     async def run_tools(
@@ -161,6 +173,19 @@ class ConversationToolLoop(BaseLLMClient):
             permissions=conversation_scope.tool_permissions,
         )
         tool_declarations = self._catalog.provider_declarations(tool_access)
+        connector_tool_set = await self._connector_tools.resolve(
+            actor=current_user,
+            permissions=conversation_scope.tool_permissions,
+            reserved_names={
+                str(declaration["name"]) for declaration in tool_declarations
+            },
+        )
+        tool_declarations.extend(connector_tool_set.declarations)
+        for issue in connector_tool_set.issues:
+            yield {
+                "type": "status",
+                "content": issue.message,
+            }
 
         prev_queries = set()
         should_stop = False
@@ -278,9 +303,10 @@ class ConversationToolLoop(BaseLLMClient):
                 logger.debug("Tool-loop reasoning: %s", llm_response.thinking)
 
                 dispatch_task = asyncio.create_task(
-                    self._dispatcher.dispatch(
+                    self._dispatch_tool(
                         name=tool_name,
-                        raw_arguments=tool_arguments,
+                        arguments=tool_arguments,
+                        connector_tool_set=connector_tool_set,
                         context=ToolExecutionContext(
                             actor=current_user,
                             operation=self._operation_factory.resume(
@@ -306,6 +332,8 @@ class ConversationToolLoop(BaseLLMClient):
                 )
 
             for tool_call, tool_name, status, start_time, dispatch_task in dispatches:
+                connector_provider = connector_tool_set.provider_for(tool_name)
+                result_status = "success"
                 try:
                     while True:
                         try:
@@ -334,6 +362,7 @@ class ConversationToolLoop(BaseLLMClient):
                     if outcome.stop:
                         should_stop = True
                 except AppError as exc:
+                    result_status = exc.code
                     logger.info(
                         "Tool call rejected",
                         extra={"tool_name": tool_name, "error_code": exc.code},
@@ -350,6 +379,7 @@ class ConversationToolLoop(BaseLLMClient):
                     )
                     yield {"type": "error", "content": exc.code}
                 except Exception:
+                    result_status = "tool_execution_failed"
                     logger.exception(
                         "Conversation tool execution failed",
                         extra={"tool_name": tool_name},
@@ -364,6 +394,12 @@ class ConversationToolLoop(BaseLLMClient):
                     "tool_call",
                     {
                         "tool_name": tool_name,
+                        "provider": (
+                            connector_provider.value
+                            if connector_provider is not None
+                            else "local"
+                        ),
+                        "result_status": result_status,
                         "duration_ms": (time.time() - start_time) * 1000,
                         "conversation_scope_type": conversation_scope.scope_type.value,
                     },
@@ -376,6 +412,7 @@ class ConversationToolLoop(BaseLLMClient):
             not tool_state.has_evidence()
             and not tool_state.get_artifacts()
             and not tool_state.action_results
+            and not tool_state.has_informational_results()
             and self._catalog.is_available(tool_access, "search_papers")
         ):
             logger.info(
@@ -472,6 +509,26 @@ class ConversationToolLoop(BaseLLMClient):
             "type": "tool_run_completed",
             "content": tool_state,
         }
+
+    async def _dispatch_tool(
+        self,
+        *,
+        name: str,
+        arguments: dict[str, Any],
+        connector_tool_set: ResolvedConnectorToolSet,
+        context: ToolExecutionContext,
+        access: ToolAccess,
+    ) -> ToolOutcome:
+        if connector_tool_set.has_tool(name):
+            return ToolOutcome(
+                payload=await connector_tool_set.call(name, arguments)
+            )
+        return await self._dispatcher.dispatch(
+            name=name,
+            raw_arguments=arguments,
+            context=context,
+            access=access,
+        )
 
     async def compact_tool_call_results(
         self,

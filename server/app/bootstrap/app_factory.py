@@ -13,6 +13,7 @@ from app.transport.http.public_v1.auth import (
     topics_router,
 )
 from app.transport.http.public_v1.access_keys import access_keys_router
+from app.transport.http.public_v1.connectors import connectors_router
 from app.transport.http.public_v1.conversations import conversation_router
 from app.transport.http.public_v1.document_uploads import document_upload_router
 from app.transport.http.public_v1.documents import (
@@ -65,6 +66,8 @@ from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.execution import (
     create_application_executor,
     create_billing_workflow,
+    create_connector_tool_resolver,
+    create_connector_workflow,
     create_conversation_agent_runtime,
     create_conversation_chat,
     create_conversation_title_workflow,
@@ -150,6 +153,7 @@ def _public_router() -> APIRouter:
         prefix="/me/access-keys",
         tags=["access-keys"],
     )
+    router.include_router(connectors_router, prefix="/me/connectors")
     router.include_router(zotero_router, prefix="/integrations/zotero")
     return router
 
@@ -172,12 +176,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     application.state.operation_context_factory = operation_context_factory
     executor = create_application_executor(runtime_settings)
     application.state.application_executor = executor
+    connector_tool_resolver = create_connector_tool_resolver(
+        executor=executor,
+        settings=runtime_settings,
+    )
+    application.state.connector_tool_resolver = connector_tool_resolver
+    application.state.connector_workflow = create_connector_workflow(
+        executor=executor,
+        resolver=connector_tool_resolver,
+    )
     ingestion_workflow = create_paper_ingestion_workflow(
         executor,
         operation_context_factory,
     )
     citation_workflow = create_citation_workflow(
         executor=executor,
+        connector_tools=connector_tool_resolver,
         operation_factory=operation_context_factory,
     )
     tool_catalog, tool_dispatcher = create_workspace_tooling(
@@ -188,6 +202,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     conversation_runtime = create_conversation_agent_runtime(
         catalog=tool_catalog,
         dispatcher=tool_dispatcher,
+        connector_tools=connector_tool_resolver,
         operation_factory=operation_context_factory,
     )
     application.state.tool_catalog = tool_catalog
@@ -239,6 +254,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     application.state.job_completion_processor = create_job_completion_processor(
         executor,
+        connector_tool_resolver,
         operation_context_factory,
     )
     application.add_middleware(

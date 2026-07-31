@@ -11,6 +11,9 @@ from app.modules.conversations.application.chat import (
 from app.modules.conversations.application.contracts.messages import ToolRunState
 from app.modules.papers.application.contracts.extraction import ToolCall
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
+from app.modules.integrations.connectors.infrastructure.mcp import (
+    ResolvedConnectorToolSet,
+)
 from app.shared.application import (
     Actor,
     ConversationOrigin,
@@ -77,6 +80,11 @@ class ActionDispatcher:
         )
 
 
+class NoConnectorTools:
+    async def resolve(self, **_kwargs: object) -> ResolvedConnectorToolSet:
+        return ResolvedConnectorToolSet()
+
+
 @pytest.mark.asyncio
 async def test_successful_action_does_not_fall_back_to_paper_search(
     monkeypatch: pytest.MonkeyPatch,
@@ -85,6 +93,7 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
     runtime = object.__new__(ConversationToolLoop)
     runtime._catalog = Catalog()  # type: ignore[assignment]
     runtime._dispatcher = dispatcher
+    runtime._connector_tools = NoConnectorTools()  # type: ignore[assignment]
     runtime._operation_factory = OperationContextFactory()
     responses = iter(
         [

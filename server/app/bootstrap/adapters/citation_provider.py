@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from app.helpers.paper_search import extract_doi_from_url, get_doi, get_enriched_data
 from app.helpers.parser import parse_publication_date
 from app.llm.citation_recovery import MetadataRecoveryAgent
+from app.modules.integrations.connectors.infrastructure.mcp import ConnectorToolResolver
 from app.modules.papers.application.citations import CitationMetadataPatch
 from app.modules.papers.application.contracts.citation import CitationStep
 from app.modules.papers.domain.citations import CitationFields
@@ -23,8 +24,8 @@ class CitationProviderResult:
 
 
 class CitationMetadataProvider:
-    def __init__(self, recovery: MetadataRecoveryAgent | None = None) -> None:
-        self._recovery = recovery or MetadataRecoveryAgent()
+    def __init__(self, connector_tools: ConnectorToolResolver) -> None:
+        self._recovery = MetadataRecoveryAgent(connector_tools)
 
     def deterministic(
         self,

@@ -53,6 +53,8 @@
     "/api/v1/me": ["get"],
     "/api/v1/me/access-keys": ["get", "post"],
     "/api/v1/me/access-keys/{access_key_id}": ["delete", "patch"],
+    "/api/v1/me/connectors": ["get"],
+    "/api/v1/me/connectors/{provider}": ["delete", "patch", "put"],
     "/api/v1/me/onboarding": ["put"],
     "/api/v1/me/profile": ["get", "patch", "put"],
     "/api/v1/me/translation-preferences": ["get", "put"],

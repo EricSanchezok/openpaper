@@ -146,6 +146,10 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 content=json.dumps(tool_state.action_results, indent=2),
                 label="completed_actions",
             ),
+            SupplementaryContent(
+                content=json.dumps(tool_state.answer_tool_results(), indent=2),
+                label="informational_tool_results",
+            ),
             TextContent(text=formatted_prompt),
         ]
         if anchor_paper is not None and anchor_paper.raw_content:

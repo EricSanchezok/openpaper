@@ -24,6 +24,9 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationToolPermissionsRequest,
 )
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
+from app.modules.integrations.connectors.infrastructure.mcp import (
+    ResolvedConnectorToolSet,
+)
 from app.shared.application import (
     Actor,
     ConversationOrigin,
@@ -579,6 +582,20 @@ class _RuntimeExecutor:
         return next(self._results)
 
 
+class _RuntimeConnectorTools:
+    def __init__(self) -> None:
+        self.permissions: frozenset[WorkspacePermission] | None = None
+
+    async def resolve(
+        self,
+        *,
+        permissions: frozenset[WorkspacePermission],
+        **_kwargs: object,
+    ) -> ResolvedConnectorToolSet:
+        self.permissions = permissions
+        return ResolvedConnectorToolSet()
+
+
 @pytest.mark.asyncio
 async def test_runtime_without_read_permission_never_runs_fallback_search(
     monkeypatch: pytest.MonkeyPatch,
@@ -588,6 +605,8 @@ async def test_runtime_without_read_permission_never_runs_fallback_search(
     runtime = object.__new__(ConversationToolLoop)
     runtime._catalog = catalog  # type: ignore[assignment]
     runtime._dispatcher = dispatcher
+    connector_tools = _RuntimeConnectorTools()
+    runtime._connector_tools = connector_tools  # type: ignore[assignment]
     runtime._operation_factory = OperationContextFactory()
     runtime.generate_content = MagicMock(return_value=LLMResponse(text=""))
     keyword_extractor = MagicMock(side_effect=AssertionError("fallback must not run"))
@@ -631,5 +650,6 @@ async def test_runtime_without_read_permission_never_runs_fallback_search(
         profile_name=CONVERSATION_TOOL_PROFILE,
         permissions=frozenset({WorkspacePermission.WRITE}),
     )
+    assert connector_tools.permissions == frozenset({WorkspacePermission.WRITE})
     keyword_extractor.assert_not_called()
     dispatcher.dispatch.assert_not_called()

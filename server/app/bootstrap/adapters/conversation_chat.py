@@ -312,6 +312,7 @@ async def stream_conversation_agent(
             len(tool_state.evidence) == 0
             and len(tool_state.artifacts) == 0
             and len(tool_state.action_results) == 0
+            and not tool_state.has_informational_results()
             and (anchor_paper is None or not anchor_paper.raw_content)
         )
         if lacks_answer_context:
