@@ -156,6 +156,7 @@ class CitationWorkflow:
             )
 
         recovered = self._provider.agentic(
+            actor=actor,
             fields=fields,
             missing_fields=missing,
             steps=steps,

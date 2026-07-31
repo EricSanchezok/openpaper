@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import jwt
 import pytest
+from app.shared.application import Actor
 from app.modules.conversations.infrastructure.mcp_client import (
     MCPToolError,
     RemoteMCPServer,
@@ -9,8 +10,16 @@ from app.modules.conversations.infrastructure.mcp_client import (
     normalize_json_schema,
     server_for_tool,
 )
-from app.llm.token_credits import llm_usage_context
 from mcp.types import Tool
+
+
+def actor(user_id: int = 42) -> Actor:
+    return Actor(
+        id=user_id,
+        email="researcher@example.com",
+        status="active",
+        email_verified=True,
+    )
 
 
 def test_mcp_tool_schema_is_forwarded_to_llm_backend() -> None:
@@ -57,8 +66,10 @@ def test_remote_mcp_auth_header_is_optional() -> None:
         api_key="secret",
     )
 
-    assert anonymous.headers is None
-    assert authenticated.headers == {"Authorization": "Bearer secret"}
+    assert anonymous.authorization_headers(actor=None) == {}
+    assert authenticated.authorization_headers(actor=None) == {
+        "Authorization": "Bearer secret"
+    }
 
 
 def test_scholight_delegation_identifies_current_user(
@@ -67,8 +78,7 @@ def test_scholight_delegation_identifies_current_user(
     from app.modules.conversations.infrastructure.mcp_client import SCHOLIGHT_MCP
 
     monkeypatch.setenv("SCHOLIGHT_MCP_DELEGATION_JWT_SECRET", "d" * 32)
-    with llm_usage_context(user_id=42, feature="test"):
-        authorization = SCHOLIGHT_MCP.headers
+    authorization = SCHOLIGHT_MCP.authorization_headers(actor=actor())
 
     assert authorization is not None
     token = authorization["Authorization"].removeprefix("Bearer ")
@@ -80,6 +90,13 @@ def test_scholight_delegation_identifies_current_user(
         issuer="scholens",
     )
     assert (claims["sub"], claims["scope"]) == ("42", "search")
+
+
+def test_scholight_delegation_requires_explicit_actor() -> None:
+    from app.modules.conversations.infrastructure.mcp_client import SCHOLIGHT_MCP
+
+    with pytest.raises(MCPToolError, match="authenticated actor"):
+        SCHOLIGHT_MCP.authorization_headers(actor=None)
 
 
 def test_tool_router_requires_one_unique_server() -> None:

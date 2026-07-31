@@ -58,6 +58,7 @@ class _Provider:
         )
 
     def agentic(self, **kwargs: object) -> CitationProviderResult:
+        assert kwargs["actor"] == _actor()
         return CitationProviderResult(
             patch=CitationMetadataPatch(journal="Journal"),
             filled_fields={"journal": "Journal"},

@@ -16,9 +16,11 @@ import jwt
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent as MCPTextContent
-from app.llm.token_credits import current_usage_context
+
+from app.shared.application import Actor
 
 T = TypeVar("T")
+DelegatedHeadersFactory = Callable[[Actor], dict[str, str]]
 
 
 class MCPToolError(RuntimeError):
@@ -67,22 +69,28 @@ class RemoteMCPServer:
     name: str
     url: str
     api_key: str | None = None
-    headers_factory: Callable[[], dict[str, str]] | None = None
+    delegated_headers_factory: DelegatedHeadersFactory | None = None
     allowed_tools: frozenset[str] | None = None
 
-    @property
-    def headers(self) -> dict[str, str] | None:
-        if self.headers_factory is not None:
-            return self.headers_factory()
+    def authorization_headers(self, *, actor: Actor | None) -> dict[str, str]:
+        if self.delegated_headers_factory is not None:
+            if actor is None:
+                raise MCPToolError(
+                    f"{self.name} MCP requires an authenticated actor"
+                )
+            return self.delegated_headers_factory(actor)
         if not self.api_key:
-            return None
+            return {}
         return {"Authorization": f"Bearer {self.api_key}"}
 
     async def _session_call(
-        self, operation: Callable[[ClientSession], Awaitable[T]]
+        self,
+        operation: Callable[[ClientSession], Awaitable[T]],
+        *,
+        actor: Actor | None,
     ) -> T:
         async with httpx.AsyncClient(
-            headers=self.headers or {},
+            headers=self.authorization_headers(actor=actor),
             follow_redirects=True,
             timeout=httpx.Timeout(60),
         ) as http_client:
@@ -94,7 +102,11 @@ class RemoteMCPServer:
                     await session.initialize()
                     return await operation(session)
 
-    async def function_declarations(self) -> list[dict[str, Any]]:
+    async def function_declarations(
+        self,
+        *,
+        actor: Actor | None,
+    ) -> list[dict[str, Any]]:
         """Return MCP tools in the function schema understood by LLM providers."""
 
         async def _list(session: ClientSession) -> list[dict[str, Any]]:
@@ -109,12 +121,22 @@ class RemoteMCPServer:
                 declarations.append(function_declaration_from_mcp_tool(tool, self.name))
             return declarations
 
-        return await self._session_call(_list)
+        return await self._session_call(_list, actor=actor)
 
-    def function_declarations_sync(self) -> list[dict[str, Any]]:
-        return _run_sync(self.function_declarations)
+    def function_declarations_sync(
+        self,
+        *,
+        actor: Actor | None,
+    ) -> list[dict[str, Any]]:
+        return _run_sync(lambda: self.function_declarations(actor=actor))
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        actor: Actor | None,
+    ) -> Any:
         if self.allowed_tools is not None and name not in self.allowed_tools:
             raise MCPToolError(f"{self.name} does not expose allowed tool {name!r}")
 
@@ -130,10 +152,16 @@ class RemoteMCPServer:
                 return result.structuredContent
             return text
 
-        return await self._session_call(_call)
+        return await self._session_call(_call, actor=actor)
 
-    def call_tool_sync(self, name: str, arguments: dict[str, Any]) -> Any:
-        return _run_sync(lambda: self.call_tool(name, arguments))
+    def call_tool_sync(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        actor: Actor | None,
+    ) -> Any:
+        return _run_sync(lambda: self.call_tool(name, arguments, actor=actor))
 
 
 ANYSEARCH_MCP = RemoteMCPServer(
@@ -144,10 +172,7 @@ ANYSEARCH_MCP = RemoteMCPServer(
 )
 
 
-def _scholight_delegation_headers() -> dict[str, str]:
-    context = current_usage_context()
-    if context is None:
-        raise MCPToolError("Scholight MCP requires an authenticated user context")
+def _scholight_delegation_headers(actor: Actor) -> dict[str, str]:
     secret = os.getenv("SCHOLIGHT_MCP_DELEGATION_JWT_SECRET")
     if not secret or len(secret.encode()) < 32:
         raise MCPToolError("Scholight MCP delegation is not configured")
@@ -156,7 +181,7 @@ def _scholight_delegation_headers() -> dict[str, str]:
         {
             "iss": "scholens",
             "aud": "scholight-mcp",
-            "sub": str(context.user_id),
+            "sub": str(actor.id),
             "scope": "search",
             "iat": now,
             "exp": now + 60,
@@ -174,7 +199,7 @@ SCHOLIGHT_MCP = RemoteMCPServer(
         "SCHOLIGHT_MCP_URL",
         "https://scholight.sanchezcloud.net/api/mcp",
     ),
-    headers_factory=lambda: _scholight_delegation_headers(),
+    delegated_headers_factory=_scholight_delegation_headers,
     allowed_tools=frozenset({"search_papers"}),
 )
 
@@ -182,13 +207,15 @@ REMOTE_MCP_SERVERS = (ANYSEARCH_MCP, SCHOLIGHT_MCP)
 
 
 async def discover_function_declarations(
+    *,
+    actor: Actor,
     servers: Iterable[RemoteMCPServer] = REMOTE_MCP_SERVERS,
 ) -> list[dict[str, Any]]:
     """Discover tools across servers and reject ambiguous duplicate names."""
     declarations: list[dict[str, Any]] = []
     seen: set[str] = set()
     for server in servers:
-        for declaration in await server.function_declarations():
+        for declaration in await server.function_declarations(actor=actor):
             name = str(declaration["name"])
             if name in seen:
                 raise RuntimeError(f"Duplicate MCP tool name {name!r}")
@@ -198,9 +225,13 @@ async def discover_function_declarations(
 
 
 def discover_function_declarations_sync(
+    *,
+    actor: Actor,
     servers: Iterable[RemoteMCPServer] = REMOTE_MCP_SERVERS,
 ) -> list[dict[str, Any]]:
-    return _run_sync(lambda: discover_function_declarations(servers))
+    return _run_sync(
+        lambda: discover_function_declarations(actor=actor, servers=servers)
+    )
 
 
 def server_for_tool(
@@ -217,5 +248,14 @@ def server_for_tool(
     return matches[0]
 
 
-def call_remote_tool_sync(tool_name: str, arguments: dict[str, Any]) -> Any:
-    return server_for_tool(tool_name).call_tool_sync(tool_name, arguments)
+def call_remote_tool_sync(
+    tool_name: str,
+    arguments: dict[str, Any],
+    *,
+    actor: Actor,
+) -> Any:
+    return server_for_tool(tool_name).call_tool_sync(
+        tool_name,
+        arguments,
+        actor=actor,
+    )

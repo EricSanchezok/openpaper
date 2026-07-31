@@ -11,6 +11,7 @@ from app.llm.citation_recovery import MetadataRecoveryAgent
 from app.modules.papers.application.citations import CitationMetadataPatch
 from app.modules.papers.application.contracts.citation import CitationStep
 from app.modules.papers.domain.citations import CitationFields
+from app.shared.application import Actor
 from app.shared.domain import JsonValue
 
 
@@ -71,12 +72,14 @@ class CitationMetadataProvider:
     def agentic(
         self,
         *,
+        actor: Actor,
         fields: CitationFields,
         missing_fields: list[str],
         steps: list[CitationStep],
         filled_by: str = "get_paper_citation",
     ) -> CitationProviderResult:
         findings, confidence = self._recovery.find_metadata(
+            actor=actor,
             fields=fields,
             missing_fields=missing_fields,
             steps=steps,

@@ -92,6 +92,7 @@ class PdfPostprocessWorkflow:
             if snapshot.terminal
             else await asyncio.to_thread(
                 self._resolve_external,
+                actor,
                 _require_fields(snapshot),
             )
         )
@@ -111,6 +112,7 @@ class PdfPostprocessWorkflow:
 
     def _resolve_external(
         self,
+        actor: Actor,
         fields: CitationFields,
     ) -> PdfPostprocessResolution:
         deterministic_patch = CitationMetadataPatch()
@@ -126,6 +128,7 @@ class PdfPostprocessWorkflow:
         if missing_fields:
             try:
                 agentic = self._provider.agentic(
+                    actor=actor,
                     fields=resolved_fields,
                     missing_fields=missing_fields,
                     steps=[],

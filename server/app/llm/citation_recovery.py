@@ -15,6 +15,7 @@ from app.modules.papers.application.contracts.extraction import (
     TextContent,
     ToolCallResult,
 )
+from app.shared.application import Actor
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
     def find_metadata(
         self,
         *,
+        actor: Actor,
         fields: CitationFields,
         missing_fields: list[str],
         steps: list[CitationStep],
@@ -110,7 +112,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         """Resolve metadata through external providers without database access."""
         if not missing_fields:
             return {}, None
-        findings = self._run_web_loop(fields, missing_fields, steps)
+        findings = self._run_web_loop(actor, fields, missing_fields, steps)
         if not findings:
             return {}, None
         confidence = float(findings.get("confidence") or 0.0)
@@ -145,6 +147,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
 
     def _run_web_loop(
         self,
+        actor: Actor,
         fields: CitationFields,
         missing: list[str],
         steps: list[CitationStep],
@@ -152,7 +155,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
         try:
             remote_declarations = [
                 declaration
-                for declaration in discover_function_declarations_sync()
+                for declaration in discover_function_declarations_sync(actor=actor)
                 if declaration["name"] in {"search", "extract", "search_papers"}
             ]
         except Exception:
@@ -215,7 +218,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 prev_queries.add(dedup_key)
 
                 try:
-                    result = call_remote_tool_sync(name, args)
+                    result = call_remote_tool_sync(name, args, actor=actor)
                 except Exception as e:
                     logger.warning("Citation tool %s failed: %s", name, e)
                     result = f"Error: {e}"
