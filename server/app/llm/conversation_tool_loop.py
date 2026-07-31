@@ -228,7 +228,6 @@ class ConversationToolLoop(BaseLLMClient):
             tool_loop_prompt = TOOL_LOOP_SYSTEM_PROMPT.format(
                 available_papers=formatted_context,
                 n_iteration=n_iterations,
-                max_iterations=max_iterations,
             ) + tool_loop_role_instructions(conversation_scope.scope_type)
 
             formatted_prompt = TOOL_LOOP_MESSAGE.format(
