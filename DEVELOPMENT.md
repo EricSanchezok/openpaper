@@ -69,13 +69,11 @@ client build context is the safer operational boundary.
 MOSS Voice is required only for audio overviews. Zotero, Stripe, email, PostHog,
 and admin variables are grouped in the root `.env.example`.
 
-Scholens discovers remote model tools through MCP:
-
-- `ANYSEARCH_MCP_URL` and optional `ANYSEARCH_API_KEY` provide general search
-  and page extraction. Anonymous access works locally with lower quotas.
-- `SCHOLIGHT_MCP_URL` provides ranked paper search.
-  `SCHOLIGHT_MCP_DELEGATION_JWT_SECRET` signs a fresh 60-second delegation for the
-  current user so Scholight charges that user's own search quota.
+Scholens discovers remote model tools through MCP. Scholight is the built-in
+provider: `SCHOLIGHT_MCP_URL` selects its fixed endpoint and
+`SCHOLIGHT_MCP_DELEGATION_JWT_SECRET` signs a fresh 60-second delegation for the
+current user. AnySearch, Tavily, Exa, and Firecrawl are connected per user in
+Settings; their encrypted API keys use `CONNECTOR_CREDENTIAL_ENCRYPTION_KEY`.
 
 **Jobs tip:** set `ZOTERO_SYNC_INTERVAL_SECONDS=60` in `jobs/.env` when testing Celery Beat locally.
 

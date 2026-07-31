@@ -118,6 +118,11 @@ from app.modules.access_keys.infrastructure import (
     SecureAccessKeySecrets,
     SqlAlchemyAccessKeyGateway,
 )
+from app.modules.integrations.connectors.application import Connectors
+from app.modules.integrations.connectors.infrastructure import (
+    AesGcmConnectorCredentialCipher,
+    SqlAlchemyConnectorGateway,
+)
 from app.modules.operation_journal.application import OperationJournal
 from app.shared.infrastructure import SystemClock
 from app.shared.domain import FailureKind
@@ -488,6 +493,22 @@ def build_access_keys(
             error_kind=FailureKind.INVALID_ARGUMENT,
         ),
         journal=journal,
+    )
+
+
+def build_connectors(
+    *,
+    db: Session,
+    credential_encryption_key: str,
+    scholight_configured: bool,
+    journal: OperationJournal,
+) -> Connectors:
+    return Connectors(
+        gateway=SqlAlchemyConnectorGateway(db),
+        cipher=AesGcmConnectorCredentialCipher(credential_encryption_key),
+        clock=SystemClock(),
+        journal=journal,
+        scholight_configured=scholight_configured,
     )
 
 

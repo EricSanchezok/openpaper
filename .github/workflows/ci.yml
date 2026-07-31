@@ -213,8 +213,8 @@ jobs:
           SCHOLENS_MOSS_API_KEY: fixture
           SCHOLENS_MOSS_VOICE_ID: fixture
           SCHOLENS_JOBS_WEBHOOK_SIGNING_SECRET: fixture-signing-secret-at-least-thirty-two-bytes
-          SCHOLENS_ANYSEARCH_API_KEY: fixture
           SCHOLENS_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET: fixture-delegation-secret-at-least-thirty-two-bytes
+          SCHOLENS_CONNECTOR_CREDENTIAL_ENCRYPTION_KEY: Zml4dHVyZS1jb25uZWN0b3Ita2V5LTMyLWJ5dGVzISE=
           SCHOLENS_STRIPE_API_KEY: fixture
           SCHOLENS_STRIPE_WEBHOOK_SECRET: fixture
           SCHOLENS_STRIPE_MONTHLY_PRICE_ID: fixture

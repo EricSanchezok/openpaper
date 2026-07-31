@@ -6,6 +6,7 @@ from functools import cached_property
 
 from app.bootstrap.container import (
     build_access_keys,
+    build_connectors,
     build_billing,
     build_citation_metadata,
     build_conversation_chat_data,
@@ -36,6 +37,7 @@ from app.bootstrap.settings import AppSettings
 from app.bootstrap.adapters.tool_invocations import SqlAlchemyToolInvocationGateway
 from app.modules.billing.application.billing import Billing
 from app.modules.access_keys.application.access_keys import AccessKeys
+from app.modules.integrations.connectors.application import Connectors
 from app.modules.conversations.application.chat import ConversationChatData
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.identity.application.identity import Identity
@@ -92,6 +94,19 @@ class ApplicationCapabilities:
         return build_access_keys(
             db=self._session,
             cursor_secret=self._settings.paper_search_cursor_secret,
+            journal=self._journal,
+        )
+
+    @cached_property
+    def connectors(self) -> Connectors:
+        return build_connectors(
+            db=self._session,
+            credential_encryption_key=(
+                self._settings.connector_credential_encryption_key
+            ),
+            scholight_configured=bool(
+                self._settings.scholight_mcp_delegation_jwt_secret
+            ),
             journal=self._journal,
         )
 

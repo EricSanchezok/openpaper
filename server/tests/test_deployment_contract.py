@@ -111,8 +111,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
         "AUTH_ALIYUN_DM_ACCOUNT_NAME",
         "AUTH_ALIYUN_DM_FROM_ALIAS",
         "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS",
-        "ANYSEARCH_MCP_URL",
-        "ANYSEARCH_API_KEY",
+        "CONNECTOR_CREDENTIAL_ENCRYPTION_KEY",
         "SCHOLIGHT_MCP_URL",
         "SCHOLIGHT_MCP_DELEGATION_JWT_SECRET",
         "DEEPSEEK_API_KEY",
@@ -130,7 +129,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "SCHOLENS_ALIYUN_DM_REPLY_TO_ADDRESS=" in runtime
     assert "AUTH_ACCOUNT_LOCKOUT_THRESHOLD:" in compose
     assert "AUTH_ALIYUN_DM_REPLY_TO_ADDRESS:" in compose
-    assert "SCHOLENS_ANYSEARCH_API_KEY=" in runtime
+    assert "SCHOLENS_CONNECTOR_CREDENTIAL_ENCRYPTION_KEY=" in runtime
     assert "SCHOLENS_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET=" in runtime
     assert "SCHOLENS_DEEPSEEK_API_KEY=" in runtime
     assert "SCHOLENS_MINERU_API_TOKEN=" in runtime
@@ -138,7 +137,7 @@ def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
     assert "SCHOLENS_MOSS_MAX_AUDIO_BYTES=" in runtime
     assert "SCHOLENS_JOBS_WEBHOOK_SIGNING_SECRET=" in runtime
     assert "SCHOLENS_PAPER_SEARCH_CURSOR_SECRET=" in runtime
-    assert "ANYSEARCH_MCP_URL:" in compose
+    assert "CONNECTOR_CREDENTIAL_ENCRYPTION_KEY:" in compose
     assert "SCHOLIGHT_MCP_URL:" in compose
     assert "MOSS_MAX_AUDIO_BYTES:" in compose
     assert "DEEPSEEK_STRUCTURED_RETRIES:" in compose
@@ -198,11 +197,15 @@ def test_environment_catalog_covers_code_and_compose_references() -> None:
     assert compose_variables - generated_release_variables <= runtime_variables
 
 
-def test_single_baseline_contains_the_final_non_orm_schema() -> None:
+def test_migration_chain_starts_with_the_consolidated_baseline() -> None:
     versions = sorted((ROOT / "server" / "migrations" / "versions").glob("*.py"))
 
-    assert [path.name for path in versions] == ["2026_07_28_1030_scholens_initial.py"]
+    assert [path.name for path in versions] == [
+        "2026_07_28_1030_scholens_initial.py",
+        "2026_07_31_1500_connector_connections.py",
+    ]
     baseline = versions[0].read_text(encoding="utf-8")
+    connector_migration = versions[1].read_text(encoding="utf-8")
     assert "down_revision: str | None = None" in baseline
     assert "scholens.document_content_trigger" in baseline
     assert "scholens.document_passages_tsvector_trigger" in baseline
@@ -216,6 +219,8 @@ def test_single_baseline_contains_the_final_non_orm_schema() -> None:
         assert f"NEW.{field}" in baseline
     assert "paper_passages" not in baseline
     assert "discover_searches" not in baseline
+    assert 'down_revision: str | None = "b12d7d620e91"' in connector_migration
+    assert '"connector_connections"' in connector_migration
 
 
 def test_global_discovery_surfaces_are_absent_from_client_sources() -> None:

@@ -101,13 +101,14 @@ Add `CLOUD_AUTH_READ_TOKEN` as a read-only repository secret. Protect the GitHub
 environment with required reviewers. The publish role may push only to the three ECR repositories;
 the deploy role may send and inspect SSM commands only for the production instance.
 
-Configure `SCHOLENS_ANYSEARCH_API_KEY` and
+Configure `SCHOLENS_CONNECTOR_CREDENTIAL_ENCRYPTION_KEY` and
 `SCHOLENS_SCHOLIGHT_MCP_DELEGATION_JWT_SECRET` in
-`/etc/scholens/runtime.env`. The delegation secret must match Scholight's
+`/etc/scholens/runtime.env`. The encryption key is URL-safe base64 for exactly
+32 random bytes. The delegation secret must match Scholight's
 `SCHOLIGHT_MCP_DELEGATION_JWT_SECRET`; Scholens signs a short-lived,
 user-scoped token for
-each MCP call. The corresponding MCP URLs default to the public AnySearch and
-SanchezCloud Scholight Streamable HTTP endpoints.
+each MCP call. External provider API keys are connected per user in Settings
+and are never process environment variables.
 
 ## Deploy and rollback
 
