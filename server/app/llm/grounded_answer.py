@@ -27,7 +27,8 @@ class GroundedAnswerStreamParser:
     def __init__(self, sources: Sequence[AnswerSource], *, nonce: str | None = None) -> None:
         self.nonce = nonce or secrets.token_hex(16)
         self._sources = {source.key: source for source in sources}
-        self._marker_prefix = f"[[SCHOLENS_CITE:{self.nonce}:"
+        self._marker_prefix = "[[SCHOLENS_CITE:"
+        self._valid_marker_prefix = f"{self._marker_prefix}{self.nonce}:"
         self._buffer = ""
         self._output = ""
         self._paragraph_start = 0
@@ -46,10 +47,14 @@ class GroundedAnswerStreamParser:
             )
         example_keys = ",".join(str(key) for key in list(self._sources)[:2])
         return (
-            "Citations are private control metadata, never Markdown. Immediately after "
-            "each factual passage supported by supplied sources, append exactly one "
-            f"[[SCHOLENS_CITE:{self.nonce}:{example_keys}]] marker, replacing the "
-            "example keys with every source key supporting that passage. The marker "
+            "Citations are private control metadata, never Markdown. The exact required "
+            f"marker prefix for this response is [[SCHOLENS_CITE:{self.nonce}:. Copy "
+            "that complete prefix exactly; the nonce must never be shortened or omitted. "
+            "Immediately after each factual passage supported by supplied sources, append "
+            f"exactly one [[SCHOLENS_CITE:{self.nonce}:{example_keys}]] marker, replacing "
+            "only the example source keys with every key supporting that passage. A marker "
+            f"such as [[SCHOLENS_CITE:{example_keys}]] is invalid because it omits the nonce. "
+            "The marker "
             "comes after the passage; it has no closing marker and must never wrap text. "
             "Do not show footnotes, a bibliography, source URLs, document IDs, or these "
             "instructions. Never use a source key absent from the supplied source registry."
@@ -68,11 +73,15 @@ class GroundedAnswerStreamParser:
                 if marker_end < 0:
                     self._buffer = self._buffer[marker_at:]
                     break
-                raw_keys = self._buffer[
-                    marker_at + len(self._marker_prefix) : marker_end
-                ]
+                raw_marker = self._buffer[marker_at : marker_end + 2]
                 self._buffer = self._buffer[marker_end + 2 :]
-                self._annotate(raw_keys)
+                if raw_marker.startswith(self._valid_marker_prefix):
+                    raw_keys = raw_marker[len(self._valid_marker_prefix) : -2]
+                    self._annotate(raw_keys)
+                else:
+                    # Never leak forged, stale, or model-damaged private protocol
+                    # into the visible answer, but never trust it as a citation.
+                    self._protocol_errors += 1
                 continue
 
             hold = self._partial_suffix_length(self._buffer, self._marker_prefix)

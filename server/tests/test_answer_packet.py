@@ -345,6 +345,21 @@ def test_grounded_answer_parser_never_leaks_an_incomplete_opening_frame() -> Non
     assert parser.metrics().protocol_errors == 1
 
 
+def test_grounded_answer_parser_strips_marker_with_missing_nonce() -> None:
+    source = ExternalAnswerSource(
+        key=1,
+        url="https://example.org/paper",
+        reference="Verified excerpt",
+    )
+    parser = GroundedAnswerStreamParser([source], nonce="fixed")
+
+    rendered = parser.feed("Claim.[[SCHOLENS_CITE:1]]") + parser.finish()
+
+    assert rendered == "Claim."
+    assert parser.references() is None
+    assert parser.metrics().protocol_errors == 1
+
+
 def test_grounded_answer_parser_maps_each_marker_to_the_preceding_passage() -> None:
     sources = [
         ExternalAnswerSource(
