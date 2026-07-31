@@ -12,7 +12,7 @@ from typing import (
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.models import ReasoningLevel
 from app.llm.citation_handler import CitationHandler
-from app.llm.conversation_prompts import scope_system_instructions
+from app.llm.conversation_prompts import final_answer_role_instructions
 from app.llm.conversation_tool_loop import ConversationToolLoop
 from app.llm.prompts import (
     CONCISE_MODE_INSTRUCTIONS,
@@ -118,7 +118,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 available_papers=formatted_paper_options,
             )
             + style_instructions
-            + scope_system_instructions(scope_type)
+            + final_answer_role_instructions(scope_type)
         )
 
         formatted_prompt = CONVERSATION_ANSWER_MESSAGE.format(

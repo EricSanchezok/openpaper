@@ -9,7 +9,7 @@ from typing import Any, AsyncGenerator
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
-from app.llm.conversation_prompts import scope_system_instructions
+from app.llm.conversation_prompts import tool_loop_role_instructions
 from app.llm.prompts import (
     EVIDENCE_COMPACTION_PROMPT,
     KEYWORD_EXTRACTION_PROMPT,
@@ -59,6 +59,7 @@ CONTENT_LIMIT_CHAT_EVIDENCE = (
 HEARTBEAT_INTERVAL_SECONDS = (
     15  # Keep streaming connections alive during long operations
 )
+MAX_TOOL_LOOP_ITERATIONS = 300
 
 # Structured-output schema for the fallback keyword extractor — provider
 # constrains the response to this shape so we never have to scrape JSON out of
@@ -136,7 +137,7 @@ class ConversationToolLoop(BaseLLMClient):
         tool_state = ToolRunState()
 
         n_iterations = 0
-        max_iterations = 4
+        max_iterations = MAX_TOOL_LOOP_ITERATIONS
 
         context_snapshot = executor.query(
             lambda capabilities: capabilities.conversation_chat_data.context(
@@ -156,6 +157,19 @@ class ConversationToolLoop(BaseLLMClient):
             for paper in context_snapshot.papers
         }
         formatted_context = {
+            "conversation_origin": {
+                "scope_type": conversation_scope.scope_type.value,
+                "project_id": (
+                    str(conversation_scope.project_id)
+                    if conversation_scope.project_id is not None
+                    else None
+                ),
+                "document_id": (
+                    str(conversation_scope.document_id)
+                    if conversation_scope.document_id is not None
+                    else None
+                ),
+            },
             "papers": formatted_paper_options,
             "projects": {
                 str(project.project_id): {
@@ -215,7 +229,7 @@ class ConversationToolLoop(BaseLLMClient):
                 available_papers=formatted_context,
                 n_iteration=n_iterations,
                 max_iterations=max_iterations,
-            ) + scope_system_instructions(conversation_scope.scope_type)
+            ) + tool_loop_role_instructions(conversation_scope.scope_type)
 
             formatted_prompt = TOOL_LOOP_MESSAGE.format(
                 question=question,
