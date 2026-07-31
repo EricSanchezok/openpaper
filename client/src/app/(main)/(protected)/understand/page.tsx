@@ -4,7 +4,7 @@
 import { useSubscription, isTokenCreditAtLimit } from '@/hooks/useSubscription';
 import { fetchFromApi, fetchStreamFromApi, getPaperFileUrl } from '@/lib/api';
 import { useState, useEffect, FormEvent, useRef, useCallback, Suspense, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { usePapers } from '@/hooks/usePapers';
 import { useProjects } from '@/hooks/useProjects';
 import {
@@ -54,6 +54,7 @@ const chatLoadingMessages = [
 import { ConversationView } from "@/components/ConversationView";
 
 function UnderstandPageContent() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const { user, loading: authLoading } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -170,11 +171,19 @@ function UnderstandPageContent() {
             }
         } catch (error) {
             console.error("Error fetching messages:", error);
+            setMessages([]);
+            setConversationId(null);
+            setConversation(null);
+            setPaperContextSelection(EMPTY_PAPER_CONTEXT_SELECTION);
+            setTurnAttachments(EMPTY_TURN_ATTACHMENTS);
+            setLibraryContext(true);
+            setIsCentered(true);
+            router.replace('/understand');
             toast.error("Failed to load conversation history.");
         } finally {
             setIsSessionLoading(false); // New line
         }
-    }, []);
+    }, [router]);
 
     // We don't want to refetch the conversation history or reset the chat state
     // while an answer is being streamed, as this can cause jarring UI updates
