@@ -24,6 +24,7 @@ from src.utils import time_it
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
+_DEEPSEEK_MAX_OUTPUT_TOKENS = 384 * 1024
 
 
 class DeepSeekExtractionClient:
@@ -35,7 +36,12 @@ class DeepSeekExtractionClient:
             raise ValueError("DEEPSEEK_API_KEY environment variable is not set")
 
         self.model = os.getenv("DEEPSEEK_STANDARD_MODEL", "deepseek-v4-flash")
-        self.max_output_tokens = int(os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "8192"))
+        self.max_output_tokens = int(
+            os.getenv(
+                "DEEPSEEK_MAX_OUTPUT_TOKENS",
+                str(_DEEPSEEK_MAX_OUTPUT_TOKENS),
+            )
+        )
         self.max_input_chars = int(os.getenv("DEEPSEEK_MAX_INPUT_CHARS", "300000"))
         self.structured_retries = int(os.getenv("DEEPSEEK_STRUCTURED_RETRIES", "2"))
         self._api_key = api_key

@@ -24,6 +24,7 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+_DEEPSEEK_MAX_OUTPUT_TOKENS = 384 * 1024
 
 
 class LLMUsageSettlementError(RuntimeError):
@@ -173,7 +174,12 @@ class DeepSeekBackend(LLMBackend):
         )
         self._default_model = os.getenv("DEEPSEEK_STANDARD_MODEL", "deepseek-v4-flash")
         self._deep_model = os.getenv("DEEPSEEK_DEEP_MODEL", "deepseek-v4-pro")
-        self._max_output_tokens = int(os.getenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "8192"))
+        self._max_output_tokens = int(
+            os.getenv(
+                "DEEPSEEK_MAX_OUTPUT_TOKENS",
+                str(_DEEPSEEK_MAX_OUTPUT_TOKENS),
+            )
+        )
 
     def _model(self, reasoning_level: ReasoningLevel) -> str:
         if reasoning_level == ReasoningLevel.DEEP:

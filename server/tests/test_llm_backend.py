@@ -28,6 +28,18 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> DeepSeekBackend:
         return DeepSeekBackend()
 
 
+def test_deepseek_default_output_limit_matches_provider_maximum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.delenv("DEEPSEEK_MAX_OUTPUT_TOKENS", raising=False)
+
+    with patch("app.llm.backend.openai.OpenAI"):
+        backend = DeepSeekBackend()
+
+    assert backend._max_output_tokens == 384 * 1024
+
+
 def test_deepseek_routes_only_standard_and_deep_models(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
