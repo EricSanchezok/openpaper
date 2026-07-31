@@ -19,6 +19,9 @@ _EXCERPT_FIELDS = ("excerpt", "snippet", "content", "text", "description", "summ
 _MAX_SOURCE_URL_CHARS = 2_048
 _MAX_SOURCE_EXCERPT_CHARS = 8_000
 _MAX_SOURCES_PER_RESULT = 256
+_SOURCE_QUALITY_ARGUMENT_BOUND = 1
+_SOURCE_QUALITY_RESULT_TEXT = 2
+_SOURCE_QUALITY_STRUCTURED_RESULT = 3
 
 
 def normalize_external_url(value: str) -> str | None:
@@ -54,8 +57,28 @@ def extract_external_sources(
     serialized_arguments = json.dumps(arguments, ensure_ascii=False, default=str)
     serialized_payload = json.dumps(payload, ensure_ascii=False, default=str)
     searchable = f"{serialized_arguments}\n{serialized_payload}"
-    candidates: list[ExternalSourceCandidate] = []
-    seen: set[str] = set()
+    candidates: dict[str, tuple[ExternalSourceCandidate, int]] = {}
+
+    def first_payload_excerpt(value: Any) -> str | None:
+        if isinstance(value, dict):
+            for field in _EXCERPT_FIELDS:
+                candidate = value.get(field)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate
+            for nested in value.values():
+                excerpt = first_payload_excerpt(nested)
+                if excerpt is not None:
+                    return excerpt
+        elif isinstance(value, list):
+            for nested in value:
+                excerpt = first_payload_excerpt(nested)
+                if excerpt is not None:
+                    return excerpt
+        elif isinstance(value, str) and value.strip():
+            return value
+        return None
+
+    fallback_payload_excerpt = first_payload_excerpt(payload)
 
     def add(
         url: str,
@@ -63,9 +86,10 @@ def extract_external_sources(
         title: str | None = None,
         excerpt: str | None = None,
         provenance: str | None = None,
+        quality: int = 0,
     ) -> None:
         normalized = normalize_external_url(url)
-        if normalized is None or normalized in seen:
+        if normalized is None:
             return
         raw_without_fragment = url.split("#", 1)[0]
         if (
@@ -75,19 +99,38 @@ def extract_external_sources(
         ):
             return
         clean_excerpt = excerpt.strip()[:_MAX_SOURCE_EXCERPT_CHARS] if excerpt else None
-        if clean_excerpt and clean_excerpt not in searchable:
+        if clean_excerpt and clean_excerpt not in serialized_payload:
             clean_excerpt = None
-        seen.add(normalized)
-        candidates.append(
-            ExternalSourceCandidate(
-                url=normalized,
-                title=title.strip()[:500] if title else None,
-                excerpt=clean_excerpt,
-                origin=dict(origin) if origin is not None else None,
-            )
+        candidate = ExternalSourceCandidate(
+            url=normalized,
+            title=title.strip()[:500] if title else None,
+            excerpt=clean_excerpt,
+            origin=dict(origin) if origin is not None else None,
         )
+        existing_entry = candidates.get(normalized)
+        existing = existing_entry[0] if existing_entry is not None else None
+        existing_quality = existing_entry[1] if existing_entry is not None else -1
+        if existing is None:
+            candidates[normalized] = (candidate, quality)
+        elif (
+            quality > existing_quality
+            or (existing.title is None and candidate.title is not None)
+        ):
+            candidates[normalized] = (
+                ExternalSourceCandidate(
+                    url=normalized,
+                    title=candidate.title or existing.title,
+                    excerpt=(
+                        candidate.excerpt
+                        if quality > existing_quality
+                        else existing.excerpt
+                    ),
+                    origin=candidate.origin or existing.origin,
+                ),
+                max(quality, existing_quality),
+            )
 
-    def visit(value: Any) -> None:
+    def visit(value: Any, *, payload_value: bool) -> None:
         if len(candidates) >= _MAX_SOURCES_PER_RESULT:
             return
         if isinstance(value, dict):
@@ -116,25 +159,47 @@ def extract_external_sources(
                     ),
                     None,
                 )
-                add(url, title=title, excerpt=excerpt)
+                add(
+                    url,
+                    title=title,
+                    excerpt=excerpt if payload_value else fallback_payload_excerpt,
+                    quality=(
+                        _SOURCE_QUALITY_STRUCTURED_RESULT
+                        if payload_value and excerpt
+                        else _SOURCE_QUALITY_ARGUMENT_BOUND
+                    ),
+                )
             for nested in value.values():
-                visit(nested)
+                visit(nested, payload_value=payload_value)
             return
         if isinstance(value, list):
             for nested in value:
-                visit(nested)
+                visit(nested, payload_value=payload_value)
             return
         if isinstance(value, str):
             for match in _URL_PATTERN.findall(value):
-                add(match, excerpt=value)
+                add(
+                    match,
+                    excerpt=value if payload_value else fallback_payload_excerpt,
+                    quality=(
+                        _SOURCE_QUALITY_RESULT_TEXT
+                        if payload_value
+                        else _SOURCE_QUALITY_ARGUMENT_BOUND
+                    ),
+                )
             for doi in _DOI_PATTERN.findall(value):
                 add(
                     f"https://doi.org/{doi}",
                     title=f"DOI {doi}",
-                    excerpt=value,
+                    excerpt=value if payload_value else fallback_payload_excerpt,
                     provenance=doi,
+                    quality=(
+                        _SOURCE_QUALITY_RESULT_TEXT
+                        if payload_value
+                        else _SOURCE_QUALITY_ARGUMENT_BOUND
+                    ),
                 )
 
-    visit(arguments)
-    visit(payload)
-    return tuple(candidates)
+    visit(arguments, payload_value=False)
+    visit(payload, payload_value=True)
+    return tuple(candidate for candidate, _quality in candidates.values())

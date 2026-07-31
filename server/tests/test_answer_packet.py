@@ -126,6 +126,30 @@ def test_connector_source_extraction_requires_result_provenance() -> None:
     assert sources[0].excerpt == "A result-backed excerpt"
 
 
+def test_external_url_argument_is_bound_to_result_excerpt_not_to_itself() -> None:
+    sources = extract_external_sources(
+        arguments={"url": "https://example.org/paper"},
+        payload={"content": "The returned page supports the result."},
+    )
+
+    assert len(sources) == 1
+    assert sources[0].url == "https://example.org/paper"
+    assert sources[0].excerpt == "The returned page supports the result."
+
+
+def test_external_source_never_uses_argument_text_as_excerpt() -> None:
+    sources = extract_external_sources(
+        arguments={
+            "url": "https://example.org/paper",
+            "content": "Caller-controlled text",
+        },
+        payload={"status": 200},
+    )
+
+    assert len(sources) == 1
+    assert sources[0].excerpt is None
+
+
 def test_observation_cannot_register_external_url_absent_from_tool_data() -> None:
     state = ToolRunState()
     state.add_tool_outcome(
@@ -147,7 +171,8 @@ def test_observation_cannot_register_external_url_absent_from_tool_data() -> Non
     assert packet.coverage.rejected_sources == 1
 
 
-def test_citation_filter_handles_chunk_boundaries_and_drops_unknown_identity() -> None:
+def test_citation_filter_handles_chunk_boundaries_and_only_hides_source_identity() -> None:
+    document_id = uuid4()
     source = ExternalSourceCandidate(
         url="https://example.org/paper",
         title="Paper",
@@ -156,22 +181,106 @@ def test_citation_filter_handles_chunk_boundaries_and_drops_unknown_identity() -
     packet = AnswerPacketBuilder().build(
         context={},
         tool_state=ToolRunState(),
-        direct_sources=[source],
+        direct_sources=[
+            source,
+            DocumentSourceCandidate(
+                document_id=document_id,
+                excerpt="Document excerpt",
+            ),
+        ],
+        document_source_texts={document_id: ("Document excerpt",)},
     )
     citation_filter = CitationMarkerFilter(packet.sources)
 
     chunks = [
         "Supported [^",
-        "1], unknown [^99], URL https://example.org/hidden and id ",
-        "123e4567-e89b-42d3-a456-426614174000.",
+        "1], unknown [^99], source https://example.org/paper and document ",
+        f"{document_id}. Project 123e4567-e89b-42d3-a456-426614174000 and ",
+        "download https://downloads.example/file.pdf.",
     ]
     rendered = "".join(citation_filter.feed(chunk) for chunk in chunks)
     rendered += citation_filter.finish()
 
     assert "[^1]" in rendered
     assert "[^99]" not in rendered
-    assert "https://" not in rendered
-    assert "123e4567" not in rendered
+    assert "https://example.org/paper" not in rendered
+    assert str(document_id) not in rendered
+    assert "123e4567-e89b-42d3-a456-426614174000" in rendered
+    assert "https://downloads.example/file.pdf" in rendered
     references = citation_filter.references()
     assert references is not None
     assert [citation.key for citation in references.citations] == [1]
+
+
+def test_answer_packet_reports_every_kind_of_budget_truncation(monkeypatch) -> None:
+    from app.llm import answer_packet as answer_packet_module
+
+    monkeypatch.setattr(answer_packet_module, "ANSWER_PACKET_TOKEN_BUDGET", 1_200)
+    monkeypatch.setattr(answer_packet_module, "_CONTEXT_TOKEN_BUDGET", 150)
+    monkeypatch.setattr(answer_packet_module, "_MATERIAL_TOKEN_BUDGET", 300)
+    monkeypatch.setattr(answer_packet_module, "_ACTION_TOKEN_BUDGET", 150)
+    monkeypatch.setattr(answer_packet_module, "_SOURCE_TOKEN_BUDGET", 300)
+    document_id = uuid4()
+    state = ToolRunState()
+    state.add_tool_outcome(
+        ToolCall(id="read", name="get_paper_content", args={}),
+        ToolOutcome(
+            payload={"content": "m" * 3_000},
+            sources=(
+                DocumentSourceCandidate(
+                    document_id=document_id,
+                    excerpt="s" * 3_000,
+                ),
+            ),
+        ),
+    )
+    state.add_tool_outcome(
+        ToolCall(id="create", name="create_project", args={}),
+        ToolOutcome(
+            payload={"project_id": "project-1"},
+            action={"kind": "project_created", "detail": "a" * 3_000},
+        ),
+    )
+
+    packet = answer_packet_module.AnswerPacketBuilder().build(
+        context={"papers": "c" * 3_000},
+        tool_state=state,
+        document_source_texts={document_id: ("s" * 3_000,)},
+    )
+
+    assert answer_packet_module.estimate_tokens(packet.model_dump_json()) <= 1_200
+    assert packet.coverage.context_truncated is True
+    assert packet.coverage.truncated_observations == 1
+    assert packet.coverage.truncated_materials == 0
+    assert packet.coverage.truncated_sources == 1
+    assert packet.coverage.truncated_actions == 1
+
+
+def test_answer_packet_fairly_omits_materials_when_metadata_exceeds_budget(
+    monkeypatch,
+) -> None:
+    from app.llm import answer_packet as answer_packet_module
+
+    monkeypatch.setattr(answer_packet_module, "ANSWER_PACKET_TOKEN_BUDGET", 900)
+    monkeypatch.setattr(answer_packet_module, "_CONTEXT_TOKEN_BUDGET", 50)
+    monkeypatch.setattr(answer_packet_module, "_MATERIAL_TOKEN_BUDGET", 300)
+    monkeypatch.setattr(answer_packet_module, "_ACTION_TOKEN_BUDGET", 50)
+    monkeypatch.setattr(answer_packet_module, "_SOURCE_TOKEN_BUDGET", 300)
+    state = ToolRunState()
+    for index in range(100):
+        state.add_tool_outcome(
+            ToolCall(id=str(index), name="search", args={}),
+            ToolOutcome(payload={"index": index, "value": "x" * 30}),
+        )
+
+    packet = answer_packet_module.AnswerPacketBuilder().build(
+        context={},
+        tool_state=state,
+    )
+
+    assert answer_packet_module.estimate_tokens(packet.model_dump_json()) <= 900
+    assert 0 < len(packet.materials) < 100
+    assert packet.materials[0].id == "o0-0"
+    assert int(packet.materials[-1].id.removeprefix("o").split("-", 1)[0]) > 50
+    assert packet.coverage.truncated_materials == 100 - len(packet.materials)
+    assert packet.coverage.truncated_observations == 100

@@ -200,6 +200,16 @@ class ConversationAgentRuntime(ConversationToolLoop):
             return verified
 
         source_texts = executor.query(verified_document_source_texts)
+        for source in direct_sources:
+            if (
+                source.locator is not None
+                and source.locator.get("origin") == "highlight"
+                and source.document_id in source_texts
+            ):
+                source_texts[source.document_id] = (
+                    *source_texts[source.document_id],
+                    source.excerpt,
+                )
         answer_packet = AnswerPacketBuilder().build(
             context=packet_context,
             tool_state=tool_state,

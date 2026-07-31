@@ -67,6 +67,10 @@ class AnswerCoverage(BaseModel):
     observations_total: int = Field(ge=0)
     observations_processed: int = Field(ge=0)
     truncated_observations: int = Field(ge=0)
+    truncated_materials: int = Field(ge=0)
+    truncated_sources: int = Field(ge=0)
+    truncated_actions: int = Field(ge=0)
+    context_truncated: bool = False
     rejected_sources: int = Field(ge=0)
     failed_observations: int = Field(ge=0)
 

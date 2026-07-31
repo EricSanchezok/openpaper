@@ -35,10 +35,10 @@ resource semantics, transaction ownership, and the replaceable search boundary
 are documented in
 [`../docs/architecture/backend-capabilities.md`](../docs/architecture/backend-capabilities.md).
 
-AnySearch and Scholight are connected as remote Streamable HTTP MCP servers.
-Their tool schemas are discovered at runtime, so citation recovery uses the
-providers' native `search`, `extract`, and `search_papers` tools rather than
-maintaining local Exa/Firecrawl wrappers.
+Scholight is an automatically authenticated built-in connector. AnySearch,
+Tavily, Exa, and Firecrawl are optional user-level connectors. Their native MCP
+tool schemas are discovered dynamically; the runtime does not maintain a
+second capability map or provider-specific tool wrappers.
 
 ## Start the Application
 
@@ -130,10 +130,12 @@ Unified Conversation agent workflow:
         |             |     - Executes explicit workspace actions       |
         |             |     - Compacts results if they get too large    |
         |             |                                                 |
-        |             |  2. stream_answer(question, evidence)           |
-        |             |     - Sends evidence and question to LLM        |--------------+
+        |             |  2. Build one bounded AnswerPacket              |
+        |             |     - Validates document/external sources       |
+        |             |  3. stream_answer(question, answer_packet)      |--------------+
+        |             |     - Sends materials, actions, and sources     |
         |             |     - Streams response back to user             |              |
-        |             |     - Parses citations from response            |              |
+        |             |     - Filters citations through server keys     |              |
         |             +-------------------------------------------------+              |
         |                           |                                                  |
         +---------------------------+--------------------------------------------------+
