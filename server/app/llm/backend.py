@@ -96,6 +96,15 @@ class LLMResponse:
     text: str
     thinking: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    malformed_tool_calls: list[MalformedToolCall] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class MalformedToolCall:
+    """Provider tool identity retained when its arguments are not valid JSON."""
+
+    id: str | None
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,26 +292,43 @@ class DeepSeekBackend(LLMBackend):
         if not response.choices:
             raise ValueError("DeepSeek returned no choices")
         message = response.choices[0].message
-        tool_calls: list[ToolCall] = []
-        for call in message.tool_calls or []:
-            tool_calls.append(
-                ToolCall(
-                    id=call.id,
-                    name=call.function.name,
-                    args=json.loads(call.function.arguments or "{}"),
-                )
-            )
-        thinking = getattr(message, "reasoning_content", None)
         self._settle(
             model=model,
             reasoning_level=reasoning_level,
             response_id=getattr(response, "id", None),
             usage=response.usage,
         )
+        tool_calls: list[ToolCall] = []
+        malformed_tool_calls: list[MalformedToolCall] = []
+        for call in message.tool_calls or []:
+            try:
+                arguments = json.loads(call.function.arguments or "{}")
+                if not isinstance(arguments, dict):
+                    raise TypeError("tool arguments must be a JSON object")
+                tool_calls.append(
+                    ToolCall(
+                        id=call.id,
+                        name=call.function.name,
+                        args=arguments,
+                    )
+                )
+            except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning(
+                    "deepseek_tool_arguments_invalid",
+                    extra={"tool_name": call.function.name},
+                )
+                malformed_tool_calls.append(
+                    MalformedToolCall(
+                        id=call.id,
+                        name=call.function.name,
+                    )
+                )
+        thinking = getattr(message, "reasoning_content", None)
         return LLMResponse(
             text=message.content or "",
             thinking=thinking if isinstance(thinking, str) else None,
             tool_calls=tool_calls,
+            malformed_tool_calls=malformed_tool_calls,
         )
 
     def send_message_stream(
@@ -495,6 +521,7 @@ __all__ = [
     "LLMResponse",
     "LLMBackend",
     "LLMUsageSettlementError",
+    "MalformedToolCall",
     "MessageParam",
     "StreamChunk",
     "SupplementaryContent",

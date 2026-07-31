@@ -56,6 +56,52 @@ def test_deepseek_routes_only_standard_and_deep_models(
     }
 
 
+def test_malformed_tool_arguments_are_returned_as_retryable_provider_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = _backend(monkeypatch)
+    backend._client.chat.completions.create.return_value = SimpleNamespace(
+        id="request-malformed-tool",
+        usage=SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=4,
+            total_tokens=14,
+            completion_tokens_details=None,
+        ),
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    reasoning_content=None,
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call-malformed",
+                            function=SimpleNamespace(
+                                name="search",
+                                arguments='{"query":"missing quote}',
+                            ),
+                        )
+                    ],
+                )
+            )
+        ],
+    )
+
+    with patch.object(backend, "_settle") as settle:
+        response = backend.generate_content(
+            "question",
+            function_declarations=[
+                {"name": "search", "parameters": {"type": "object"}}
+            ],
+        )
+
+    assert response.tool_calls == []
+    assert [(item.id, item.name) for item in response.malformed_tool_calls] == [
+        ("call-malformed", "search")
+    ]
+    settle.assert_called_once()
+
+
 def test_provider_settles_total_tokens_without_double_counting_reasoning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

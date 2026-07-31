@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from app.llm.backend import LLMResponse
+from app.llm.backend import LLMResponse, MalformedToolCall
 from app.llm.conversation_tool_loop import ConversationToolLoop
 from app.modules.conversations.application.chat import (
     ConversationChatScope,
@@ -281,3 +281,103 @@ async def test_successful_action_does_not_fall_back_to_paper_search(
     assert tool_operation.trace.correlation_id == request_operation.trace.correlation_id
     assert tool_operation.trace.causation_id == request_operation.trace.operation_id
     assert tool_operation.origin is request_operation.origin
+
+
+@pytest.mark.asyncio
+async def test_malformed_tool_arguments_are_returned_to_the_loop_for_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dispatcher = ActionDispatcher()
+    runtime = object.__new__(ConversationToolLoop)
+    runtime._catalog = Catalog()  # type: ignore[assignment]
+    runtime._dispatcher = dispatcher
+    runtime._connector_tools = NoConnectorTools()  # type: ignore[assignment]
+    runtime._operation_factory = OperationContextFactory()
+    responses = iter(
+        [
+            LLMResponse(
+                text="",
+                malformed_tool_calls=[
+                    MalformedToolCall(id="bad-call", name="create_project")
+                ],
+            ),
+            LLMResponse(
+                text="",
+                tool_calls=[
+                    ToolCall(
+                        id="retry-call",
+                        name="create_project",
+                        args={"name": "New Project"},
+                    )
+                ],
+            ),
+            LLMResponse(text=""),
+        ]
+    )
+    model_inputs: list[object] = []
+
+    def generate_content(**kwargs: object) -> LLMResponse:
+        model_inputs.append(kwargs.get("tool_call_results"))
+        return next(responses)
+
+    monkeypatch.setattr(runtime, "generate_content", generate_content)
+    monkeypatch.setattr(
+        "app.llm.conversation_tool_loop.track_event",
+        lambda *_args, **_kwargs: None,
+    )
+    conversation_id = uuid4()
+    turn_id = uuid4()
+    request_operation = OperationContextFactory().root(
+        initiated_by=OperationInitiator.USER,
+        origin=ConversationOrigin(
+            request=RequestReference(uuid4()),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+        ),
+        credential=CredentialRef(CredentialKind.CLOUD_SESSION),
+    )
+
+    events = [
+        event
+        async for event in runtime.run_tools(
+            question="Create a project called New Project",
+            current_user=Actor(
+                id=7,
+                email="researcher@example.com",
+                status="active",
+                email_verified=True,
+            ),
+            executor=Executor(),  # type: ignore[arg-type]
+            conversation_scope=ConversationChatScope(
+                scope_type=ConversationScopeType.GLOBAL,
+                project_id=None,
+                document_id=None,
+                paper_context=LibraryPaperCollection(),
+                tool_permissions=frozenset(WorkspacePermission),
+            ),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            client_ip="test",
+            request_operation=request_operation,
+            turn_correlation_id=request_operation.trace.correlation_id,
+            user_operation_id=request_operation.trace.operation_id,
+        )
+    ]
+
+    completed = next(event for event in events if event["type"] == "tool_run_completed")
+    state = completed["content"]
+    assert isinstance(state, ToolRunState)
+    assert state.failed_observations == 1
+    assert state.action_results == [{"kind": "project_created"}]
+    assert dispatcher.calls == ["create_project"]
+    second_round_results = model_inputs[1]
+    assert isinstance(second_round_results, list)
+    assert second_round_results[0].result == {
+        "error": {
+            "code": "tool_arguments_invalid_json",
+            "message": (
+                "Tool arguments must be a valid JSON object. "
+                "Retry with corrected arguments."
+            ),
+        }
+    }

@@ -61,6 +61,7 @@ HEARTBEAT_INTERVAL_SECONDS = (
     15  # Keep streaming connections alive during long operations
 )
 MAX_TOOL_LOOP_ITERATIONS = 300
+MAX_CONSECUTIVE_MALFORMED_TOOL_CALL_ROUNDS = 3
 
 # Structured-output schema for the fallback keyword extractor — provider
 # constrains the response to this shape so we never have to scrape JSON out of
@@ -202,6 +203,7 @@ class ConversationToolLoop(BaseLLMClient):
 
         prev_queries = set()
         should_stop = False
+        malformed_tool_call_rounds = 0
 
         while n_iterations < max_iterations and not should_stop:
             n_iterations += 1
@@ -294,7 +296,40 @@ class ConversationToolLoop(BaseLLMClient):
                 tool_call_results=tool_call_results,
             )
 
+            if llm_response.malformed_tool_calls:
+                malformed_tool_call_rounds += 1
+                for malformed in llm_response.malformed_tool_calls:
+                    tool_call = ToolCall(
+                        id=malformed.id,
+                        name=malformed.name,
+                        args={},
+                    )
+                    tool_state.add_tool_call(tool_call)
+                    tool_state.add_tool_error(
+                        tool_call,
+                        {
+                            "error": {
+                                "code": "tool_arguments_invalid_json",
+                                "message": (
+                                    "Tool arguments must be a valid JSON object. "
+                                    "Retry with corrected arguments."
+                                ),
+                            }
+                        },
+                    )
+                yield {
+                    "type": "status",
+                    "content": "Retrying a malformed tool request...",
+                }
+            else:
+                malformed_tool_call_rounds = 0
+
             if len(llm_response.tool_calls) == 0:
+                if llm_response.malformed_tool_calls and (
+                    malformed_tool_call_rounds
+                    < MAX_CONSECUTIVE_MALFORMED_TOOL_CALL_ROUNDS
+                ):
+                    continue
                 logger.info("No tool calls returned from LLM, ending tool loop.")
                 break
 
