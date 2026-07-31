@@ -12,13 +12,12 @@ import {
 import { useIsMobile } from "@/lib/useMobile";
 import { AnimatedMarkdown, CopyableTable } from "@/components/AnimatedMarkdown";
 import { Button } from "@/components/ui/button";
-import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { Loader, Recycle, X, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
-import CustomCitationLink from "@/components/utils/CustomCitationLink";
+import { ConversationCitationMarkdown } from "@/components/citations/ConversationCitationMarkdown";
 import {
 	Dialog,
 	DialogContent,
@@ -234,7 +233,7 @@ export const ConversationView = ({
 		const message = messages[messageIndex];
 		if (!message || !message.references) return;
 
-		const citation = message.references.citations.find(c => String(c.key) === key);
+		const citation = message.references.sources.find(c => String(c.key) === key);
 		if (!citation || citation.kind !== "document") return;
 
 		const paper = papers.find(p => p.document_id === citation.document_id);
@@ -297,55 +296,17 @@ export const ConversationView = ({
 					}`}
 			>
 				{msg.role === "assistant" && <MessageTraceViewer trace={msg.trace} />}
-				<Markdown
-					remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
-					rehypePlugins={[rehypeKatex]}
-					components={{
-						p: (props) => (
-							<CustomCitationLink
-								{...props}
-								handleCitationClick={handleCitationClick}
-								messageIndex={index}
-								citations={msg.references?.citations || []}
-								papers={papers}
-							/>
-						),
-						li: (props) => (
-							<CustomCitationLink
-								{...props}
-								handleCitationClick={handleCitationClick}
-								messageIndex={index}
-								citations={msg.references?.citations || []}
-								papers={papers}
-							/>
-						),
-						div: (props) => (
-							<CustomCitationLink
-								{...props}
-								handleCitationClick={handleCitationClick}
-								messageIndex={index}
-								citations={msg.references?.citations || []}
-								papers={papers}
-							/>
-						),
-						td: (props) => (
-							<CustomCitationLink
-								{...props}
-								handleCitationClick={handleCitationClick}
-								messageIndex={index}
-								citations={msg.references?.citations || []}
-								papers={papers}
-							/>
-						),
-						table: CopyableTable,
-					}}
-				>
-					{msg.content}
-				</Markdown>
+				<ConversationCitationMarkdown
+					content={msg.content}
+					references={msg.references}
+					papers={papers}
+					messageIndex={index}
+					onCitationClick={handleCitationClick}
+				/>
 				{msg.artifacts && msg.artifacts.length > 0 && (
 					<CitationArtifactCard artifacts={msg.artifacts} />
 				)}
-				{msg.references && msg.references["citations"]?.length > 0 ? (
+				{msg.references && msg.references.sources.length > 0 ? (
 					<div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
 						<div
 							className="flex items-center justify-between"
@@ -360,8 +321,8 @@ export const ConversationView = ({
 								) : (
 									<ChevronUp className="h-3 w-3" />
 								)}
-								References ({msg.references.citations.length})
-								{msg.references.citations.length > 15 && (
+								References ({msg.references.sources.length})
+								{msg.references.sources.length > 15 && (
 									<span className="text-amber-600 dark:text-amber-400 ml-1">• summarized</span>
 								)}
 							</button>
@@ -371,7 +332,7 @@ export const ConversationView = ({
 						</div>
 						{!collapsedReferences.has(index) && (
 							<ReferenceCards
-								citations={msg.references.citations}
+								citations={msg.references.sources}
 								papers={papers}
 								messageId={msg.id}
 								messageIndex={index}
@@ -480,47 +441,23 @@ export const ConversationView = ({
 						)}
 						{isStreaming && streamingChunks.length > 0 && (
 							<div className="relative group prose dark:prose-invert max-w-full! rounded-lg w-full text-primary dark:text-primary-foreground transition-all duration-300 ease-in-out">
-								<AnimatedMarkdown
-									className="p-0!"
-									content={streamingChunks.join("")}
-									remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
-									rehypePlugins={[rehypeKatex]}
-									components={{
-										p: (props) => (
-											<CustomCitationLink
-												{...props}
-												handleCitationClick={handleCitationClick}
-												messageIndex={messages.length}
-												citations={streamingReferences?.citations || []}
-											/>
-										),
-										li: (props) => (
-											<CustomCitationLink
-												{...props}
-												handleCitationClick={handleCitationClick}
-												messageIndex={messages.length}
-												citations={streamingReferences?.citations || []}
-											/>
-										),
-										div: (props) => (
-											<CustomCitationLink
-												{...props}
-												handleCitationClick={handleCitationClick}
-												messageIndex={messages.length}
-												citations={streamingReferences?.citations || []}
-											/>
-										),
-										td: (props) => (
-											<CustomCitationLink
-												{...props}
-												handleCitationClick={handleCitationClick}
-												messageIndex={messages.length}
-												citations={streamingReferences?.citations || []}
-											/>
-										),
-										table: CopyableTable,
-									}}
-								/>
+								{streamingReferences ? (
+									<ConversationCitationMarkdown
+										content={streamingChunks.join("")}
+										references={streamingReferences}
+										papers={papers}
+										messageIndex={messages.length}
+										onCitationClick={handleCitationClick}
+									/>
+								) : (
+									<AnimatedMarkdown
+										className="p-0!"
+										content={streamingChunks.join("")}
+										remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
+										rehypePlugins={[rehypeKatex]}
+										components={{ table: CopyableTable }}
+									/>
+								)}
 								{streamingArtifacts && streamingArtifacts.length > 0 && (
 									<CitationArtifactCard artifacts={streamingArtifacts} />
 								)}

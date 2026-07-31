@@ -20,7 +20,7 @@ import { PaperSidebar } from '@/components/PaperSidebar';
 import { Lightbulb } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { CopyableTable } from '@/components/AnimatedMarkdown';
-import CustomCitationLink from '@/components/utils/CustomCitationLink';
+import SummaryCitationLink from '@/components/citations/SummaryCitationLink';
 
 export default function SharedPaperView() {
     const params = useParams();
@@ -76,7 +76,7 @@ export default function SharedPaperView() {
                 rehypePlugins={[rehypeKatex]}
                 components={{
                     // Apply the custom component to text nodes
-                    p: (props) => <CustomCitationLink
+                    p: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -88,7 +88,7 @@ export default function SharedPaperView() {
                             })) || []
                         }
                     />,
-                    li: (props) => <CustomCitationLink
+                    li: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -99,7 +99,7 @@ export default function SharedPaperView() {
                             })) || []
                         }
                     />,
-                    div: (props) => <CustomCitationLink
+                    div: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -110,7 +110,7 @@ export default function SharedPaperView() {
                             })) || []
                         }
                     />,
-                    td: (props) => <CustomCitationLink
+                    td: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}

@@ -39,7 +39,8 @@ import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css' // `rehype-katex` does not import the CSS for you
-import CustomCitationLink from '@/components/utils/CustomCitationLink';
+import SummaryCitationLink from '@/components/citations/SummaryCitationLink';
+import { ConversationCitationMarkdown } from '@/components/citations/ConversationCitationMarkdown';
 import Link from 'next/link';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import React, { useState, useRef, useEffect, useMemo, useCallback, FormEvent } from 'react';
@@ -226,9 +227,7 @@ export function SidePanelContent({
             reference: ref,
         }));
 
-        return {
-            "citations": citations,
-        }
+        return { annotations: [], sources: citations };
     }, []);
 
 
@@ -528,7 +527,7 @@ export function SidePanelContent({
                 rehypePlugins={[rehypeKatex]}
                 components={{
                     // Apply the custom component to text nodes
-                    p: (props) => <CustomCitationLink
+                    p: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -540,7 +539,7 @@ export function SidePanelContent({
                             })) || []
                         }
                     />,
-                    li: (props) => <CustomCitationLink
+                    li: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -551,7 +550,7 @@ export function SidePanelContent({
                             })) || []
                         }
                     />,
-                    div: (props) => <CustomCitationLink
+                    div: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -562,7 +561,7 @@ export function SidePanelContent({
                             })) || []
                         }
                     />,
-                    td: (props) => <CustomCitationLink
+                    td: (props) => <SummaryCitationLink
                         {...props}
                         handleCitationClick={handleCitationClickFromSummary}
                         messageIndex={0}
@@ -604,44 +603,17 @@ export function SidePanelContent({
                         : 'w-full text-primary'
                         }`}
                 >
-                    <Markdown
-                        remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
-                        rehypePlugins={[rehypeKatex]}
-                        components={{
-                            // Apply the custom component to text nodes
-                            p: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClick}
-                                messageIndex={index}
-                                citations={msg.references?.citations || []}
-                            />,
-                            li: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClick}
-                                messageIndex={index}
-                                citations={msg.references?.citations || []}
-                            />,
-                            div: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClick}
-                                messageIndex={index}
-                                citations={msg.references?.citations || []}
-                            />,
-                            td: (props) => <CustomCitationLink
-                                {...props}
-                                handleCitationClick={handleCitationClickFromSummary}
-                                messageIndex={0}
-                                citations={msg.references?.citations || []}
-                            />,
-                            table: CopyableTable,
-                        }}>
-                        {msg.content}
-                    </Markdown>
+                    <ConversationCitationMarkdown
+                        content={msg.content}
+                        references={msg.references}
+                        messageIndex={index}
+                        onCitationClick={handleCitationClick}
+                    />
                     {msg.role === 'assistant' && (
                         <MessageTraceViewer trace={msg.trace} />
                     )}
                     {
-                        msg.references && msg.references.citations && msg.references.citations.length > 0 && (
+                        msg.references && msg.references.sources.length > 0 && (
                             <div>
                                 <div className="mt-0 pt-0 border-t border-gray-300 dark:border-gray-700 flex justify-between items-center" id="references-section">
                                     <h4 className="text-sm font-semibold">References</h4>
@@ -650,7 +622,7 @@ export function SidePanelContent({
                                     )}
                                 </div>
                                 <ul className="list-none p-0">
-                                    {msg.references.citations.map((value, refIndex) => (
+                                    {msg.references.sources.map((value, refIndex) => (
                                         value.kind === 'external' ? (
                                             <a
                                                 key={refIndex}
@@ -900,40 +872,22 @@ export function SidePanelContent({
                                         {
                                             isStreaming && streamingChunks.length > 0 && (
                                                 <div className="relative group prose dark:prose-invert p-2 !max-w-full rounded-lg w-full text-primary">
-                                                    <AnimatedMarkdown
-                                                        content={streamingChunks.join('')}
-                                                        remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
-                                                        rehypePlugins={[rehypeKatex]}
-                                                        components={{
-                                                            // Apply the custom component to text nodes
-                                                            p: (props) => <CustomCitationLink
-                                                                {...props}
-                                                                handleCitationClick={handleCitationClick}
-                                                                messageIndex={messages.length} // Use the next message index
-                                                                citations={streamingReferences?.citations || []}
-                                                            />,
-                                                            li: (props) => <CustomCitationLink
-                                                                {...props}
-                                                                handleCitationClick={handleCitationClick}
-                                                                messageIndex={messages.length} // Use the next message index
-                                                                citations={streamingReferences?.citations || []}
-                                                            />,
-                                                            div: (props) => <CustomCitationLink
-                                                                {...props}
-                                                                handleCitationClick={handleCitationClick}
-                                                                messageIndex={messages.length} // Use the next message index
-                                                                citations={streamingReferences?.citations || []}
-                                                            />,
-                                                            td: (props) => <CustomCitationLink
-                                                                {...props}
-                                                                handleCitationClick={handleCitationClickFromSummary}
-                                                                messageIndex={0}
-                                                                citations={streamingReferences?.citations || []}
-                                                            />,
-                                                            table: CopyableTable,
-                                                        }}
-                                                    />
-                                                    {streamingReferences && streamingReferences.citations && streamingReferences.citations.length > 0 && (
+                                                    {streamingReferences ? (
+                                                        <ConversationCitationMarkdown
+                                                            content={streamingChunks.join('')}
+                                                            references={streamingReferences}
+                                                            messageIndex={messages.length}
+                                                            onCitationClick={handleCitationClick}
+                                                        />
+                                                    ) : (
+                                                        <AnimatedMarkdown
+                                                            content={streamingChunks.join('')}
+                                                            remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]}
+                                                            rehypePlugins={[rehypeKatex]}
+                                                            components={{ table: CopyableTable }}
+                                                        />
+                                                    )}
+                                                    {streamingReferences && streamingReferences.sources.length > 0 && (
                                                         <div
                                                             className="mt-0 pt-0 border-t border-gray-300 dark:border-gray-700 flex justify-between items-center"
                                                             id="references-section"

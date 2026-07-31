@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections.abc import Iterable, Mapping, Sequence
 from uuid import UUID
 
@@ -15,8 +14,6 @@ from app.modules.conversations.application.contracts.answer_packet import (
     AnswerSource,
     DocumentAnswerSource,
     ExternalAnswerSource,
-    MessageReference,
-    MessageReferences,
 )
 from app.modules.conversations.application.contracts.messages import ToolRunState
 from app.shared.application.context_budget import (
@@ -30,8 +27,8 @@ from app.tooling.contracts import (
     ToolSourceCandidate,
 )
 from app.tooling.source_extraction import (
-    extract_external_sources,
     normalize_external_url,
+    verify_external_source,
 )
 from pydantic import TypeAdapter
 
@@ -42,8 +39,6 @@ _CONTEXT_TOKEN_BUDGET = 15_000
 _ACTION_TOKEN_BUDGET = 15_000
 _DOCUMENT_CHUNK_CHARS = 6_000
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
-_CITATION_PATTERN = re.compile(r"\[\^(\d+(?:\s*,\s*\^?\d+)*)\]")
-_INCOMPLETE_CITATION_PATTERN = re.compile(r"\[\^\d+(?:\s*,\s*\^?\d+)*$", re.DOTALL)
 
 
 def _normalized_text(value: str) -> str:
@@ -215,29 +210,16 @@ class AnswerPacketBuilder:
         materials: list[AnswerMaterial] = []
 
         for observation in tool_state.observations:
-            extracted_external = extract_external_sources(
-                arguments=observation.args,
-                payload=observation.payload,
-            )
-            extracted_by_url = {source.url: source for source in extracted_external}
             verified_candidates: list[ToolSourceCandidate] = []
             for candidate in observation.sources:
                 if isinstance(candidate, DocumentSourceCandidate):
                     verified_candidates.append(candidate)
                     continue
-                normalized_url = normalize_external_url(candidate.url)
-                extracted = (
-                    extracted_by_url.get(normalized_url)
-                    if normalized_url is not None
-                    else None
-                )
-                excerpt_matches = candidate.excerpt is None or (
-                    extracted is not None
-                    and extracted.excerpt is not None
-                    and _normalized_text(candidate.excerpt)
-                    in _normalized_text(extracted.excerpt)
-                )
-                if extracted is None or not excerpt_matches:
+                if not verify_external_source(
+                    candidate,
+                    arguments=observation.args,
+                    payload=observation.payload,
+                ):
                     registry.reject()
                     continue
                 verified_candidates.append(candidate)
@@ -255,6 +237,9 @@ class AnswerPacketBuilder:
                 )
 
         for source_index, candidate in enumerate(direct_sources):
+            if isinstance(candidate, ExternalSourceCandidate):
+                registry.reject()
+                continue
             keys = registry.add(candidate)
             if not keys:
                 continue
@@ -438,74 +423,3 @@ class AnswerPacketBuilder:
             else:
                 high = middle - 1
         return best
-
-
-class CitationMarkerFilter:
-    """Filter streamed citation markers against a server-owned source registry."""
-
-    def __init__(self, sources: Sequence[AnswerSource]) -> None:
-        self._sources = {source.key: source for source in sources}
-        self._forbidden_identities = tuple(
-            identity
-            for source in sources
-            for identity in self._source_identities(source)
-        )
-        self._buffer = ""
-        self.used_keys: set[int] = set()
-
-    def feed(self, value: str) -> str:
-        self._buffer += value
-        last_open = self._buffer.rfind("[")
-        hold_from = len(self._buffer)
-        if last_open >= 0 and "]" not in self._buffer[last_open:]:
-            hold_from = min(hold_from, last_open)
-        token_start = (
-            max(
-                self._buffer.rfind(separator)
-                for separator in (" ", "\n", "\t", "(", "<")
-            )
-            + 1
-        )
-        tail = self._buffer[token_start:]
-        if tail and tail[-1] not in " \n\t.,;:!?)]}>\"'":
-            hold_from = min(hold_from, token_start)
-        ready = self._buffer[:hold_from]
-        self._buffer = self._buffer[hold_from:]
-        return self._filter(ready)
-
-    def finish(self) -> str:
-        remaining = _INCOMPLETE_CITATION_PATTERN.sub("", self._filter(self._buffer))
-        self._buffer = ""
-        return remaining
-
-    def references(self) -> MessageReferences | None:
-        citations: list[MessageReference] = [
-            self._sources[key] for key in sorted(self.used_keys) if key in self._sources
-        ]
-        return MessageReferences(citations=citations) if citations else None
-
-    def _filter(self, value: str) -> str:
-        def replace(match: re.Match[str]) -> str:
-            requested = [
-                int(item.strip().removeprefix("^"))
-                for item in match.group(1).split(",")
-            ]
-            valid = [key for key in requested if key in self._sources]
-            self.used_keys.update(valid)
-            if not valid:
-                return ""
-            return "[^" + ", ^".join(str(key) for key in valid) + "]"
-
-        filtered = _CITATION_PATTERN.sub(replace, value)
-        for identity in self._forbidden_identities:
-            filtered = re.sub(re.escape(identity), "", filtered, flags=re.IGNORECASE)
-        return filtered
-
-    @staticmethod
-    def _source_identities(source: AnswerSource) -> tuple[str, ...]:
-        if isinstance(source, DocumentAnswerSource):
-            return (str(source.document_id),)
-        url = str(source.url)
-        if source.url.path == "/" and url.endswith("/"):
-            return (url, url[:-1])
-        return (url,)

@@ -130,7 +130,7 @@ function UnderstandPageContent() {
         const message = messages[messageIndex];
         if (!message) return;
 
-        const citation = message.references?.citations?.find(c => String(c.key) === key);
+        const citation = message.references?.sources?.find(c => String(c.key) === key);
         if (!citation || citation.kind !== 'document') return;
 
         setHighlightedInfo({ documentId: citation.document_id, messageIndex });

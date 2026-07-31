@@ -92,6 +92,7 @@ class ToolRunState(BaseModel):
         default_factory=list,
         description="Successful state-changing tool outcomes.",
     )
+    citation_metrics: dict[str, int] | None = Field(default=None, exclude=True)
 
     def add_artifact(self, artifact: CitationResult) -> None:
         """Record a first-party artifact (e.g. a resolved citation)."""
@@ -113,13 +114,16 @@ class ToolRunState(BaseModel):
             }
             for a in self.artifacts
         ]
-        if not tool_calls and not citations:
-            return {"actions": self.action_results} if self.action_results else None
-        return {
+        if not tool_calls and not citations and not self.action_results and not self.citation_metrics:
+            return None
+        trace = {
             "tool_calls": tool_calls,
             "citations": citations,
             "actions": self.action_results,
         }
+        if self.citation_metrics is not None:
+            trace["citation_summary"] = self.citation_metrics
+        return trace
 
     def add_tool_call(self, tool_call: ToolCall) -> None:
         """Add a tool call to the collection"""

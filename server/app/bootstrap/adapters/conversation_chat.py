@@ -202,7 +202,8 @@ async def stream_conversation_agent(
 
     formatted_references = (
         {
-            "citations": [
+            "annotations": [],
+            "sources": [
                 {"key": index, "kind": "user", "reference": reference}
                 for index, reference in enumerate(request.user_references, start=1)
             ]

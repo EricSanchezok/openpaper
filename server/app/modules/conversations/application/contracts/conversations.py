@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.modules.research.application.contracts import CitationSnapshot
 from app.modules.conversations.application.contracts.answer_packet import (
-    MessageReferences,
+    ReferenceBundle,
 )
 from app.shared.domain import (
     JsonValue,
@@ -157,7 +157,7 @@ class MessageResponse(BaseModel):
     id: UUID
     role: str
     content: str
-    references: MessageReferences | None
+    references: ReferenceBundle | None
     artifacts: list[CitationSnapshot] | None
     trace: dict[str, JsonValue] | None
     scope: list[dict[str, JsonValue]] | None

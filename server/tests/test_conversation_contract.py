@@ -53,7 +53,7 @@ def test_assistant_trace_serializes_as_an_object() -> None:
         conversation_id=uuid.uuid4(),
         role="assistant",
         content="Answer",
-        references={"citations": []},
+        references={"annotations": [], "sources": []},
         trace={
             "citations": [],
             "tool_calls": [{"name": "search", "status": "completed"}],

@@ -36,7 +36,9 @@ from app.helpers.advisory_locks import AdvisoryLock, AdvisoryLockNamespace
 from app.helpers.celery_config import get_webhook_base_url
 from app.modules.billing.infrastructure.quotas import can_user_auto_sync_zotero
 from app.bootstrap.adapters.document_gc import collect_document_if_due
-from app.modules.papers.application.citation_references import map_summary_references
+from app.modules.papers.application.citation_references import (
+    materialize_summary_references,
+)
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from app.modules.papers.infrastructure.search_repository import (
     document_search_repository,
@@ -1014,7 +1016,8 @@ async def handle_paper_processing_webhook(
                             user_id=actor.id,
                             refresh_result=False,
                         )
-                        citations = map_summary_references(
+                        summary_content, references = materialize_summary_references(
+                            metadata.summary,
                             metadata.summary_citations,
                             document_id=paper.id,
                             title=paper.title,
@@ -1027,9 +1030,13 @@ async def handle_paper_processing_webhook(
                                 created_operation_id=operation.trace.operation_id,
                                 correlation_id=operation.trace.correlation_id,
                                 role=RoleType.ASSISTANT,
-                                content=metadata.summary,
-                                references=_JSON_OBJECT.validate_python(
-                                    citations.model_dump(mode="json")
+                                content=summary_content,
+                                references=(
+                                    _JSON_OBJECT.validate_python(
+                                        references.model_dump(mode="json")
+                                    )
+                                    if references is not None
+                                    else None
                                 ),
                             ),
                             user_id=actor.id,

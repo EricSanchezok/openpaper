@@ -303,7 +303,14 @@ export interface PaperHighlightAnnotation {
 }
 
 export interface Reference {
-    citations: Citation[];
+    annotations: CitationAnnotation[];
+    sources: Citation[];
+}
+
+export interface CitationAnnotation {
+    start_offset: number;
+    end_offset: number;
+    source_keys: number[];
 }
 
 export interface DocumentCitation {

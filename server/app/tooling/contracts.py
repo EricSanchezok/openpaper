@@ -38,12 +38,25 @@ class DocumentSourceCandidate:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ExternalSourceProvenance:
+    """Exact locations used to derive one external source candidate."""
+
+    url_origin: Literal["arguments", "payload"]
+    url_path: tuple[str | int, ...]
+    url_start: int
+    url_end: int
+    excerpt_path: tuple[str | int, ...] | None = None
+    excerpt_start: int | None = None
+    excerpt_end: int | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ExternalSourceCandidate:
     kind: Literal["external"] = "external"
     url: str
     excerpt: str | None = None
     title: str | None = None
-    origin: dict[str, JsonValue] | None = None
+    provenance: ExternalSourceProvenance | None = None
 
 
 ToolSourceCandidate: TypeAlias = DocumentSourceCandidate | ExternalSourceCandidate

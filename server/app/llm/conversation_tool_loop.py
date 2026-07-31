@@ -561,18 +561,11 @@ class ConversationToolLoop(BaseLLMClient):
     ) -> ToolOutcome:
         if connector_tool_set.has_tool(name):
             payload = await connector_tool_set.call(name, arguments)
-            provider = connector_tool_set.provider_for(name)
             return ToolOutcome(
                 payload=payload,
                 sources=extract_external_sources(
                     arguments=arguments,
                     payload=payload,
-                    origin={
-                        "provider": provider.value
-                        if provider is not None
-                        else "remote",
-                        "tool": name,
-                    },
                 ),
             )
         return await self._dispatcher.dispatch(

@@ -135,7 +135,7 @@ function ProjectConversationPageContent() {
             const message = messages[messageIndex];
             if (!message) return prevHighlight;
 
-            const citation = message.references?.citations?.find(c => String(c.key) === key);
+            const citation = message.references?.sources?.find(c => String(c.key) === key);
             if (!citation || citation.kind !== 'document') return prevHighlight;
 
             const newHighlight = { documentId: citation.document_id, messageIndex };

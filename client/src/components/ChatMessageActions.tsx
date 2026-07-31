@@ -40,9 +40,16 @@ export function ChatMessageActions({ message, references }: ChatMessageActionsPr
 
 	const copyWithReferences = () => {
 		let textToCopy = message;
-		if (references && references.citations && references.citations.length > 0) {
-			const referenceText = references.citations
-				.map(citation => `[${citation.key}] ${citation.reference}`)
+		if (references && references.sources.length > 0) {
+			const referenceText = references.sources
+				.map(source => {
+					const label = source.kind === "external"
+						? `${source.title || source.url} — ${source.url}`
+						: source.kind === "document"
+							? source.title || source.document_id
+							: "User-provided reference";
+					return `[${source.key}] ${label}\n${source.reference}`;
+				})
 				.join("\n");
 			textToCopy += `\n\nReferences:\n${referenceText}`;
 		}
@@ -72,7 +79,7 @@ export function ChatMessageActions({ message, references }: ChatMessageActionsPr
 				<DropdownMenuItem onClick={copyAsMarkdown}>
 					Copy as markdown
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={copyWithReferences} disabled={!references || !references.citations || references.citations.length === 0}>
+				<DropdownMenuItem onClick={copyWithReferences} disabled={!references || references.sources.length === 0}>
 					Copy with references
 				</DropdownMenuItem>
 			</DropdownMenuContent>

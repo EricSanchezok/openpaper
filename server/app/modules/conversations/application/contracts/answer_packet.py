@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.shared.domain import JsonValue
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 
 class DocumentAnswerSource(BaseModel):
@@ -85,7 +85,40 @@ class AnswerPacket(BaseModel):
     coverage: AnswerCoverage
 
 
-class MessageReferences(BaseModel):
+class CitationAnnotation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    citations: list[MessageReference]
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(gt=0)
+    source_keys: list[int] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "CitationAnnotation":
+        if self.start_offset >= self.end_offset:
+            raise ValueError("citation annotation must cover a non-empty text span")
+        if any(key < 1 for key in self.source_keys):
+            raise ValueError("citation source keys must be positive")
+        if len(set(self.source_keys)) != len(self.source_keys):
+            raise ValueError("citation source keys must be unique")
+        return self
+
+
+class ReferenceBundle(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    annotations: list[CitationAnnotation] = Field(default_factory=list)
+    sources: list[MessageReference] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_source_keys(self) -> "ReferenceBundle":
+        keys = [source.key for source in self.sources]
+        if len(set(keys)) != len(keys):
+            raise ValueError("reference source keys must be unique")
+        available = set(keys)
+        if any(
+            key not in available
+            for annotation in self.annotations
+            for key in annotation.source_keys
+        ):
+            raise ValueError("citation annotation references an unknown source key")
+        return self

@@ -118,9 +118,11 @@ Report completed actions and their important identifiers or consequences. Do not
 
 If `context.resolved_citations` is non-empty, the requested citation(s) are already being delivered to the user separately. Do NOT write out a formatted citation string, and do NOT mention how or where the citation appears (no references to cards, panels, or the UI). If the user only asked for a citation, reply with a brief, natural sentence and flag any metadata that could not be found; otherwise just answer their question normally.
 
-When sources are available, synthesize the materials into a comprehensive answer and cite only source keys present in `sources` using `[^1]` or `[^1, ^2]`. Source identity, URLs, document IDs, and excerpts are owned by the server; never write them into a separate evidence block. For a pure workspace action, give a natural action summary without citations.
+When sources are available, synthesize the materials into a comprehensive answer and ground factual passages using the private protocol below. Source identity, URLs, document IDs, and excerpts are owned by the server; never write them into the visible answer or a separate evidence block. For a pure workspace action, give a natural action summary without citations.
 
-1. Cite factual claims with numbered source keys supplied in `sources`.
+{citation_protocol}
+
+1. Ground factual claims with source keys supplied in `sources`.
 
 2. If your response requires mathematical notation, use LaTeX syntax with the following rules:
    - Display/block math: use a ```math code block. Like this:
@@ -134,9 +136,8 @@ IMPORTANT: The closing ``` of a math block MUST be on its own line with nothing 
    ```math
    E = mc^2
    ```
-   [^1]
 
-3. Never cite a key that is not present in `sources`, and never create a document ID, URL, quotation, or source record.
+3. Never use a key that is not present in `sources`, and never create a document ID, URL, quotation, or source record.
 
 4. If coverage reports failures, truncation, or rejected sources that materially affect the request, state the limitation naturally.
 
@@ -152,7 +153,7 @@ IMPORTANT: The closing ``` of a math block MUST be on its own line with nothing 
 
 10. Do not use HTML. Use Markdown, LaTeX, and code blocks only.
 
-Example: The study reports strong performance under its primary evaluation setting [^1], while an external replication identifies weaker results under distribution shift [^2].
+Do not write a bibliography or visible citation syntax; citation rendering is handled by the server.
 """
 
 CONVERSATION_ANSWER_MESSAGE = """

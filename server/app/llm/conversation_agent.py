@@ -10,9 +10,10 @@ from typing import (
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.models import ReasoningLevel
-from app.llm.answer_packet import AnswerPacketBuilder, CitationMarkerFilter
+from app.llm.answer_packet import AnswerPacketBuilder
 from app.llm.conversation_prompts import final_answer_role_instructions
 from app.llm.conversation_tool_loop import ConversationToolLoop
+from app.llm.grounded_answer import GroundedAnswerStreamParser
 from app.llm.prompts import (
     CONVERSATION_ANSWER_MESSAGE,
     CONVERSATION_ANSWER_SYSTEM_PROMPT,
@@ -97,10 +98,6 @@ class ConversationAgentRuntime(ConversationToolLoop):
             ],
             "available_document_count": context_snapshot.available_document_count,
         }
-        formatted_system_prompt = CONVERSATION_ANSWER_SYSTEM_PROMPT.format(
-            available_papers=formatted_paper_options,
-        ) + final_answer_role_instructions(scope_type)
-
         formatted_prompt = CONVERSATION_ANSWER_MESSAGE.format(
             question=question,
         )
@@ -217,7 +214,11 @@ class ConversationAgentRuntime(ConversationToolLoop):
             user_materials=user_references or (),
             document_source_texts=source_texts,
         )
-        citation_filter = CitationMarkerFilter(answer_packet.sources)
+        grounded_parser = GroundedAnswerStreamParser(answer_packet.sources)
+        formatted_system_prompt = CONVERSATION_ANSWER_SYSTEM_PROMPT.format(
+            available_papers=formatted_paper_options,
+            citation_protocol=grounded_parser.instructions,
+        ) + final_answer_role_instructions(scope_type)
         message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
                 content=answer_packet.model_dump_json(),
@@ -280,7 +281,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 if not text:
                     continue
 
-                filtered = citation_filter.feed(text)
+                filtered = grounded_parser.feed(text)
                 if filtered:
                     yield {"type": "content", "content": filtered}
         finally:
@@ -300,10 +301,27 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 }
                 return
 
-        remaining = citation_filter.finish()
+        remaining = grounded_parser.finish()
         if remaining:
             yield {"type": "content", "content": remaining}
-        references = citation_filter.references()
+        references = grounded_parser.references()
+        citation_metrics = grounded_parser.metrics()
+        tool_state.citation_metrics = {
+            "source_candidates": sum(
+                len(observation.sources) for observation in tool_state.observations
+            ),
+            "sources_accepted": len(answer_packet.sources),
+            "sources_rejected": answer_packet.coverage.rejected_sources,
+            "document_sources": sum(
+                source.kind == "document" for source in answer_packet.sources
+            ),
+            "external_sources": sum(
+                source.kind == "external" for source in answer_packet.sources
+            ),
+            "annotations_emitted": citation_metrics.annotations_emitted,
+            "invalid_source_keys": citation_metrics.invalid_source_keys,
+            "protocol_errors": citation_metrics.protocol_errors,
+        }
         if references is not None:
             yield {
                 "type": "references",
