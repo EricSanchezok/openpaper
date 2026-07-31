@@ -242,15 +242,14 @@ def test_grounded_answer_parser_handles_every_chunk_boundary() -> None:
     )
     nonce = "fixed"
     value = (
-        "Intro. [[SCHOLENS_GROUND:fixed:7]]"
-        "Grounded 🧠 claim."
-        "[[/SCHOLENS_GROUND:fixed]] End."
+        "Intro.\n\nGrounded 🧠 claim."
+        "[[SCHOLENS_CITE:fixed:7]] End."
     )
     for split in range(len(value) + 1):
         parser = GroundedAnswerStreamParser([source], nonce=nonce)
         rendered = parser.feed(value[:split]) + parser.feed(value[split:])
         rendered += parser.finish()
-        assert rendered == "Intro. Grounded 🧠 claim. End."
+        assert rendered == "Intro.\n\nGrounded 🧠 claim. End."
         references = parser.references()
         assert references is not None
         assert references.sources[0].key == 1
@@ -268,8 +267,8 @@ def test_grounded_answer_parser_keeps_text_for_invalid_or_unclosed_frames() -> N
     )
     parser = GroundedAnswerStreamParser([source], nonce="fixed")
     rendered = parser.feed(
-        "[[SCHOLENS_GROUND:fixed:99]]Unsupported[[/SCHOLENS_GROUND:fixed]] "
-        "[[SCHOLENS_GROUND:fixed:1]]Unclosed"
+        "Unsupported[[SCHOLENS_CITE:fixed:99]] "
+        "Unclosed[[SCHOLENS_CITE:fixed:1"
     )
     rendered += parser.finish()
 
@@ -282,10 +281,37 @@ def test_grounded_answer_parser_keeps_text_for_invalid_or_unclosed_frames() -> N
 def test_grounded_answer_parser_never_leaks_an_incomplete_opening_frame() -> None:
     parser = GroundedAnswerStreamParser([], nonce="fixed")
 
-    rendered = parser.feed("Visible [[SCHOLENS_GROUND:fixed:1") + parser.finish()
+    rendered = parser.feed("Visible [[SCHOLENS_CITE:fixed:1") + parser.finish()
 
     assert rendered == "Visible "
     assert parser.metrics().protocol_errors == 1
+
+
+def test_grounded_answer_parser_maps_each_marker_to_the_preceding_passage() -> None:
+    sources = [
+        ExternalAnswerSource(
+            key=key,
+            url=f"https://example.org/{key}",
+            reference=f"Excerpt {key}",
+        )
+        for key in (3, 8)
+    ]
+    parser = GroundedAnswerStreamParser(sources, nonce="fixed")
+    rendered = parser.feed(
+        "First claim.[[SCHOLENS_CITE:fixed:3]] "
+        "Second claim.[[SCHOLENS_CITE:fixed:8,3]]"
+    )
+    rendered += parser.finish()
+
+    assert rendered == "First claim. Second claim."
+    references = parser.references()
+    assert references is not None
+    assert [
+        rendered[item.start_offset : item.end_offset]
+        for item in references.annotations
+    ] == ["First claim.", "Second claim."]
+    assert references.annotations[0].source_keys == [1]
+    assert references.annotations[1].source_keys == [2, 1]
 
 
 def test_paper_summary_markers_are_materialized_before_conversation_storage() -> None:

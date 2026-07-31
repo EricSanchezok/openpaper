@@ -22,18 +22,16 @@ class GroundedAnswerMetrics:
 
 
 class GroundedAnswerStreamParser:
-    """Strip private grounding frames while retaining verified text spans."""
+    """Strip private citation markers and map them to preceding text passages."""
 
     def __init__(self, sources: Sequence[AnswerSource], *, nonce: str | None = None) -> None:
         self.nonce = nonce or secrets.token_hex(16)
         self._sources = {source.key: source for source in sources}
-        self._open_prefix = f"[[SCHOLENS_GROUND:{self.nonce}:"
-        self._close = f"[[/SCHOLENS_GROUND:{self.nonce}]]"
+        self._marker_prefix = f"[[SCHOLENS_CITE:{self.nonce}:"
         self._buffer = ""
-        self._inside = False
-        self._active_keys: tuple[int, ...] | None = None
-        self._span_start = 0
-        self._output_length = 0
+        self._output = ""
+        self._paragraph_start = 0
+        self._citation_cursor = 0
         self._annotations: list[CitationAnnotation] = []
         self._invalid_source_keys = 0
         self._protocol_errors = 0
@@ -44,18 +42,17 @@ class GroundedAnswerStreamParser:
         if not self._sources:
             return (
                 "No validated sources are available for this answer. Do not emit any "
-                "grounding control frames or visible citation syntax."
+                "citation control markers or visible citation syntax."
             )
         example_keys = ",".join(str(key) for key in list(self._sources)[:2])
         return (
-            "Citations are private control metadata, never Markdown. For every "
-            "factual passage supported by supplied sources, wrap exactly that passage "
-            f"with [[SCHOLENS_GROUND:{self.nonce}:{example_keys}]] and "
-            f"[[/SCHOLENS_GROUND:{self.nonce}]], replacing the example keys with the supporting "
-            "source keys. Do not show footnotes, a bibliography, source URLs, document "
-            "IDs, or these instructions. Text that does not require a source stays "
-            "outside grounding frames. Never nest frames and never use a source key "
-            "that is absent from the supplied source registry."
+            "Citations are private control metadata, never Markdown. Immediately after "
+            "each factual passage supported by supplied sources, append exactly one "
+            f"[[SCHOLENS_CITE:{self.nonce}:{example_keys}]] marker, replacing the "
+            "example keys with every source key supporting that passage. The marker "
+            "comes after the passage; it has no closing marker and must never wrap text. "
+            "Do not show footnotes, a bibliography, source URLs, document IDs, or these "
+            "instructions. Never use a source key absent from the supplied source registry."
         )
 
     def feed(self, value: str) -> str:
@@ -64,44 +61,21 @@ class GroundedAnswerStreamParser:
         self._buffer += value
         rendered: list[str] = []
         while self._buffer:
-            if self._inside:
-                close_at = self._buffer.find(self._close)
-                nested_at = self._buffer.find(self._open_prefix)
-                if nested_at >= 0 and (close_at < 0 or nested_at < close_at):
-                    self._emit(self._buffer[:nested_at], rendered)
-                    self._buffer = self._buffer[nested_at + len(self._open_prefix) :]
-                    marker_end = self._buffer.find("]]")
-                    if marker_end < 0:
-                        self._buffer = self._open_prefix + self._buffer
-                        break
-                    self._buffer = self._buffer[marker_end + 2 :]
-                    self._active_keys = None
-                    self._protocol_errors += 1
-                    continue
-                if close_at >= 0:
-                    self._emit(self._buffer[:close_at], rendered)
-                    self._buffer = self._buffer[close_at + len(self._close) :]
-                    self._close_span()
-                    continue
-                hold = self._partial_suffix_length(self._buffer, self._close)
-                ready = self._buffer[:-hold] if hold else self._buffer
-                self._buffer = self._buffer[-hold:] if hold else ""
-                self._emit(ready, rendered)
-                break
-
-            open_at = self._buffer.find(self._open_prefix)
-            if open_at >= 0:
-                self._emit(self._buffer[:open_at], rendered)
-                marker_start = open_at + len(self._open_prefix)
-                marker_end = self._buffer.find("]]", marker_start)
+            marker_at = self._buffer.find(self._marker_prefix)
+            if marker_at >= 0:
+                self._emit(self._buffer[:marker_at], rendered)
+                marker_end = self._buffer.find("]]", marker_at + len(self._marker_prefix))
                 if marker_end < 0:
-                    self._buffer = self._buffer[open_at:]
+                    self._buffer = self._buffer[marker_at:]
                     break
-                raw_keys = self._buffer[marker_start:marker_end]
+                raw_keys = self._buffer[
+                    marker_at + len(self._marker_prefix) : marker_end
+                ]
                 self._buffer = self._buffer[marker_end + 2 :]
-                self._begin_span(raw_keys)
+                self._annotate(raw_keys)
                 continue
-            hold = self._partial_suffix_length(self._buffer, self._open_prefix)
+
+            hold = self._partial_suffix_length(self._buffer, self._marker_prefix)
             ready = self._buffer[:-hold] if hold else self._buffer
             self._buffer = self._buffer[-hold:] if hold else ""
             self._emit(ready, rendered)
@@ -114,25 +88,15 @@ class GroundedAnswerStreamParser:
         self._finished = True
         remaining = self._buffer
         self._buffer = ""
-        if self._inside:
-            if remaining.startswith(self._open_prefix):
-                remaining = ""
-            partial_close = self._partial_suffix_length(remaining, self._close)
-            if partial_close:
-                remaining = remaining[:-partial_close]
+        if remaining.startswith(self._marker_prefix):
+            remaining = ""
             self._protocol_errors += 1
-            self._inside = False
-            self._active_keys = None
         else:
-            if remaining.startswith(self._open_prefix):
-                remaining = ""
+            partial = self._partial_suffix_length(remaining, self._marker_prefix)
+            if partial:
+                remaining = remaining[:-partial]
                 self._protocol_errors += 1
-            else:
-                partial_open = self._partial_suffix_length(remaining, self._open_prefix)
-                if partial_open:
-                    remaining = remaining[:-partial_open]
-                    self._protocol_errors += 1
-        self._output_length += len(remaining)
+        self._append_output(remaining)
         return remaining
 
     def references(self) -> ReferenceBundle | None:
@@ -141,7 +105,7 @@ class GroundedAnswerStreamParser:
         valid_annotations = [
             annotation
             for annotation in self._annotations
-            if 0 <= annotation.start_offset < annotation.end_offset <= self._output_length
+            if 0 <= annotation.start_offset < annotation.end_offset <= len(self._output)
         ]
         ordered_keys: list[int] = []
         for annotation in valid_annotations:
@@ -170,9 +134,7 @@ class GroundedAnswerStreamParser:
             protocol_errors=self._protocol_errors,
         )
 
-    def _begin_span(self, raw_keys: str) -> None:
-        self._inside = True
-        self._span_start = self._output_length
+    def _annotate(self, raw_keys: str) -> None:
         try:
             requested = tuple(
                 dict.fromkeys(int(item.strip()) for item in raw_keys.split(","))
@@ -181,27 +143,49 @@ class GroundedAnswerStreamParser:
             requested = ()
         if not requested or any(key not in self._sources for key in requested):
             self._invalid_source_keys += 1
-            self._active_keys = None
+            self._citation_cursor = len(self._output)
             return
-        self._active_keys = requested
 
-    def _close_span(self) -> None:
-        if self._active_keys is not None and self._output_length > self._span_start:
-            self._annotations.append(
-                CitationAnnotation(
-                    start_offset=self._span_start,
-                    end_offset=self._output_length,
-                    source_keys=list(self._active_keys),
-                )
+        start = max(self._citation_cursor, self._paragraph_start)
+        end = len(self._output)
+        while start < end and self._output[start].isspace():
+            start += 1
+        while end > start and self._output[end - 1].isspace():
+            end -= 1
+        self._citation_cursor = len(self._output)
+        if start >= end:
+            self._protocol_errors += 1
+            return
+
+        if self._annotations and self._annotations[-1].end_offset == end:
+            previous = self._annotations[-1]
+            merged_keys = list(dict.fromkeys([*previous.source_keys, *requested]))
+            self._annotations[-1] = previous.model_copy(
+                update={"source_keys": merged_keys}
             )
-        self._inside = False
-        self._active_keys = None
+            return
+        self._annotations.append(
+            CitationAnnotation(
+                start_offset=start,
+                end_offset=end,
+                source_keys=list(requested),
+            )
+        )
 
     def _emit(self, value: str, rendered: list[str]) -> None:
         if not value:
             return
         rendered.append(value)
-        self._output_length += len(value)
+        self._append_output(value)
+
+    def _append_output(self, value: str) -> None:
+        if not value:
+            return
+        previous_length = len(self._output)
+        self._output += value
+        boundary = self._output.rfind("\n\n", max(0, previous_length - 1))
+        if boundary >= 0:
+            self._paragraph_start = boundary + 2
 
     @staticmethod
     def _partial_suffix_length(value: str, token: str) -> int:

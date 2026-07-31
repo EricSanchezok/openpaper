@@ -307,10 +307,11 @@ class ConversationAgentRuntime(ConversationToolLoop):
         references = grounded_parser.references()
         citation_metrics = grounded_parser.metrics()
         tool_state.citation_metrics = {
-            "source_candidates": sum(
+            "source_candidates_input": sum(
                 len(observation.sources) for observation in tool_state.observations
-            ),
-            "sources_accepted": len(answer_packet.sources),
+            )
+            + len(direct_sources),
+            "sources_registered": len(answer_packet.sources),
             "sources_rejected": answer_packet.coverage.rejected_sources,
             "document_sources": sum(
                 source.kind == "document" for source in answer_packet.sources
