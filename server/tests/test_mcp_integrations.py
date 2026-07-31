@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 
+import httpx
 import jwt
 import pytest
 from app.modules.integrations.connectors.application.ports import ConnectorCredential
@@ -10,7 +11,11 @@ from app.modules.integrations.connectors.domain import ConnectorProvider
 from app.modules.integrations.connectors.infrastructure.mcp import (
     ConnectorToolResolver,
     _PROVIDER_DEFINITIONS,
+    _ConnectorToolsInvalid,
+    _bounded_tool_description,
+    _exception_contains,
     _external_connection,
+    _looks_like_authentication_error,
     _normalize_json_schema,
     _normalize_result,
     _scholight_delegation_headers,
@@ -77,18 +82,34 @@ def test_connector_credentials_are_bound_to_user_and_provider() -> None:
 
 
 @pytest.mark.parametrize(
-    ("provider", "header", "value"),
+    ("provider", "url", "headers"),
     [
-        (ConnectorProvider.ANYSEARCH, "Authorization", "Bearer api-key"),
-        (ConnectorProvider.TAVILY, "Authorization", "Bearer api-key"),
-        (ConnectorProvider.EXA, "x-api-key", "api-key"),
-        (ConnectorProvider.FIRECRAWL, "Authorization", "Bearer api-key"),
+        (
+            ConnectorProvider.ANYSEARCH,
+            "https://api.anysearch.com/mcp",
+            {"Authorization": "Bearer api-key"},
+        ),
+        (
+            ConnectorProvider.TAVILY,
+            "https://mcp.tavily.com/mcp/",
+            {"Authorization": "Bearer api-key"},
+        ),
+        (
+            ConnectorProvider.EXA,
+            "https://mcp.exa.ai/mcp",
+            {"x-api-key": "api-key"},
+        ),
+        (
+            ConnectorProvider.FIRECRAWL,
+            "https://mcp.firecrawl.dev/api-key/v2/mcp",
+            {},
+        ),
     ],
 )
 def test_external_provider_auth_is_data_driven(
     provider: ConnectorProvider,
-    header: str,
-    value: str,
+    url: str,
+    headers: dict[str, str],
 ) -> None:
     connection = _external_connection(
         _PROVIDER_DEFINITIONS[provider],
@@ -96,7 +117,45 @@ def test_external_provider_auth_is_data_driven(
         revision="test",
     )
 
-    assert dict(connection.headers) == {header: value}
+    assert connection.url == url
+    assert dict(connection.headers) == headers
+
+
+def test_firecrawl_key_is_safely_encoded_in_fixed_endpoint() -> None:
+    connection = _external_connection(
+        _PROVIDER_DEFINITIONS[ConnectorProvider.FIRECRAWL],
+        api_key="key/with?delimiters",
+        revision="test",
+    )
+
+    assert connection.url == (
+        "https://mcp.firecrawl.dev/key%2Fwith%3Fdelimiters/v2/mcp"
+    )
+    assert "key/with?delimiters" not in repr(connection)
+
+
+def test_long_remote_description_is_bounded_instead_of_rejecting_connector() -> None:
+    description = "x" * 12_000
+
+    assert len(_bounded_tool_description(description)) == 8_000
+
+
+def test_nested_mcp_errors_preserve_authentication_and_schema_semantics() -> None:
+    request = httpx.Request("POST", "https://connector.example/mcp")
+    response = httpx.Response(401, request=request)
+    auth_error = httpx.HTTPStatusError(
+        "unauthorized",
+        request=request,
+        response=response,
+    )
+    nested_auth = ExceptionGroup("mcp task group", [auth_error])
+    nested_schema = ExceptionGroup(
+        "mcp task group",
+        [_ConnectorToolsInvalid("invalid tools")],
+    )
+
+    assert _looks_like_authentication_error(nested_auth) is True
+    assert _exception_contains(nested_schema, _ConnectorToolsInvalid) is True
 
 
 def test_scholight_delegation_identifies_current_user() -> None:

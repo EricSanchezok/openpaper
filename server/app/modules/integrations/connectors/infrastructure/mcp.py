@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Protocol, TypeVar
+from urllib.parse import quote
 from uuid import uuid4
 
 import httpx
@@ -44,8 +45,8 @@ _TOOL_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 class ConnectorDefinition:
     provider: ConnectorProvider
     display_name: str
-    url: str
-    auth_header: str
+    url_template: str
+    auth_header: str | None
     auth_prefix: str = ""
 
 
@@ -62,7 +63,7 @@ class EnabledCredentialLoader(Protocol):
 class RemoteMCPConnection:
     provider: ConnectorProvider
     display_name: str
-    url: str
+    url: str = field(repr=False)
     headers: Mapping[str, str] = field(repr=False)
     revision: str
     header_factory: Callable[[], Mapping[str, str]] | None = field(
@@ -178,9 +179,8 @@ _PROVIDER_DEFINITIONS = {
     ConnectorProvider.FIRECRAWL: ConnectorDefinition(
         ConnectorProvider.FIRECRAWL,
         "Firecrawl",
-        "https://mcp.firecrawl.dev/v2/mcp",
-        "Authorization",
-        "Bearer ",
+        "https://mcp.firecrawl.dev/{api_key}/v2/mcp",
+        None,
     ),
 }
 _PROVIDER_PRIORITY = (
@@ -230,13 +230,13 @@ class ConnectorToolResolver:
         )
         try:
             await _list_declarations(connection)
-        except _ConnectorToolsInvalid as exc:
-            raise AppError(
-                code="connector_tools_invalid",
-                message="Connector exposed invalid tools",
-                kind=FailureKind.DEPENDENCY_FAILURE,
-            ) from exc
         except Exception as exc:
+            if _exception_contains(exc, _ConnectorToolsInvalid):
+                raise AppError(
+                    code="connector_tools_invalid",
+                    message="Connector exposed invalid tools",
+                    kind=FailureKind.DEPENDENCY_FAILURE,
+                ) from exc
             if _looks_like_authentication_error(exc):
                 raise AppError(
                     code="connector_credentials_invalid",
@@ -296,7 +296,7 @@ class ConnectorToolResolver:
                 continue
             connection, result = pair
             if isinstance(result, BaseException):
-                tools_invalid = isinstance(result, _ConnectorToolsInvalid)
+                tools_invalid = _exception_contains(result, _ConnectorToolsInvalid)
                 credentials_invalid = _looks_like_authentication_error(result)
                 if tools_invalid:
                     issue_code = "connector_tools_invalid"
@@ -455,8 +455,7 @@ async def _list_declarations(
             description = (
                 tool.description or f"{connection.display_name} connector tool"
             )
-            if len(description) > _MAX_TOOL_DESCRIPTION_CHARS:
-                raise _ConnectorToolsInvalid("connector tool description is too large")
+            description = _bounded_tool_description(description)
             parameters = _normalize_json_schema(tool.inputSchema)
             if not isinstance(parameters, dict) or parameters.get("type") not in {
                 None,
@@ -511,13 +510,20 @@ def _external_connection(
     api_key: str,
     revision: str,
 ) -> RemoteMCPConnection:
+    encoded_api_key = quote(api_key, safe="")
+    url = definition.url_template.format(api_key=encoded_api_key)
+    headers = (
+        {}
+        if definition.auth_header is None
+        else {
+            definition.auth_header: f"{definition.auth_prefix}{api_key}"
+        }
+    )
     return RemoteMCPConnection(
         provider=definition.provider,
         display_name=definition.display_name,
-        url=definition.url,
-        headers=MappingProxyType(
-            {definition.auth_header: f"{definition.auth_prefix}{api_key}"}
-        ),
+        url=url,
+        headers=MappingProxyType(headers),
         revision=revision,
     )
 
@@ -552,6 +558,10 @@ def _normalize_json_schema(value: Any) -> Any:
     }
 
 
+def _bounded_tool_description(description: str) -> str:
+    return description[:_MAX_TOOL_DESCRIPTION_CHARS]
+
+
 def _normalize_result(value: Any) -> JsonValue:
     try:
         normalized = _JSON_VALUE.validate_python(value)
@@ -567,23 +577,45 @@ def _normalize_result(value: Any) -> JsonValue:
 
 
 def _looks_like_authentication_error(exc: BaseException) -> bool:
-    current: BaseException | None = exc
     messages: list[str] = []
-    seen: set[int] = set()
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
+    for current in _walk_exceptions(exc):
         if (
             isinstance(current, httpx.HTTPStatusError)
             and current.response.status_code in {401, 403}
         ):
             return True
         messages.append(str(current))
-        current = current.__cause__ or current.__context__
     text = " ".join(messages).casefold()
     return any(
         marker in text
         for marker in ("401", "403", "unauthorized", "forbidden", "invalid api")
     )
+
+
+def _exception_contains(
+    exc: BaseException,
+    exception_type: type[BaseException],
+) -> bool:
+    return any(isinstance(item, exception_type) for item in _walk_exceptions(exc))
+
+
+def _walk_exceptions(exc: BaseException) -> tuple[BaseException, ...]:
+    pending = [exc]
+    seen: set[int] = set()
+    result: list[BaseException] = []
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        result.append(current)
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return tuple(result)
 
 
 def _run_sync(factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
