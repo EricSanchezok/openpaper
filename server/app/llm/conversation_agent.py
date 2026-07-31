@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import uuid
 from contextlib import suppress
@@ -11,7 +10,7 @@ from typing import (
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.models import ReasoningLevel
-from app.llm.citation_handler import CitationHandler
+from app.llm.answer_packet import AnswerPacketBuilder, CitationMarkerFilter
 from app.llm.conversation_prompts import final_answer_role_instructions
 from app.llm.conversation_tool_loop import ConversationToolLoop
 from app.llm.prompts import (
@@ -26,11 +25,13 @@ from app.modules.conversations.application.chat import (
 )
 from app.modules.conversations.application.contracts.messages import ToolRunState
 from app.shared.application import Actor, ApplicationExecutor
+from app.shared.domain import AppError, JsonValue
 from app.shared.domain.enums import ConversationScopeType
+from app.tooling import DocumentSourceCandidate
+from pydantic import TypeAdapter
 
 logger = logging.getLogger(__name__)
-
-FINAL_INFORMATIONAL_RESULTS_TOKEN_BUDGET = 200_000
+_JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 
 class ConversationAgentRuntime(ConversationToolLoop):
@@ -52,12 +53,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
         user_references: Sequence[str] | None = None,
         mentioned_highlights: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[str | dict[str, Any], None]:
-        """Stream the final answer from bounded context and collected evidence."""
-        user_citations = (
-            CitationHandler.convert_references_to_citations(user_references)
-            if user_references
-            else None
-        )
+        """Stream one answer from a bounded, server-validated AnswerPacket."""
 
         casted_conversation_id = uuid.UUID(conversation_id)
 
@@ -106,89 +102,119 @@ class ConversationAgentRuntime(ConversationToolLoop):
         ) + final_answer_role_instructions(scope_type)
 
         formatted_prompt = CONVERSATION_ANSWER_MESSAGE.format(
-            question=f"{question}\n\n{user_citations}" if user_citations else question,
+            question=question,
         )
-
-        evidence_buffer: list[str] = []
-        text_buffer: str = ""
-        in_evidence_section = False
-
-        START_DELIMITER = "---EVIDENCE---"
-        END_DELIMITER = "---END-EVIDENCE---"
-
-        # Build multipart message: supplementary evidence + user question
-        message_content: list[TextContent | SupplementaryContent] = [
-            SupplementaryContent(
-                content=json.dumps(context_guidance, indent=2),
-                label="conversation_context",
-            ),
-            SupplementaryContent(
-                content=json.dumps(tool_state.get_evidence_dict(), indent=2),
-                label="collected_evidence",
-            ),
-            SupplementaryContent(
-                content=json.dumps(tool_state.action_results, indent=2),
-                label="completed_actions",
-            ),
-            SupplementaryContent(
-                content=json.dumps(
-                    tool_state.answer_tool_results(
-                        max_tokens=FINAL_INFORMATIONAL_RESULTS_TOKEN_BUDGET
-                    ),
-                    indent=2,
-                ),
-                label="informational_tool_results",
-            ),
-            TextContent(text=formatted_prompt),
-        ]
-        if anchor_paper is not None and anchor_paper.raw_content:
-            message_content.insert(
-                0,
-                SupplementaryContent(
-                    content=anchor_paper.raw_content,
-                    label="anchor_paper_full_text",
-                ),
-            )
-
-        # @-mentioned highlights are exact passages the user attached to ground
-        # this question. Inject them directly so the answer model always sees
-        # them, regardless of what evidence gathering happened to retrieve.
-        if mentioned_highlights:
-            message_content.insert(
-                0,
-                SupplementaryContent(
-                    content=json.dumps(mentioned_highlights, indent=2),
-                    label="mentioned_highlights",
-                ),
-            )
 
         # Surface any citation artifacts produced during evidence gathering as
         # first-party cards, and give the answer model the resolved data so it
         # can reference (but not re-paste) them.
         citation_artifacts = tool_state.get_artifacts()
+        artifact_payloads: list[dict[str, JsonValue]] = []
         if citation_artifacts:
-            artifact_payloads = [
-                {
-                    "kind": "citation",
-                    "document_id": artifact.document_id,
-                    "preferred_style": artifact.preferred_style,
-                    "style_display": artifact.style_display,
-                    "data": artifact.data.model_dump(),
-                    "method": artifact.method,
-                    "missing_fields": artifact.missing_fields,
-                    "confidence": artifact.confidence,
-                }
+            raw_artifact_payloads: list[JsonValue] = [
+                _JSON_VALUE.validate_python(
+                    {
+                        "kind": "citation",
+                        "document_id": artifact.document_id,
+                        "preferred_style": artifact.preferred_style,
+                        "style_display": artifact.style_display,
+                        "data": artifact.data.model_dump(mode="json"),
+                        "method": artifact.method,
+                        "missing_fields": artifact.missing_fields,
+                        "confidence": artifact.confidence,
+                    }
+                )
                 for artifact in citation_artifacts
             ]
-            message_content.insert(
-                1,
-                SupplementaryContent(
-                    content=json.dumps(artifact_payloads, indent=2),
-                    label="resolved_citations",
-                ),
-            )
+            artifact_payloads = [
+                value for value in raw_artifact_payloads if isinstance(value, dict)
+            ]
             for payload in artifact_payloads:
                 yield {"type": "artifact", "content": payload}
+
+        direct_sources: list[DocumentSourceCandidate] = []
+        if anchor_paper is not None and anchor_paper.raw_content:
+            direct_sources.append(
+                DocumentSourceCandidate(
+                    document_id=anchor_paper.document_id,
+                    excerpt=anchor_paper.raw_content,
+                    title=anchor_paper.title,
+                    authors=tuple(anchor_paper.authors or ()),
+                    locator={"origin": "anchor_paper"},
+                )
+            )
+        for group in mentioned_highlights or []:
+            try:
+                document_id = uuid.UUID(str(group["document_id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            title = group.get("paper_title")
+            for highlight in group.get("highlights", []):
+                if not isinstance(highlight, dict):
+                    continue
+                excerpt = highlight.get("highlighted_text")
+                if not isinstance(excerpt, str) or not excerpt.strip():
+                    continue
+                locator: dict[str, JsonValue] = {"origin": "highlight"}
+                page_number = highlight.get("page_number")
+                if isinstance(page_number, int):
+                    locator["page_number"] = page_number
+                direct_sources.append(
+                    DocumentSourceCandidate(
+                        document_id=document_id,
+                        excerpt=excerpt,
+                        title=title if isinstance(title, str) else None,
+                        locator=locator,
+                    )
+                )
+
+        packet_context: dict[str, JsonValue] = {
+            "conversation": _JSON_VALUE.validate_python(context_guidance),
+            "resolved_citations": _JSON_VALUE.validate_python(artifact_payloads),
+        }
+        candidate_document_ids = {
+            source.document_id
+            for observation in tool_state.observations
+            for source in observation.sources
+            if isinstance(source, DocumentSourceCandidate)
+        }
+        candidate_document_ids.update(source.document_id for source in direct_sources)
+
+        def verified_document_source_texts(
+            capabilities: ApplicationCapabilities,
+        ) -> dict[uuid.UUID, tuple[str, ...]]:
+            verified: dict[uuid.UUID, tuple[str, ...]] = {}
+            for document_id in candidate_document_ids:
+                try:
+                    paper = capabilities.paper_content.read(
+                        actor=current_user,
+                        document_id=document_id,
+                    )
+                except AppError:
+                    continue
+                verified[document_id] = tuple(
+                    text
+                    for text in (paper.raw_content, paper.abstract)
+                    if text is not None and text.strip()
+                )
+            return verified
+
+        source_texts = executor.query(verified_document_source_texts)
+        answer_packet = AnswerPacketBuilder().build(
+            context=packet_context,
+            tool_state=tool_state,
+            direct_sources=direct_sources,
+            user_materials=user_references or (),
+            document_source_texts=source_texts,
+        )
+        citation_filter = CitationMarkerFilter(answer_packet.sources)
+        message_content: list[TextContent | SupplementaryContent] = [
+            SupplementaryContent(
+                content=answer_packet.model_dump_json(),
+                label="answer_packet",
+            ),
+            TextContent(text=formatted_prompt),
+        ]
 
         queue: asyncio.Queue[StreamChunk | dict[str, str] | None] = asyncio.Queue()
 
@@ -244,62 +270,9 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 if not text:
                     continue
 
-                text_buffer += text
-
-                if not in_evidence_section and START_DELIMITER in text_buffer:
-                    in_evidence_section = True
-                    pre_evidence = text_buffer.split(START_DELIMITER)[0]
-                    if pre_evidence:
-                        yield {"type": "content", "content": pre_evidence}
-                    evidence_buffer = [text_buffer.split(START_DELIMITER)[1]]
-                    text_buffer = ""
-                    continue
-
-                reconstructed_buffer = "".join(evidence_buffer + [text_buffer]).strip()
-
-                if in_evidence_section and END_DELIMITER in reconstructed_buffer:
-                    delimiter_pos = reconstructed_buffer.find(END_DELIMITER)
-                    evidence_part = reconstructed_buffer[:delimiter_pos]
-                    remaining = reconstructed_buffer[
-                        delimiter_pos + len(END_DELIMITER) :
-                    ]
-
-                    structured_evidence = CitationHandler.parse_evidence_block(
-                        evidence_part
-                    )
-
-                    # Resolve compacted citations to original snippets if evidence was compacted
-                    if tool_state.is_compacted:
-                        structured_evidence = (
-                            CitationHandler.resolve_compacted_citations(
-                                structured_evidence,
-                                tool_state.citation_index,
-                            )
-                        )
-
-                    yield {
-                        "type": "references",
-                        "content": {
-                            "citations": structured_evidence,
-                        },
-                    }
-
-                    in_evidence_section = False
-                    evidence_buffer = []
-                    text_buffer = remaining
-
-                    if remaining:
-                        yield {"type": "content", "content": remaining}
-                    continue
-
-                if in_evidence_section:
-                    evidence_buffer.append(text)
-                    text_buffer = ""
-                else:
-                    if len(text_buffer) > len(START_DELIMITER) * 2:
-                        to_yield = text_buffer[: -len(START_DELIMITER)]
-                        yield {"type": "content", "content": to_yield}
-                        text_buffer = text_buffer[-len(START_DELIMITER) :]
+                filtered = citation_filter.feed(text)
+                if filtered:
+                    yield {"type": "content", "content": filtered}
         finally:
             if not pinger_task.done():
                 pinger_task.cancel()
@@ -317,40 +290,12 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 }
                 return
 
-        # Handle case where stream ended while still in evidence section
-        if in_evidence_section and evidence_buffer:
-            reconstructed_buffer = "".join(evidence_buffer + [text_buffer]).strip()
-            logger.warning(
-                "Stream ended while in evidence section without END_DELIMITER"
-            )
-
-            if reconstructed_buffer:
-                try:
-                    structured_evidence = CitationHandler.parse_evidence_block(
-                        reconstructed_buffer
-                    )
-
-                    # Resolve compacted citations to original snippets if evidence was compacted
-                    if tool_state.is_compacted:
-                        structured_evidence = (
-                            CitationHandler.resolve_compacted_citations(
-                                structured_evidence,
-                                tool_state.citation_index,
-                            )
-                        )
-
-                    yield {
-                        "type": "references",
-                        "content": {
-                            "citations": structured_evidence,
-                        },
-                    }
-                except Exception as e:
-                    logger.error(f"Failed to parse incomplete evidence block: {e}")
-                    yield {"type": "content", "content": reconstructed_buffer}
-
-            text_buffer = ""
-
-        # Yield any remaining text buffer content
-        if text_buffer:
-            yield {"type": "content", "content": text_buffer}
+        remaining = citation_filter.finish()
+        if remaining:
+            yield {"type": "content", "content": remaining}
+        references = citation_filter.references()
+        if references is not None:
+            yield {
+                "type": "references",
+                "content": references.model_dump(mode="json"),
+            }

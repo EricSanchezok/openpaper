@@ -11,7 +11,6 @@ from app.database.telemetry import track_event
 from app.llm.base import BaseLLMClient
 from app.llm.conversation_prompts import tool_loop_role_instructions
 from app.llm.prompts import (
-    EVIDENCE_COMPACTION_PROMPT,
     KEYWORD_EXTRACTION_PROMPT,
     TOOL_LOOP_MESSAGE,
     TOOL_LOOP_SYSTEM_PROMPT,
@@ -19,9 +18,8 @@ from app.llm.prompts import (
 )
 from app.llm.backend import SupplementaryContent, TextContent
 from app.modules.papers.application.contracts.citation import CitationResult
+from app.modules.papers.application.contracts.extraction import ToolCall
 from app.modules.conversations.application.contracts.messages import (
-    EvidenceSummaryResponse,
-    OriginalSnippet,
     ToolRunState,
     ToolResultCompactionResponse,
 )
@@ -36,10 +34,6 @@ from app.shared.application import (
     OperationContextFactory,
     OperationInitiator,
 )
-from app.shared.application.context_budget import (
-    estimate_tokens,
-    truncate_to_token_budget,
-)
 from app.modules.conversations.application.chat import ConversationChatScope
 from app.shared.domain import AppError
 from app.tooling import (
@@ -49,6 +43,7 @@ from app.tooling import (
     ToolExecutionContext,
     ToolOutcome,
 )
+from app.tooling.source_extraction import extract_external_sources
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 
 logger = logging.getLogger(__name__)
@@ -61,10 +56,7 @@ MODEL_CONTEXT_WINDOW_TOKENS = 1_000_000
 TOOL_RESULTS_TOKEN_BUDGET = MODEL_CONTEXT_WINDOW_TOKENS * 35 // 100
 TOOL_COMPACTION_BATCH_TOKENS = MODEL_CONTEXT_WINDOW_TOKENS * 25 // 100
 TOOL_COMPACTION_RESULT_TOKENS = 50_000
-FINAL_EVIDENCE_TOKEN_BUDGET = MODEL_CONTEXT_WINDOW_TOKENS * 25 // 100
-EVIDENCE_COMPACTION_INPUT_TOKENS = MODEL_CONTEXT_WINDOW_TOKENS * 45 // 100
-EVIDENCE_PER_PAPER_TOKENS = 75_000
-EVIDENCE_PER_SNIPPET_TOKENS = 25_000
+ANSWER_MATERIALIZATION_TOKEN_BUDGET = MODEL_CONTEXT_WINDOW_TOKENS * 30 // 100
 HEARTBEAT_INTERVAL_SECONDS = (
     15  # Keep streaming connections alive during long operations
 )
@@ -282,12 +274,14 @@ class ConversationToolLoop(BaseLLMClient):
 
             yield {
                 "type": "status",
-                "content": f"Reviewing collected evidence (iteration {n_iterations}/{max_iterations})...",
+                "content": f"Reviewing collected information (iteration {n_iterations})...",
             }
 
             # Get tool call results from previous iterations
             tool_call_results = (
-                tool_state.get_tool_call_results()
+                tool_state.tool_call_results_for_model(
+                    max_tokens=TOOL_RESULTS_TOKEN_BUDGET
+                )
                 if tool_state.has_tool_calls()
                 else None
             )
@@ -370,6 +364,12 @@ class ConversationToolLoop(BaseLLMClient):
                     (tool_call, tool_name, status, start_time, dispatch_task)
                 )
 
+            if not dispatches:
+                logger.info(
+                    "Only duplicate tool calls were returned; ending tool loop."
+                )
+                break
+
             for tool_call, tool_name, status, start_time, dispatch_task in dispatches:
                 connector_provider = connector_tool_set.provider_for(tool_name)
                 result_status = "success"
@@ -389,18 +389,15 @@ class ConversationToolLoop(BaseLLMClient):
                         artifact = CitationResult.model_validate(artifact_payload)
                         tool_state.add_artifact(artifact)
                         tool_result = _summarize_citation(artifact)
-                    for document_id, lines in outcome.evidence.items():
-                        tool_state.add_evidence(
-                            document_id,
-                            lines,
-                            preserve_line_numbers=True,
-                        )
-                    if outcome.action is not None:
-                        tool_state.add_action_result(outcome.action)
-                    tool_state.add_tool_call_result(
+                    tool_state.add_tool_outcome(
                         tool_call,
-                        tool_result,
-                        informational=connector_provider is not None,
+                        ToolOutcome(
+                            payload=tool_result,
+                            sources=outcome.sources,
+                            artifacts=outcome.artifacts,
+                            action=outcome.action,
+                            stop=outcome.stop,
+                        ),
                     )
                     if outcome.stop:
                         should_stop = True
@@ -410,13 +407,15 @@ class ConversationToolLoop(BaseLLMClient):
                         "Tool call rejected",
                         extra={"tool_name": tool_name, "error_code": exc.code},
                     )
-                    tool_state.add_tool_call_result(
+                    tool_state.add_tool_error(
                         tool_call,
                         {
                             "error": {
                                 "code": exc.code,
                                 "message": exc.message,
-                                "details": exc.details,
+                                "details": json.loads(
+                                    json.dumps(exc.details, default=str)
+                                ),
                             }
                         },
                     )
@@ -427,7 +426,7 @@ class ConversationToolLoop(BaseLLMClient):
                         "Conversation tool execution failed",
                         extra={"tool_name": tool_name},
                     )
-                    tool_state.add_tool_call_result(
+                    tool_state.add_tool_error(
                         tool_call,
                         {"error": {"code": "tool_execution_failed"}},
                     )
@@ -452,10 +451,9 @@ class ConversationToolLoop(BaseLLMClient):
         # A successful action or artifact is already a complete tool-loop
         # outcome. Only pure unanswered questions receive a keyword fallback.
         if (
-            not tool_state.has_evidence()
+            not tool_state.has_answer_material()
             and not tool_state.get_artifacts()
             and not tool_state.action_results
-            and not tool_state.has_informational_results()
             and self._catalog.is_available(tool_access, "search_papers")
         ):
             logger.info(
@@ -473,7 +471,13 @@ class ConversationToolLoop(BaseLLMClient):
                 if keywords:
                     logger.info(f"Fallback search with keywords: {keywords}")
 
-                    for keyword in keywords:
+                    for fallback_index, keyword in enumerate(keywords):
+                        tool_call = ToolCall(
+                            id=f"fallback-{fallback_index}",
+                            name="search_papers",
+                            args={"query": keyword},
+                        )
+                        tool_state.add_tool_call(tool_call)
                         outcome = await self._dispatcher.dispatch(
                             name="search_papers",
                             raw_arguments={"query": keyword},
@@ -495,23 +499,15 @@ class ConversationToolLoop(BaseLLMClient):
                             ),
                             access=tool_access,
                         )
-                        for document_id, lines in outcome.evidence.items():
-                            tool_state.add_evidence(
-                                document_id,
-                                lines,
-                                preserve_line_numbers=True,
-                            )
+                        tool_state.add_tool_outcome(tool_call, outcome)
 
-                    if tool_state.has_evidence():
-                        logger.info(
-                            f"Fallback search found evidence from "
-                            f"{len(tool_state.evidence)} papers"
-                        )
+                    if tool_state.has_answer_material():
+                        logger.info("Fallback search produced answer material")
                         track_event(
                             "fallback_search_success",
                             {
                                 "keywords": keywords,
-                                "papers_found": len(tool_state.evidence),
+                                "observations": len(tool_state.observations),
                             },
                             user_id=str(current_user.id),
                         )
@@ -530,28 +526,24 @@ class ConversationToolLoop(BaseLLMClient):
                     user_id=str(current_user.id),
                 )
 
-        # Compact evidence if it exceeds the limit for chat response
-        evidence_size = tool_state.get_evidence_size()
-        evidence_tokens = tool_state.get_evidence_token_estimate()
-        if evidence_tokens > FINAL_EVIDENCE_TOKEN_BUDGET:
+        # Materialize every remaining raw observation once before the final answer.
+        if (
+            tool_state.get_tool_results_token_estimate()
+            > ANSWER_MATERIALIZATION_TOKEN_BUDGET
+            and tool_state.get_tool_results_token_estimate(uncompacted_only=True) > 0
+        ):
             yield {
                 "type": "status",
-                "content": "Compacting gathered evidence...",
+                "content": "Structuring gathered information...",
             }
-            logger.info(
-                "Evidence exceeds the final-answer context budget; compacting",
-                extra={
-                    "characters": evidence_size,
-                    "estimated_tokens": evidence_tokens,
-                    "budget_tokens": FINAL_EVIDENCE_TOKEN_BUDGET,
-                },
-            )
-            async for compaction_status in self.compact_evidence(
-                tool_state,
-                question,
-                current_user,
-            ):
-                yield compaction_status
+            while tool_state.get_tool_results_token_estimate(uncompacted_only=True) > 0:
+                compacted = await self.compact_tool_call_results(
+                    tool_state,
+                    question,
+                    current_user,
+                )
+                if not compacted:
+                    break
 
         yield {
             "type": "tool_run_completed",
@@ -568,7 +560,21 @@ class ConversationToolLoop(BaseLLMClient):
         access: ToolAccess,
     ) -> ToolOutcome:
         if connector_tool_set.has_tool(name):
-            return ToolOutcome(payload=await connector_tool_set.call(name, arguments))
+            payload = await connector_tool_set.call(name, arguments)
+            provider = connector_tool_set.provider_for(name)
+            return ToolOutcome(
+                payload=payload,
+                sources=extract_external_sources(
+                    arguments=arguments,
+                    payload=payload,
+                    origin={
+                        "provider": provider.value
+                        if provider is not None
+                        else "remote",
+                        "tool": name,
+                    },
+                ),
+            )
         return await self._dispatcher.dispatch(
             name=name,
             raw_arguments=arguments,
@@ -658,171 +664,6 @@ class ConversationToolLoop(BaseLLMClient):
                 f"Tool result compaction failed: {e}. Keeping original results."
             )
         return False
-
-    async def compact_evidence(
-        self,
-        tool_state: ToolRunState,
-        original_question: str,
-        current_user: Actor,
-    ) -> AsyncGenerator[dict[str, object], None]:
-        """
-        Compact evidence to reduce context size for chat response.
-        Modifies the tool run state in place.
-
-        Single-pass compaction: summarizes all evidence per paper in one LLM call.
-        """
-        start_time = time.time()
-        original_size = tool_state.get_evidence_size()
-        evidence_dict = tool_state.get_evidence_dict()
-        original_count = sum(len(snippets) for snippets in evidence_dict.values())
-
-        yield {
-            "type": "status",
-            "content": "Compacting evidence...",
-        }
-
-        papers_by_evidence = sorted(
-            evidence_dict.items(), key=lambda x: len(x[1]), reverse=True
-        )
-
-        # Store original snippets in citation_index sidecar BEFORE compaction
-        for document_id, snippets in papers_by_evidence:
-            evidence_obj = tool_state.evidence.get(document_id)
-            line_numbers = evidence_obj.get_line_numbers() if evidence_obj else []
-
-            for i, snippet in enumerate(snippets):
-                key = f"{document_id}:{i}"
-                tool_state.citation_index.index[key] = OriginalSnippet(
-                    document_id=document_id,
-                    text=snippet,  # Full original text preserved
-                    line_number=line_numbers[i] if i < len(line_numbers) else None,
-                )
-
-        # Format evidence with indexed snippets for LLM
-        evidence_for_compaction: list[dict[str, Any]] = []
-        total_tokens = 0
-        for document_id, snippets in papers_by_evidence:
-            indexed_snippets: list[dict[str, Any]] = []
-            paper_tokens = 0
-            for i, snippet in enumerate(snippets):
-                truncated = truncate_to_token_budget(
-                    snippet,
-                    EVIDENCE_PER_SNIPPET_TOKENS,
-                )
-                snippet_tokens = estimate_tokens(truncated)
-                if paper_tokens + snippet_tokens > EVIDENCE_PER_PAPER_TOKENS:
-                    break
-                indexed_snippets.append({"index": i, "text": truncated})
-                paper_tokens += snippet_tokens
-
-            if (
-                evidence_for_compaction
-                and total_tokens + paper_tokens > EVIDENCE_COMPACTION_INPUT_TOKENS
-            ):
-                break
-
-            evidence_for_compaction.append(
-                {
-                    "document_id": document_id,
-                    "snippets": indexed_snippets,
-                }
-            )
-            total_tokens += paper_tokens
-
-        logger.info(
-            "Compacting evidence within the model context budget",
-            extra={
-                "included_papers": len(evidence_for_compaction),
-                "total_papers": len(evidence_dict),
-                "estimated_tokens": total_tokens,
-            },
-        )
-
-        formatted_prompt = EVIDENCE_COMPACTION_PROMPT.format(
-            question=original_question,
-            evidence=json.dumps(evidence_for_compaction, indent=2),
-            schema=EvidenceSummaryResponse.model_json_schema(),
-        )
-
-        message_content = [TextContent(text=formatted_prompt)]
-
-        llm_response = self.generate_content(
-            system_prompt="You are a research assistant that summarizes evidence snippets from research papers.",
-            contents=message_content,
-            response_model=EvidenceSummaryResponse,
-        )
-
-        all_compacted: dict[str, list[str]] = {}
-
-        try:
-            if llm_response and llm_response.text:
-                compaction_response = EvidenceSummaryResponse.model_validate_json(
-                    llm_response.text
-                )
-
-                for paper_summary in compaction_response.papers:
-                    if paper_summary.summary:
-                        all_compacted[paper_summary.document_id] = [
-                            paper_summary.summary
-                        ]
-            else:
-                logger.warning("Empty response from LLM during evidence compaction.")
-
-            # Preserve a useful bounded excerpt for papers that did not fit in the
-            # compaction call; full originals remain in the citation sidecar.
-            for document_id, snippets in evidence_dict.items():
-                if document_id not in all_compacted:
-                    all_compacted[document_id] = [
-                        "(bounded original excerpt) "
-                        + truncate_to_token_budget(" ".join(snippets), 5_000)
-                    ]
-        except Exception as e:
-            logger.warning(f"Evidence compaction failed: {e}. Using bounded originals.")
-            for document_id, snippets in evidence_dict.items():
-                all_compacted[document_id] = [
-                    "(bounded original excerpt) "
-                    + truncate_to_token_budget(" ".join(snippets), 5_000)
-                ]
-
-        # Keep every paper represented while enforcing the final-answer budget.
-        # Full source snippets remain available in citation_index for resolution.
-        per_paper_output_budget = max(
-            1,
-            FINAL_EVIDENCE_TOKEN_BUDGET // max(1, len(all_compacted)),
-        )
-        all_compacted = {
-            document_id: [
-                truncate_to_token_budget(
-                    "\n\n".join(summaries),
-                    per_paper_output_budget,
-                )
-            ]
-            for document_id, summaries in all_compacted.items()
-        }
-
-        tool_state.apply_compacted_evidence(all_compacted)
-        tool_state.is_compacted = True
-
-        new_size = tool_state.get_evidence_size()
-        new_count = sum(len(snippets) for snippets in all_compacted.values())
-
-        logger.info(
-            f"Evidence compaction complete. "
-            f"Original: {original_count} snippets ({original_size} chars), "
-            f"Compacted: {new_count} summaries ({new_size} chars)"
-        )
-
-        track_event(
-            "evidence_compacted",
-            {
-                "duration_ms": (time.time() - start_time) * 1000,
-                "original_count": original_count,
-                "original_size": original_size,
-                "compacted_count": new_count,
-                "compacted_size": new_size,
-            },
-            user_id=str(current_user.id),
-        )
 
     async def _extract_search_keywords(
         self,

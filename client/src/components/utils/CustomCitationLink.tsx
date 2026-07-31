@@ -1,7 +1,21 @@
-import { Citation, ReferenceCitation } from "@/lib/schema";
+import { Citation, ExternalCitation, ReferenceCitation } from "@/lib/schema";
 import { HTMLAttributes, ReactNode, createElement, Children } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { PaperItem } from "@/lib/schema";
+
+interface InlineCitation {
+    key: string | number;
+    reference: string;
+}
+
+function isExternalCitation(
+    citation: Citation | ReferenceCitation | InlineCitation,
+): citation is ExternalCitation {
+    return 'kind' in citation
+        && citation.kind === 'external'
+        && 'url' in citation
+        && typeof citation.url === 'string';
+}
 
 // Interface for the CustomCitationLink component props
 interface CustomCitationLinkProps extends HTMLAttributes<HTMLElement> {
@@ -14,7 +28,7 @@ interface CustomCitationLinkProps extends HTMLAttributes<HTMLElement> {
         properties?: Record<string, any>;
     };
     className?: string;
-    citations?: (Citation | ReferenceCitation)[];
+    citations?: (Citation | ReferenceCitation | InlineCitation)[];
     papers?: PaperItem[];
 }
 
@@ -22,7 +36,7 @@ interface CitationLinkProps {
     citationKey: string;
     messageIndex: number;
     handleCitationClick: (key: string, messageIndex: number) => void;
-    citations?: (Citation | ReferenceCitation)[];
+    citations?: (Citation | ReferenceCitation | InlineCitation)[];
     papers?: PaperItem[];
 }
 
@@ -35,9 +49,22 @@ function CitationLink({
 }: CitationLinkProps) {
     const matchingCitation = citations?.find(citation => 'key' in citation ? String(citation.key) === citationKey : String(citation.index) === citationKey) || null;
     const paper = matchingCitation && 'document_id' in matchingCitation && papers ? papers.find(p => p.document_id === matchingCitation.document_id) : null;
+    const externalUrl = matchingCitation && isExternalCitation(matchingCitation)
+        ? matchingCitation.url
+        : null;
+    const sourceTitle = matchingCitation && 'title' in matchingCitation && typeof matchingCitation.title === 'string'
+        ? matchingCitation.title
+        : null;
+    const referenceText = matchingCitation
+        ? ('text' in matchingCitation ? matchingCitation.text : matchingCitation.reference)
+        : null;
 
     const onClickCitation = (e: React.MouseEvent) => {
         e.preventDefault();
+        if (externalUrl) {
+            window.open(externalUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
         if (handleCitationClick) {
             handleCitationClick(citationKey, messageIndex);
         }
@@ -69,8 +96,18 @@ function CitationLink({
                 </span>
             </HoverCardTrigger>
             <HoverCardContent className="w-80 p-2 pt-3 shadow-md bg-accent" sideOffset={0}>
-                {paper && <p className="text-sm font-bold text-accent-foreground">{paper.title}</p>}
-                <p className="text-sm text-accent-foreground">{'reference' in matchingCitation ? matchingCitation.reference : matchingCitation.text}</p>
+                {sourceTitle && (
+                    <p className="text-sm font-bold text-accent-foreground">{sourceTitle}</p>
+                )}
+                {paper && !sourceTitle && (
+                    <p className="text-sm font-bold text-accent-foreground">{paper.title}</p>
+                )}
+                <p className="text-sm text-accent-foreground">
+                    {referenceText}
+                </p>
+                {externalUrl && (
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{new URL(externalUrl).hostname}</p>
+                )}
             </HoverCardContent>
         </HoverCard>
     );

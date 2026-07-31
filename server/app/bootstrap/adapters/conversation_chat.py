@@ -13,7 +13,6 @@ from app.helpers.ai_limits import (
     enforce_rate_limit,
     release_concurrency,
 )
-from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_operations import conversation_operations
 from app.llm.conversation_agent import ConversationAgentRuntime
 from app.llm.token_credits import llm_usage_context
@@ -46,8 +45,8 @@ _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 _JSON_OBJECT_LIST = TypeAdapter(list[dict[str, JsonValue]])
 
 
-class EvidenceState(TypedDict):
-    evidence: dict[str, Any] | None
+class ReferencesState(TypedDict):
+    references: dict[str, Any] | None
 
 
 class HighlightGroup(TypedDict):
@@ -68,7 +67,7 @@ def _append_status(messages: list[str] | None, message: str) -> None:
 async def _stream_chat_chunks(
     chunk_generator: AsyncGenerator[dict[str, object] | str, None],
     content_chunks: list[str],
-    evidence_container: EvidenceState,
+    references_container: ReferencesState,
     artifacts: list[dict[str, object]] | None = None,
     status_messages: list[str] | None = None,
     reasoning_chunks: list[str] | None = None,
@@ -121,7 +120,7 @@ async def _stream_chat_chunks(
                 yield f"{json_response}{END_DELIMITER}"
 
         elif chunk_type == "references":
-            evidence_container["evidence"] = (
+            references_container["references"] = (
                 chunk_content if isinstance(chunk_content, dict) else None
             )
             try:
@@ -202,7 +201,12 @@ async def stream_conversation_agent(
         scope_snapshot.extend(mentions.snapshot)
 
     formatted_references = (
-        CitationHandler.convert_references_to_dict(references=request.user_references)
+        {
+            "citations": [
+                {"key": index, "kind": "user", "reference": reference}
+                for index, reference in enumerate(request.user_references, start=1)
+            ]
+        }
         if request.user_references
         else None
     )
@@ -266,7 +270,7 @@ async def stream_conversation_agent(
         status_messages: list[str] = []
         reasoning_chunks: list[str] = []
         start_time = datetime.now(timezone.utc)
-        evidence_container: EvidenceState = {"evidence": None}
+        references_container: ReferencesState = {"references": None}
         tool_state: ToolRunState | None = None
 
         async for chunk in runtime.run_tools(
@@ -309,11 +313,12 @@ async def stream_conversation_agent(
             None,
         )
         lacks_answer_context = tool_state is None or (
-            len(tool_state.evidence) == 0
+            not tool_state.has_answer_material()
             and len(tool_state.artifacts) == 0
             and len(tool_state.action_results) == 0
-            and not tool_state.has_informational_results()
             and (anchor_paper is None or not anchor_paper.raw_content)
+            and not mentioned_highlights
+            and not request.user_references
         )
         if lacks_answer_context:
             no_results_message = (
@@ -351,14 +356,14 @@ async def stream_conversation_agent(
             async for stream_chunk in _stream_chat_chunks(
                 chunk_generator=chat_generator,
                 content_chunks=content_chunks,
-                evidence_container=evidence_container,
+                references_container=references_container,
                 artifacts=artifacts_collected,
                 status_messages=status_messages,
                 reasoning_chunks=reasoning_chunks,
             ):
                 yield stream_chunk
 
-        evidence = evidence_container["evidence"]
+        references = references_container["references"]
 
         # Save the complete message to the database
         full_content = "".join(content_chunks)
@@ -394,7 +399,7 @@ async def stream_conversation_agent(
                 turn_id=request.turn_id,
                 assistant_content=full_content,
                 assistant_references=(
-                    _JSON_OBJECT.validate_python(evidence) if evidence else None
+                    _JSON_OBJECT.validate_python(references) if references else None
                 ),
                 assistant_trace=(
                     _JSON_OBJECT.validate_python(assistant_trace)
@@ -457,7 +462,7 @@ async def stream_conversation_agent(
             "did_chat_message",
             properties={
                 "has_user_references": bool(request.user_references),
-                "has_evidence": bool(evidence),
+                "has_references": bool(references),
                 "reasoning_level": request.reasoning_level.value,
                 "time_taken": (datetime.now(timezone.utc) - start_time).total_seconds(),
                 "type": conversation_scope.scope_type.value,

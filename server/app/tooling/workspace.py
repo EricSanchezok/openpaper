@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from typing import cast
 from uuid import UUID
 
@@ -46,6 +47,7 @@ from app.shared.domain import (
 from app.shared.domain.enums import JobOperation, PaperStatus, RoleType
 from app.tooling.catalog import ToolCatalog, ToolProfile
 from app.tooling.contracts import (
+    DocumentSourceCandidate,
     ToolExecutionContext,
     ToolDefinition,
     ToolExecutionKind,
@@ -62,6 +64,49 @@ def _json(value: object) -> JsonValue:
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="json")
     return _JSON_VALUE.validate_python(value)
+
+
+def _document_source(
+    *,
+    document_id: UUID,
+    excerpt: str,
+    title: str | None = None,
+    authors: list[str] | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> DocumentSourceCandidate:
+    locator: dict[str, JsonValue] = {}
+    if start_line is not None:
+        locator["start_line"] = start_line
+    if end_line is not None:
+        locator["end_line"] = end_line
+    return DocumentSourceCandidate(
+        document_id=document_id,
+        excerpt=excerpt,
+        title=title,
+        authors=tuple(authors or ()),
+        locator=locator or None,
+    )
+
+
+def _source_from_numbered_line(
+    *, document_id: UUID, value: str, title: str | None = None
+) -> DocumentSourceCandidate:
+    match = re.match(r"^(\d+):\s*(.*)$", value, flags=re.DOTALL)
+    if match is None:
+        return _document_source(
+            document_id=document_id,
+            excerpt=value,
+            title=title,
+        )
+    line_number = int(match.group(1))
+    return _document_source(
+        document_id=document_id,
+        excerpt=match.group(2),
+        title=title,
+        start_line=line_number,
+        end_line=line_number,
+    )
 
 
 def _require_paper(
@@ -210,14 +255,21 @@ def _search_papers(
             limit=100,
         ),
     )
-    evidence: dict[str, list[str]] = {}
+    sources: list[DocumentSourceCandidate] = []
     for item in response.items:
-        snippets = [
-            f"{snippet.start_line or 1}: {snippet.text}" for snippet in item.snippets
-        ]
-        if snippets:
-            evidence[str(item.document_id)] = snippets
-    return ToolOutcome(payload=_json(response), evidence=evidence)
+        sources.extend(
+            _document_source(
+                document_id=item.document_id,
+                excerpt=snippet.text,
+                title=item.title,
+                authors=item.authors,
+                start_line=snippet.start_line,
+                end_line=snippet.end_line,
+            )
+            for snippet in item.snippets
+            if snippet.text
+        )
+    return ToolOutcome(payload=_json(response), sources=tuple(sources))
 
 
 def _get_paper(
@@ -268,7 +320,17 @@ def _get_paper_abstract(
     }
     return ToolOutcome(
         payload=_json(payload),
-        evidence=({str(parsed.document_id): [abstract]} if abstract else {}),
+        sources=(
+            (
+                _document_source(
+                    document_id=parsed.document_id,
+                    excerpt=abstract,
+                    title=title,
+                ),
+            )
+            if abstract
+            else ()
+        ),
     )
 
 
@@ -290,7 +352,17 @@ def _get_paper_content(
     }
     return ToolOutcome(
         payload=_json(payload),
-        evidence=({str(parsed.document_id): [content]} if content else {}),
+        sources=(
+            (
+                _document_source(
+                    document_id=parsed.document_id,
+                    excerpt=content,
+                    title=title,
+                ),
+            )
+            if content
+            else ()
+        ),
     )
 
 
@@ -308,7 +380,14 @@ def _search_paper_content(
     )
     return ToolOutcome(
         payload=_json({"document_id": str(parsed.document_id), "matches": matches}),
-        evidence={str(parsed.document_id): matches},
+        sources=tuple(
+            _source_from_numbered_line(
+                document_id=parsed.document_id,
+                value=match,
+            )
+            for match in matches
+            if match
+        ),
     )
 
 
@@ -348,7 +427,14 @@ def _get_paper_content_range(
                 "lines": lines,
             }
         ),
-        evidence={str(parsed.document_id): lines},
+        sources=tuple(
+            _source_from_numbered_line(
+                document_id=parsed.document_id,
+                value=line,
+                title=title,
+            )
+            for line in lines
+        ),
     )
 
 

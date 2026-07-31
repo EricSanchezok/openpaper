@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeAlias, TypeVar
 from uuid import UUID
 
 from app.modules.papers.application.contracts.search import PaperCollection
@@ -25,6 +25,28 @@ class ToolExecutionKind(StrEnum):
     COMMAND = "command"
     WORKFLOW = "workflow"
     CONTROL = "control"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DocumentSourceCandidate:
+    kind: Literal["document"] = "document"
+    document_id: UUID
+    excerpt: str
+    title: str | None = None
+    authors: tuple[str, ...] = ()
+    locator: dict[str, JsonValue] | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ExternalSourceCandidate:
+    kind: Literal["external"] = "external"
+    url: str
+    excerpt: str | None = None
+    title: str | None = None
+    origin: dict[str, JsonValue] | None = None
+
+
+ToolSourceCandidate: TypeAlias = DocumentSourceCandidate | ExternalSourceCandidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +77,7 @@ class ToolExecutionContext:
 @dataclass(frozen=True, slots=True)
 class ToolOutcome:
     payload: JsonValue
-    evidence: dict[str, list[str]] = field(default_factory=dict)
+    sources: tuple[ToolSourceCandidate, ...] = ()
     artifacts: list[dict[str, JsonValue]] = field(default_factory=list)
     action: dict[str, JsonValue] | None = None
     stop: bool = False

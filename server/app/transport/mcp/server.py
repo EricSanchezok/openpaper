@@ -22,7 +22,13 @@ from app.shared.application import (
     RequestReference,
 )
 from app.shared.domain import AppError, FailureKind, JsonValue
-from app.tooling import ToolAccess, ToolExecutionContext, ToolCatalog, ToolDispatcher
+from app.tooling import (
+    ToolAccess,
+    ToolCatalog,
+    ToolDispatcher,
+    ToolExecutionContext,
+    ToolSourceCandidate,
+)
 from app.tooling.workspace import MCP_TOOL_PROFILE
 from app.transport.client_ip import UNKNOWN_CLIENT_IP, normalize_client_ip
 from app.transport.mcp.references import (
@@ -36,8 +42,10 @@ from mcp.server.lowlevel.server import request_ctx
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import Receive, Scope, Send
+from pydantic import TypeAdapter
 
 logger = logging.getLogger(__name__)
+_SOURCE_LIST = TypeAdapter(list[ToolSourceCandidate])
 
 AccessKeyAuthenticator = Callable[[str], Awaitable[AuthenticatedAccessKey]]
 ListToolsHandler = Callable[[], Awaitable[list[mcp_types.Tool]]]
@@ -104,13 +112,13 @@ def _error_result(
 def _outcome_payload(
     *,
     payload: JsonValue,
-    evidence: dict[str, list[str]],
+    sources: tuple[ToolSourceCandidate, ...],
     artifacts: list[dict[str, JsonValue]],
     action: dict[str, JsonValue] | None,
 ) -> dict[str, object]:
     return {
         "result": payload,
-        "evidence": evidence,
+        "sources": _SOURCE_LIST.dump_python(list(sources), mode="json"),
         "artifacts": artifacts,
         "action": action,
     }
@@ -363,7 +371,7 @@ def build_mcp_transport(
 
         structured = _outcome_payload(
             payload=outcome.payload,
-            evidence=outcome.evidence,
+            sources=outcome.sources,
             artifacts=outcome.artifacts,
             action=outcome.action,
         )

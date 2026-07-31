@@ -1,5 +1,4 @@
 import json
-import re
 import uuid
 from typing import Any
 
@@ -8,8 +7,10 @@ from app.shared.application.context_budget import (
     truncate_to_token_budget,
 )
 from app.shared.domain.enums import ReasoningLevel
+from app.shared.domain import JsonValue
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.papers.application.contracts.extraction import ToolCall, ToolCallResult
+from app.tooling.contracts import ToolOutcome, ToolSourceCandidate
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -50,76 +51,21 @@ class ConversationMessageRequest(BaseModel):
         return value
 
 
-class PaperEvidence(BaseModel):
-    """Evidence collected from one paper during a tool run."""
+class ToolObservation(BaseModel):
+    """One successful, immutable tool result retained for the final answer."""
 
-    document_id: str = Field(
-        ...,
-        description="Unique identifier for the paper. Not to be used for user-facing responses. Only for internal tracking.",
-    )
-    content: list[str] = Field(
-        default_factory=list, description="List of evidence content strings"
-    )
-    metadata: dict[str, list[str]] = Field(
-        default_factory=dict, description="Metadata associated with the evidence"
-    )
-
-    def add_content(
-        self, content: str | list[str], with_line_numbers: bool = False
-    ) -> None:
-        """Add content to the evidence"""
-        if isinstance(content, str):
-            self.content.append(content)
-            if with_line_numbers:
-                # Extract line numbers from content like "123: some text"
-                line_match = re.match(r"^(\d+):\s*(.+)", content)
-                if line_match:
-                    line_num = line_match.group(1)
-                    clean_content = line_match.group(2)
-                    if "line_numbers" not in self.metadata:
-                        self.metadata["line_numbers"] = []
-                    self.metadata["line_numbers"].append(line_num)
-                    # Replace with clean content
-                    self.content[-1] = clean_content
-        else:
-            for item in content:
-                self.add_content(item, with_line_numbers)
-
-    def get_clean_content(self) -> list[str]:
-        """Get content without line number prefixes"""
-        return self.content
-
-    def get_line_numbers(self) -> list[str]:
-        """Get associated line numbers"""
-        return self.metadata.get("line_numbers", [])
-
-
-class OriginalSnippet(BaseModel):
-    """An original evidence snippet with its source metadata."""
-
-    document_id: str = Field(description="The paper ID this snippet came from")
-    text: str = Field(description="The original snippet text")
-    line_number: str | None = Field(
-        default=None, description="Line number in source paper"
-    )
-
-
-class CitationIndex(BaseModel):
-    """Maps compaction citation markers to original evidence snippets."""
-
-    # Key: "{document_id}:{snippet_index}" e.g., "abc123:0"
-    index: dict[str, OriginalSnippet] = Field(
-        default_factory=dict,
-        description="Mapping of document_id:index keys to original snippets",
-    )
+    result_index: int = Field(ge=0)
+    name: str
+    args: dict[str, Any]
+    payload: JsonValue
+    sources: list[ToolSourceCandidate] = Field(default_factory=list)
+    materials: list[JsonValue] | None = None
+    action_only: bool = False
 
 
 class ToolRunState(BaseModel):
     """Typed state produced by one Conversation tool loop."""
 
-    evidence: dict[str, PaperEvidence] = Field(
-        default_factory=dict, description="Mapping of paper IDs to their evidence"
-    )
     tool_calls: list[ToolCall] = Field(
         default_factory=list,
         description="List of previous tool calls made during evidence gathering",
@@ -128,34 +74,24 @@ class ToolRunState(BaseModel):
         default_factory=list,
         description="List of tool call results for proper multi-turn function calling",
     )
-    informational_results: list[ToolCallResult] = Field(
+    observations: list[ToolObservation] = Field(
         default_factory=list,
-        description="Successful external research results available to the final answer.",
+        description="Successful tool observations available to the final answer.",
     )
     compacted_tool_result_indexes: set[int] = Field(
         default_factory=set,
         exclude=True,
         description="Internal indexes of raw tool results already summarized once.",
     )
-    citation_index: CitationIndex = Field(
-        default_factory=CitationIndex,
-        description="Sidecar storage for original snippets during compaction",
-    )
-    is_compacted: bool = Field(
-        default=False,
-        description="Whether evidence has been compacted (citations need resolution)",
-    )
+    failed_observations: int = 0
     artifacts: list[CitationResult] = Field(
         default_factory=list,
         description="First-party artifacts produced during gathering (e.g. citations)",
     )
-    action_results: list[dict[str, Any]] = Field(
+    action_results: list[dict[str, JsonValue]] = Field(
         default_factory=list,
         description="Successful state-changing tool outcomes.",
     )
-
-    def add_action_result(self, result: dict[str, Any]) -> None:
-        self.action_results.append(result)
 
     def add_artifact(self, artifact: CitationResult) -> None:
         """Record a first-party artifact (e.g. a resolved citation)."""
@@ -185,118 +121,80 @@ class ToolRunState(BaseModel):
             "actions": self.action_results,
         }
 
-    def load_from_dict(self, evidence_dict: dict[str, list[str]]) -> None:
-        """Load evidence from a dictionary format"""
-        for document_id, content in evidence_dict.items():
-            self.evidence[document_id] = PaperEvidence(
-                document_id=document_id, content=content
-            )
-
-    def add_evidence(
-        self,
-        document_id: str,
-        content: str | list[str],
-        preserve_line_numbers: bool = False,
-    ) -> None:
-        """Add evidence for a specific paper"""
-        if document_id not in self.evidence:
-            self.evidence[document_id] = PaperEvidence(
-                document_id=document_id,
-                content=[],
-            )
-        self.evidence[document_id].add_content(
-            content, with_line_numbers=preserve_line_numbers
-        )
-
     def add_tool_call(self, tool_call: ToolCall) -> None:
         """Add a tool call to the collection"""
         self.tool_calls.append(tool_call)
 
-    def add_tool_call_result(
-        self,
-        tool_call: ToolCall,
-        result: Any,
-        *,
-        informational: bool = False,
-    ) -> None:
-        """Add a tool call result for proper multi-turn function calling"""
+    def add_tool_outcome(self, tool_call: ToolCall, outcome: ToolOutcome) -> None:
+        """Record one successful result for both the loop and final answer."""
+        result_index = len(self.tool_call_results)
         item = ToolCallResult(
             id=tool_call.id,
             name=tool_call.name,
             args=tool_call.args,
-            result=result,
+            result=outcome.payload,
         )
         self.tool_call_results.append(item)
-        if informational:
-            self.informational_results.append(item)
+        if not outcome.stop:
+            self.observations.append(
+                ToolObservation(
+                    result_index=result_index,
+                    name=tool_call.name,
+                    args=tool_call.args,
+                    payload=outcome.payload,
+                    sources=list(outcome.sources),
+                    action_only=outcome.action is not None and not outcome.sources,
+                )
+            )
+        if outcome.action is not None:
+            self.action_results.append(outcome.action)
 
-    def get_tool_call_results(self) -> list[ToolCallResult]:
-        """Get all tool call results for passing to LLM"""
-        return self.tool_call_results
+    def add_tool_error(self, tool_call: ToolCall, result: JsonValue) -> None:
+        result_index = len(self.tool_call_results)
+        self.tool_call_results.append(
+            ToolCallResult(
+                id=tool_call.id,
+                name=tool_call.name,
+                args=tool_call.args,
+                result=result,
+            )
+        )
+        self.compacted_tool_result_indexes.add(result_index)
+        self.failed_observations += 1
 
-    def answer_tool_results(
-        self, *, max_tokens: int | None = None
-    ) -> list[dict[str, Any]]:
-        """Successful informational results that the final answer may use.
-
-        A final-answer budget keeps every result represented while bounding its
-        payload. Tool-loop state itself remains unchanged.
-        """
-        if max_tokens is None or not self.informational_results:
-            return [item.model_dump(mode="json") for item in self.informational_results]
-
-        bounded: list[dict[str, Any]] = []
-        remaining_tokens = max_tokens
-        for offset, item in enumerate(self.informational_results):
-            payload = item.model_dump(mode="json")
-            original_result = payload.pop("result", None)
-            serialized_result = _serialize_tool_result(original_result)
-            remaining_items = len(self.informational_results) - offset
+    def tool_call_results_for_model(self, *, max_tokens: int) -> list[ToolCallResult]:
+        """Return a fair bounded view without mutating retained observations."""
+        if self.get_tool_results_token_estimate() <= max_tokens:
+            return self.tool_call_results
+        per_result = max(1, max_tokens // max(1, len(self.tool_call_results)))
+        bounded: list[ToolCallResult] = []
+        for result in self.tool_call_results:
             metadata_tokens = estimate_tokens(
-                json.dumps(payload, ensure_ascii=False, default=str)
+                json.dumps(
+                    {
+                        "id": result.id,
+                        "name": result.name,
+                        "args": result.args,
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                )
             )
-            result_budget = max(
-                1,
-                remaining_tokens // remaining_items - metadata_tokens,
+            result_budget = max(1, per_result - metadata_tokens)
+            bounded.append(
+                result.model_copy(
+                    update={
+                        "result": truncate_to_token_budget(
+                            _serialize_tool_result(result.result),
+                            result_budget,
+                        )
+                    }
+                )
             )
-            bounded_result = truncate_to_token_budget(
-                serialized_result,
-                result_budget,
-            )
-            payload["result"] = (
-                original_result
-                if bounded_result == serialized_result
-                else bounded_result
-            )
-            used_tokens = estimate_tokens(
-                json.dumps(payload, ensure_ascii=False, default=str)
-            )
-            remaining_tokens = max(0, remaining_tokens - used_tokens)
-            bounded.append(payload)
         return bounded
 
-    def has_informational_results(self) -> bool:
-        return bool(self.answer_tool_results())
-
-    def get_evidence_dict(self) -> dict[str, list[str]]:
-        """Return clean evidence content without line numbers."""
-        return {
-            document_id: evidence.get_clean_content()
-            for document_id, evidence in self.evidence.items()
-        }
-
-    def get_evidence_dict_with_metadata(
-        self,
-    ) -> dict[str, dict[str, list[str] | dict[str, list[str]]]]:
-        """Get evidence with metadata for agent context"""
-        return {
-            document_id: {"content": evidence.content, "metadata": evidence.metadata}
-            for document_id, evidence in self.evidence.items()
-        }
-
-    def has_evidence(self) -> bool:
-        """Check if any evidence has been collected"""
-        return bool(self.evidence)
+    def has_answer_material(self) -> bool:
+        return any(not item.action_only for item in self.observations)
 
     def has_tool_calls(self) -> bool:
         return bool(self.tool_calls)
@@ -361,7 +259,7 @@ class ToolRunState(BaseModel):
         """Summarize matching raw results in place, at most once per result.
 
         Invalid, duplicate, or omitted model entries leave the original result intact.
-        Updating in place also preserves the informational-results references.
+        The matching observation keeps its one-time materialization sidecar.
         """
         applied = 0
         for compacted in compacted_results:
@@ -373,39 +271,28 @@ class ToolRunState(BaseModel):
             ):
                 continue
             original = self.tool_call_results[index]
-            if original.name != compacted.name or not compacted.summary.strip():
+            if original.name != compacted.name or not compacted.loop_summary.strip():
                 continue
-            original.result = compacted.summary.strip()
+            original.result = compacted.loop_summary.strip()
+            observation = next(
+                (
+                    item
+                    for item in self.observations
+                    if item.result_index == compacted.result_index
+                ),
+                None,
+            )
+            if observation is not None:
+                observation.materials = [item.content for item in compacted.materials]
             self.compacted_tool_result_indexes.add(index)
             applied += 1
         return applied
 
-    def get_evidence_size(self) -> int:
-        """Calculate the total character size of all evidence"""
-        total_size = 0
-        for evidence in self.evidence.values():
-            for snippet in evidence.content:
-                total_size += len(snippet)
-        return total_size
 
-    def get_evidence_token_estimate(self) -> int:
-        """Estimate the context occupied by collected paper evidence."""
-        return sum(
-            estimate_tokens(snippet)
-            for evidence in self.evidence.values()
-            for snippet in evidence.content
-        )
+class CompactedMaterial(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    def apply_compacted_evidence(
-        self, compacted_evidence: dict[str, list[str]]
-    ) -> None:
-        """Replace evidence with compacted versions from LLM compaction"""
-        # Clear existing evidence and load compacted version
-        self.evidence.clear()
-        for document_id, snippets in compacted_evidence.items():
-            self.evidence[document_id] = PaperEvidence(
-                document_id=document_id, content=snippets
-            )
+    content: JsonValue
 
 
 class CompactedToolResult(BaseModel):
@@ -416,11 +303,12 @@ class CompactedToolResult(BaseModel):
         description="The stable result_index supplied in the compaction input",
     )
     name: str = Field(description="The tool/function name that was called")
-    summary: str = Field(
+    loop_summary: str = Field(
         min_length=1,
         max_length=1_000,
         description="Concise summary of the result, preserving key information",
     )
+    materials: list[CompactedMaterial] = Field(min_length=1, max_length=50)
 
 
 class ToolResultCompactionResponse(BaseModel):
@@ -429,48 +317,4 @@ class ToolResultCompactionResponse(BaseModel):
     compacted_results: list[CompactedToolResult] = Field(
         default_factory=list,
         description="List of compacted tool results with summaries",
-    )
-
-
-class SummaryCitationMarker(BaseModel):
-    """A citation marker in a summary pointing to an original snippet."""
-
-    marker: int = Field(description="The [@n] marker number used in the summary")
-    original_snippet_index: int = Field(
-        description="Index of the original snippet this marker references"
-    )
-
-
-class PaperEvidenceSummary(BaseModel):
-    """Summary of evidence from a single paper."""
-
-    document_id: str = Field(description="The paper ID")
-    summary: str = Field(
-        description="Concise summary with [@n] markers referencing original snippets"
-    )
-    citations: list[SummaryCitationMarker] = Field(
-        default_factory=list,
-        description="Mapping of [@n] markers to original snippet indices",
-    )
-
-
-class EvidenceSummaryResponse(BaseModel):
-    """Response for evidence compaction - one summary per paper."""
-
-    papers: list[PaperEvidenceSummary] = Field(
-        default_factory=list,
-        description="List of paper summaries. You may omit papers with no relevant evidence.",
-    )
-
-
-class EvidenceCompactionResponse(BaseModel):
-    """Response structure for evidence compaction before chat response.
-
-    The format matches ToolRunState.get_evidence_dict() output:
-    Dict[str, List[str]] mapping document_id to list of evidence strings.
-    """
-
-    compacted_evidence: dict[str, list[str]] = Field(
-        default_factory=dict,
-        description="Mapping of paper IDs to their compacted evidence snippets. Each paper should have a reduced list of summarized evidence strings that preserve key findings, quotes, and data points.",
     )

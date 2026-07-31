@@ -95,27 +95,29 @@ class NoConnectorTools:
 def test_control_result_is_not_informational_answer_context() -> None:
     state = ToolRunState()
     finish = ToolCall(id="finish", name="finish_tool_use", args={})
-    state.add_tool_call_result(finish, {"completed": True})
-
-    assert state.has_informational_results() is False
-
-    connector_call = ToolCall(id="remote", name="web_search", args={"query": "RAG"})
-    state.add_tool_call_result(
-        connector_call,
-        {"results": ["source"]},
-        informational=True,
+    state.add_tool_outcome(
+        finish,
+        ToolOutcome(payload={"completed": True}, stop=True),
     )
 
-    assert state.has_informational_results() is True
-    assert [item["name"] for item in state.answer_tool_results()] == ["web_search"]
+    assert state.has_answer_material() is False
+
+    connector_call = ToolCall(id="remote", name="web_search", args={"query": "RAG"})
+    state.add_tool_outcome(
+        connector_call,
+        ToolOutcome(payload={"results": ["source"]}),
+    )
+
+    assert state.has_answer_material() is True
+    assert [item.name for item in state.observations] == ["web_search"]
 
 
 def test_tool_result_compaction_is_incremental_and_never_recompacts_summary() -> None:
     state = ToolRunState()
     first = ToolCall(id="first", name="search", args={"query": "one"})
     second = ToolCall(id="second", name="extract", args={"url": "two"})
-    state.add_tool_call_result(first, {"raw": "first result"}, informational=True)
-    state.add_tool_call_result(second, {"raw": "second result"}, informational=True)
+    state.add_tool_outcome(first, ToolOutcome(payload={"raw": "first result"}))
+    state.add_tool_outcome(second, ToolOutcome(payload={"raw": "second result"}))
 
     assert (
         state.apply_compacted_results(
@@ -123,7 +125,8 @@ def test_tool_result_compaction_is_incremental_and_never_recompacts_summary() ->
                 CompactedToolResult(
                     result_index=0,
                     name="search",
-                    summary="first summary",
+                    loop_summary="first summary",
+                    materials=[{"content": {"finding": "first"}}],
                 )
             ]
         )
@@ -136,7 +139,7 @@ def test_tool_result_compaction_is_incremental_and_never_recompacts_summary() ->
 
     assert [item["result_index"] for item in pending] == [1]
     assert state.tool_call_results[0].result == "first summary"
-    assert state.answer_tool_results()[0]["result"] == "first summary"
+    assert state.observations[0].materials == [{"finding": "first"}]
 
     assert (
         state.apply_compacted_results(
@@ -144,12 +147,14 @@ def test_tool_result_compaction_is_incremental_and_never_recompacts_summary() ->
                 CompactedToolResult(
                     result_index=0,
                     name="search",
-                    summary="summary of the summary",
+                    loop_summary="summary of the summary",
+                    materials=[{"content": {"finding": "wrong"}}],
                 ),
                 CompactedToolResult(
                     result_index=1,
                     name="extract",
-                    summary="second summary",
+                    loop_summary="second summary",
+                    materials=[{"content": {"finding": "second"}}],
                 ),
             ]
         )
@@ -162,7 +167,7 @@ def test_tool_result_compaction_is_incremental_and_never_recompacts_summary() ->
 def test_tool_result_compaction_preserves_omitted_and_invalid_results() -> None:
     state = ToolRunState()
     call = ToolCall(id=None, name="search", args={"query": "one"})
-    state.add_tool_call_result(call, {"raw": "must survive"})
+    state.add_tool_outcome(call, ToolOutcome(payload={"raw": "must survive"}))
 
     assert state.apply_compacted_results([]) == 0
     assert (
@@ -171,13 +176,30 @@ def test_tool_result_compaction_preserves_omitted_and_invalid_results() -> None:
                 CompactedToolResult(
                     result_index=0,
                     name="wrong_tool",
-                    summary="incorrect replacement",
+                    loop_summary="incorrect replacement",
+                    materials=[{"content": {"finding": "incorrect"}}],
                 )
             ]
         )
         == 0
     )
     assert state.tool_call_results[0].result == {"raw": "must survive"}
+
+
+def test_tool_loop_model_view_bounds_results_without_mutating_observations() -> None:
+    state = ToolRunState()
+    for index in range(2):
+        call = ToolCall(id=str(index), name="search", args={"query": str(index)})
+        state.add_tool_outcome(
+            call,
+            ToolOutcome(payload={"raw": "x" * 10_000}),
+        )
+
+    bounded = state.tool_call_results_for_model(max_tokens=100)
+
+    assert len(bounded) == 2
+    assert all(len(str(item.result)) < 10_000 for item in bounded)
+    assert state.observations[0].payload == {"raw": "x" * 10_000}
 
 
 @pytest.mark.asyncio

@@ -221,7 +221,8 @@ export function SidePanelContent({
 
     const transformReferencesToFormat = useCallback((references: string[]) => {
         const citations = references.map((ref, index) => ({
-            key: `${index + 1}`,
+            key: index + 1,
+            kind: 'user' as const,
             reference: ref,
         }));
 
@@ -650,28 +651,48 @@ export function SidePanelContent({
                                 </div>
                                 <ul className="list-none p-0">
                                     {msg.references.citations.map((value, refIndex) => (
-                                        <div
-                                            key={refIndex}
-                                            className={`flex flex-row gap-2 animate-fade-in ${matchesCurrentCitation(value.key, index) ? 'bg-blue-100 dark:bg-blue-900 rounded p-1 transition-colors duration-300' : ''}`}
-                                            id={`citation-${value.key}-${index}`}
-                                            onClick={() => handleCitationClick(value.key, index)}
-                                        >
-                                            <div className={`text-xs ${msg.role === 'user'
-                                                ? 'bg-blue-200 text-blue-800'
-                                                : 'text-secondary-foreground'
-                                                }`}>
-                                                <a href={`#citation-ref-${value.key}`}>{value.key}</a>
-                                            </div>
-                                            <div
-                                                id={`citation-ref-${value.key}-${index}`}
-                                                className={`text-xs ${msg.role === 'user'
-                                                    ? 'bg-blue-200 text-blue-800 line-clamp-1'
-                                                    : 'text-secondary-foreground'
-                                                    }`}
+                                        value.kind === 'external' ? (
+                                            <a
+                                                key={refIndex}
+                                                href={value.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex animate-fade-in flex-row gap-2 rounded p-1 no-underline hover:bg-muted/50"
                                             >
-                                                {value.reference}
+                                                <span className="text-xs text-secondary-foreground">{value.key}</span>
+                                                <span className="min-w-0 text-xs text-secondary-foreground">
+                                                    <span className="block font-medium">{value.title || new URL(value.url).hostname}</span>
+                                                    <span className="block text-muted-foreground">{new URL(value.url).hostname}</span>
+                                                    <span className="mt-1 block">{value.reference}</span>
+                                                </span>
+                                            </a>
+                                        ) : (
+                                            <div
+                                                key={refIndex}
+                                                className={`flex flex-row gap-2 animate-fade-in ${matchesCurrentCitation(String(value.key), index) ? 'bg-blue-100 dark:bg-blue-900 rounded p-1 transition-colors duration-300' : ''}`}
+                                                id={`citation-${value.key}-${index}`}
+                                                onClick={() => handleCitationClick(String(value.key), index)}
+                                            >
+                                                <div className={`text-xs ${msg.role === 'user'
+                                                    ? 'bg-blue-200 text-blue-800'
+                                                    : 'text-secondary-foreground'
+                                                    }`}>
+                                                    <a href={`#citation-ref-${value.key}`}>{value.key}</a>
+                                                </div>
+                                                <div
+                                                    id={`citation-ref-${value.key}-${index}`}
+                                                    className={`text-xs ${msg.role === 'user'
+                                                        ? 'bg-blue-200 text-blue-800 line-clamp-1'
+                                                        : 'text-secondary-foreground'
+                                                        }`}
+                                                >
+                                                    {value.kind === 'document' && value.title && (
+                                                        <span className="block font-medium">{value.title}</span>
+                                                    )}
+                                                    {value.reference}
+                                                </div>
                                             </div>
-                                        </div>
+                                        )
                                     ))}
                                 </ul>
                             </div>

@@ -2,21 +2,27 @@
 
 from .catalog import ToolCatalog, ToolProfile
 from .contracts import (
+    DocumentSourceCandidate,
+    ExternalSourceCandidate,
     ToolAccess,
     ToolExecutionContext,
     ToolDefinition,
     ToolExecutionKind,
     ToolOutcome,
+    ToolSourceCandidate,
 )
 from .dispatcher import ToolDispatcher
 
 __all__ = [
-    "ToolExecutionContext",
+    "DocumentSourceCandidate",
+    "ExternalSourceCandidate",
     "ToolAccess",
     "ToolCatalog",
     "ToolDefinition",
     "ToolDispatcher",
+    "ToolExecutionContext",
     "ToolExecutionKind",
     "ToolOutcome",
     "ToolProfile",
+    "ToolSourceCandidate",
 ]

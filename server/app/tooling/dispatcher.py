@@ -16,6 +16,7 @@ from app.tooling.contracts import (
     ToolExecutionKind,
     ToolHandler,
     ToolOutcome,
+    ToolSourceCandidate,
 )
 from app.tooling.invocations import ToolInvocationGateway
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
@@ -26,7 +27,7 @@ _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 class _PersistedToolOutcome(BaseModel):
     payload: JsonValue
-    evidence: dict[str, list[str]] = Field(default_factory=dict)
+    sources: tuple[ToolSourceCandidate, ...] = ()
     artifacts: list[dict[str, JsonValue]] = Field(default_factory=list)
     action: dict[str, JsonValue] | None = None
     stop: bool = False
@@ -36,7 +37,7 @@ def _persisted_outcome(outcome: ToolOutcome) -> JsonValue:
     return _JSON_VALUE.validate_python(
         _PersistedToolOutcome(
             payload=outcome.payload,
-            evidence=outcome.evidence,
+            sources=outcome.sources,
             artifacts=outcome.artifacts,
             action=outcome.action,
             stop=outcome.stop,
@@ -55,7 +56,7 @@ def _restore_outcome(value: JsonValue) -> ToolOutcome:
         ) from exc
     return ToolOutcome(
         payload=persisted.payload,
-        evidence=persisted.evidence,
+        sources=persisted.sources,
         artifacts=persisted.artifacts,
         action=persisted.action,
         stop=persisted.stop,

@@ -136,13 +136,13 @@ function ProjectConversationPageContent() {
             if (!message) return prevHighlight;
 
             const citation = message.references?.citations?.find(c => String(c.key) === key);
-            if (!citation || !citation.document_id) return prevHighlight;
+            if (!citation || citation.kind !== 'document') return prevHighlight;
 
             const newHighlight = { documentId: citation.document_id, messageIndex };
 
             // Scroll to element
             setTimeout(() => {
-                const elementId = message.id ? `${message.id}-reference-paper-card-${citation.document_id}` : `${messageIndex}-reference-paper-card-${citation.document_id}`;
+                const elementId = `${message.id || messageIndex}-reference-${citation.document_id}`;
                 const element = document.getElementById(elementId);
 
                 if (element) {

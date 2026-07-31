@@ -324,6 +324,35 @@ def test_legacy_model_tool_names_cannot_reenter_runtime_code() -> None:
         assert f"'{name}'" not in source
 
 
+def test_conversation_answer_runtime_has_one_packet_and_typed_source_path() -> None:
+    runtime_files = (
+        APP_ROOT / "llm" / "conversation_agent.py",
+        APP_ROOT / "llm" / "conversation_tool_loop.py",
+        APP_ROOT / "llm" / "prompts.py",
+        APP_ROOT
+        / "modules"
+        / "conversations"
+        / "application"
+        / "contracts"
+        / "messages.py",
+    )
+    source = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
+    for legacy in (
+        "---EVIDENCE---",
+        "@cite[",
+        "CitationIndex",
+        "OriginalSnippet",
+        "EvidenceSummaryResponse",
+        "informational_results",
+        "collected_evidence",
+    ):
+        assert legacy not in source
+
+    agent_source = runtime_files[0].read_text(encoding="utf-8")
+    assert 'label="answer_packet"' in agent_source
+    assert agent_source.count('label="answer_packet"') == 1
+
+
 def test_only_versioned_public_routes_are_exposed() -> None:
     paths = set(app.openapi()["paths"])
     public_business_paths = {path for path in paths if path.startswith("/api/")}

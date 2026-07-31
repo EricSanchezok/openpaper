@@ -130,11 +130,11 @@ function UnderstandPageContent() {
         if (!message) return;
 
         const citation = message.references?.citations?.find(c => String(c.key) === key);
-        if (!citation || !citation.document_id) return;
+        if (!citation || citation.kind !== 'document') return;
 
         setHighlightedInfo({ documentId: citation.document_id, messageIndex });
 
-        const elementId = message.id ? `${message.id}-reference-paper-card-${citation.document_id}` : `${messageIndex}-reference-paper-card-${citation.document_id}`;
+        const elementId = `${message.id || messageIndex}-reference-${citation.document_id}`;
         const element = document.getElementById(elementId);
 
         if (element) {

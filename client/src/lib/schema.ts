@@ -306,11 +306,31 @@ export interface Reference {
     citations: Citation[];
 }
 
-export interface Citation {
-    key: string;
-    document_id?: string;
+export interface DocumentCitation {
+    key: number;
+    kind: 'document';
+    document_id: string;
+    title?: string | null;
+    authors: string[];
+    reference: string;
+    locator?: Record<string, string | number | boolean | null> | null;
+}
+
+export interface ExternalCitation {
+    key: number;
+    kind: 'external';
+    url: string;
+    title?: string | null;
     reference: string;
 }
+
+export interface UserMessageReference {
+    key: number;
+    kind: 'user';
+    reference: string;
+}
+
+export type Citation = DocumentCitation | ExternalCitation | UserMessageReference;
 
 export interface ConversationSummary {
     id: string;

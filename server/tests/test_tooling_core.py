@@ -27,6 +27,7 @@ from app.shared.domain import (
     WorkspacePermission,
 )
 from app.tooling import (
+    DocumentSourceCandidate,
     ToolAccess,
     ToolExecutionContext,
     ToolCatalog,
@@ -261,7 +262,12 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
         capabilities.writes += 1
         return ToolOutcome(
             payload={"value": parsed.value},
-            evidence={"paper-1": ["1: evidence"]},
+            sources=(
+                DocumentSourceCandidate(
+                    document_id=uuid4(),
+                    excerpt="evidence",
+                ),
+            ),
             artifacts=[{"kind": "artifact"}],
             action={"kind": "write"},
         )
@@ -298,7 +304,7 @@ async def test_command_dispatch_is_persistently_replayed() -> None:
 
     assert first.payload == {"value": "same"}
     assert second.payload == {"value": "same"}
-    assert second.evidence == first.evidence
+    assert second.sources == first.sources
     assert second.artifacts == first.artifacts
     assert second.action == {"kind": "write"}
     assert capabilities.writes == 1

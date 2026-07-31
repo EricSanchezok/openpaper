@@ -47,7 +47,7 @@ import {
 	EMPTY_TURN_ATTACHMENTS,
 	scopeItemsToEntities,
 } from "@/components/chat/MentionAutocomplete";
-import ReferencePaperCards from "@/components/ReferencePaperCards";
+import ReferenceCards from "@/components/ReferenceCards";
 import { CitationArtifactCard } from "@/components/CitationArtifactCard";
 import { MessageTraceViewer } from "@/components/MessageTraceViewer";
 import Link from "next/link";
@@ -235,7 +235,7 @@ export const ConversationView = ({
 		if (!message || !message.references) return;
 
 		const citation = message.references.citations.find(c => String(c.key) === key);
-		if (!citation) return;
+		if (!citation || citation.kind !== "document") return;
 
 		const paper = papers.find(p => p.document_id === citation.document_id);
 		if (!paper) return;
@@ -370,7 +370,7 @@ export const ConversationView = ({
 							)}
 						</div>
 						{!collapsedReferences.has(index) && (
-							<ReferencePaperCards
+							<ReferenceCards
 								citations={msg.references.citations}
 								papers={papers}
 								messageId={msg.id}

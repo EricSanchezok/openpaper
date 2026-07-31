@@ -5,6 +5,9 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.modules.research.application.contracts import CitationSnapshot
+from app.modules.conversations.application.contracts.answer_packet import (
+    MessageReferences,
+)
 from app.shared.domain import (
     JsonValue,
     WorkspacePermission,
@@ -154,7 +157,7 @@ class MessageResponse(BaseModel):
     id: UUID
     role: str
     content: str
-    references: dict[str, JsonValue] | None
+    references: MessageReferences | None
     artifacts: list[CitationSnapshot] | None
     trace: dict[str, JsonValue] | None
     scope: list[dict[str, JsonValue]] | None
