@@ -217,8 +217,12 @@ class ConversationAgentRuntime(ConversationToolLoop):
         grounded_parser = GroundedAnswerStreamParser(answer_packet.sources)
         formatted_system_prompt = CONVERSATION_ANSWER_SYSTEM_PROMPT.format(
             available_papers=formatted_paper_options,
-            citation_protocol=grounded_parser.instructions,
-        ) + final_answer_role_instructions(scope_type)
+        )
+        formatted_system_prompt += final_answer_role_instructions(scope_type)
+        formatted_system_prompt += (
+            "\n\n## Required Citation Control Protocol\n"
+            + grounded_parser.instructions
+        )
         message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
                 content=answer_packet.model_dump_json(),
