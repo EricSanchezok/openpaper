@@ -1,11 +1,18 @@
 from uuid import UUID, uuid4
+from unittest.mock import MagicMock
 
 from app.bootstrap.workflows.citation import CitationWorkflow
+from app.llm.backend import LLMResponse
+from app.llm.citation_recovery import MetadataRecoveryAgent
 from app.main import app
+from app.modules.integrations.connectors.infrastructure.mcp import (
+    ResolvedConnectorToolSet,
+)
 from app.modules.papers.application.contracts.citation import (
     CitationData,
     CitationResult,
 )
+from app.modules.papers.application.contracts.extraction import ToolCall
 from app.modules.papers.domain.citations import CitationFields
 from app.shared.application import (
     Actor,
@@ -149,3 +156,62 @@ def test_http_citation_delegates_to_short_transaction_workflow() -> None:
     )
 
     assert result == expected
+
+
+def test_citation_recovery_stops_when_no_connector_tools_are_available() -> None:
+    class Resolver:
+        def resolve_sync(self, **_kwargs: object) -> ResolvedConnectorToolSet:
+            return ResolvedConnectorToolSet()
+
+    recovery = object.__new__(MetadataRecoveryAgent)
+    recovery._connector_tools = Resolver()  # type: ignore[assignment]
+    generate = MagicMock(side_effect=AssertionError("LLM must not guess metadata"))
+    recovery.generate_content = generate
+
+    result = recovery._run_research_loop(
+        actor(),
+        CitationFields(title="A Paper", authors=["A. Author"]),
+        ["journal"],
+        [],
+    )
+
+    assert result is None
+    generate.assert_not_called()
+
+
+def test_citation_recovery_rejects_submission_without_remote_results() -> None:
+    class Resolver:
+        def resolve_sync(self, **_kwargs: object) -> ResolvedConnectorToolSet:
+            return ResolvedConnectorToolSet(
+                declarations=(
+                    {
+                        "name": "remote_search",
+                        "description": "Search",
+                        "parameters": {"type": "object"},
+                    },
+                )
+            )
+
+    recovery = object.__new__(MetadataRecoveryAgent)
+    recovery._connector_tools = Resolver()  # type: ignore[assignment]
+    recovery.generate_content = MagicMock(
+        return_value=LLMResponse(
+            text="",
+            tool_calls=[
+                ToolCall(
+                    id="submit",
+                    name="submit_findings",
+                    args={"journal": "Guessed Journal", "confidence": 0.99},
+                )
+            ],
+        )
+    )
+
+    result = recovery._run_research_loop(
+        actor(),
+        CitationFields(title="A Paper", authors=["A. Author"]),
+        ["journal"],
+        [],
+    )
+
+    assert result is None

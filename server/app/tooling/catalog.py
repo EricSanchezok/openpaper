@@ -100,6 +100,10 @@ class ToolCatalog(Generic[CapabilitiesT]):
             return False
         return True
 
+    def profile_tool_names(self, profile_name: str) -> frozenset[str]:
+        """Names reserved by a profile, independent of current authorization."""
+        return self._profile(profile_name).tool_names
+
     def provider_declarations(self, access: ToolAccess) -> list[dict[str, object]]:
         return [
             {

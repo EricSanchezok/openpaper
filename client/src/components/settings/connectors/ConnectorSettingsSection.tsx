@@ -45,10 +45,10 @@ export function ConnectorSettingsSection() {
 	const handleConnect = async (connector: ConnectorResponse) => {
 		const apiKey = keys[connector.provider]?.trim();
 		if (!apiKey) return;
+		setKeys((current) => ({ ...current, [connector.provider]: "" }));
 		setBusy(connector.provider);
 		try {
 			replace(await connectConnector(connector.provider, apiKey));
-			setKeys((current) => ({ ...current, [connector.provider]: "" }));
 			toast.success(`${connector.display_name} connected.`);
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : "Connection failed.");

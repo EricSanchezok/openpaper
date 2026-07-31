@@ -564,6 +564,10 @@ class _RuntimeCatalog:
         self.availability_access = access
         return False
 
+    @staticmethod
+    def profile_tool_names(_profile_name: str) -> frozenset[str]:
+        return frozenset({"finish_tool_use", "search_papers"})
+
 
 class _RuntimeExecutor:
     def __init__(self) -> None:

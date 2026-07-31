@@ -31,7 +31,12 @@ from pydantic import TypeAdapter
 T = TypeVar("T")
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 _SCHEMA_CACHE_SECONDS = 300.0
+_SCHEMA_CACHE_MAX_ENTRIES = 2_048
 _MAX_RESULT_CHARS = 150_000
+_MAX_TOOLS_PER_CONNECTOR = 128
+_MAX_TOOL_DESCRIPTION_CHARS = 8_000
+_MAX_TOOL_SCHEMA_CHARS = 100_000
+_MAX_CONNECTOR_SCHEMA_CHARS = 500_000
 _TOOL_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 
@@ -60,6 +65,16 @@ class RemoteMCPConnection:
     url: str
     headers: Mapping[str, str] = field(repr=False)
     revision: str
+    header_factory: Callable[[], Mapping[str, str]] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
+    def request_headers(self) -> Mapping[str, str]:
+        if self.header_factory is not None:
+            return self.header_factory()
+        return self.headers
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +88,10 @@ class ConnectorToolIssue:
 class _BoundTool:
     connection: RemoteMCPConnection
     name: str
+
+
+class _ConnectorToolsInvalid(ValueError):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +229,13 @@ class ConnectorToolResolver:
             revision="probe",
         )
         try:
-            declarations = await _list_declarations(connection)
+            await _list_declarations(connection)
+        except _ConnectorToolsInvalid as exc:
+            raise AppError(
+                code="connector_tools_invalid",
+                message="Connector exposed invalid tools",
+                kind=FailureKind.DEPENDENCY_FAILURE,
+            ) from exc
         except Exception as exc:
             if _looks_like_authentication_error(exc):
                 raise AppError(
@@ -223,12 +248,6 @@ class ConnectorToolResolver:
                 message="Connector is temporarily unavailable",
                 kind=FailureKind.DEPENDENCY_FAILURE,
             ) from exc
-        if not declarations:
-            raise AppError(
-                code="connector_tools_invalid",
-                message="Connector did not expose any valid tools",
-                kind=FailureKind.DEPENDENCY_FAILURE,
-            )
 
     async def resolve(
         self,
@@ -239,6 +258,7 @@ class ConnectorToolResolver:
     ) -> ResolvedConnectorToolSet:
         if WorkspacePermission.READ not in permissions:
             return ResolvedConnectorToolSet()
+        self._prune_schema_cache()
         credential_states = await asyncio.to_thread(
             self._credential_loader,
             actor,
@@ -276,20 +296,28 @@ class ConnectorToolResolver:
                 continue
             connection, result = pair
             if isinstance(result, BaseException):
+                tools_invalid = isinstance(result, _ConnectorToolsInvalid)
                 credentials_invalid = _looks_like_authentication_error(result)
+                if tools_invalid:
+                    issue_code = "connector_tools_invalid"
+                    issue_message = (
+                        f"{connection.display_name} exposed invalid tools"
+                    )
+                elif credentials_invalid:
+                    issue_code = "connector_credentials_invalid"
+                    issue_message = (
+                        f"{connection.display_name} credentials are no longer valid"
+                    )
+                else:
+                    issue_code = "connector_unavailable"
+                    issue_message = (
+                        f"{connection.display_name} is temporarily unavailable"
+                    )
                 issues.append(
                     ConnectorToolIssue(
                         provider,
-                        (
-                            "connector_credentials_invalid"
-                            if credentials_invalid
-                            else "connector_unavailable"
-                        ),
-                        (
-                            f"{connection.display_name} credentials are no longer valid"
-                            if credentials_invalid
-                            else f"{connection.display_name} is temporarily unavailable"
-                        ),
+                        issue_code,
+                        issue_message,
                     )
                 )
                 continue
@@ -341,10 +369,12 @@ class ConnectorToolResolver:
                     provider=ConnectorProvider.SCHOLIGHT,
                     display_name="Scholight",
                     url=self._settings.scholight_mcp_url,
-                    headers=MappingProxyType(
-                        _scholight_delegation_headers(actor, secret)
-                    ),
+                    headers=MappingProxyType({}),
                     revision="built-in",
+                    header_factory=lambda: _scholight_delegation_headers(
+                        actor,
+                        secret,
+                    ),
                 )
             )
         for credential in credentials:
@@ -372,13 +402,32 @@ class ConnectorToolResolver:
         self._schema_cache[key] = (now + _SCHEMA_CACHE_SECONDS, declarations)
         return declarations
 
+    def _prune_schema_cache(self) -> None:
+        now = time.monotonic()
+        expired = [
+            key
+            for key, (expires_at, _) in self._schema_cache.items()
+            if expires_at <= now
+        ]
+        for key in expired:
+            self._schema_cache.pop(key, None)
+        overflow = len(self._schema_cache) - _SCHEMA_CACHE_MAX_ENTRIES
+        if overflow <= 0:
+            return
+        oldest = sorted(
+            self._schema_cache,
+            key=lambda key: self._schema_cache[key][0],
+        )
+        for key in oldest[:overflow]:
+            self._schema_cache.pop(key, None)
+
 
 async def _session_call(
     connection: RemoteMCPConnection,
     operation: Callable[[ClientSession], Awaitable[T]],
 ) -> T:
     async with httpx.AsyncClient(
-        headers=dict(connection.headers),
+        headers=dict(connection.request_headers()),
         follow_redirects=False,
         timeout=httpx.Timeout(60),
     ) as http_client:
@@ -396,20 +445,41 @@ async def _list_declarations(
 ) -> list[dict[str, Any]]:
     async def operation(session: ClientSession) -> list[dict[str, Any]]:
         response = await session.list_tools()
+        if len(response.tools) > _MAX_TOOLS_PER_CONNECTOR:
+            raise _ConnectorToolsInvalid("connector exposed too many tools")
         declarations: list[dict[str, Any]] = []
+        total_schema_chars = 0
         for tool in response.tools:
             if not tool.name or _TOOL_NAME_PATTERN.fullmatch(tool.name) is None:
                 continue
+            description = (
+                tool.description or f"{connection.display_name} connector tool"
+            )
+            if len(description) > _MAX_TOOL_DESCRIPTION_CHARS:
+                raise _ConnectorToolsInvalid("connector tool description is too large")
+            parameters = _normalize_json_schema(tool.inputSchema)
+            if not isinstance(parameters, dict) or parameters.get("type") not in {
+                None,
+                "object",
+            }:
+                raise _ConnectorToolsInvalid("connector tool schema is not an object")
+            schema_chars = len(
+                json.dumps(parameters, ensure_ascii=False, separators=(",", ":"))
+            )
+            if schema_chars > _MAX_TOOL_SCHEMA_CHARS:
+                raise _ConnectorToolsInvalid("connector tool schema is too large")
+            total_schema_chars += schema_chars + len(description)
+            if total_schema_chars > _MAX_CONNECTOR_SCHEMA_CHARS:
+                raise _ConnectorToolsInvalid("connector tool catalog is too large")
             declarations.append(
                 {
                     "name": tool.name,
-                    "description": (
-                        tool.description
-                        or f"{connection.display_name} connector tool"
-                    ),
-                    "parameters": _normalize_json_schema(tool.inputSchema),
+                    "description": description,
+                    "parameters": parameters,
                 }
             )
+        if not declarations:
+            raise _ConnectorToolsInvalid("connector exposed no valid tools")
         return declarations
 
     return await _session_call(connection, operation)
@@ -497,7 +567,19 @@ def _normalize_result(value: Any) -> JsonValue:
 
 
 def _looks_like_authentication_error(exc: BaseException) -> bool:
-    text = str(exc).casefold()
+    current: BaseException | None = exc
+    messages: list[str] = []
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if (
+            isinstance(current, httpx.HTTPStatusError)
+            and current.response.status_code in {401, 403}
+        ):
+            return True
+        messages.append(str(current))
+        current = current.__cause__ or current.__context__
+    text = " ".join(messages).casefold()
     return any(
         marker in text
         for marker in ("401", "403", "unauthorized", "forbidden", "invalid api")

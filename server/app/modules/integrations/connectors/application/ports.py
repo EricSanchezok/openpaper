@@ -62,6 +62,7 @@ class ConnectorGateway(Protocol):
         user_id: int,
         provider: ConnectorProvider,
         enabled: bool,
+        verified_at: datetime | None = None,
     ) -> ConnectorRecord: ...
 
     def delete(

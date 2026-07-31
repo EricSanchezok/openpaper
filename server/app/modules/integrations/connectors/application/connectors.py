@@ -27,6 +27,7 @@ from app.shared.domain import AppError, FailureKind
 CONNECTOR_CONNECTED = OperationAction("connector.connected")
 CONNECTOR_ENABLED = OperationAction("connector.enabled")
 CONNECTOR_DISABLED = OperationAction("connector.disabled")
+CONNECTOR_VERIFIED = OperationAction("connector.verified")
 CONNECTOR_DISCONNECTED = OperationAction("connector.disconnected")
 
 _DISPLAY_NAMES = {
@@ -130,17 +131,25 @@ class Connectors:
                 message="Connector is not connected",
                 kind=FailureKind.CONFLICT,
             )
-        if current.enabled == enabled:
+        if current.enabled == enabled and not enabled:
             return _response(provider, current.enabled, current.verified_at)
+        verified_at = self._clock.now() if enabled else None
         updated = self._gateway.set_enabled(
             user_id=actor.id,
             provider=provider,
             enabled=enabled,
+            verified_at=verified_at,
         )
+        if not enabled:
+            action = CONNECTOR_DISABLED
+        elif current.enabled:
+            action = CONNECTOR_VERIFIED
+        else:
+            action = CONNECTOR_ENABLED
         self._journal.append(
             actor=actor,
             operation=operation,
-            action=CONNECTOR_ENABLED if enabled else CONNECTOR_DISABLED,
+            action=action,
             resources=(ResourceRef("connector", provider.value),),
         )
         return _response(provider, updated.enabled, updated.verified_at)

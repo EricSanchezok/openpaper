@@ -27,6 +27,11 @@ class _Settings:
     scholight_mcp_delegation_jwt_secret: str | None = None
 
 
+class _ScholightSettings:
+    scholight_mcp_url = "https://scholight.example/mcp"
+    scholight_mcp_delegation_jwt_secret = "s" * 32
+
+
 def _actor(user_id: int = 42) -> Actor:
     return Actor(
         id=user_id,
@@ -107,6 +112,19 @@ def test_scholight_delegation_identifies_current_user() -> None:
     )
 
     assert (claims["sub"], claims["scope"]) == ("42", "search")
+
+
+def test_scholight_delegation_is_refreshed_for_each_remote_session() -> None:
+    resolver = ConnectorToolResolver(
+        credential_loader=lambda _actor: (),
+        settings=_ScholightSettings(),
+    )
+    connection = resolver._connections(actor=_actor(), credentials=())[0]
+
+    first = connection.request_headers()["Authorization"]
+    second = connection.request_headers()["Authorization"]
+
+    assert first != second
 
 
 def test_mcp_schema_drops_provider_incompatible_metadata() -> None:

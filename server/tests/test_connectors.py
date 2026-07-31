@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from app.modules.integrations.connectors.application.connectors import Connectors
@@ -21,8 +21,11 @@ NOW = datetime(2026, 7, 31, 12, tzinfo=timezone.utc)
 
 
 class _Clock:
+    def __init__(self, now: datetime = NOW) -> None:
+        self._now = now
+
     def now(self) -> datetime:
-        return NOW
+        return self._now
 
 
 class _Gateway:
@@ -72,8 +75,14 @@ class _Gateway:
         user_id: int,
         provider: ConnectorProvider,
         enabled: bool,
+        verified_at: datetime | None = None,
     ) -> ConnectorRecord:
-        record = replace(self.records[(user_id, provider)], enabled=enabled)
+        current = self.records[(user_id, provider)]
+        record = replace(
+            current,
+            enabled=enabled,
+            verified_at=verified_at or current.verified_at,
+        )
         self.records[(user_id, provider)] = record
         return record
 
@@ -96,11 +105,15 @@ def _cipher() -> AesGcmConnectorCredentialCipher:
     )
 
 
-def _connectors(gateway: _Gateway) -> Connectors:
+def _connectors(
+    gateway: _Gateway,
+    *,
+    clock: _Clock | None = None,
+) -> Connectors:
     return Connectors(
         gateway=gateway,
         cipher=_cipher(),
-        clock=_Clock(),
+        clock=clock or _Clock(),
         journal=MagicMock(spec=OperationJournal),
         scholight_configured=True,
     )
@@ -170,3 +183,28 @@ def test_unreadable_enabled_credential_is_reported_without_exposing_ciphertext()
     assert states == (
         UnreadableConnectorCredential(ConnectorProvider.TAVILY),
     )
+
+
+def test_successful_revalidation_refreshes_verified_at() -> None:
+    gateway = _Gateway()
+    actor = _actor()
+    operation = MagicMock(spec=OperationContext)
+    _connectors(gateway).connect(
+        actor=actor,
+        operation=operation,
+        provider=ConnectorProvider.ANYSEARCH,
+        api_key="private-api-key",
+    )
+    reverified_at = NOW + timedelta(days=1)
+
+    result = _connectors(
+        gateway,
+        clock=_Clock(reverified_at),
+    ).set_enabled(
+        actor=actor,
+        operation=operation,
+        provider=ConnectorProvider.ANYSEARCH,
+        enabled=True,
+    )
+
+    assert result.verified_at == reverified_at

@@ -42,6 +42,10 @@ class Catalog:
             name == "search_papers" and WorkspacePermission.READ in access.permissions
         )
 
+    @staticmethod
+    def profile_tool_names(_profile_name: str) -> frozenset[str]:
+        return frozenset({"create_project", "search_papers", "finish_tool_use"})
+
 
 class Executor:
     def __init__(self) -> None:
@@ -83,6 +87,24 @@ class ActionDispatcher:
 class NoConnectorTools:
     async def resolve(self, **_kwargs: object) -> ResolvedConnectorToolSet:
         return ResolvedConnectorToolSet()
+
+
+def test_control_result_is_not_informational_answer_context() -> None:
+    state = ToolRunState()
+    finish = ToolCall(id="finish", name="finish_tool_use", args={})
+    state.add_tool_call_result(finish, {"completed": True})
+
+    assert state.has_informational_results() is False
+
+    connector_call = ToolCall(id="remote", name="web_search", args={"query": "RAG"})
+    state.add_tool_call_result(
+        connector_call,
+        {"results": ["source"]},
+        informational=True,
+    )
+
+    assert state.has_informational_results() is True
+    assert [item["name"] for item in state.answer_tool_results()] == ["web_search"]
 
 
 @pytest.mark.asyncio

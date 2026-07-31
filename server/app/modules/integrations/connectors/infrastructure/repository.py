@@ -83,6 +83,7 @@ class SqlAlchemyConnectorGateway:
         user_id: int,
         provider: ConnectorProvider,
         enabled: bool,
+        verified_at: datetime | None = None,
     ) -> ConnectorRecord:
         row = self._db.scalar(
             select(ConnectorConnection).where(
@@ -92,6 +93,8 @@ class SqlAlchemyConnectorGateway:
         )
         assert row is not None
         row.enabled = enabled
+        if verified_at is not None:
+            row.verified_at = verified_at
         self._db.flush()
         return _record(row)
 

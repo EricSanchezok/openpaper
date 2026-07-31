@@ -121,6 +121,10 @@ class ToolRunState(BaseModel):
         default_factory=list,
         description="List of tool call results for proper multi-turn function calling",
     )
+    informational_results: list[ToolCallResult] = Field(
+        default_factory=list,
+        description="Successful external research results available to the final answer.",
+    )
     citation_index: CitationIndex = Field(
         default_factory=CitationIndex,
         description="Sidecar storage for original snippets during compaction",
@@ -200,16 +204,19 @@ class ToolRunState(BaseModel):
         self,
         tool_call: ToolCall,
         result: Any,
+        *,
+        informational: bool = False,
     ) -> None:
         """Add a tool call result for proper multi-turn function calling"""
-        self.tool_call_results.append(
-            ToolCallResult(
-                id=tool_call.id,
-                name=tool_call.name,
-                args=tool_call.args,
-                result=result,
-            )
+        item = ToolCallResult(
+            id=tool_call.id,
+            name=tool_call.name,
+            args=tool_call.args,
+            result=result,
         )
+        self.tool_call_results.append(item)
+        if informational:
+            self.informational_results.append(item)
 
     def get_tool_call_results(self) -> list[ToolCallResult]:
         """Get all tool call results for passing to LLM"""
@@ -217,13 +224,7 @@ class ToolRunState(BaseModel):
 
     def answer_tool_results(self) -> list[dict[str, Any]]:
         """Successful informational results that the final answer may use."""
-        results: list[dict[str, Any]] = []
-        for item in self.tool_call_results:
-            value = item.result
-            if isinstance(value, dict) and "error" in value:
-                continue
-            results.append(item.model_dump(mode="json"))
-        return results
+        return [item.model_dump(mode="json") for item in self.informational_results]
 
     def has_informational_results(self) -> bool:
         return bool(self.answer_tool_results())
@@ -295,8 +296,9 @@ class ToolRunState(BaseModel):
         """Replace tool call results with compacted versions, preserving original args"""
         # Build a lookup of original args by id
         original_args_by_id = {r.id: r.args for r in self.tool_call_results if r.id}
+        informational_ids = {r.id for r in self.informational_results if r.id}
 
-        self.tool_call_results = [
+        compacted = [
             ToolCallResult(
                 id=cr.id,
                 name=cr.name,
@@ -304,6 +306,10 @@ class ToolRunState(BaseModel):
                 result=cr.summary,
             )
             for cr in compacted_results
+        ]
+        self.tool_call_results = compacted
+        self.informational_results = [
+            item for item in compacted if item.id in informational_ids
         ]
 
     def get_evidence_size(self) -> int:
