@@ -36,6 +36,10 @@ from app.shared.application import (
     OperationContextFactory,
     OperationInitiator,
 )
+from app.shared.application.context_budget import (
+    estimate_tokens,
+    truncate_to_token_budget,
+)
 from app.modules.conversations.application.chat import ConversationChatScope
 from app.shared.domain import AppError
 from app.tooling import (
@@ -49,13 +53,18 @@ from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
 
 logger = logging.getLogger(__name__)
 
-# Conservative backend-independent limits leave room for system prompts,
-# history, and responses while keeping cost and latency bounded.
-# At ~4 chars/token: 150k chars ≈ 37.5k tokens, 400k chars ≈ 100k tokens
-CONTENT_LIMIT_TOOL_RESULTS = 150000
-CONTENT_LIMIT_CHAT_EVIDENCE = (
-    300000  # Character limit for evidence in chat response prompt
-)
+# The DeepSeek runtime has a 1M-token context window. Tool and final-answer
+# inputs deliberately receive separate budgets, leaving ample room for prompts,
+# history, schemas, anchor-paper text, and output. Estimates are conservative
+# for mixed English/CJK content and do not depend on a provider tokenizer.
+MODEL_CONTEXT_WINDOW_TOKENS = 1_000_000
+TOOL_RESULTS_TOKEN_BUDGET = MODEL_CONTEXT_WINDOW_TOKENS * 35 // 100
+TOOL_COMPACTION_BATCH_TOKENS = MODEL_CONTEXT_WINDOW_TOKENS * 25 // 100
+TOOL_COMPACTION_RESULT_TOKENS = 50_000
+FINAL_EVIDENCE_TOKEN_BUDGET = MODEL_CONTEXT_WINDOW_TOKENS * 25 // 100
+EVIDENCE_COMPACTION_INPUT_TOKENS = MODEL_CONTEXT_WINDOW_TOKENS * 45 // 100
+EVIDENCE_PER_PAPER_TOKENS = 75_000
+EVIDENCE_PER_SNIPPET_TOKENS = 25_000
 HEARTBEAT_INTERVAL_SECONDS = (
     15  # Keep streaming connections alive during long operations
 )
@@ -190,9 +199,7 @@ class ConversationToolLoop(BaseLLMClient):
         connector_tool_set = await self._connector_tools.resolve(
             actor=current_user,
             permissions=conversation_scope.tool_permissions,
-            reserved_names=self._catalog.profile_tool_names(
-                CONVERSATION_TOOL_PROFILE
-            ),
+            reserved_names=self._catalog.profile_tool_names(CONVERSATION_TOOL_PROFILE),
         )
         tool_declarations.extend(connector_tool_set.declarations)
         for issue in connector_tool_set.issues:
@@ -207,23 +214,42 @@ class ConversationToolLoop(BaseLLMClient):
         while n_iterations < max_iterations and not should_stop:
             n_iterations += 1
 
-            # If tool call results are very large, compact them to avoid context overflow
-            tool_results_size = tool_state.get_tool_results_size()
+            tool_results_tokens = tool_state.get_tool_results_token_estimate()
+            uncompacted_tokens = tool_state.get_tool_results_token_estimate(
+                uncompacted_only=True
+            )
 
-            if tool_results_size > CONTENT_LIMIT_TOOL_RESULTS:
+            if (
+                tool_results_tokens > TOOL_RESULTS_TOKEN_BUDGET
+                and uncompacted_tokens > 0
+            ):
                 yield {
                     "type": "status",
-                    "content": "Gathered a lot of data. Compacting tool results...",
+                    "content": "Gathered a lot of data. Compacting new tool results...",
                 }
                 logger.info(
-                    f"Tool results size exceeded {CONTENT_LIMIT_TOOL_RESULTS} "
-                    f"characters ({tool_results_size}), compacting."
+                    "Tool results exceed the context budget; compacting new "
+                    "results only",
+                    extra={
+                        "estimated_tokens": tool_results_tokens,
+                        "budget_tokens": TOOL_RESULTS_TOKEN_BUDGET,
+                    },
                 )
-                await self.compact_tool_call_results(
-                    tool_state,
-                    question,
-                    current_user,
-                )
+                while (
+                    tool_state.get_tool_results_token_estimate()
+                    > TOOL_RESULTS_TOKEN_BUDGET
+                    and tool_state.get_tool_results_token_estimate(
+                        uncompacted_only=True
+                    )
+                    > 0
+                ):
+                    compacted = await self.compact_tool_call_results(
+                        tool_state,
+                        question,
+                        current_user,
+                    )
+                    if not compacted:
+                        break
 
             tool_loop_prompt = TOOL_LOOP_SYSTEM_PROMPT.format(
                 available_papers=formatted_context,
@@ -506,14 +532,19 @@ class ConversationToolLoop(BaseLLMClient):
 
         # Compact evidence if it exceeds the limit for chat response
         evidence_size = tool_state.get_evidence_size()
-        if evidence_size > CONTENT_LIMIT_CHAT_EVIDENCE:
+        evidence_tokens = tool_state.get_evidence_token_estimate()
+        if evidence_tokens > FINAL_EVIDENCE_TOKEN_BUDGET:
             yield {
                 "type": "status",
                 "content": "Compacting gathered evidence...",
             }
             logger.info(
-                f"Evidence size ({evidence_size} chars) exceeds limit "
-                f"({CONTENT_LIMIT_CHAT_EVIDENCE} chars). Compacting."
+                "Evidence exceeds the final-answer context budget; compacting",
+                extra={
+                    "characters": evidence_size,
+                    "estimated_tokens": evidence_tokens,
+                    "budget_tokens": FINAL_EVIDENCE_TOKEN_BUDGET,
+                },
             )
             async for compaction_status in self.compact_evidence(
                 tool_state,
@@ -537,9 +568,7 @@ class ConversationToolLoop(BaseLLMClient):
         access: ToolAccess,
     ) -> ToolOutcome:
         if connector_tool_set.has_tool(name):
-            return ToolOutcome(
-                payload=await connector_tool_set.call(name, arguments)
-            )
+            return ToolOutcome(payload=await connector_tool_set.call(name, arguments))
         return await self._dispatcher.dispatch(
             name=name,
             raw_arguments=arguments,
@@ -552,7 +581,7 @@ class ConversationToolLoop(BaseLLMClient):
         tool_state: ToolRunState,
         original_question: str,
         current_user: Actor,
-    ) -> None:
+    ) -> bool:
         """
         Compact tool call results by summarizing them to reduce context size.
         Modifies the tool run state in place.
@@ -561,7 +590,12 @@ class ConversationToolLoop(BaseLLMClient):
         original_size = tool_state.get_tool_results_size()
         original_count = len(tool_state.tool_call_results)
 
-        tool_results_for_compaction = tool_state.get_tool_results_for_compaction()
+        tool_results_for_compaction = tool_state.get_tool_results_for_compaction(
+            max_total_tokens=TOOL_COMPACTION_BATCH_TOKENS,
+            max_result_tokens=TOOL_COMPACTION_RESULT_TOKENS,
+        )
+        if not tool_results_for_compaction:
+            return False
 
         formatted_prompt = TOOL_RESULT_COMPACTION_PROMPT.format(
             question=original_question,
@@ -587,15 +621,21 @@ class ConversationToolLoop(BaseLLMClient):
                     llm_response.text
                 )
 
-                tool_state.apply_compacted_results(
+                applied_count = tool_state.apply_compacted_results(
                     compaction_response.compacted_results
                 )
+                if applied_count == 0:
+                    logger.warning(
+                        "Tool result compaction returned no matching summaries; "
+                        "keeping the raw results."
+                    )
+                    return False
 
                 new_size = tool_state.get_tool_results_size()
                 logger.info(
                     f"Tool result compaction complete. "
                     f"Original: {original_count} results ({original_size} chars), "
-                    f"Compacted: {len(compaction_response.compacted_results)} results ({new_size} chars)"
+                    f"Compacted: {applied_count} results ({new_size} chars)"
                 )
 
                 track_event(
@@ -604,11 +644,12 @@ class ConversationToolLoop(BaseLLMClient):
                         "duration_ms": (time.time() - start_time) * 1000,
                         "original_count": original_count,
                         "original_size": original_size,
-                        "compacted_count": len(compaction_response.compacted_results),
+                        "compacted_count": applied_count,
                         "compacted_size": new_size,
                     },
                     user_id=str(current_user.id),
                 )
+                return True
             else:
                 logger.warning("Empty response from LLM during tool result compaction.")
 
@@ -616,6 +657,7 @@ class ConversationToolLoop(BaseLLMClient):
             logger.warning(
                 f"Tool result compaction failed: {e}. Keeping original results."
             )
+        return False
 
     async def compact_evidence(
         self,
@@ -639,13 +681,6 @@ class ConversationToolLoop(BaseLLMClient):
             "content": "Compacting evidence...",
         }
 
-        # Format evidence for compaction with strict size limits
-        # Sort papers by snippet count (most evidence first) and limit total size
-
-        MAX_TOTAL_CHARS = 80000  # Total input limit for fast compaction
-        MAX_PER_PAPER = 5000  # Per-paper limit
-        MAX_SNIPPET_CHARS = 2000  # Per-snippet limit for indexed format
-
         papers_by_evidence = sorted(
             evidence_dict.items(), key=lambda x: len(x[1]), reverse=True
         )
@@ -665,19 +700,25 @@ class ConversationToolLoop(BaseLLMClient):
 
         # Format evidence with indexed snippets for LLM
         evidence_for_compaction: list[dict[str, Any]] = []
-        total_chars = 0
+        total_tokens = 0
         for document_id, snippets in papers_by_evidence:
-            # Build indexed snippets for this paper
-            indexed_snippets = []
-            paper_chars = 0
+            indexed_snippets: list[dict[str, Any]] = []
+            paper_tokens = 0
             for i, snippet in enumerate(snippets):
-                truncated = snippet[:MAX_SNIPPET_CHARS]
-                if paper_chars + len(truncated) > MAX_PER_PAPER:
+                truncated = truncate_to_token_budget(
+                    snippet,
+                    EVIDENCE_PER_SNIPPET_TOKENS,
+                )
+                snippet_tokens = estimate_tokens(truncated)
+                if paper_tokens + snippet_tokens > EVIDENCE_PER_PAPER_TOKENS:
                     break
                 indexed_snippets.append({"index": i, "text": truncated})
-                paper_chars += len(truncated)
+                paper_tokens += snippet_tokens
 
-            if total_chars + paper_chars > MAX_TOTAL_CHARS:
+            if (
+                evidence_for_compaction
+                and total_tokens + paper_tokens > EVIDENCE_COMPACTION_INPUT_TOKENS
+            ):
                 break
 
             evidence_for_compaction.append(
@@ -686,10 +727,15 @@ class ConversationToolLoop(BaseLLMClient):
                     "snippets": indexed_snippets,
                 }
             )
-            total_chars += paper_chars
+            total_tokens += paper_tokens
 
         logger.info(
-            f"Compacting {len(evidence_for_compaction)}/{len(evidence_dict)} papers ({total_chars} chars)"
+            "Compacting evidence within the model context budget",
+            extra={
+                "included_papers": len(evidence_for_compaction),
+                "total_papers": len(evidence_dict),
+                "estimated_tokens": total_tokens,
+            },
         )
 
         formatted_prompt = EVIDENCE_COMPACTION_PROMPT.format(
@@ -722,20 +768,37 @@ class ConversationToolLoop(BaseLLMClient):
             else:
                 logger.warning("Empty response from LLM during evidence compaction.")
 
-            # Add truncated fallback for papers not sent to LLM (due to size limits)
+            # Preserve a useful bounded excerpt for papers that did not fit in the
+            # compaction call; full originals remain in the citation sidecar.
             for document_id, snippets in evidence_dict.items():
                 if document_id not in all_compacted:
                     all_compacted[document_id] = [
-                        f"(summarized) {' '.join(snippets)[:500]}..."
+                        "(bounded original excerpt) "
+                        + truncate_to_token_budget(" ".join(snippets), 5_000)
                     ]
         except Exception as e:
-            logger.warning(
-                f"Evidence compaction failed: {e}. Using truncated fallback."
-            )
+            logger.warning(f"Evidence compaction failed: {e}. Using bounded originals.")
             for document_id, snippets in evidence_dict.items():
                 all_compacted[document_id] = [
-                    f"(summarized) {' '.join(snippets)[:500]}..."
+                    "(bounded original excerpt) "
+                    + truncate_to_token_budget(" ".join(snippets), 5_000)
                 ]
+
+        # Keep every paper represented while enforcing the final-answer budget.
+        # Full source snippets remain available in citation_index for resolution.
+        per_paper_output_budget = max(
+            1,
+            FINAL_EVIDENCE_TOKEN_BUDGET // max(1, len(all_compacted)),
+        )
+        all_compacted = {
+            document_id: [
+                truncate_to_token_budget(
+                    "\n\n".join(summaries),
+                    per_paper_output_budget,
+                )
+            ]
+            for document_id, summaries in all_compacted.items()
+        }
 
         tool_state.apply_compacted_evidence(all_compacted)
         tool_state.is_compacted = True

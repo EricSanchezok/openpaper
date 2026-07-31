@@ -1,18 +1,26 @@
+import json
 import re
 import uuid
-from enum import Enum
 from typing import Any
 
+from app.shared.application.context_budget import (
+    estimate_tokens,
+    truncate_to_token_budget,
+)
 from app.shared.domain.enums import ReasoningLevel
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.papers.application.contracts.extraction import ToolCall, ToolCallResult
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class ResponseStyle(str, Enum):
-    NORMAL = "normal"
-    CONCISE = "concise"
-    DETAILED = "detailed"
+def _serialize_tool_result(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return "None" if value is None else str(value)
+
+
+def _tool_result_context(result: ToolCallResult) -> str:
+    return json.dumps(result.model_dump(mode="json"), ensure_ascii=False, default=str)
 
 
 class ConversationMessageRequest(BaseModel):
@@ -23,7 +31,6 @@ class ConversationMessageRequest(BaseModel):
     turn_id: uuid.UUID
     user_query: str = Field(min_length=1, max_length=20_000)
     user_references: list[str] | None = Field(default=None, max_length=50)
-    style: ResponseStyle | None = ResponseStyle.NORMAL
     reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD
     mentioned_highlight_ids: list[str] | None = Field(default=None, max_length=50)
 
@@ -125,6 +132,11 @@ class ToolRunState(BaseModel):
         default_factory=list,
         description="Successful external research results available to the final answer.",
     )
+    compacted_tool_result_indexes: set[int] = Field(
+        default_factory=set,
+        exclude=True,
+        description="Internal indexes of raw tool results already summarized once.",
+    )
     citation_index: CitationIndex = Field(
         default_factory=CitationIndex,
         description="Sidecar storage for original snippets during compaction",
@@ -222,9 +234,46 @@ class ToolRunState(BaseModel):
         """Get all tool call results for passing to LLM"""
         return self.tool_call_results
 
-    def answer_tool_results(self) -> list[dict[str, Any]]:
-        """Successful informational results that the final answer may use."""
-        return [item.model_dump(mode="json") for item in self.informational_results]
+    def answer_tool_results(
+        self, *, max_tokens: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Successful informational results that the final answer may use.
+
+        A final-answer budget keeps every result represented while bounding its
+        payload. Tool-loop state itself remains unchanged.
+        """
+        if max_tokens is None or not self.informational_results:
+            return [item.model_dump(mode="json") for item in self.informational_results]
+
+        bounded: list[dict[str, Any]] = []
+        remaining_tokens = max_tokens
+        for offset, item in enumerate(self.informational_results):
+            payload = item.model_dump(mode="json")
+            original_result = payload.pop("result", None)
+            serialized_result = _serialize_tool_result(original_result)
+            remaining_items = len(self.informational_results) - offset
+            metadata_tokens = estimate_tokens(
+                json.dumps(payload, ensure_ascii=False, default=str)
+            )
+            result_budget = max(
+                1,
+                remaining_tokens // remaining_items - metadata_tokens,
+            )
+            bounded_result = truncate_to_token_budget(
+                serialized_result,
+                result_budget,
+            )
+            payload["result"] = (
+                original_result
+                if bounded_result == serialized_result
+                else bounded_result
+            )
+            used_tokens = estimate_tokens(
+                json.dumps(payload, ensure_ascii=False, default=str)
+            )
+            remaining_tokens = max(0, remaining_tokens - used_tokens)
+            bounded.append(payload)
+        return bounded
 
     def has_informational_results(self) -> bool:
         return bool(self.answer_tool_results())
@@ -254,63 +303,82 @@ class ToolRunState(BaseModel):
 
     def get_tool_results_size(self) -> int:
         """Calculate the total character size of all tool call results"""
-        import json
+        return sum(
+            len(_serialize_tool_result(result.result))
+            for result in self.tool_call_results
+        )
 
-        total_size = 0
-        for result in self.tool_call_results:
-            result_value = result.result
-            if isinstance(result_value, (dict, list)):
-                total_size += len(json.dumps(result_value))
-            elif result_value is not None:
-                total_size += len(str(result_value))
-        return total_size
+    def get_tool_results_token_estimate(self, *, uncompacted_only: bool = False) -> int:
+        """Conservatively estimate context tokens without a provider tokenizer."""
+        return sum(
+            estimate_tokens(_tool_result_context(result))
+            for index, result in enumerate(self.tool_call_results)
+            if not uncompacted_only or index not in self.compacted_tool_result_indexes
+        )
 
-    def get_tool_results_for_compaction(self) -> list[dict[str, Any]]:
-        """Get tool results in a format suitable for LLM compaction"""
-        import json
+    def get_tool_results_for_compaction(
+        self,
+        *,
+        max_total_tokens: int,
+        max_result_tokens: int,
+    ) -> list[dict[str, Any]]:
+        """Return one bounded batch containing only never-compacted results."""
+        results: list[dict[str, Any]] = []
+        used_tokens = 0
+        for index, result in enumerate(self.tool_call_results):
+            if index in self.compacted_tool_result_indexes:
+                continue
 
-        results = []
-        for result in self.tool_call_results:
-            result_value = result.result
-            if isinstance(result_value, (dict, list)):
-                result_str = json.dumps(result_value)
-            elif result_value is not None:
-                result_str = str(result_value)
-            else:
-                result_str = "None"
-
-            results.append(
-                {
-                    "id": result.id or "",
-                    "name": result.name,
-                    "result": result_str[
-                        :10000
-                    ],  # Truncate very long individual results
-                }
+            result_str = truncate_to_token_budget(
+                _serialize_tool_result(result.result),
+                max_result_tokens,
             )
+            args = truncate_to_token_budget(
+                json.dumps(result.args, ensure_ascii=False, default=str),
+                min(10_000, max_result_tokens),
+            )
+            item = {
+                "result_index": index,
+                "id": result.id,
+                "name": result.name,
+                "args": args,
+                "result": result_str,
+            }
+            item_tokens = estimate_tokens(
+                json.dumps(item, ensure_ascii=False, default=str)
+            )
+            if results and used_tokens + item_tokens > max_total_tokens:
+                break
+            results.append(item)
+            used_tokens += item_tokens
+            if used_tokens >= max_total_tokens:
+                break
         return results
 
     def apply_compacted_results(
         self, compacted_results: list["CompactedToolResult"]
-    ) -> None:
-        """Replace tool call results with compacted versions, preserving original args"""
-        # Build a lookup of original args by id
-        original_args_by_id = {r.id: r.args for r in self.tool_call_results if r.id}
-        informational_ids = {r.id for r in self.informational_results if r.id}
+    ) -> int:
+        """Summarize matching raw results in place, at most once per result.
 
-        compacted = [
-            ToolCallResult(
-                id=cr.id,
-                name=cr.name,
-                args=original_args_by_id.get(cr.id, {}),
-                result=cr.summary,
-            )
-            for cr in compacted_results
-        ]
-        self.tool_call_results = compacted
-        self.informational_results = [
-            item for item in compacted if item.id in informational_ids
-        ]
+        Invalid, duplicate, or omitted model entries leave the original result intact.
+        Updating in place also preserves the informational-results references.
+        """
+        applied = 0
+        for compacted in compacted_results:
+            index = compacted.result_index
+            if (
+                index < 0
+                or index >= len(self.tool_call_results)
+                or index in self.compacted_tool_result_indexes
+            ):
+                continue
+            original = self.tool_call_results[index]
+            if original.name != compacted.name or not compacted.summary.strip():
+                continue
+            original.result = compacted.summary.strip()
+            self.compacted_tool_result_indexes.add(index)
+            applied += 1
+        return applied
 
     def get_evidence_size(self) -> int:
         """Calculate the total character size of all evidence"""
@@ -319,6 +387,14 @@ class ToolRunState(BaseModel):
             for snippet in evidence.content:
                 total_size += len(snippet)
         return total_size
+
+    def get_evidence_token_estimate(self) -> int:
+        """Estimate the context occupied by collected paper evidence."""
+        return sum(
+            estimate_tokens(snippet)
+            for evidence in self.evidence.values()
+            for snippet in evidence.content
+        )
 
     def apply_compacted_evidence(
         self, compacted_evidence: dict[str, list[str]]
@@ -335,10 +411,15 @@ class ToolRunState(BaseModel):
 class CompactedToolResult(BaseModel):
     """A single compacted tool result"""
 
-    id: str = Field(description="The original tool call ID")
+    result_index: int = Field(
+        ge=0,
+        description="The stable result_index supplied in the compaction input",
+    )
     name: str = Field(description="The tool/function name that was called")
     summary: str = Field(
-        description="Concise summary of the result, preserving key information"
+        min_length=1,
+        max_length=1_000,
+        description="Concise summary of the result, preserving key information",
     )
 
 

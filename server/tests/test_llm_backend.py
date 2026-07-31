@@ -271,6 +271,8 @@ def test_chat_requests_reject_legacy_provider_fields() -> None:
                 "reasoning_level": "extreme",
             }
         )
+    with pytest.raises(ValidationError):
+        ConversationMessageRequest.model_validate({**base, "style": "detailed"})
 
 
 def test_token_week_starts_monday_utc() -> None:

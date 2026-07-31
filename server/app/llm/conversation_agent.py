@@ -15,11 +15,8 @@ from app.llm.citation_handler import CitationHandler
 from app.llm.conversation_prompts import final_answer_role_instructions
 from app.llm.conversation_tool_loop import ConversationToolLoop
 from app.llm.prompts import (
-    CONCISE_MODE_INSTRUCTIONS,
     CONVERSATION_ANSWER_MESSAGE,
     CONVERSATION_ANSWER_SYSTEM_PROMPT,
-    DETAILED_MODE_INSTRUCTIONS,
-    NORMAL_MODE_INSTRUCTIONS,
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
 from app.llm.streaming import iterate_in_thread
@@ -27,14 +24,13 @@ from app.modules.conversations.application.chat import (
     ChatPaperSnapshot,
     ConversationContextSnapshot,
 )
-from app.modules.conversations.application.contracts.messages import (
-    ResponseStyle,
-    ToolRunState,
-)
+from app.modules.conversations.application.contracts.messages import ToolRunState
 from app.shared.application import Actor, ApplicationExecutor
 from app.shared.domain.enums import ConversationScopeType
 
 logger = logging.getLogger(__name__)
+
+FINAL_INFORMATIONAL_RESULTS_TOKEN_BUDGET = 200_000
 
 
 class ConversationAgentRuntime(ConversationToolLoop):
@@ -55,7 +51,6 @@ class ConversationAgentRuntime(ConversationToolLoop):
         reasoning_level: ReasoningLevel = ReasoningLevel.STANDARD,
         user_references: Sequence[str] | None = None,
         mentioned_highlights: list[dict[str, Any]] | None = None,
-        response_style: ResponseStyle | None = ResponseStyle.NORMAL,
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Stream the final answer from bounded context and collected evidence."""
         user_citations = (
@@ -80,13 +75,6 @@ class ConversationAgentRuntime(ConversationToolLoop):
 
         logger.debug("Tool run completed: %s calls", len(tool_state.tool_calls))
 
-        style_instructions = (
-            DETAILED_MODE_INSTRUCTIONS
-            if response_style is ResponseStyle.DETAILED
-            else CONCISE_MODE_INSTRUCTIONS
-            if response_style is ResponseStyle.CONCISE
-            else NORMAL_MODE_INSTRUCTIONS
-        )
         context_guidance = {
             "papers": [
                 {
@@ -113,13 +101,9 @@ class ConversationAgentRuntime(ConversationToolLoop):
             ],
             "available_document_count": context_snapshot.available_document_count,
         }
-        formatted_system_prompt = (
-            CONVERSATION_ANSWER_SYSTEM_PROMPT.format(
-                available_papers=formatted_paper_options,
-            )
-            + style_instructions
-            + final_answer_role_instructions(scope_type)
-        )
+        formatted_system_prompt = CONVERSATION_ANSWER_SYSTEM_PROMPT.format(
+            available_papers=formatted_paper_options,
+        ) + final_answer_role_instructions(scope_type)
 
         formatted_prompt = CONVERSATION_ANSWER_MESSAGE.format(
             question=f"{question}\n\n{user_citations}" if user_citations else question,
@@ -147,7 +131,12 @@ class ConversationAgentRuntime(ConversationToolLoop):
                 label="completed_actions",
             ),
             SupplementaryContent(
-                content=json.dumps(tool_state.answer_tool_results(), indent=2),
+                content=json.dumps(
+                    tool_state.answer_tool_results(
+                        max_tokens=FINAL_INFORMATIONAL_RESULTS_TOKEN_BUDGET
+                    ),
+                    indent=2,
+                ),
                 label="informational_tool_results",
             ),
             TextContent(text=formatted_prompt),

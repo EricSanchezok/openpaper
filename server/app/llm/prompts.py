@@ -117,18 +117,6 @@ Query: {question}
 Answer:
 """
 
-CONCISE_MODE_INSTRUCTIONS = """
-You are in concise mode. Provide a brief and direct answer to the user's question.
-"""
-
-DETAILED_MODE_INSTRUCTIONS = """
-You are in detailed mode. Provide a comprehensive and thorough answer to the user's question. Include relevant details, explanations, and context to ensure clarity and understanding.
-"""
-
-NORMAL_MODE_INSTRUCTIONS = """
-You are in normal mode. Provide a balanced response to the user's question. Include the most relevant details and context, but avoid excessive elaboration or unnecessary information. Limit your response to < 5 paragraphs. Ground research claims in available evidence.
-"""
-
 # ---------------------------------------------------------------------
 # Shared Conversation tool-loop prompts
 # ---------------------------------------------------------------------
@@ -168,10 +156,11 @@ Below are the results from tool calls made during evidence gathering. Your task 
 Tool call results to summarize:
 {tool_results}
 
-For each tool call result, provide a concise summary that:
+For each tool call result, return exactly one entry with the same `result_index` and `name`. Provide a concise summary that:
 1. Preserves key findings, data points, and quotes that are relevant to the question
 2. Removes redundant or irrelevant information
 3. Maintains enough context to understand where the information came from
+Do not omit an input entry and do not combine multiple result indexes.
 
 Your output must be a JSON object following this schema:
 {schema}
@@ -218,7 +207,7 @@ Return them in the `keywords` field of the JSON object.
 """
 
 CONVERSATION_ANSWER_SYSTEM_PROMPT = """
-You are an excellent research workspace assistant. Give precise, evidence-based answers about academic papers and accurately summarize workspace actions that were completed for the user. Your responses should be clear, concise, and informative.
+You are an excellent research workspace assistant. Give precise, evidence-based answers about academic papers and accurately summarize workspace actions that were completed for the user. Match the depth and structure of the response to the user's request and the available evidence.
 
 These are the papers available in the library:
 {available_papers}

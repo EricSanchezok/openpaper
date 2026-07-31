@@ -345,7 +345,6 @@ async def stream_conversation_agent(
                 anchor_paper=anchor_paper,
                 context_snapshot=context_snapshot,
                 scope_type=conversation_scope.scope_type,
-                response_style=request.style,
                 mentioned_highlights=mentioned_highlights,
                 executor=executor,
             )

@@ -8,7 +8,10 @@ from app.modules.conversations.application.chat import (
     ConversationChatScope,
     ConversationContextSnapshot,
 )
-from app.modules.conversations.application.contracts.messages import ToolRunState
+from app.modules.conversations.application.contracts.messages import (
+    CompactedToolResult,
+    ToolRunState,
+)
 from app.modules.papers.application.contracts.extraction import ToolCall
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
 from app.modules.integrations.connectors.infrastructure.mcp import (
@@ -105,6 +108,76 @@ def test_control_result_is_not_informational_answer_context() -> None:
 
     assert state.has_informational_results() is True
     assert [item["name"] for item in state.answer_tool_results()] == ["web_search"]
+
+
+def test_tool_result_compaction_is_incremental_and_never_recompacts_summary() -> None:
+    state = ToolRunState()
+    first = ToolCall(id="first", name="search", args={"query": "one"})
+    second = ToolCall(id="second", name="extract", args={"url": "two"})
+    state.add_tool_call_result(first, {"raw": "first result"}, informational=True)
+    state.add_tool_call_result(second, {"raw": "second result"}, informational=True)
+
+    assert (
+        state.apply_compacted_results(
+            [
+                CompactedToolResult(
+                    result_index=0,
+                    name="search",
+                    summary="first summary",
+                )
+            ]
+        )
+        == 1
+    )
+    pending = state.get_tool_results_for_compaction(
+        max_total_tokens=10_000,
+        max_result_tokens=5_000,
+    )
+
+    assert [item["result_index"] for item in pending] == [1]
+    assert state.tool_call_results[0].result == "first summary"
+    assert state.answer_tool_results()[0]["result"] == "first summary"
+
+    assert (
+        state.apply_compacted_results(
+            [
+                CompactedToolResult(
+                    result_index=0,
+                    name="search",
+                    summary="summary of the summary",
+                ),
+                CompactedToolResult(
+                    result_index=1,
+                    name="extract",
+                    summary="second summary",
+                ),
+            ]
+        )
+        == 1
+    )
+    assert state.tool_call_results[0].result == "first summary"
+    assert state.tool_call_results[1].result == "second summary"
+
+
+def test_tool_result_compaction_preserves_omitted_and_invalid_results() -> None:
+    state = ToolRunState()
+    call = ToolCall(id=None, name="search", args={"query": "one"})
+    state.add_tool_call_result(call, {"raw": "must survive"})
+
+    assert state.apply_compacted_results([]) == 0
+    assert (
+        state.apply_compacted_results(
+            [
+                CompactedToolResult(
+                    result_index=0,
+                    name="wrong_tool",
+                    summary="incorrect replacement",
+                )
+            ]
+        )
+        == 0
+    )
+    assert state.tool_call_results[0].result == {"raw": "must survive"}
 
 
 @pytest.mark.asyncio
