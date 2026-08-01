@@ -1,0 +1,486 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Scholens production observability resources (no database resources)
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: scholens
+    AllowedPattern: "[a-zA-Z0-9._-]+"
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: "[a-zA-Z0-9._-]+"
+  DomainName:
+    Type: String
+    Description: Public web domain without scheme
+  InstanceRoleName:
+    Type: String
+    Description: Existing EC2 instance role used by Docker and CloudWatch Agent
+  AlertEmail:
+    Type: String
+    Description: Address that must confirm the SNS subscription
+
+Resources:
+  DiagnosticKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: KMS key for short-lived Scholens diagnostic snapshots
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+
+  DiagnosticKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ApplicationName}-${EnvironmentName}-diagnostics
+      TargetKeyId: !Ref DiagnosticKey
+
+  DiagnosticBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt DiagnosticKey.Arn
+            BucketKeyEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireDiagnostics
+            Status: Enabled
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: application
+          Value: !Ref ApplicationName
+        - Key: environment
+          Value: !Ref EnvironmentName
+
+  SourceMapBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldSourceMaps
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  SourceMapBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SourceMapBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: RumReadsSourceMaps
+            Effect: Allow
+            Principal:
+              Service: rum.amazonaws.com
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !GetAtt SourceMapBucket.Arn
+              - !Sub ${SourceMapBucket.Arn}/*
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                aws:SourceArn: !Sub arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${ApplicationName}-${EnvironmentName}
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/api
+      RetentionInDays: 30
+  ClientLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/client
+      RetentionInDays: 30
+  JobsApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/jobs-api
+      RetentionInDays: 30
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/worker
+      RetentionInDays: 30
+  BeatLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/beat
+      RetentionInDays: 30
+  RabbitMqLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/rabbitmq
+      RetentionInDays: 30
+  RedisLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/redis
+      RetentionInDays: 30
+  OtelMetricLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /${ApplicationName}/${EnvironmentName}/otel-metrics
+      RetentionInDays: 30
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${ApplicationName}-${EnvironmentName}-alerts
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ApiFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ $.status_code >= 500 }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: ApiServerErrors
+          MetricValue: "1"
+          DefaultValue: 0
+  JobFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref WorkerLogGroup
+      FilterPattern: '{ $.event = "job.task.failed" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: JobFailures
+          MetricValue: "1"
+          DefaultValue: 0
+  DiagnosticWriteFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ $.event = "diagnostic.snapshot.write_failed" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: DiagnosticWriteFailures
+          MetricValue: "1"
+          DefaultValue: 0
+
+  ApiFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-api-5xx
+      AlarmDescription: Five or more API server errors in five minutes
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: ApiServerErrors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+  JobFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-job-failures
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: JobFailures
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+  DiagnosticWriteFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-diagnostic-write
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: DiagnosticWriteFailures
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  RumIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      AllowUnauthenticatedIdentities: true
+      IdentityPoolName: !Sub ${ApplicationName}_${EnvironmentName}_rum
+  RumGuestRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ApplicationName}-${EnvironmentName}-rum-guest
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref RumIdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: unauthenticated
+      Policies:
+        - PolicyName: PutRumEvents
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: rum:PutRumEvents
+                Resource: !Sub arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${ApplicationName}-${EnvironmentName}
+  RumIdentityPoolRoles:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref RumIdentityPool
+      Roles:
+        unauthenticated: !GetAtt RumGuestRole.Arn
+  RumAppMonitor:
+    Type: AWS::RUM::AppMonitor
+    DependsOn: SourceMapBucketPolicy
+    Properties:
+      Name: !Sub ${ApplicationName}-${EnvironmentName}
+      Platform: Web
+      Domain: !Ref DomainName
+      CwLogEnabled: false
+      CustomEvents:
+        Status: ENABLED
+      DeobfuscationConfiguration:
+        JavaScriptSourceMaps:
+          Status: ENABLED
+          S3Uri: !Sub s3://${SourceMapBucket}
+      AppMonitorConfiguration:
+        AllowCookies: true
+        EnableXRay: true
+        GuestRoleArn: !GetAtt RumGuestRole.Arn
+        IdentityPoolId: !Ref RumIdentityPool
+        SessionSampleRate: 1
+        Telemetries:
+          - errors
+          - performance
+
+  HostAgentConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ApplicationName}/${EnvironmentName}/cloudwatch-agent/config
+      Type: String
+      Value: !Sub |
+        {
+          "agent": {"metrics_collection_interval": 60},
+          "metrics": {
+            "namespace": "${ApplicationName}/${EnvironmentName}/Host",
+            "append_dimensions": {"InstanceId": "${!aws:InstanceId}"},
+            "metrics_collected": {
+              "cpu": {"measurement": ["cpu_usage_idle", "cpu_usage_iowait"], "totalcpu": true},
+              "disk": {"measurement": ["used_percent"], "resources": ["*"]},
+              "mem": {"measurement": ["mem_used_percent"]}
+            }
+          }
+        }
+  OtelCollectorConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ApplicationName}/${EnvironmentName}/cloudwatch-agent/otel
+      Type: String
+      Value: !Sub |
+        receivers:
+          otlp/cwagent:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+        processors:
+          batch/cwagent: {}
+          memory_limiter/cwagent:
+            check_interval: 1s
+            limit_mib: 256
+        exporters:
+          awsemf/cwagent:
+            region: ${AWS::Region}
+            namespace: ${ApplicationName}/${EnvironmentName}
+            log_group_name: /${ApplicationName}/${EnvironmentName}/otel-metrics
+          awsxray/cwagent:
+            region: ${AWS::Region}
+        service:
+          pipelines:
+            metrics/cwagent:
+              receivers: [otlp/cwagent]
+              processors: [memory_limiter/cwagent, batch/cwagent]
+              exporters: [awsemf/cwagent]
+            traces/cwagent:
+              receivers: [otlp/cwagent]
+              processors: [memory_limiter/cwagent, batch/cwagent]
+              exporters: [awsxray/cwagent]
+
+  InstanceObservabilityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${ApplicationName}-${EnvironmentName}-observability
+      Roles: [!Ref InstanceRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: WriteContainerLogsAndMetrics
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:DescribeLogStreams
+              - logs:PutLogEvents
+              - logs:PutRetentionPolicy
+              - cloudwatch:PutMetricData
+            Resource: "*"
+          - Sid: WriteTraces
+            Effect: Allow
+            Action:
+              - xray:PutTraceSegments
+              - xray:PutTelemetryRecords
+              - xray:GetSamplingRules
+              - xray:GetSamplingTargets
+              - xray:GetSamplingStatisticSummaries
+            Resource: "*"
+          - Sid: ReadAgentConfiguration
+            Effect: Allow
+            Action: ssm:GetParameter
+            Resource:
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ApplicationName}/${EnvironmentName}/cloudwatch-agent/*
+          - Sid: WriteDiagnosticSnapshots
+            Effect: Allow
+            Action: s3:PutObject
+            Resource: !Sub ${DiagnosticBucket.Arn}/diagnostics/*
+          - Sid: EncryptDiagnosticSnapshots
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:GenerateDataKey
+            Resource: !GetAtt DiagnosticKey.Arn
+
+  OperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${ApplicationName}-${EnvironmentName}
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "region": "${AWS::Region}",
+                "title": "Backend failures",
+                "metrics": [
+                  ["${ApplicationName}/${EnvironmentName}", "ApiServerErrors"],
+                  [".", "JobFailures"],
+                  [".", "DiagnosticWriteFailures"]
+                ],
+                "stat": "Sum", "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "region": "${AWS::Region}",
+                "title": "Browser errors",
+                "metrics": [["AWS/RUM", "JsErrorCount", "application_name", "${ApplicationName}-${EnvironmentName}"]],
+                "stat": "Sum", "period": 300
+              }
+            },
+            {
+              "type": "log",
+              "x": 0, "y": 6, "width": 24, "height": 8,
+              "properties": {
+                "region": "${AWS::Region}",
+                "title": "Recent correlated failures",
+                "query": "SOURCE '/${ApplicationName}/${EnvironmentName}/api' | fields @timestamp, event, error_code, request_id, correlation_id, diagnostic_id | filter status_code >= 500 or ispresent(error_code) | sort @timestamp desc | limit 100"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DiagnosticBucketName:
+    Value: !Ref DiagnosticBucket
+  DiagnosticKmsKeyArn:
+    Value: !GetAtt DiagnosticKey.Arn
+  SourceMapBucketName:
+    Value: !Ref SourceMapBucket
+  RumApplicationId:
+    Value: !GetAtt RumAppMonitor.Id
+  RumGuestRoleArn:
+    Value: !GetAtt RumGuestRole.Arn
+  RumIdentityPoolId:
+    Value: !Ref RumIdentityPool
+  CloudWatchAgentConfigParameter:
+    Value: !Ref HostAgentConfig
+  OtelCollectorConfigParameter:
+    Value: !Ref OtelCollectorConfig
+  AlertTopicArn:
+    Value: !Ref AlertTopic

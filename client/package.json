@@ -43,6 +43,7 @@
     "@stripe/stripe-js": "^7.4.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/mdx": "^2.0.13",
+    "aws-rum-web": "^1.22.0",
     "canvas-confetti": "^1.9.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -88,8 +89,8 @@
     "@tailwindcss/postcss/postcss": "^8.5.10"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.1",
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.54.1",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^20",

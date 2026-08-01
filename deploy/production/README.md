@@ -67,6 +67,9 @@ sudo install -m 0600 deploy/production/bootstrap-db.sql /opt/scholens/bootstrap-
 sudo install -m 0755 deploy/production/release.sh /opt/scholens/release.sh
 sudo install -m 0755 deploy/production/smoke.sh /opt/scholens/smoke.sh
 sudo install -m 0755 deploy/production/wait-ssm.sh /opt/scholens/wait-ssm.sh
+sudo install -m 0755 deploy/production/install-observability.sh /opt/scholens/install-observability.sh
+sudo install -m 0755 deploy/production/upload-source-maps.sh /opt/scholens/upload-source-maps.sh
+sudo install -m 0644 deploy/production/observability.yaml /opt/scholens/observability.yaml
 sudo install -m 0600 deploy/production/runtime.env.example /etc/scholens/runtime.env
 sudoedit /etc/scholens/runtime.env
 ```
@@ -78,6 +81,9 @@ ports 80/443 and TLS certificates.
 
 Do not store static AWS access keys in `runtime.env`. The server and jobs images let the AWS SDK
 use the EC2 instance role.
+
+Deploy CloudWatch, X-Ray, RUM, alarms, KMS/S3 diagnostic storage, and the host
+agent by following [the observability runbook](../../docs/operations/AWS_OBSERVABILITY_SETUP.md).
 
 ## AWS and GitHub setup
 
@@ -96,6 +102,9 @@ release workflow are:
 - `PRODUCTION_INSTANCE_ID`
 - public build values `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, and
   `NEXT_PUBLIC_POSTHOG_HOST`
+- `NEXT_PUBLIC_RUM_APPLICATION_ID`, `NEXT_PUBLIC_RUM_GUEST_ROLE_ARN`,
+  `NEXT_PUBLIC_RUM_IDENTITY_POOL_ID`, and `RUM_SOURCE_MAP_BUCKET` from the
+  observability stack outputs
 
 Add `CLOUD_AUTH_READ_TOKEN` as a read-only repository secret. Protect the GitHub `production`
 environment with required reviewers. The publish role may push only to the three ECR repositories;

@@ -137,6 +137,26 @@ jobs:
             NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
             NEXT_PUBLIC_POSTHOG_KEY=${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
             NEXT_PUBLIC_POSTHOG_HOST=${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+            NEXT_PUBLIC_RELEASE_SHA=${{ needs.prepare.outputs.release_sha }}
+            NEXT_PUBLIC_RUM_APPLICATION_ID=${{ vars.NEXT_PUBLIC_RUM_APPLICATION_ID }}
+            NEXT_PUBLIC_RUM_GUEST_ROLE_ARN=${{ vars.NEXT_PUBLIC_RUM_GUEST_ROLE_ARN }}
+            NEXT_PUBLIC_RUM_IDENTITY_POOL_ID=${{ vars.NEXT_PUBLIC_RUM_IDENTITY_POOL_ID }}
+            NEXT_PUBLIC_RUM_REGION=${{ vars.AWS_REGION }}
+      - name: Extract and upload exact private source maps
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_CLIENT_REPOSITORY }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RUM_SOURCE_MAP_BUCKET: ${{ vars.RUM_SOURCE_MAP_BUCKET }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+          SOURCE_MAP_BUILD_DIR: client-source-maps
+        run: |
+          reference="${REGISTRY}/${REPOSITORY}@${DIGEST}"
+          docker pull "${reference}"
+          container_id=$(docker create "${reference}")
+          trap 'docker rm -f "${container_id}" >/dev/null 2>&1 || true' EXIT
+          docker cp "${container_id}:/opt/scholens-source-maps/." client-source-maps
+          deploy/production/upload-source-maps.sh
       - name: Export client reference
         id: image
         env:

@@ -8,11 +8,13 @@ x-jobs-image: &jobs-image
 
 x-restart: &restart
   restart: unless-stopped
-  logging:
-    driver: json-file
-    options:
-      max-size: 20m
-      max-file: "5"
+
+x-observability-environment: &observability-environment
+  RELEASE_SHA: ${SCHOLENS_RELEASE_SHA:?SCHOLENS_RELEASE_SHA is required}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${SCHOLENS_OTEL_EXPORTER_OTLP_ENDPOINT:-host.docker.internal:4317}
+  DIAGNOSTIC_SNAPSHOT_BUCKET: ${SCHOLENS_DIAGNOSTIC_SNAPSHOT_BUCKET:-}
+  DIAGNOSTIC_SNAPSHOT_KMS_KEY_ID: ${SCHOLENS_DIAGNOSTIC_SNAPSHOT_KMS_KEY_ID:-}
+  DIAGNOSTIC_SUCCESS_SAMPLE_RATE: ${SCHOLENS_DIAGNOSTIC_SUCCESS_SAMPLE_RATE:-0.01}
 
 x-broker-environment: &broker-environment
   CELERY_BROKER_URL: amqp://scholens:${SCHOLENS_RABBITMQ_PASSWORD:?SCHOLENS_RABBITMQ_PASSWORD is required}@rabbitmq:5672//
@@ -26,7 +28,7 @@ x-storage-environment: &storage-environment
   CLOUDFLARE_BUCKET_NAME: ${SCHOLENS_CLOUDFLARE_BUCKET_NAME:?SCHOLENS_CLOUDFLARE_BUCKET_NAME is required}
 
 x-jobs-environment: &jobs-environment
-  <<: [*broker-environment, *storage-environment]
+  <<: [*broker-environment, *storage-environment, *observability-environment]
   ENVIRONMENT: production
   DEEPSEEK_API_KEY: ${SCHOLENS_DEEPSEEK_API_KEY:?SCHOLENS_DEEPSEEK_API_KEY is required}
   DEEPSEEK_BASE_URL: ${SCHOLENS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
@@ -59,6 +61,13 @@ services:
   client:
     image: ${SCHOLENS_CLIENT_IMAGE:?SCHOLENS_CLIENT_IMAGE must be a digest-qualified reference}
     <<: *restart
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/client
+        awslogs-stream: client
+        awslogs-create-group: "false"
     expose:
       - "3000"
     networks:
@@ -75,7 +84,7 @@ services:
   api:
     <<: [*api-image, *restart]
     environment:
-      <<: [*broker-environment, *storage-environment]
+      <<: [*broker-environment, *storage-environment, *observability-environment]
       DATABASE_URL: ${SCHOLENS_APP_DATABASE_URL:?SCHOLENS_APP_DATABASE_URL is required}
       AUTH_JWT_SECRET: ${SCHOLENS_AUTH_JWT_SECRET:?SCHOLENS_AUTH_JWT_SECRET is required}
       AUTH_JWT_ACCESS_TOKEN_TTL_MINUTES: ${SCHOLENS_AUTH_JWT_ACCESS_TOKEN_TTL_MINUTES:-15}
@@ -145,6 +154,15 @@ services:
       edge:
         aliases:
           - scholens-api
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/api
+        awslogs-stream: api
+        awslogs-create-group: "false"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -157,6 +175,15 @@ services:
     <<: [*jobs-image, *restart]
     environment:
       <<: *jobs-environment
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/jobs-api
+        awslogs-stream: jobs-api
+        awslogs-create-group: "false"
     expose:
       - "8001"
     networks:
@@ -190,6 +217,15 @@ services:
       - --soft-time-limit=900
     environment:
       <<: *jobs-environment
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/worker
+        awslogs-stream: worker
+        awslogs-create-group: "false"
     networks:
       - internal
     depends_on:
@@ -203,6 +239,15 @@ services:
     command: ["celery", "--app", "src.celery_app", "beat", "--loglevel=info"]
     environment:
       <<: *jobs-environment
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/beat
+        awslogs-stream: beat
+        awslogs-create-group: "false"
     networks:
       - internal
     depends_on:
@@ -214,6 +259,13 @@ services:
   rabbitmq:
     image: rabbitmq:4.1-alpine@sha256:f45d8808ab7dfbf116d343e7814590e79483fee4c5bf21070a4d43274d217791
     <<: *restart
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/rabbitmq
+        awslogs-stream: rabbitmq
+        awslogs-create-group: "false"
     environment:
       RABBITMQ_DEFAULT_USER: scholens
       RABBITMQ_DEFAULT_PASS: ${SCHOLENS_RABBITMQ_PASSWORD:?SCHOLENS_RABBITMQ_PASSWORD is required}
@@ -231,6 +283,13 @@ services:
   redis:
     image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     <<: *restart
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${SCHOLENS_AWS_REGION:?SCHOLENS_AWS_REGION is required}
+        awslogs-group: /scholens/production/redis
+        awslogs-stream: redis
+        awslogs-create-group: "false"
     environment:
       SCHOLENS_REDIS_PASSWORD: ${SCHOLENS_REDIS_PASSWORD:?SCHOLENS_REDIS_PASSWORD is required}
     command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${SCHOLENS_REDIS_PASSWORD}\""]

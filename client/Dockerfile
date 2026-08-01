@@ -12,14 +12,27 @@ ARG NEXT_PUBLIC_API_URL=
 ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 ARG NEXT_PUBLIC_POSTHOG_KEY=
 ARG NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+ARG NEXT_PUBLIC_RELEASE_SHA=development
+ARG NEXT_PUBLIC_RUM_APPLICATION_ID=
+ARG NEXT_PUBLIC_RUM_GUEST_ROLE_ARN=
+ARG NEXT_PUBLIC_RUM_IDENTITY_POOL_ID=
+ARG NEXT_PUBLIC_RUM_REGION=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY} \
     NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY} \
     NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST} \
+    NEXT_PUBLIC_RELEASE_SHA=${NEXT_PUBLIC_RELEASE_SHA} \
+    NEXT_PUBLIC_RUM_APPLICATION_ID=${NEXT_PUBLIC_RUM_APPLICATION_ID} \
+    NEXT_PUBLIC_RUM_GUEST_ROLE_ARN=${NEXT_PUBLIC_RUM_GUEST_ROLE_ARN} \
+    NEXT_PUBLIC_RUM_IDENTITY_POOL_ID=${NEXT_PUBLIC_RUM_IDENTITY_POOL_ID} \
+    NEXT_PUBLIC_RUM_REGION=${NEXT_PUBLIC_RUM_REGION} \
+    UPLOAD_SOURCE_MAPS=true \
     NEXT_TELEMETRY_DISABLED=1
 
 COPY client/ /app/
 RUN yarn build
+RUN mkdir -p /tmp/scholens-source-maps \
+    && find .next -type f -name '*.map' -exec cp --parents '{}' /tmp/scholens-source-maps/ \;
 
 FROM ${NODE_IMAGE} AS runtime
 
@@ -35,6 +48,9 @@ RUN groupadd --system --gid 1001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/public /app/public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone /app/
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static /app/.next/static
+# Kept outside the served application tree so CI can extract the exact maps
+# corresponding to this immutable image without publishing them to browsers.
+COPY --from=builder --chown=root:root /tmp/scholens-source-maps /opt/scholens-source-maps
 
 USER nextjs
 EXPOSE 3000

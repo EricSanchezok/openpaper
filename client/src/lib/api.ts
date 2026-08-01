@@ -5,6 +5,7 @@ import {
 } from "./auth-session";
 import { apiUrl } from "./api-config";
 import { apiErrorFromResponse } from "./errors";
+import { reportClientError } from "./client-observability";
 import type {
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
@@ -65,7 +66,16 @@ export async function fetchFromApi<T = unknown>(
     });
 
     if (!response.ok) {
-        throw await apiErrorFromResponse(response);
+        const error = await apiErrorFromResponse(response);
+        reportClientError(error, {
+            boundary: "api",
+            status: error.status,
+            error_code: error.envelope.code,
+            request_id: error.envelope.request_id,
+            correlation_id: error.envelope.correlation_id,
+            diagnostic_id: error.envelope.diagnostic_id,
+        });
+        throw error;
     }
 
     if (response.status === 204) {
@@ -89,7 +99,16 @@ export async function fetchStreamFromApi(
     });
 
     if (!response.ok) {
-        throw await apiErrorFromResponse(response);
+        const error = await apiErrorFromResponse(response);
+        reportClientError(error, {
+            boundary: "api_stream",
+            status: error.status,
+            error_code: error.envelope.code,
+            request_id: error.envelope.request_id,
+            correlation_id: error.envelope.correlation_id,
+            diagnostic_id: error.envelope.diagnostic_id,
+        });
+        throw error;
     }
 
     if (!response.body) {

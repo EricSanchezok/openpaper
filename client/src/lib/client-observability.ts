@@ -1,3 +1,5 @@
+import { AwsRum } from 'aws-rum-web';
+
 type ErrorContext = Record<string, string | number | boolean | undefined>;
 
 interface RumClient {
@@ -8,6 +10,39 @@ interface RumClient {
 declare global {
     interface Window {
         __SCHOLENS_RUM__?: RumClient;
+    }
+}
+
+let rumInitialized = false;
+
+export function initializeClientObservability(): void {
+    if (typeof window === 'undefined' || rumInitialized) return;
+    rumInitialized = true;
+    const applicationId = process.env.NEXT_PUBLIC_RUM_APPLICATION_ID;
+    const guestRoleArn = process.env.NEXT_PUBLIC_RUM_GUEST_ROLE_ARN;
+    const identityPoolId = process.env.NEXT_PUBLIC_RUM_IDENTITY_POOL_ID;
+    const region = process.env.NEXT_PUBLIC_RUM_REGION;
+    if (!applicationId || !guestRoleArn || !identityPoolId || !region) return;
+    const releaseId = process.env.NEXT_PUBLIC_RELEASE_SHA || 'development';
+    try {
+        window.__SCHOLENS_RUM__ = new AwsRum(
+            applicationId,
+            releaseId,
+            region,
+            {
+                allowCookies: true,
+                enableXRay: true,
+                guestRoleArn,
+                identityPoolId,
+                sessionSampleRate: 1,
+                telemetries: ['errors', 'performance', 'interaction'],
+                recordResourceUrl: false,
+                releaseId,
+            },
+        );
+    } catch {
+        // Observability is fail-open and must never prevent the application boot.
+        window.__SCHOLENS_RUM__ = undefined;
     }
 }
 

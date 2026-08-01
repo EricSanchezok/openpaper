@@ -187,13 +187,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends shellcheck
-          bash -n deploy/production/release.sh deploy/production/smoke.sh deploy/production/wait-ssm.sh
-          shellcheck deploy/production/release.sh deploy/production/smoke.sh deploy/production/wait-ssm.sh
+          bash -n deploy/production/release.sh deploy/production/smoke.sh deploy/production/wait-ssm.sh deploy/production/install-observability.sh deploy/production/upload-source-maps.sh
+          shellcheck deploy/production/release.sh deploy/production/smoke.sh deploy/production/wait-ssm.sh deploy/production/install-observability.sh deploy/production/upload-source-maps.sh
+          uvx --from cfn-lint cfn-lint deploy/production/observability.yaml
       - name: Validate production Compose
         env:
           SCHOLENS_API_IMAGE: registry.example/scholens/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           SCHOLENS_CLIENT_IMAGE: registry.example/scholens/client@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           SCHOLENS_JOBS_IMAGE: registry.example/scholens/jobs@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          SCHOLENS_RELEASE_SHA: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           SCHOLENS_DOMAIN: scholens.example.invalid
           SCHOLENS_AWS_REGION: us-east-1
           SCHOLENS_APP_DATABASE_URL: postgresql://app:password@postgres.example.invalid/sanchezcloud
