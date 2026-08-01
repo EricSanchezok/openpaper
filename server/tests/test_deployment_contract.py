@@ -98,17 +98,19 @@ def test_database_contract_shares_auth_and_isolates_scholens() -> None:
 
 
 def test_identity_revision_is_consistent_across_runtime_and_ci() -> None:
-    project = (ROOT / "server" / "pyproject.toml").read_text(encoding="utf-8")
+    lock = (ROOT / "server" / "uv.lock").read_text(encoding="utf-8")
     dockerfile = (ROOT / "server" / "Dockerfile").read_text(encoding="utf-8")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     match = re.search(
-        r"sanchezcloud-identity\[aliyun,fastapi\].+@([0-9a-f]{40})", project
+        r"sanchezcloud-identity\.git\?(?:rev|tag)=[^#\"\s]+#([0-9a-f]{40})", lock
     )
     assert match is not None
     revision = match.group(1)
     assert f"ARG SANCHEZCLOUD_IDENTITY_REVISION={revision}" in dockerfile
-    assert f"ref: {revision}" in ci
+    assert "server/.venv/bin/sanchezcloud-identity migrate" in ci
+    assert ".ci/sanchezcloud-identity" not in ci
+    assert f"ref: {revision}" not in ci
 
 
 def test_workflows_use_the_scoped_dependency_reader_app() -> None:
