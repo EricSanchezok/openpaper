@@ -111,6 +111,21 @@ def test_identity_revision_is_consistent_across_runtime_and_ci() -> None:
     assert f"ref: {revision}" in ci
 
 
+def test_workflows_use_the_scoped_dependency_reader_app() -> None:
+    workflows = "\n".join(
+        (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        for name in ("ci.yml", "release.yml")
+    )
+
+    assert "actions/create-github-app-token@" in workflows
+    assert "vars.IDENTITY_READER_APP_ID" in workflows
+    assert "secrets.IDENTITY_READER_PRIVATE_KEY" in workflows
+    assert "permission-contents: read" in workflows
+    assert "CLOUD_AUTH_READ_TOKEN" not in workflows
+    assert "origin/master" not in workflows
+    assert "default: master" not in workflows
+
+
 def test_environment_catalog_matches_shared_identity_conventions() -> None:
     catalog = (ROOT / ".env.example").read_text(encoding="utf-8")
     compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")

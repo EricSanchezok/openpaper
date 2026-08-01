@@ -11,7 +11,7 @@ on:
       ref:
         description: Git commit or tag to publish
         required: false
-        default: master
+        default: main
         type: string
 
 permissions:
@@ -42,10 +42,10 @@ jobs:
       - name: Resolve production package digest
         id: package
         run: echo "package_sha=$(bash deploy/production/release.sh package-sha)" >> "$GITHUB_OUTPUT"
-      - name: Require revision to be merged into master
+      - name: Require revision to be merged into main
         env:
           RELEASE_SHA: ${{ steps.revision.outputs.release_sha }}
-        run: git merge-base --is-ancestor "$RELEASE_SHA" origin/master
+        run: git merge-base --is-ancestor "$RELEASE_SHA" origin/main
 
   quality:
     if: inputs.operation != 'rollback'
@@ -53,8 +53,6 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ needs.prepare.outputs.release_sha }}
-    secrets:
-      CLOUD_AUTH_READ_TOKEN: ${{ secrets.CLOUD_AUTH_READ_TOKEN }}
 
   publish-api:
     if: inputs.operation != 'rollback'
@@ -68,6 +66,15 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           persist-credentials: false
+      - name: Mint read-only SanchezCloud Identity token
+        id: identity-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.IDENTITY_READER_APP_ID }}
+          private-key: ${{ secrets.IDENTITY_READER_PRIVATE_KEY }}
+          owner: EricSanchezok
+          repositories: sanchezcloud-identity
+          permission-contents: read
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
@@ -90,7 +97,7 @@ jobs:
           provenance: mode=max
           sbom: true
           secrets: |
-            github_token=${{ secrets.CLOUD_AUTH_READ_TOKEN }}
+            github_token=${{ steps.identity-token.outputs.token }}
       - name: Export API reference
         id: image
         env:
