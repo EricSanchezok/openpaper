@@ -65,6 +65,9 @@ def test_database_contract_shares_auth_and_isolates_scholens() -> None:
     assert "product_migrator_role" in bootstrap
     assert "GRANT SELECT, INSERT, UPDATE ON TABLE auth.users" in bootstrap
     assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE auth.users" not in bootstrap
+    assert "GRANT SELECT, INSERT, UPDATE ON TABLE auth.user_clients" in bootstrap
+    assert "GRANT SELECT, INSERT ON TABLE auth.security_events" in bootstrap
+    assert "security_events_id_seq" in bootstrap
     assert 'FOR ROLE :"auth_migrator_role"' not in bootstrap
     assert (
         'REVOKE CREATE ON SCHEMA auth FROM :"app_role", :"product_migrator_role"'
@@ -92,6 +95,18 @@ def test_database_contract_shares_auth_and_isolates_scholens() -> None:
         "scholens.project_paper",
     ):
         assert not re.search(rf"{re.escape(removed_table)}(?![a-z_])", ci)
+
+
+def test_cloud_auth_revision_is_consistent_across_runtime_and_ci() -> None:
+    project = (ROOT / "server" / "pyproject.toml").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "server" / "Dockerfile").read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    match = re.search(r"cloud-auth\[aliyun,fastapi\].+@([0-9a-f]{40})", project)
+    assert match is not None
+    revision = match.group(1)
+    assert f"ARG PRIVATE_DEP_REVISION={revision}" in dockerfile
+    assert f"ref: {revision}" in ci
 
 
 def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:

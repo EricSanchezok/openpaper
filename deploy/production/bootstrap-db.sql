@@ -53,6 +53,16 @@ SELECT format(
 WHERE to_regclass('auth.users') IS NOT NULL
   AND to_regclass('auth.refresh_tokens') IS NOT NULL \gexec
 SELECT format(
+  'GRANT SELECT, INSERT, UPDATE ON TABLE auth.user_clients TO %I',
+  :'app_role'
+)
+WHERE to_regclass('auth.user_clients') IS NOT NULL \gexec
+SELECT format(
+  'GRANT SELECT, INSERT ON TABLE auth.security_events TO %I',
+  :'app_role'
+)
+WHERE to_regclass('auth.security_events') IS NOT NULL \gexec
+SELECT format(
   'GRANT SELECT ON TABLE auth.schema_migrations TO %I',
   :'product_migrator_role'
 )
@@ -71,7 +81,11 @@ SELECT format(
 )
 FROM information_schema.sequences
 WHERE sequence_schema = 'auth'
-  AND sequence_name IN ('users_id_seq', 'refresh_tokens_id_seq')
+  AND sequence_name IN (
+    'users_id_seq',
+    'refresh_tokens_id_seq',
+    'security_events_id_seq'
+  )
 ORDER BY sequence_name \gexec
 
 -- These grants become available after the Scholens baseline.

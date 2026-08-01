@@ -1,7 +1,7 @@
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 FROM ${PYTHON_IMAGE} AS builder
 
-ARG PRIVATE_DEP_REVISION=3d95e2a8bb351c0d99aefca9572fb25deb88cc52
+ARG PRIVATE_DEP_REVISION=59286aa262c0ab653558b3afec11c660008f1218
 ARG PRIVATE_DEP_ARCHIVE=https://api.github.com/repos/EricSanchezok/cloud-auth/tarball
 
 RUN apt-get update \
