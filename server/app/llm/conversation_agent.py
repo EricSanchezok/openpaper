@@ -71,7 +71,10 @@ class ConversationAgentRuntime(ConversationToolLoop):
             str(paper.document_id): str(paper.title) for paper in all_papers
         }
 
-        logger.debug("Tool run completed: %s calls", len(tool_state.tool_calls))
+        logger.debug(
+            "conversation.tool_run.completed",
+            extra={"tool_call_count": len(tool_state.tool_calls)},
+        )
 
         context_guidance = {
             "papers": [

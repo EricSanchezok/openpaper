@@ -83,8 +83,7 @@ class BillingWorkflow:
                 self._payments.cancel_subscription(subscription.stripe_subscription_id)
             except BillingProviderUnavailable:
                 logger.warning(
-                    "Could not cancel incomplete subscription %s",
-                    subscription.stripe_subscription_id,
+                    "billing.incomplete_subscription.cancel_failed",
                     exc_info=True,
                 )
 
@@ -154,7 +153,7 @@ class BillingWorkflow:
             )
         except BillingProviderUnavailable:
             logger.warning(
-                "Provider subscription refresh failed; using local state",
+                "billing.subscription_refresh.provider_failed",
                 exc_info=True,
             )
             return self._executor.query(
@@ -477,13 +476,13 @@ class BillingWorkflow:
         try:
             self._events.record(event)
         except Exception:
-            logger.warning("Billing telemetry delivery failed", exc_info=True)
+            logger.warning("billing.product_analytics.delivery_failed", exc_info=True)
 
     def _notify(self, notification: BillingNotification) -> None:
         try:
             self._notifier.send(notification)
         except Exception:
-            logger.warning("Billing notification delivery failed", exc_info=True)
+            logger.warning("billing.notification.delivery_failed", exc_info=True)
 
     @staticmethod
     def _checkout_redirect(error: str) -> SubscriptionActionResponse:

@@ -42,7 +42,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             ).scalar()
             or 0
         )
-        logger.info(f"Found {total} papers to backfill (skipping already-indexed)")
+        logger.info("passage_backfill.discovery.completed", extra={"paper_count": total})
 
         indexed = 0
         skipped = 0
@@ -52,7 +52,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         # Disable the tsvector trigger during bulk insert — computing
         # to_tsvector per row is the main bottleneck. We'll backfill
         # ts_vector in one UPDATE pass at the end.
-        logger.info("Disabling tsvector trigger for bulk insert...")
+        logger.info("paper_search.tsvector_trigger.disabling")
         db.execute(
             text(
                 "ALTER TABLE scholens.document_passages "
@@ -62,7 +62,7 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
         db.commit()
 
         if not total:
-            logger.info("No papers to insert. Skipping to ts_vector backfill...")
+            logger.info("paper_search.passages.no_papers")
 
         while total > 0:
             # Always OFFSET 0 because each committed batch removes papers
@@ -93,7 +93,11 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                 for document_id, raw_content in rows:
                     passages = document_search_repository.build_passages(raw_content)
                     logger.info(
-                        f"[DRY RUN] Document {document_id}: would index {len(passages)} passages"
+                        "passage_backfill.document.dry_run",
+                        extra={
+                            "document_id": str(document_id),
+                            "passage_count": len(passages),
+                        },
                     )
                     skipped += 1
             else:
@@ -105,9 +109,12 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
                     try:
                         for p in document_search_repository.build_passages(raw_content):
                             all_passages.append({"document_id": document_id, **p})
-                    except Exception as e:
+                    except Exception:
                         errors += 1
-                        logger.error(f"Failed to build passages for {document_id}: {e}")
+                        logger.exception(
+                            "passage_backfill.document.failed",
+                            extra={"document_id": str(document_id)},
+                        )
 
                 if all_passages:
                     db.execute(
@@ -130,16 +137,24 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             rate = indexed / elapsed if elapsed > 0 else 0
             remaining = (total - indexed) / rate if rate > 0 else 0
             logger.info(
-                f"Progress: {indexed}/{total} ({indexed * 100 // total}%) | "
-                f"batch: {batch_elapsed:.1f}s | "
-                f"rate: {rate:.0f} papers/s | "
-                f"errors: {errors} | "
-                f"ETA: {remaining / 60:.0f}m"
+                "passage_backfill.progress",
+                extra={
+                    "indexed": indexed,
+                    "total": total,
+                    "percent": indexed * 100 // total,
+                    "batch_seconds": round(batch_elapsed, 3),
+                    "papers_per_second": round(rate, 3),
+                    "error_count": errors,
+                    "eta_minutes": round(remaining / 60, 3),
+                },
             )
 
         # Backfill ts_vector in batches (no upfront COUNT to avoid full table scan)
         ts_batch_size = 100_000
-        logger.info(f"Backfilling ts_vector in batches of {ts_batch_size}...")
+        logger.info(
+            "passage_backfill.search_vector.started",
+            extra={"batch_size": ts_batch_size},
+        )
         ts_start = time.time()
         ts_updated = 0
 
@@ -166,17 +181,24 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             elapsed = time.time() - ts_start
             rate = ts_updated / elapsed if elapsed > 0 else 0
             logger.info(
-                f"ts_vector progress: {ts_updated} rows | "
-                f"rate: {rate:.0f} rows/s | "
-                f"elapsed: {elapsed / 60:.1f}m"
+                "passage_backfill.search_vector.progress",
+                extra={
+                    "updated_rows": ts_updated,
+                    "rows_per_second": round(rate, 3),
+                    "elapsed_minutes": round(elapsed / 60, 3),
+                },
             )
 
         logger.info(
-            f"ts_vector backfill done: {ts_updated} rows in {(time.time() - ts_start) / 60:.1f}m"
+            "passage_backfill.search_vector.completed",
+            extra={
+                "updated_rows": ts_updated,
+                "elapsed_minutes": round((time.time() - ts_start) / 60, 3),
+            },
         )
 
         # Re-enable the trigger for future inserts
-        logger.info("Re-enabling tsvector trigger...")
+        logger.info("paper_search.tsvector_trigger.enabling")
         db.execute(
             text(
                 "ALTER TABLE scholens.document_passages "
@@ -187,8 +209,13 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
 
         elapsed = time.time() - start_time
         logger.info(
-            f"Backfill complete in {elapsed / 60:.1f}m. "
-            f"Indexed: {indexed}, Errors: {errors}, Skipped (dry-run): {skipped}"
+            "passage_backfill.completed",
+            extra={
+                "elapsed_minutes": round(elapsed / 60, 3),
+                "indexed": indexed,
+                "error_count": errors,
+                "skipped": skipped,
+            },
         )
     finally:
         db.close()

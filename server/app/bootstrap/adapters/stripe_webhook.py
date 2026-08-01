@@ -205,7 +205,10 @@ class StripeWebhookWorkflow:
                     event_id=event_id,
                     error_code="stripe_webhook_failed",
                 )
-            logger.exception("Error processing Stripe webhook event %s", event_id)
+            logger.exception(
+                "stripe.webhook.processing_failed",
+                extra={"event_id": event_id},
+            )
             raise AppError(
                 code="stripe_webhook_failed",
                 message="Stripe webhook processing failed",
@@ -228,7 +231,7 @@ class StripeWebhookWorkflow:
                 self._webhook_secret,
             )
         except Exception as exc:
-            logger.warning("Invalid Stripe webhook signature", exc_info=True)
+            logger.warning("stripe.webhook.signature_invalid", exc_info=True)
             raise AppError(
                 code="invalid_stripe_signature",
                 message="Invalid Stripe webhook signature",
@@ -497,13 +500,13 @@ class StripeWebhookWorkflow:
         try:
             self._events.record(event)
         except Exception:
-            logger.warning("Stripe webhook telemetry delivery failed", exc_info=True)
+            logger.warning("stripe.webhook.product_analytics_failed", exc_info=True)
 
     def _notify(self, notification: BillingNotification) -> None:
         try:
             self._notifier.send(notification)
         except Exception:
-            logger.warning("Stripe webhook notification delivery failed", exc_info=True)
+            logger.warning("stripe.webhook.notification_failed", exc_info=True)
 
 
 def _get(value: Any, key: str, default: Any = None) -> Any:

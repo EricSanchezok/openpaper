@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { ScaledPosition, ScaledRect } from "@/lib/schema";
 import {
 	normalizeForSearch,
@@ -56,7 +57,7 @@ export async function findTextPages(
 				matchingPages.push(pageNum);
 			}
 		} catch (err) {
-			console.warn(`Error searching page ${pageNum}:`, err);
+			reportClientIssue(`Error searching page ${pageNum}:`, err);
 		}
 	}
 
@@ -263,7 +264,7 @@ export function createTextHighlightOverlays(
 					matchElements.push(highlight);
 				}
 			} catch (e) {
-				console.warn("Range error:", e);
+				reportClientIssue("Range error:", e);
 			}
 		}
 	}
@@ -475,7 +476,7 @@ export function computeScaledPositionFromTextLayer(
 					});
 				}
 			} catch (e) {
-				console.warn("Range error:", e);
+				reportClientIssue("Range error:", e);
 			}
 		}
 	}

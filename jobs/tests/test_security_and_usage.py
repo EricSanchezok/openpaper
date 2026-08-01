@@ -7,9 +7,35 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from scholens_observability import current_context
 
+from src.observability import _task_postrun, _task_prerun
 from src.token_usage import collect_token_usage, record_token_usage
 from src.webhook_signing import post_signed_json
+
+
+def test_job_task_context_restores_durable_causality_headers() -> None:
+    task = SimpleNamespace(
+        name="process_pdf",
+        request=SimpleNamespace(
+            headers={
+                "scholens-correlation-id": "correlation-1",
+                "scholens-causation-id": "operation-1",
+                "scholens-actor-id": "42",
+            }
+        ),
+    )
+
+    _task_prerun(task_id="job-1", task=task)
+
+    context = current_context()
+    assert context.operation_id == "job-1"
+    assert context.correlation_id == "correlation-1"
+    assert context.causation_id == "operation-1"
+    assert context.actor_id == "42"
+
+    _task_postrun(task_id="job-1", task=task, state="SUCCESS")
+    assert current_context().operation_id is None
 
 
 def test_jobs_usage_uses_provider_total_as_the_only_charge() -> None:

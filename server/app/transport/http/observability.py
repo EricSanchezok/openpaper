@@ -6,7 +6,7 @@ import asyncio
 import logging
 from time import monotonic
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.shared.application import OperationContext
 from scholens_observability import (
@@ -23,6 +23,18 @@ from fastapi import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_request_id(request: Request) -> UUID:
+    """Return the middleware request ID, recovering safely at direct boundaries."""
+
+    raw_request_id = getattr(request.state, "request_id", None)
+    try:
+        request_id = UUID(str(raw_request_id))
+    except (TypeError, ValueError, AttributeError):
+        request_id = uuid4()
+        request.state.request_id = str(request_id)
+    return request_id
 
 
 def attach_operation_context(
@@ -103,7 +115,6 @@ class RequestObservabilityMiddleware:
                 logging.INFO,
                 "http.request.started",
                 method=scope.get("method", "UNKNOWN"),
-                path=scope.get("path", ""),
             )
             try:
                 await self._app(scope, receive, observed_send)
@@ -135,6 +146,9 @@ class RequestObservabilityMiddleware:
                 )
                 if response_status >= 500:
                     add_counter("scholens.http.server_errors", attributes=attributes)
+                stream_failed = bool(state.get("stream_failed"))
+                if stream_failed:
+                    add_counter("scholens.http.stream_failures")
                 log_event(
                     logger,
                     logging.INFO if response_status < 500 else logging.ERROR,
@@ -143,6 +157,7 @@ class RequestObservabilityMiddleware:
                     route=route,
                     status_code=response_status,
                     response_started=response_started,
+                    stream_failed=stream_failed,
                     duration_ms=round(duration_ms, 3),
                 )
                 self._record_sampled_success(
@@ -165,6 +180,7 @@ class RequestObservabilityMiddleware:
         correlation_id = state.get("correlation_id")
         if (
             status_code >= 400
+            or str(scope.get("method", "GET")).upper() in {"GET", "HEAD", "OPTIONS"}
             or not state.get("authenticated")
             or not isinstance(correlation_id, str)
             or not should_sample_success(

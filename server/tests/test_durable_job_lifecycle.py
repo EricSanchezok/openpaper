@@ -99,6 +99,10 @@ def test_publish_failure_keeps_dispatch_pending_for_retry() -> None:
         queue="audio",
         kwargs={"request": {}},
         attempt_count=1,
+        enqueued_at=datetime.now(UTC),
+        correlation_id=uuid4(),
+        origin_operation_id=uuid4(),
+        requested_by_id=42,
     )
 
     with (
@@ -129,6 +133,7 @@ def test_publish_failure_keeps_dispatch_pending_for_retry() -> None:
 def test_dispatch_reservation_uses_a_versioned_publishing_lease() -> None:
     job = _job()
     dispatch = JobDispatch(
+        job=job,
         job_id=job.id,
         task_name="generate_audio_overview",
         queue="audio",

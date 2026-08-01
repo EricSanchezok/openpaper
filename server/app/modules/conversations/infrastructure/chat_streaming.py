@@ -7,10 +7,15 @@ import logging
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.shared.application import ErrorEnvelope
 from app.shared.domain import AppError, FailureKind
 from scholens_observability import add_counter, current_context, log_event
+from scholens_observability import (
+    DiagnosticSnapshotRecorder,
+    NullDiagnosticSnapshotRecorder,
+    build_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +27,8 @@ async def stream_with_stable_error(
     event_name: str,
     user_id: int,
     properties: dict[str, object],
+    diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
+    diagnostic_context: dict[str, object] | None = None,
 ) -> AsyncIterator[str]:
     """Require one explicit terminal event and preserve stable error semantics."""
     completed = False
@@ -53,13 +60,47 @@ async def stream_with_stable_error(
             )
         )
         context = current_context()
+        snapshot_id = uuid4()
         public_error = ErrorEnvelope.from_app_error(
             error,
             stage=context.stage or "conversation_stream",
             request_id=context.request_id,
             correlation_id=context.correlation_id,
-            diagnostic_id=str(uuid4()),
+            diagnostic_id=str(snapshot_id),
         )
+        recorder = diagnostic_recorder or NullDiagnosticSnapshotRecorder()
+        try:
+            recorder.record(
+                build_snapshot(
+                    snapshot_id=snapshot_id,
+                    service=context.service,
+                    environment=context.environment,
+                    release=context.release,
+                    reason="conversation_stream_failed",
+                    request_id=context.request_id,
+                    operation_id=context.operation_id,
+                    correlation_id=context.correlation_id,
+                    actor_id=str(user_id),
+                    sections={
+                        "failure": {
+                            "code": error.code,
+                            "kind": error.kind.value,
+                            "stage": public_error.stage,
+                            "exception_type": type(exc).__name__,
+                        },
+                        "conversation": properties,
+                        "runtime": diagnostic_context or {},
+                    },
+                )
+            )
+        except Exception as capture_error:
+            log_event(
+                logger,
+                logging.ERROR,
+                "diagnostic.snapshot.capture_failed",
+                exc_info=capture_error,
+                diagnostic_id=str(snapshot_id),
+            )
         track_event(
             event_name,
             properties={

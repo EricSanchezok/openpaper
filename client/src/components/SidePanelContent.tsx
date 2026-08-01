@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import {
     ChatMessage,
     PaperData,
@@ -216,7 +217,7 @@ export function SidePanelContent({
                     setReasoningLevel(response.default_reasoning_level);
                 }
             } catch (error) {
-                console.error('Error fetching chat capabilities:', error);
+                reportClientIssue('Error fetching chat capabilities:', error);
             }
         }
 

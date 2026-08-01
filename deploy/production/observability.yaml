@@ -19,8 +19,49 @@ Parameters:
   AlertEmail:
     Type: String
     Description: Address that must confirm the SNS subscription
+  BreakGlassPrincipalArn:
+    Type: String
+    Description: IAM principal allowed to assume the audited diagnostic reader role
+  MonthlyCloudWatchBudgetUsd:
+    Type: Number
+    Default: 50
+    MinValue: 1
 
 Resources:
+  ApplicationSignalsDiscovery:
+    Type: AWS::ApplicationSignals::Discovery
+
+  TransactionSearchLogsPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: !Sub ${ApplicationName}-${EnvironmentName}-transaction-search
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "TransactionSearchXRayAccess",
+              "Effect": "Allow",
+              "Principal": {"Service": "xray.amazonaws.com"},
+              "Action": "logs:PutLogEvents",
+              "Resource": [
+                "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*",
+                "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/application-signals/data:*"
+              ],
+              "Condition": {
+                "ArnLike": {"aws:SourceArn": "arn:${AWS::Partition}:xray:${AWS::Region}:${AWS::AccountId}:*"},
+                "StringEquals": {"aws:SourceAccount": "${AWS::AccountId}"}
+              }
+            }
+          ]
+        }
+
+  TransactionSearch:
+    Type: AWS::XRay::TransactionSearchConfig
+    DependsOn: TransactionSearchLogsPolicy
+    Properties:
+      IndexingPercentage: 100
+
   DiagnosticKey:
     Type: AWS::KMS::Key
     DeletionPolicy: Retain
@@ -60,8 +101,6 @@ Resources:
           - Id: ExpireDiagnostics
             Status: Enabled
             ExpirationInDays: 7
-            NoncurrentVersionExpiration:
-              NoncurrentDays: 7
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -70,13 +109,108 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
       Tags:
         - Key: application
           Value: !Ref ApplicationName
         - Key: environment
           Value: !Ref EnvironmentName
+
+  DiagnosticBreakGlassRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ApplicationName}-${EnvironmentName}-diagnostic-reader
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BreakGlassPrincipalArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadShortLivedDiagnostics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt DiagnosticBucket.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub ${DiagnosticBucket.Arn}/diagnostics/*
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !GetAtt DiagnosticKey.Arn
+
+  DiagnosticAuditBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAuditLogs
+            Status: Enabled
+            ExpirationInDays: 30
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  DiagnosticAuditBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DiagnosticAuditBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt DiagnosticAuditBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${ApplicationName}-${EnvironmentName}-diagnostic-audit
+          - Sid: CloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${DiagnosticAuditBucket.Arn}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${ApplicationName}-${EnvironmentName}-diagnostic-audit
+
+  DiagnosticDataTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: DiagnosticAuditBucketPolicy
+    Properties:
+      TrailName: !Sub ${ApplicationName}-${EnvironmentName}-diagnostic-audit
+      S3BucketName: !Ref DiagnosticAuditBucket
+      EnableLogFileValidation: true
+      IncludeGlobalServiceEvents: false
+      IsLogging: true
+      IsMultiRegionTrail: false
+      EventSelectors:
+        - IncludeManagementEvents: false
+          ReadWriteType: All
+          DataResources:
+            - Type: AWS::S3::Object
+              Values:
+                - !Sub ${DiagnosticBucket.Arn}/
 
   SourceMapBucket:
     Type: AWS::S3::Bucket
@@ -205,6 +339,66 @@ Resources:
           MetricName: ApiServerErrors
           MetricValue: "1"
           DefaultValue: 0
+  ApiRequestMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ $.event = "http.request.completed" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: ApiRequests
+          MetricValue: "1"
+          DefaultValue: 0
+  StreamTerminalFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ ($.event = "conversation.stream.failed") || ($.event = "translation.stream.failed") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: StreamTerminalFailures
+          MetricValue: "1"
+          DefaultValue: 0
+  LlmRequestMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ $.event = "llm.request.completed" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: LlmRequests
+          MetricValue: "1"
+          DefaultValue: 0
+  LlmTimeoutMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ $.error_code = "llm_stream_timeout" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: LlmTimeouts
+          MetricValue: "1"
+          DefaultValue: 0
+  UnknownTokenUsageMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ $.event = "llm.usage.missing" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: UnknownTokenUsage
+          MetricValue: "1"
+          DefaultValue: 0
+  DependencyFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApiLogGroup
+      FilterPattern: '{ ($.event = "dependency.database.failed") || ($.event = "dependency.redis.rate_limit_failed") || ($.event = "dependency.redis.concurrency_failed") || ($.event = "dependency.redis.lease_release_failed") }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: DependencyFailures
+          MetricValue: "1"
+          DefaultValue: 0
   JobFailureMetric:
     Type: AWS::Logs::MetricFilter
     Properties:
@@ -225,11 +419,21 @@ Resources:
           MetricName: DiagnosticWriteFailures
           MetricValue: "1"
           DefaultValue: 0
+  WorkerDiagnosticWriteFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref WorkerLogGroup
+      FilterPattern: '{ $.event = "diagnostic.snapshot.write_failed" }'
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ApplicationName}/${EnvironmentName}
+          MetricName: DiagnosticWriteFailures
+          MetricValue: "1"
+          DefaultValue: 0
 
-  ApiFailureAlarm:
+  ApiFailureCountAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-api-5xx
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-api-5xx-count
       AlarmDescription: Five or more API server errors in five minutes
       Namespace: !Sub ${ApplicationName}/${EnvironmentName}
       MetricName: ApiServerErrors
@@ -240,8 +444,56 @@ Resources:
       Threshold: 5
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+  ApiFailureRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-api-5xx-rate
+      AlarmDescription: API server error rate exceeds five percent in five minutes
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Threshold: 5
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: errors
+          MetricStat:
+            Metric:
+              Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+              MetricName: ApiServerErrors
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: requests
+          MetricStat:
+            Metric:
+              Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+              MetricName: ApiRequests
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: rate
+          Expression: IF(requests>0,100*errors/requests,0)
+          Label: API 5xx percent
+          ReturnData: true
+  ApiFailureAlarm:
+    Type: AWS::CloudWatch::CompositeAlarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-api-5xx
+      AlarmRule: !Sub 'ALARM("${ApiFailureCountAlarm}") AND ALARM("${ApiFailureRateAlarm}")'
       AlarmActions: [!Ref AlertTopic]
       OKActions: [!Ref AlertTopic]
+  StreamTerminalFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-stream-terminal-failures
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: StreamTerminalFailures
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
   JobFailureAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -268,6 +520,171 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertTopic]
+  WorkerHeartbeatAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-worker-heartbeat
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: scholens.jobs.worker_heartbeat
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+  JobQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-job-queue-age
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: scholens.jobs.queue_age
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 300
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+  DependencyFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-dependency-failures
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: DependencyFailures
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+  LlmTimeoutRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-llm-timeout-rate
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Threshold: 5
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: timeouts
+          MetricStat:
+            Metric:
+              Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+              MetricName: LlmTimeouts
+            Period: 600
+            Stat: Sum
+          ReturnData: false
+        - Id: requests
+          MetricStat:
+            Metric:
+              Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+              MetricName: LlmRequests
+            Period: 600
+            Stat: Sum
+          ReturnData: false
+        - Id: rate
+          Expression: IF(requests>0,100*timeouts/requests,0)
+          Label: LLM timeout percent
+          ReturnData: true
+      AlarmActions: [!Ref AlertTopic]
+  UnknownTokenUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-unknown-token-usage
+      Namespace: !Sub ${ApplicationName}/${EnvironmentName}
+      MetricName: UnknownTokenUsage
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+  RumErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ApplicationName}-${EnvironmentName}-rum-error-rate
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Threshold: 2
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: js
+          MetricStat:
+            Metric:
+              Namespace: AWS/RUM
+              MetricName: JsErrorCount
+              Dimensions:
+                - Name: application_name
+                  Value: !Sub ${ApplicationName}-${EnvironmentName}
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: http4xx
+          MetricStat:
+            Metric:
+              Namespace: AWS/RUM
+              MetricName: Http4xxCount
+              Dimensions:
+                - Name: application_name
+                  Value: !Sub ${ApplicationName}-${EnvironmentName}
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: http5xx
+          MetricStat:
+            Metric:
+              Namespace: AWS/RUM
+              MetricName: Http5xxCount
+              Dimensions:
+                - Name: application_name
+                  Value: !Sub ${ApplicationName}-${EnvironmentName}
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: pageviews
+          MetricStat:
+            Metric:
+              Namespace: AWS/RUM
+              MetricName: PageViewCount
+              Dimensions:
+                - Name: application_name
+                  Value: !Sub ${ApplicationName}-${EnvironmentName}
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: rate
+          Expression: IF(pageviews>0,100*(js+http4xx+http5xx)/pageviews,0)
+          Label: Browser error percent per page view
+          ReturnData: true
+      AlarmActions: [!Ref AlertTopic]
+
+  CloudWatchCostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub ${ApplicationName}-${EnvironmentName}-cloudwatch-monthly
+        BudgetLimit:
+          Amount: !Ref MonthlyCloudWatchBudgetUsd
+          Unit: USD
+        CostFilters:
+          Service:
+            - AmazonCloudWatch
+        BudgetType: COST
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: FORECASTED
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref AlertEmail
+              SubscriptionType: EMAIL
 
   RumIdentityPool:
     Type: AWS::Cognito::IdentityPool
@@ -319,7 +736,7 @@ Resources:
           Status: ENABLED
           S3Uri: !Sub s3://${SourceMapBucket}
       AppMonitorConfiguration:
-        AllowCookies: true
+        AllowCookies: false
         EnableXRay: true
         GuestRoleArn: !GetAtt RumGuestRole.Arn
         IdentityPoolId: !Ref RumIdentityPool
@@ -327,6 +744,7 @@ Resources:
         Telemetries:
           - errors
           - performance
+          - http
 
   HostAgentConfig:
     Type: AWS::SSM::Parameter
@@ -470,6 +888,10 @@ Outputs:
     Value: !Ref DiagnosticBucket
   DiagnosticKmsKeyArn:
     Value: !GetAtt DiagnosticKey.Arn
+  DiagnosticBreakGlassRoleArn:
+    Value: !GetAtt DiagnosticBreakGlassRole.Arn
+  DiagnosticAuditTrailArn:
+    Value: !GetAtt DiagnosticDataTrail.Arn
   SourceMapBucketName:
     Value: !Ref SourceMapBucket
   RumApplicationId:
@@ -484,3 +906,5 @@ Outputs:
     Value: !Ref OtelCollectorConfig
   AlertTopicArn:
     Value: !Ref AlertTopic
+  CloudWatchBudgetName:
+    Value: !Ref CloudWatchCostBudget

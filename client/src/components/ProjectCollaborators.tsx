@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Users, X } from "lucide-react";
 import { toast } from "sonner";
@@ -97,7 +98,7 @@ export function ProjectCollaborators({
                 setInvitations([]);
             }
         } catch (error) {
-            console.error("Failed to load project collaborators", error);
+            reportClientIssue("Failed to load project collaborators", error);
             toast.error("Failed to load project collaborators.");
         }
     }, [canManage, project.id, setHasCollaborators]);
@@ -129,7 +130,7 @@ export function ProjectCollaborators({
                 ),
             );
         } catch (error) {
-            console.error("Failed to update collaborator permissions", error);
+            reportClientIssue("Failed to update collaborator permissions", error);
             toast.error(
                 error instanceof Error
                     ? error.message
@@ -149,7 +150,7 @@ export function ProjectCollaborators({
             );
             toast.success("Collaborator removed.");
         } catch (error) {
-            console.error("Failed to remove collaborator", error);
+            reportClientIssue("Failed to remove collaborator", error);
             toast.error(
                 error instanceof Error
                     ? error.message
@@ -170,7 +171,7 @@ export function ProjectCollaborators({
             await Promise.all([load(), onProjectChanged?.()]);
             toast.success("Project ownership transferred.");
         } catch (error) {
-            console.error("Failed to transfer project ownership", error);
+            reportClientIssue("Failed to transfer project ownership", error);
             toast.error(
                 error instanceof Error
                     ? error.message
@@ -203,7 +204,7 @@ export function ProjectCollaborators({
             setInvitePermissions(NO_PERMISSIONS);
             toast.success("Invitation sent.");
         } catch (error) {
-            console.error("Failed to invite collaborator", error);
+            reportClientIssue("Failed to invite collaborator", error);
             toast.error(
                 error instanceof Error
                     ? error.message
@@ -224,7 +225,7 @@ export function ProjectCollaborators({
                 current.filter((item) => item.id !== invitationId),
             );
         } catch (error) {
-            console.error("Failed to revoke invitation", error);
+            reportClientIssue("Failed to revoke invitation", error);
             toast.error("Failed to revoke invitation.");
         }
     };

@@ -1,5 +1,6 @@
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
@@ -106,7 +107,7 @@ export function CopyableTable({ children, className, ...props }: React.TableHTML
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch (err) {
-            console.error('Failed to copy table data:', err);
+            reportClientIssue('Failed to copy table data:', err);
         }
     }, []);
 

@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import {
     PaperHighlightAnnotation,
     ResearchItem,
@@ -36,7 +37,7 @@ export function useAnnotations(documentId: string, projectId?: string | null) {
             setAnnotations(prev => [...prev, savedAnnotation]);
             return savedAnnotation;
         } catch (error) {
-            console.error('Error saving annotation:', error);
+            reportClientIssue('Error saving annotation:', error);
             throw error;
         }
     };
@@ -50,7 +51,7 @@ export function useAnnotations(documentId: string, projectId?: string | null) {
             const updatedAnnotations = annotations.filter(a => a.id !== annotationId);
             setAnnotations(updatedAnnotations);
         } catch (error) {
-            console.error('Error removing annotation:', error);
+            reportClientIssue('Error removing annotation:', error);
             throw error;
         }
     };
@@ -75,7 +76,7 @@ export function useAnnotations(documentId: string, projectId?: string | null) {
             setAnnotations(updatedAnnotations);
             return updatedAnnotation;
         } catch (error) {
-            console.error('Error updating annotation:', error);
+            reportClientIssue('Error updating annotation:', error);
             throw error;
         }
     };
@@ -92,7 +93,7 @@ export function useAnnotations(documentId: string, projectId?: string | null) {
             setAnnotations(loadedAnnotations);
             return loadedAnnotations;
         } catch (error) {
-            console.error('Error loading annotations:', error);
+            reportClientIssue('Error loading annotations:', error);
             throw error;
         }
     };

@@ -18,6 +18,7 @@ async def test_stream_failure_is_redacted_and_recorded(
         raise RuntimeError("provider secret")
 
     track_event = MagicMock()
+    recorder = MagicMock()
     monkeypatch.setattr(
         "app.modules.conversations.infrastructure.chat_streaming.track_event",
         track_event,
@@ -31,6 +32,7 @@ async def test_stream_failure_is_redacted_and_recorded(
             event_name="chat_error",
             user_id=7,
             properties={"conversation_id": "conversation"},
+            diagnostic_recorder=recorder,
         )
     ]
 
@@ -42,6 +44,9 @@ async def test_stream_failure_is_redacted_and_recorded(
     assert failure["error"]["retryable"] is True
     assert "provider secret" not in events[-1]
     assert track_event.call_args.kwargs["properties"]["error_type"] == "RuntimeError"
+    snapshot = recorder.record.call_args.args[0]
+    assert str(snapshot.id) == failure["error"]["diagnostic_id"]
+    assert snapshot.sections["failure"]["code"] == "chat_stream_failed"
 
 
 @pytest.mark.asyncio

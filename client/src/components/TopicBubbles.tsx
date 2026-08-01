@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 
 import { useEffect, useState } from 'react';
 import { fetchFromApi } from '@/lib/api';
@@ -32,7 +33,7 @@ export function TopicBubbles({ isVisible }: { isVisible: boolean }) {
                 }>('/discovery/topics');
                 setTopics(response.items);
             } catch (error) {
-                console.error("Error fetching topics:", error);
+                reportClientIssue("Error fetching topics:", error);
             }
         };
 

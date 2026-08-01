@@ -49,7 +49,8 @@ async def _process_single_paper(
 
         except Exception:
             logger.exception(
-                "Failed to extract paper %s (%s)", document_id, paper.title
+                "job.data_table.paper_extraction_failed",
+                extra={"document_id": str(document_id)},
             )
             status_callback(f"extract for {paper.title} failed")
 

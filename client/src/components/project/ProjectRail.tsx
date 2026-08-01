@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
@@ -61,7 +62,7 @@ function PaperRow({ paper, onNavigate }: { paper: PaperItem; onNavigate?: () => 
             toast.success("Paper removed from project.");
             refetchPapers();
         } catch (error) {
-            console.error("Failed to unlink paper from project", error);
+            reportClientIssue("Failed to unlink paper from project", error);
             toast.error("Failed to remove paper from project.");
         }
     };

@@ -221,7 +221,7 @@ class DeepSeekBackend(LLMBackend):
     ) -> None:
         try:
             if usage is None:
-                logger.warning("deepseek_response_missing_usage", extra={"model": model})
+                logger.warning("llm.usage.missing", extra={"model": model})
                 settle_token_usage(
                     model=model,
                     reasoning_level=reasoning_level.value,
@@ -234,7 +234,22 @@ class DeepSeekBackend(LLMBackend):
                     ),
                     status="unknown",
                 )
+                add_counter(
+                    "scholens.llm.usage_unknown",
+                    attributes={
+                        "provider": "deepseek",
+                        "model": model,
+                        "reasoning": reasoning_level.value,
+                    },
+                )
                 return
+            token_values = {
+                "prompt": _usage_value(usage, "prompt_tokens"),
+                "completion": _usage_value(usage, "completion_tokens"),
+                "reasoning": _completion_detail(usage, "reasoning_tokens"),
+                "cache_hit": _usage_value(usage, "prompt_cache_hit_tokens"),
+                "cache_miss": _usage_value(usage, "prompt_cache_miss_tokens"),
+            }
             settle_token_usage(
                 model=model,
                 reasoning_level=reasoning_level.value,
@@ -249,7 +264,23 @@ class DeepSeekBackend(LLMBackend):
                     f"deepseek:{response_id}" if response_id else None
                 ),
             )
+            for token_kind, token_count in token_values.items():
+                if token_count > 0:
+                    add_counter(
+                        "scholens.llm.tokens",
+                        token_count,
+                        attributes={
+                            "provider": "deepseek",
+                            "model": model,
+                            "reasoning": reasoning_level.value,
+                            "token_kind": token_kind,
+                        },
+                    )
         except Exception as exc:
+            add_counter(
+                "scholens.llm.usage_settlement_failures",
+                attributes={"provider": "deepseek"},
+            )
             raise LLMUsageSettlementError(
                 "LLM token usage could not be settled"
             ) from exc
@@ -320,6 +351,13 @@ class DeepSeekBackend(LLMBackend):
                 (time.monotonic() - started) * 1000,
                 attributes=attributes,
             )
+            logger.info(
+                "llm.request.completed",
+                extra={
+                    **attributes,
+                    "duration_ms": round((time.monotonic() - started) * 1000, 3),
+                },
+            )
         if not response.choices:
             raise ValueError("DeepSeek returned no choices")
         message = response.choices[0].message
@@ -345,7 +383,7 @@ class DeepSeekBackend(LLMBackend):
                 )
             except (json.JSONDecodeError, TypeError, ValueError):
                 logger.warning(
-                    "deepseek_tool_arguments_invalid",
+                    "llm.tool_arguments.invalid",
                     extra={"tool_name": call.function.name},
                 )
                 malformed_tool_calls.append(
@@ -385,6 +423,8 @@ class DeepSeekBackend(LLMBackend):
         ) -> Iterator[StreamChunk]:
             started = time.monotonic()
             first_chunk_at: float | None = None
+            previous_chunk_at: float | None = None
+            max_chunk_gap_ms = 0.0
             status = "success"
             response_id: str | None = None
             usage_received = False
@@ -429,8 +469,15 @@ class DeepSeekBackend(LLMBackend):
                         text = choice.delta.content or ""
                         thinking = getattr(choice.delta, "reasoning_content", None)
                         if text or thinking or choice.finish_reason is not None:
+                            chunk_at = time.monotonic()
                             if first_chunk_at is None:
-                                first_chunk_at = time.monotonic()
+                                first_chunk_at = chunk_at
+                            if previous_chunk_at is not None:
+                                max_chunk_gap_ms = max(
+                                    max_chunk_gap_ms,
+                                    (chunk_at - previous_chunk_at) * 1000,
+                                )
+                            previous_chunk_at = chunk_at
                             yield StreamChunk(
                                 text=text,
                                 is_done=choice.finish_reason is not None,
@@ -439,7 +486,7 @@ class DeepSeekBackend(LLMBackend):
                                 ),
                             )
             except BaseException:
-                status = "failure"
+                status = "cancelled" if cancellation.cancelled else "failure"
                 stream_failed = True
                 raise
             finally:
@@ -456,7 +503,7 @@ class DeepSeekBackend(LLMBackend):
                         if not stream_failed:
                             raise
                         logger.exception(
-                            "Token usage settlement failed after provider stream error"
+                            "llm.usage_settlement.failed_after_stream_error"
                         )
                 attributes = {
                     "provider": "deepseek",
@@ -471,10 +518,29 @@ class DeepSeekBackend(LLMBackend):
                     (time.monotonic() - started) * 1000,
                     attributes=attributes,
                 )
+                logger.info(
+                    "llm.request.completed",
+                    extra={
+                        **attributes,
+                        "duration_ms": round(
+                            (time.monotonic() - started) * 1000,
+                            3,
+                        ),
+                    },
+                )
                 if first_chunk_at is not None:
                     record_histogram(
                         "scholens.llm.time_to_first_chunk",
                         (first_chunk_at - started) * 1000,
+                        attributes={
+                            "provider": "deepseek",
+                            "model": model,
+                            "reasoning": reasoning_level.value,
+                        },
+                    )
+                    record_histogram(
+                        "scholens.llm.max_chunk_gap",
+                        max_chunk_gap_ms,
                         attributes={
                             "provider": "deepseek",
                             "model": model,

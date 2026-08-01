@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { PaperData, PaperItem } from "@/lib/schema";
 import { fetchPaperData } from "@/lib/documents";
 import { Button } from "./ui/button";
@@ -209,7 +210,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
         setPreviewLoaded(false);
         fetchPaperData(paper.document_id)
             .then(data => setLoadedPaper(data))
-            .catch(error => console.error("Failed to load paper data", error));
+            .catch(error => reportClientIssue("Failed to load paper data", error));
     }, [paper.document_id]);
 
     const highlightCount = highlights?.filter(highlight => highlight.role === 'user').length || 0;
@@ -226,7 +227,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
                 setLoadedPaper({ ...loadedPaper, ...fields } as PaperData);
             }
         } catch (error) {
-            console.error("Failed to update paper", error);
+            reportClientIssue("Failed to update paper", error);
             toast.error("Failed to update paper.");
         }
     };
@@ -242,7 +243,7 @@ export function PaperPreview({ paper, onClose, setPaper }: PaperPreviewProps) {
             };
             setPaper(paper.document_id, updatedPaper);
         } catch (error) {
-            console.error("Failed to remove tag", error);
+            reportClientIssue("Failed to remove tag", error);
             toast.error("Failed to remove tag.");
         }
     };

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar, Token
 from time import monotonic
 from typing import Generic, TypeVar
 
 from scholens_observability import add_counter, instrumented_span, record_histogram
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 CapabilitiesT = TypeVar("CapabilitiesT")
 ResultT = TypeVar("ResultT")
+logger = logging.getLogger(__name__)
 
 
 class SqlAlchemyApplicationExecutor(Generic[CapabilitiesT]):
@@ -57,9 +60,10 @@ class SqlAlchemyApplicationExecutor(Generic[CapabilitiesT]):
                 result = await operation(self._capabilities_factory(session))
                 session.commit()
                 return result
-        except BaseException:
+        except BaseException as exc:
             status = "failure"
             session.rollback()
+            self._record_database_failure(exc)
             raise
         finally:
             self._record_execution("command_async", status, started)
@@ -86,9 +90,10 @@ class SqlAlchemyApplicationExecutor(Generic[CapabilitiesT]):
                 if commit:
                     session.commit()
                 return result
-        except BaseException:
+        except BaseException as exc:
             status = "failure"
             session.rollback()
+            self._record_database_failure(exc)
             raise
         finally:
             if not commit:
@@ -105,6 +110,19 @@ class SqlAlchemyApplicationExecutor(Generic[CapabilitiesT]):
             "scholens.application.operation.duration",
             (monotonic() - started) * 1000,
             attributes=attributes,
+        )
+
+    @staticmethod
+    def _record_database_failure(error: BaseException) -> None:
+        if not isinstance(error, SQLAlchemyError):
+            return
+        add_counter(
+            "scholens.dependency.failures",
+            attributes={"dependency": "database"},
+        )
+        logger.error(
+            "dependency.database.failed",
+            extra={"exception_type": type(error).__name__},
         )
 
     def _enter(self) -> Token[bool]:

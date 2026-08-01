@@ -35,11 +35,11 @@ PDF_TASK_TIME_LIMIT_SECONDS = 1260
 
 
 def _update_status(task: Any, task_id: str, status: str) -> None:
-    logger.info("Updating task %s status: %s", task_id, status)
+    logger.info("job.status.updating", extra={"job_id": task_id})
     try:
         task.update_state(state="PROGRESS", meta={"status": status})
     except Exception:
-        logger.exception("Failed to update task %s status", task_id)
+        logger.exception("job.status.update_failed", extra={"job_id": task_id})
 
 
 def _deliver_webhook(
@@ -51,10 +51,10 @@ def _deliver_webhook(
     try:
         response = post_signed_json(webhook_url, payload, timeout=60)
         response.raise_for_status()
-        logger.info("Webhook sent successfully for task %s", task_id)
+        logger.info("job.webhook.delivered", extra={"job_id": task_id})
         return True
     except requests.RequestException:
-        logger.exception("Failed to send webhook for task %s", task_id)
+        logger.exception("job.webhook.delivery_failed", extra={"job_id": task_id})
         return False
 
 
@@ -66,10 +66,10 @@ def _claim_job(claim_url: str | None, *, task_id: str) -> bool:
         response.raise_for_status()
         claimed = bool(response.json().get("claimed"))
         if not claimed:
-            logger.info("Skipping already claimed durable job %s", task_id)
+            logger.info("job.claim.skipped", extra={"job_id": task_id})
         return claimed
     except requests.RequestException:
-        logger.exception("Failed to claim durable job %s", task_id)
+        logger.exception("job.claim.failed", extra={"job_id": task_id})
         raise
 
 
@@ -100,7 +100,7 @@ def upload_and_process_file(
     write_to_status = partial(_update_status, self, task_id)
 
     try:
-        logger.info("Starting PDF processing for task %s", task_id)
+        logger.info("job.pdf_processing.started", extra={"job_id": task_id})
         write_to_status("Downloading PDF from S3")
 
         async def download_with_timer():
@@ -145,12 +145,11 @@ def upload_and_process_file(
                 asyncio.run(_clear_parser_checkpoint(task_id))
             except ParserTransientError as exc:
                 logger.warning(
-                    "Could not clear final MinerU checkpoint; diagnostics=%s",
-                    exc.diagnostic_fields(),
+                    "job.pdf_checkpoint.clear_failed",
                     extra={"job_id": task_id, **exc.diagnostic_fields()},
                 )
 
-        logger.info("Task %s completed", task_id)
+        logger.info("job.pdf_processing.completed", extra={"job_id": task_id})
         return webhook_payload
 
     except Exception as exc:
@@ -160,8 +159,7 @@ def upload_and_process_file(
             else {"exception_type": type(exc).__name__}
         )
         logger.exception(
-            "PDF processing task failed; diagnostics=%s",
-            diagnostics,
+            "job.pdf_processing.failed",
             extra={"job_id": task_id, **diagnostics},
         )
         failure_payload = {
@@ -180,8 +178,7 @@ def upload_and_process_file(
                 asyncio.run(_clear_parser_checkpoint(task_id))
             except ParserTransientError as cleanup_exc:
                 logger.warning(
-                    "Could not clear failed MinerU checkpoint; diagnostics=%s",
-                    cleanup_exc.diagnostic_fields(),
+                    "job.pdf_checkpoint.clear_failed",
                     extra={
                         "job_id": task_id,
                         **cleanup_exc.diagnostic_fields(),
@@ -250,11 +247,11 @@ def construct_data_table_task(
         if not _deliver_webhook(webhook_url, webhook_payload, task_id=task_id):
             webhook_payload["webhook_error"] = "webhook_delivery_failed"
 
-        logger.info("Task %s completed", task_id)
+        logger.info("job.data_table.completed", extra={"job_id": task_id})
         return webhook_payload
 
     except Exception:
-        logger.exception("Data table construction task %s failed", task_id)
+        logger.exception("job.data_table.failed", extra={"job_id": task_id})
         failure_payload = {
             "task_id": task_id,
             "status": "failed",
@@ -300,7 +297,7 @@ def generate_audio_overview_task(
             payload["webhook_error"] = "webhook_delivery_failed"
         return payload
     except Exception:
-        logger.exception("Audio overview task %s failed", task_id)
+        logger.exception("job.audio_overview.failed", extra={"job_id": task_id})
         payload = {
             "task_id": task_id,
             "status": "failed",
@@ -358,7 +355,7 @@ def delete_storage_objects_task(
     failed = [key for key in object_keys if not s3_service.delete_file(key)]
     if failed:
         logger.error(
-            "Storage cleanup failed",
+            "storage.cleanup.failed",
             extra={"job_id": task_id, "failed_object_count": len(failed)},
         )
         raise RuntimeError("storage_delete_failed")
@@ -414,7 +411,7 @@ def health_check(self):
         return health_data
 
     except Exception:
-        logger.exception("Health check failed")
+        logger.exception("jobs.health_check.failed")
         return {
             "status": "unhealthy",
             "error": "health_check_failed",
@@ -432,13 +429,13 @@ def periodic_zotero_sync(self):
         f"{webhook_base}/internal/v1/schedules/zotero-sync"
         f"?threshold_seconds={sync_interval}"
     )
-    logger.info("Scheduling due Zotero jobs")
+    logger.info("job.zotero_schedule.started")
     resp = post_signed_json(url, timeout=120)
     resp.raise_for_status()
     result = resp.json()
     logger.info(
-        "Periodic Zotero scheduling complete: %s jobs",
-        result.get("scheduled_jobs", 0),
+        "job.zotero_schedule.completed",
+        extra={"scheduled_job_count": result.get("scheduled_jobs", 0)},
     )
     return result
 

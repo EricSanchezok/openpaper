@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { fetchFromApi } from "@/lib/api";
@@ -55,10 +56,10 @@ export function EditProjectDialog({ open, onOpenChange }: EditProjectDialogProps
                 refetchProject();
                 onOpenChange(false);
             } else {
-                console.error("Failed to update project");
+                reportClientIssue("Failed to update project");
             }
         } catch (error) {
-            console.error("An error occurred while updating the project:", error);
+            reportClientIssue("An error occurred while updating the project:", error);
         }
     };
 

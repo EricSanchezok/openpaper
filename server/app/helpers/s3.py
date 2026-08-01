@@ -92,7 +92,7 @@ class S3Service:
                 ServerSideEncryption="AES256",
             )
         except ClientError as exc:
-            logger.exception("S3 upload failed for %s", object_key)
+            logger.exception("s3.object.upload_failed")
             raise RuntimeError("s3_upload_failed") from exc
         return object_key
 
@@ -125,7 +125,7 @@ class S3Service:
                     },
                 )
         except ClientError as exc:
-            logger.exception("S3 upload failed for %s", object_key)
+            logger.exception("s3.object.upload_failed")
             raise RuntimeError("s3_upload_failed") from exc
         return object_key
 
@@ -164,7 +164,7 @@ class S3Service:
             )
             return True
         except ClientError:
-            logger.exception("S3 delete failed for %s", object_key)
+            logger.exception("s3.object.delete_failed")
             return False
 
     def delete_files(self, object_keys: Iterable[str]) -> list[str]:
@@ -188,7 +188,7 @@ class S3Service:
                 raise TypeError("s3_object_body_invalid")
             return data
         except ClientError as exc:
-            logger.exception("S3 download failed for %s", object_key)
+            logger.exception("s3.object.download_failed")
             raise RuntimeError("s3_download_failed") from exc
 
     def object_size_bytes(self, object_key: str) -> int:
@@ -198,7 +198,7 @@ class S3Service:
                 Key=object_key,
             )
         except ClientError as exc:
-            logger.exception("S3 head failed for %s", object_key)
+            logger.exception("s3.object.head_failed")
             raise RuntimeError("s3_head_failed") from exc
         content_length = response.get("ContentLength")
         if content_length is None:
@@ -224,7 +224,7 @@ class S3Service:
                 )
             )
         except ClientError as exc:
-            logger.exception("S3 signing failed for %s", object_key)
+            logger.exception("s3.object.signing_failed")
             raise RuntimeError("s3_signing_failed") from exc
 
     def generate_presigned_urls(

@@ -10,7 +10,7 @@ from app.bootstrap.execution import (
     get_conversation_title_workflow,
 )
 from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.modules.conversations.application.contracts.conversations import (
     ConversationAutoTitleResponse,
     ConversationCreateRequest,

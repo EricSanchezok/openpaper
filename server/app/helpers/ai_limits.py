@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+from scholens_observability import add_counter
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,11 @@ async def enforce_rate_limit(
                 pipe.expire(key, window_seconds + 1)
             values = await pipe.execute()
     except RedisError:
-        logger.exception("Redis rate-limit check failed")
+        add_counter(
+            "scholens.dependency.failures",
+            attributes={"dependency": "redis"},
+        )
+        logger.exception("dependency.redis.rate_limit_failed")
         raise AILimitExceeded("rate_limit_unavailable") from None
 
     counts = (int(values[0]), int(values[2]))
@@ -132,7 +137,11 @@ async def acquire_concurrency(
             member,
         )
     except RedisError:
-        logger.exception("Redis concurrency check failed")
+        add_counter(
+            "scholens.dependency.failures",
+            attributes={"dependency": "redis"},
+        )
+        logger.exception("dependency.redis.concurrency_failed")
         raise AILimitExceeded("concurrency_limit_unavailable") from None
     if not acquired:
         raise AILimitExceeded(f"{category}_concurrency_exceeded")
@@ -150,7 +159,11 @@ async def release_concurrency(
     try:
         await client.zrem(lease.key, lease.member)
     except RedisError:
-        logger.exception("Failed to release AI concurrency lease")
+        add_counter(
+            "scholens.dependency.failures",
+            attributes={"dependency": "redis"},
+        )
+        logger.exception("dependency.redis.lease_release_failed")
 
 
 async def release_concurrency_by_id(

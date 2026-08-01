@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import type { CollectPaperResponse, PaperItem } from "@/lib/schema";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -25,7 +26,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
         try {
             return await getProjectPaperFileUrl(projectId, paper.document_id);
         } catch (error) {
-            console.error("Error refreshing PDF URL:", error);
+            reportClientIssue("Error refreshing PDF URL:", error);
             return null;
         }
     }, [projectId, paper.document_id]);
@@ -63,7 +64,7 @@ export function ProjectPaperPreview({ paper, projectId, searchTerm }: ProjectPap
                 throw new Error("Invalid response from server.");
             }
         } catch (error) {
-            console.error("Failed to add paper to library:", error);
+            reportClientIssue("Failed to add paper to library:", error);
             toast.error("Could not add paper", {
                 id: toastId,
                 description: "Could not duplicate the paper. Please try again.",

@@ -53,8 +53,8 @@ function getBlogPosts() {
                 }
             }
         }
-    } catch (error) {
-        console.warn('Could not read content directory:', error)
+    } catch {
+        // Blog metadata is optional during static generation.
     }
 
     return posts

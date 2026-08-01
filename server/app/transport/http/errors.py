@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from app.shared.domain import AppError, FailureKind
 from app.observability.diagnostics import record_http_diagnostic
+from fastapi.exceptions import RequestValidationError
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -254,6 +255,60 @@ async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
         status_code=exc.status_code,
         content=payload.model_dump(exclude_none=True),
         headers=exc.headers,
+    )
+
+
+async def validation_error_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    if not isinstance(exc, RequestValidationError):
+        raise TypeError("validation_error_handler received an unexpected exception")
+    fields = _diagnostic_fields(request, status_code=422)
+    errors = [
+        {
+            "type": str(error.get("type", "validation_error")),
+            "location": [str(part) for part in error.get("loc", ())],
+        }
+        for error in exc.errors()
+    ]
+    payload = ApiErrorResponse(
+        code="request_validation_failed",
+        message="The request data is invalid",
+        kind=FailureKind.UNPROCESSABLE,
+        retryable=False,
+        stage=fields.stage,
+        request_id=fields.request_id,
+        correlation_id=fields.correlation_id,
+        diagnostic_id=fields.diagnostic_id,
+        details={"errors": errors},
+    )
+    _record_diagnostic(
+        request,
+        fields=fields,
+        reason="http_validation_error",
+        error_code=payload.code,
+        error_kind=payload.kind,
+        status_code=422,
+    )
+    add_counter(
+        "scholens.errors",
+        attributes={"code": payload.code, "kind": payload.kind.value},
+    )
+    log_event(
+        logger,
+        logging.WARNING,
+        "http.validation_error",
+        error_code=payload.code,
+        error_kind=payload.kind.value,
+        retryable=False,
+        status_code=422,
+        validation_error_count=len(errors),
+        diagnostic_id=payload.diagnostic_id,
+    )
+    return JSONResponse(
+        status_code=422,
+        content=payload.model_dump(exclude_none=True),
     )
 
 

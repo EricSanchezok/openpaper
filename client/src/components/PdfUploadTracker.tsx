@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import React, { useState, useEffect, useRef } from 'react';
 import { PaperUploadJobStatusResponse, JobStatus, MinimalJob } from "@/lib/schema";
 import { fetchUploadJobStatus } from "@/lib/documents";
@@ -88,7 +89,7 @@ const PdfUploadTracker: React.FC<PdfUploadTrackerProps> = ({ initialJobs, onComp
 							onCompleteRef.current(statusResponse.document_id);
 						}
 					} catch (err) {
-						console.error(`Failed to get upload status for ${job.fileName}.`, err);
+						reportClientIssue(`Failed to get upload status for ${job.fileName}.`, err);
 						setJobs(prevJobs => prevJobs.map(j => j.jobId === job.jobId ? { ...j, status: 'failed' } : j));
 					}
 				}

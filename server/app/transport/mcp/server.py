@@ -43,11 +43,22 @@ from mcp.server.lowlevel.server import request_ctx
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import Receive, Scope, Send
-from pydantic import TypeAdapter
-from scholens_observability import current_context, log_event, update_context
+from pydantic import TypeAdapter, ValidationError
+from scholens_observability import (
+    DiagnosticSnapshotRecorder,
+    NullDiagnosticSnapshotRecorder,
+    add_counter,
+    build_snapshot,
+    current_context,
+    log_event,
+    update_context,
+)
 
 logger = logging.getLogger(__name__)
-_SOURCE_LIST = TypeAdapter(list[ToolSourceCandidate])
+_SOURCE_LIST: TypeAdapter[list[ToolSourceCandidate]] = TypeAdapter(
+    list[ToolSourceCandidate]
+)
+_JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 AccessKeyAuthenticator = Callable[[str], Awaitable[AuthenticatedAccessKey]]
 ListToolsHandler = Callable[[], Awaitable[list[mcp_types.Tool]]]
@@ -84,15 +95,16 @@ def _error_result(
     code: str,
     message: str,
     details: dict[str, object] | None = None,
+    diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
 ) -> mcp_types.CallToolResult:
-    safe_details = (
-        cast(
-            dict[str, object],
-            json.loads(json.dumps(details, default=str)),
-        )
-        if details is not None
-        else None
-    )
+    safe_details: dict[str, object] | None = None
+    if details is not None:
+        try:
+            validated_details = _JSON_VALUE.validate_python(details)
+        except ValidationError:
+            validated_details = None
+        if isinstance(validated_details, dict):
+            safe_details = cast(dict[str, object], validated_details)
     app_error = AppError(
         code=code,
         message=message,
@@ -100,13 +112,37 @@ def _error_result(
         details=safe_details,
     )
     context = current_context()
+    snapshot_id = uuid.uuid4() if context.actor_id is not None else None
+    if snapshot_id is not None:
+        _record_mcp_diagnostic(
+            diagnostic_recorder or NullDiagnosticSnapshotRecorder(),
+            snapshot_id=snapshot_id,
+            code=code,
+            kind=kind,
+        )
     error = ErrorEnvelope.from_app_error(
         app_error,
         stage="mcp_tool_call",
         request_id=context.request_id,
         correlation_id=context.correlation_id,
-        diagnostic_id=str(uuid.uuid4()),
+        diagnostic_id=str(snapshot_id) if snapshot_id is not None else None,
     ).to_dict()
+    add_counter(
+        "scholens.mcp.errors",
+        attributes={"code": code, "kind": kind.value},
+    )
+    log_event(
+        logger,
+        (
+            logging.ERROR
+            if kind in {FailureKind.INTERNAL, FailureKind.UNAVAILABLE}
+            else logging.WARNING
+        ),
+        "mcp.request.error",
+        error_code=code,
+        error_kind=kind.value,
+        diagnostic_id=error.get("diagnostic_id"),
+    )
     return mcp_types.CallToolResult(
         content=[
             mcp_types.TextContent(
@@ -117,6 +153,45 @@ def _error_result(
         structuredContent={"error": error},
         isError=True,
     )
+
+
+def _record_mcp_diagnostic(
+    recorder: DiagnosticSnapshotRecorder,
+    *,
+    snapshot_id: uuid.UUID,
+    code: str,
+    kind: FailureKind,
+) -> None:
+    context = current_context()
+    try:
+        recorder.record(
+            build_snapshot(
+                snapshot_id=snapshot_id,
+                service=context.service,
+                environment=context.environment,
+                release=context.release,
+                reason="mcp_request_failed",
+                request_id=context.request_id,
+                operation_id=context.operation_id,
+                correlation_id=context.correlation_id,
+                actor_id=context.actor_id,
+                sections={
+                    "failure": {
+                        "code": code,
+                        "kind": kind.value,
+                        "stage": context.stage or "mcp_tool_call",
+                    }
+                },
+            )
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "diagnostic.snapshot.capture_failed",
+            exc_info=exc,
+            diagnostic_id=str(snapshot_id),
+        )
 
 
 def _outcome_payload(
@@ -142,9 +217,13 @@ class AuthenticatedMcpApplication:
         *,
         manager: StreamableHTTPSessionManager,
         authenticate: AccessKeyAuthenticator,
+        diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
     ) -> None:
         self._manager = manager
         self._authenticate = authenticate
+        self._diagnostic_recorder = (
+            diagnostic_recorder or NullDiagnosticSnapshotRecorder()
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         headers = {
@@ -186,6 +265,9 @@ class AuthenticatedMcpApplication:
 
         client = scope.get("client")
         client_ip = normalize_client_ip(client[0] if client else None)
+        scope.setdefault("state", {})["authenticated"] = True
+        scope["state"]["actor_id"] = str(authenticated.actor.id)
+        update_context(actor_id=str(authenticated.actor.id), origin="mcp")
         supplied_session_id = headers.get("mcp-session-id")
         if supplied_session_id is not None:
             try:
@@ -202,9 +284,6 @@ class AuthenticatedMcpApplication:
         request_reference = RequestReference(
             uuid.UUID(str(request_id)) if request_id else uuid.uuid4()
         )
-        scope["state"]["authenticated"] = True
-        scope["state"]["actor_id"] = str(authenticated.actor.id)
-        update_context(actor_id=str(authenticated.actor.id), origin="mcp")
         authenticated_token = _authenticated_context.set(authenticated)
         client_token = _client_ip_context.set(client_ip)
         invocation_session_token = _invocation_session_context.set(
@@ -252,7 +331,18 @@ class AuthenticatedMcpApplication:
             stage="mcp_authentication",
             request_id=context.request_id,
             correlation_id=None,
-            diagnostic_id=(str(uuid.uuid4()) if unavailable else None),
+            diagnostic_id=None,
+        )
+        add_counter(
+            "scholens.mcp.authentication_errors",
+            attributes={"code": code},
+        )
+        log_event(
+            logger,
+            logging.ERROR if unavailable else logging.WARNING,
+            "mcp.authentication.error",
+            error_code=code,
+            status_code=status_code,
         )
         body = json.dumps(
             {"error": error.to_dict()},
@@ -271,9 +361,15 @@ class AuthenticatedMcpApplication:
         )
         await send({"type": "http.response.body", "body": body})
 
-    @staticmethod
-    async def _send_session_error(send: Send) -> None:
+    async def _send_session_error(self, send: Send) -> None:
         context = current_context()
+        snapshot_id = uuid.uuid4()
+        _record_mcp_diagnostic(
+            self._diagnostic_recorder,
+            snapshot_id=snapshot_id,
+            code="mcp_session_invalid",
+            kind=FailureKind.INVALID_ARGUMENT,
+        )
         error = ErrorEnvelope.from_app_error(
             AppError(
                 code="mcp_session_invalid",
@@ -283,7 +379,21 @@ class AuthenticatedMcpApplication:
             stage="mcp_session",
             request_id=context.request_id,
             correlation_id=None,
-            diagnostic_id=None,
+            diagnostic_id=str(snapshot_id),
+        )
+        add_counter(
+            "scholens.mcp.errors",
+            attributes={
+                "code": "mcp_session_invalid",
+                "kind": FailureKind.INVALID_ARGUMENT.value,
+            },
+        )
+        log_event(
+            logger,
+            logging.WARNING,
+            "mcp.session.error",
+            error_code="mcp_session_invalid",
+            diagnostic_id=str(snapshot_id),
         )
         body = json.dumps(
             {"error": error.to_dict()},
@@ -309,6 +419,7 @@ def build_mcp_transport(
     security_settings: TransportSecuritySettings,
     authenticate: AccessKeyAuthenticator,
     operation_factory: OperationContextFactory,
+    diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
 ) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
     server: Server[object] = Server(
         "scholens",
@@ -354,6 +465,7 @@ def build_mcp_transport(
                 kind=FailureKind.UNAUTHENTICATED,
                 code="mcp_authentication_required",
                 message="Authentication is required",
+                diagnostic_recorder=diagnostic_recorder,
             )
         access = ToolAccess(
             profile_name=MCP_TOOL_PROFILE,
@@ -367,6 +479,7 @@ def build_mcp_transport(
                 kind=FailureKind.UNAUTHENTICATED,
                 code="mcp_authentication_required",
                 message="Authentication is required",
+                diagnostic_recorder=diagnostic_recorder,
             )
         invocation_id = mcp_invocation_id(
             access_key_id=authenticated.access_key_id,
@@ -413,6 +526,7 @@ def build_mcp_transport(
                 code=exc.code,
                 message=exc.message,
                 details=exc.details,
+                diagnostic_recorder=diagnostic_recorder,
             )
         except Exception as exc:
             log_event(
@@ -427,6 +541,7 @@ def build_mcp_transport(
                 kind=FailureKind.UNAVAILABLE,
                 code="tool_execution_failed",
                 message="Tool execution failed",
+                diagnostic_recorder=diagnostic_recorder,
             )
 
         structured = _outcome_payload(
@@ -455,6 +570,7 @@ def build_mcp_transport(
     application = AuthenticatedMcpApplication(
         manager=manager,
         authenticate=authenticate,
+        diagnostic_recorder=diagnostic_recorder,
     )
     return manager, application
 

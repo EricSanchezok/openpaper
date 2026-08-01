@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, TypedDict
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.shared.domain import AppError, FailureKind, JsonValue
 from app.helpers.ai_limits import (
     AILimitExceeded,
@@ -32,6 +32,7 @@ from app.modules.conversations.infrastructure.chat_streaming import (
 )
 from dotenv import load_dotenv
 from pydantic import TypeAdapter
+from scholens_observability import DiagnosticSnapshotRecorder
 
 load_dotenv()
 
@@ -171,6 +172,7 @@ async def stream_conversation_agent(
     runtime: ConversationAgentRuntime,
     operation: OperationContext,
     operation_factory: OperationContextFactory,
+    diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Send a chat message and stream the response from the LLM.
@@ -287,6 +289,20 @@ async def stream_conversation_agent(
             kind=FailureKind.RATE_LIMITED,
         ) from None
 
+    diagnostic_context: dict[str, object] = {
+        "stage": "tool_loop",
+        "conversation_id": str(conversation_id),
+        "turn_id": str(request.turn_id),
+        "scope": conversation_scope.scope_type.value,
+        "request": {
+            "user_query": request.user_query,
+            "reasoning_level": request.reasoning_level.value,
+            "permissions": sorted(
+                permission.value for permission in conversation_scope.tool_permissions
+            ),
+        },
+    }
+
     async def run_response_generator() -> AsyncGenerator[str, None]:
         content_chunks: list[str] = []
         artifacts_collected: list[dict[str, object]] = []
@@ -323,7 +339,14 @@ async def stream_conversation_agent(
                     _append_status(status_messages, status_content)
                     yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
                 else:
-                    logger.debug(f"received chunks: {chunk}")
+                    logger.warning(
+                        "conversation.runtime.unknown_chunk",
+                        extra={"chunk_type": str(chunk_type)},
+                    )
+
+        diagnostic_context["stage"] = "answer_preparation"
+        if tool_state is not None:
+            diagnostic_context["tool_trace"] = tool_state.to_trace_dict()
 
         # Artifacts and completed actions are real outcomes. Only short-circuit
         # when the loop and the paper anchor supplied no usable information.
@@ -356,6 +379,7 @@ async def stream_conversation_agent(
             )
         else:
             assert tool_state is not None
+            diagnostic_context["stage"] = "final_answer"
             yield (
                 f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}"
                 f"{END_DELIMITER}"
@@ -390,6 +414,7 @@ async def stream_conversation_agent(
 
         # Save the complete message to the database
         full_content = "".join(content_chunks)
+        diagnostic_context["answer_char_count"] = len(full_content)
 
         assistant_trace = tool_state.to_trace_dict() if tool_state else None
         # Fold in the live status messages (the "thinking trace") so it
@@ -414,6 +439,7 @@ async def stream_conversation_agent(
             credential=operation.credential,
         )
 
+        diagnostic_context["stage"] = "persist"
         executor.command(
             lambda capabilities: capabilities.conversation_chat_data.complete_turn(
                 actor=current_user,
@@ -462,7 +488,7 @@ async def stream_conversation_agent(
                 )
         except Exception:
             logger.exception(
-                "Conversation title generation failed",
+                "conversation.title_generation.failed",
                 extra={"conversation_id": str(conversation_id)},
             )
 
@@ -514,6 +540,8 @@ async def stream_conversation_agent(
                         "type": conversation_scope.scope_type.value,
                         "conversation_id": str(conversation_id),
                     },
+                    diagnostic_recorder=diagnostic_recorder,
+                    diagnostic_context=diagnostic_context,
                 ):
                     yield event
         finally:
@@ -530,10 +558,12 @@ class DefaultConversationChatGateway:
         executor: ApplicationExecutor[ApplicationCapabilities],
         runtime: ConversationAgentRuntime,
         operation_factory: OperationContextFactory,
+        diagnostic_recorder: DiagnosticSnapshotRecorder,
     ) -> None:
         self._executor = executor
         self._runtime = runtime
         self._operation_factory = operation_factory
+        self._diagnostic_recorder = diagnostic_recorder
 
     async def stream(
         self,
@@ -553,4 +583,5 @@ class DefaultConversationChatGateway:
             runtime=self._runtime,
             operation=operation,
             operation_factory=self._operation_factory,
+            diagnostic_recorder=self._diagnostic_recorder,
         )

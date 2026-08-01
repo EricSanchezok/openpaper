@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import stripe
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.helpers.email import notify_converted_billing_interval
 from app.modules.billing.application.contracts import UsageResponse
 from app.modules.billing.application.ports import (

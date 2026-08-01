@@ -45,7 +45,7 @@ async def _upload_preview(
         )
         return object_key
     except Exception:
-        logger.warning("Preview upload failed for %s", document_sha256, exc_info=True)
+        logger.warning("job.pdf_preview.upload_failed", exc_info=True)
         return None
 
 
@@ -62,9 +62,7 @@ def _select_document(
     if isinstance(mineru_result, (ParserContentError, ParserTransientError)):
         diagnostics = mineru_result.diagnostic_fields()
         logger.warning(
-            "MinerU parsing reached its terminal fallback boundary; "
-            "using local text extraction; diagnostics=%s",
-            diagnostics,
+            "job.pdf_parser.fallback_started",
             extra={"job_id": job_id, **diagnostics},
         )
     elif mineru_result is not None:
@@ -216,8 +214,11 @@ async def process_pdf_file(
             page_offset_map=document.page_offset_map,
             duration=(datetime.now(timezone.utc) - start_time).total_seconds(),
         )
-    except ParserContentError as exc:
-        logger.warning("PDF content is insufficient for %s: %s", job_id, exc)
+    except ParserContentError:
+        logger.warning(
+            "job.pdf_content.insufficient",
+            extra={"job_id": job_id},
+        )
         return PDFProcessingResult(
             success=False,
             error="pdf_content_insufficient",

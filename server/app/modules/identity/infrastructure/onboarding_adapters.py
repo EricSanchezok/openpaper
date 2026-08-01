@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.helpers.email import send_profile_email
 from app.modules.identity.application.onboarding_contracts import (
     CreateOnboardingRequest,

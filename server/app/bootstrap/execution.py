@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from app.modules.integrations.connectors.infrastructure.mcp import (
         ConnectorToolResolver,
     )
+    from scholens_observability import DiagnosticSnapshotRecorder
 
 
 def create_application_executor(
@@ -90,6 +91,7 @@ def create_conversation_chat(
     executor: ApplicationExecutor[ApplicationCapabilities],
     runtime: ConversationAgentRuntime,
     operation_factory: OperationContextFactory,
+    diagnostic_recorder: DiagnosticSnapshotRecorder,
 ) -> ConversationChat:
     from app.bootstrap.adapters.conversation_chat import (
         DefaultConversationChatGateway,
@@ -100,6 +102,7 @@ def create_conversation_chat(
             executor,
             runtime,
             operation_factory,
+            diagnostic_recorder,
         )
     )
 
@@ -198,6 +201,7 @@ def create_mcp_transport(
     dispatcher: ToolDispatcher[ApplicationCapabilities],
     executor: ApplicationExecutor[ApplicationCapabilities],
     operation_factory: OperationContextFactory,
+    diagnostic_recorder: DiagnosticSnapshotRecorder,
 ) -> tuple[StreamableHTTPSessionManager, AuthenticatedMcpApplication]:
     async def authenticate(token: str) -> AuthenticatedAccessKey:
         return await asyncio.to_thread(
@@ -222,6 +226,7 @@ def create_mcp_transport(
         ),
         authenticate=authenticate,
         operation_factory=operation_factory,
+        diagnostic_recorder=diagnostic_recorder,
     )
 
 
@@ -304,6 +309,7 @@ def create_research_generation_workflow(
 def create_translation_workflow(
     executor: ApplicationExecutor[ApplicationCapabilities],
     settings: AppSettings,
+    diagnostic_recorder: DiagnosticSnapshotRecorder,
 ) -> TranslationWorkflow:
     from app.modules.translations.infrastructure.cache import RedisTranslationCache
     from app.modules.translations.infrastructure.capacity import (
@@ -312,7 +318,6 @@ def create_translation_workflow(
     from app.modules.translations.infrastructure.provider import (
         LLMTranslationStreamProvider,
     )
-
     return TranslationWorkflow(
         executor=executor,
         cache=RedisTranslationCache(
@@ -323,6 +328,7 @@ def create_translation_workflow(
             redis_url=settings.ai_limit_redis_url,
             environment=settings.environment,
         ),
+        diagnostic_recorder=diagnostic_recorder,
     )
 
 

@@ -1,6 +1,7 @@
 
 "use client"
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { z } from "zod";
 import {
     Dialog,
@@ -116,7 +117,7 @@ export function UploadModal({ open, onOpenChange, uploadLimit = DEFAULT_UPLOAD_L
             const newJobs = await uploadFiles(files);
             setJobs(prevJobs => [...prevJobs, ...newJobs]);
         } catch (error) {
-            console.error("Failed to upload file", error);
+            reportClientIssue("Failed to upload file", error);
             const errorMessage = error instanceof Error ? error.message : "Failed to upload the file. Please try again.";
             setImportError(errorMessage);
         } finally {
@@ -154,7 +155,7 @@ export function UploadModal({ open, onOpenChange, uploadLimit = DEFAULT_UPLOAD_L
             const newJob = await uploadFromUrlWithFallback(url);
             setJobs(prevJobs => [...prevJobs, newJob]);
         } catch (error) {
-            console.error("Failed to import from URL", error);
+            reportClientIssue("Failed to import from URL", error);
             const errorMessage = error instanceof Error ? error.message : "Failed to import from URL. Please check the URL and try again.";
             setImportError(errorMessage);
         } finally {

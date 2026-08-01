@@ -4,17 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from functools import lru_cache
+import logging
 
 from opentelemetry import metrics
+from opentelemetry.metrics import Counter, Histogram
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=128)
-def _counter(name: str):  # type: ignore[no-untyped-def]
+def _counter(name: str) -> Counter:
     return metrics.get_meter("scholens").create_counter(name)
 
 
 @lru_cache(maxsize=128)
-def _histogram(name: str, unit: str):  # type: ignore[no-untyped-def]
+def _histogram(name: str, unit: str) -> Histogram:
     return metrics.get_meter("scholens").create_histogram(name, unit=unit)
 
 
@@ -24,7 +28,14 @@ def add_counter(
     *,
     attributes: Mapping[str, str | int | float | bool] | None = None,
 ) -> None:
-    _counter(name).add(value, attributes=dict(attributes or {}))
+    try:
+        _counter(name).add(value, attributes=dict(attributes or {}))
+    except Exception:
+        logger.warning(
+            "observability.metric.counter_failed",
+            exc_info=True,
+            extra={"metric_name": name},
+        )
 
 
 def record_histogram(
@@ -34,4 +45,11 @@ def record_histogram(
     unit: str = "ms",
     attributes: Mapping[str, str | int | float | bool] | None = None,
 ) -> None:
-    _histogram(name, unit).record(value, attributes=dict(attributes or {}))
+    try:
+        _histogram(name, unit).record(value, attributes=dict(attributes or {}))
+    except Exception:
+        logger.warning(
+            "observability.metric.histogram_failed",
+            exc_info=True,
+            extra={"metric_name": name},
+        )

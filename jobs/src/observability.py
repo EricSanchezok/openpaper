@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from time import monotonic
-from typing import Any, cast
+from typing import Any, Callable, cast
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -16,6 +16,7 @@ from opentelemetry.instrumentation.celery import CeleryInstrumentor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
 from scholens_observability import (
     ObservabilityContext,
     BufferedS3DiagnosticSnapshotRecorder,
@@ -54,11 +55,17 @@ def _sanitize_dependency_url(value: object) -> str:
 def _dependency_request_hook(span: Any, request: Any) -> None:
     sanitized = _sanitize_dependency_url(getattr(request, "url", ""))
     span.set_attribute("url.full", sanitized)
+    span.set_attribute("url.query", "")
     span.set_attribute("http.url", sanitized)
 
 
 async def _async_dependency_request_hook(span: Any, request: Any) -> None:
     _dependency_request_hook(span, request)
+
+
+def _fastapi_request_hook(span: Any, scope: dict[str, Any]) -> None:
+    span.set_attribute("url.full", str(scope.get("path", "/")))
+    span.set_attribute("url.query", "")
 
 
 def configure_jobs_observability() -> None:
@@ -82,7 +89,10 @@ def configure_jobs_observability() -> None:
             request_hook=_dependency_request_hook,
             async_request_hook=_async_dependency_request_hook,
         )
-        CeleryInstrumentor().instrument()  # type: ignore[no-untyped-call]
+        celery_instrumentor = cast(Callable[[], Any], CeleryInstrumentor)()
+        cast(Callable[[], object], celery_instrumentor.instrument)()
+        redis_instrumentor = cast(Callable[[], Any], RedisInstrumentor)()
+        cast(Callable[[], object], redis_instrumentor.instrument)()
     snapshot_bucket = os.getenv("DIAGNOSTIC_SNAPSHOT_BUCKET")
     snapshot_kms_key = os.getenv("DIAGNOSTIC_SNAPSHOT_KMS_KEY_ID")
     if snapshot_bucket and snapshot_kms_key:
@@ -91,17 +101,24 @@ def configure_jobs_observability() -> None:
             bucket=snapshot_bucket,
             kms_key_id=snapshot_kms_key,
         )
-    elif snapshot_bucket and _ENVIRONMENT.casefold() == "production":
-        raise ValueError(
-            "DIAGNOSTIC_SNAPSHOT_KMS_KEY_ID is required when snapshots are enabled"
+    elif _ENVIRONMENT.casefold() == "production":
+        missing = (
+            "DIAGNOSTIC_SNAPSHOT_KMS_KEY_ID"
+            if snapshot_bucket
+            else "DIAGNOSTIC_SNAPSHOT_BUCKET"
         )
+        raise ValueError(f"{missing} is required in production")
     _connect_task_signals()
     _CONFIGURED = True
 
 
 def instrument_jobs_api(application: Any) -> None:
     if _OTLP_ENDPOINT:
-        FastAPIInstrumentor.instrument_app(application, excluded_urls="health")
+        FastAPIInstrumentor.instrument_app(
+            application,
+            server_request_hook=_fastapi_request_hook,
+            excluded_urls="health",
+        )
 
 
 def _base_context(**fields: str | None) -> ObservabilityContext:
@@ -111,6 +128,14 @@ def _base_context(**fields: str | None) -> ObservabilityContext:
         release=_RELEASE,
         **fields,
     )
+
+
+def _task_header(task: Any, name: str) -> str | None:
+    headers = getattr(getattr(task, "request", None), "headers", None)
+    if not isinstance(headers, dict):
+        return None
+    value = headers.get(name)
+    return str(value) if value is not None else None
 
 
 def _connect_task_signals() -> None:
@@ -135,7 +160,17 @@ def _task_prerun(
 ) -> None:
     identifier = task_id or "unknown"
     task_name = str(getattr(task, "name", "unknown"))
-    set_context(_base_context(task_id=identifier, component="celery", stage="execute"))
+    set_context(
+        _base_context(
+            operation_id=identifier,
+            correlation_id=_task_header(task, "scholens-correlation-id"),
+            causation_id=_task_header(task, "scholens-causation-id"),
+            actor_id=_task_header(task, "scholens-actor-id"),
+            task_id=identifier,
+            component="celery",
+            stage="execute",
+        )
+    )
     _TASK_STARTS[identifier] = monotonic()
     add_counter("scholens.jobs.started", attributes={"task_name": task_name})
     log_event(logger, logging.INFO, "job.task.started", task_name=task_name)

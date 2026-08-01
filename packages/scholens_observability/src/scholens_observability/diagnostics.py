@@ -7,11 +7,15 @@ import gzip
 import json
 import logging
 import queue
+import re
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from time import monotonic
 from typing import Any, Protocol, TypeAlias
 from uuid import UUID, uuid4
+
+from .metrics import add_counter
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -31,6 +35,15 @@ _FORBIDDEN_KEY_PARTS = (
     "connection_string",
 )
 _MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+_MAX_BUFFERED_BYTES = 64 * 1024 * 1024
+_INLINE_SECRET_PATTERN = re.compile(
+    r"(?i)\b(?:authorization|cookie|password|secret|api[_-]?key|access[_-]?key|"
+    r"session[_-]?token|refresh[_-]?token)\b\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
+)
+_JWT_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\."
+    r"[A-Za-z0-9_-]{16,}(?![A-Za-z0-9_-])"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,14 +101,18 @@ class BufferedS3DiagnosticSnapshotRecorder:
         kms_key_id: str,
         prefix: str = "diagnostics",
         queue_capacity: int = 256,
+        max_buffered_bytes: int = _MAX_BUFFERED_BYTES,
     ) -> None:
         self._client = client
         self._bucket = bucket
         self._kms_key_id = kms_key_id
         self._prefix = prefix.strip("/")
-        self._queue: queue.Queue[DiagnosticSnapshot | None] = queue.Queue(
+        self._queue: queue.Queue[tuple[DiagnosticSnapshot, int] | None] = queue.Queue(
             maxsize=queue_capacity
         )
+        self._max_buffered_bytes = max_buffered_bytes
+        self._pending_bytes = 0
+        self._state_lock = threading.Lock()
         self._logger = logging.getLogger(__name__)
         self._thread = threading.Thread(
             target=self._run,
@@ -106,40 +123,71 @@ class BufferedS3DiagnosticSnapshotRecorder:
         self._thread.start()
 
     def record(self, snapshot: DiagnosticSnapshot) -> None:
-        if self._closed:
-            return
-        try:
-            self._queue.put_nowait(snapshot)
-        except queue.Full:
+        size_bytes = len(
+            json.dumps(
+                snapshot.sections,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode()
+        )
+        drop_reason: str | None = None
+        with self._state_lock:
+            if self._closed:
+                return
+            if self._pending_bytes + size_bytes > self._max_buffered_bytes:
+                drop_reason = "writer_buffer_full"
+            else:
+                try:
+                    self._queue.put_nowait((snapshot, size_bytes))
+                except queue.Full:
+                    drop_reason = "writer_queue_full"
+                else:
+                    self._pending_bytes += size_bytes
+        if drop_reason is not None:
+            add_counter(
+                "scholens.diagnostic_snapshot.dropped",
+                attributes={"reason": drop_reason},
+            )
             self._logger.warning(
                 "diagnostic.snapshot.dropped",
-                extra={"reason": "writer_queue_full"},
+                extra={"reason": drop_reason},
             )
 
     def close(self, *, timeout: float = 5) -> None:
-        if self._closed:
-            return
-        self._closed = True
+        with self._state_lock:
+            if self._closed:
+                return
+            self._closed = True
+        deadline = monotonic() + max(timeout, 0)
         try:
-            self._queue.put_nowait(None)
+            self._queue.put(None, timeout=max(deadline - monotonic(), 0))
         except queue.Full:
-            # The daemon writer will continue draining without blocking shutdown.
+            add_counter("scholens.diagnostic_snapshot.shutdown_incomplete")
+            self._logger.error("diagnostic.snapshot.shutdown_incomplete")
             return
-        self._thread.join(timeout=timeout)
+        self._thread.join(timeout=max(deadline - monotonic(), 0))
+        if self._thread.is_alive():
+            add_counter("scholens.diagnostic_snapshot.shutdown_incomplete")
+            self._logger.error("diagnostic.snapshot.shutdown_incomplete")
 
     def _run(self) -> None:
         while True:
-            snapshot = self._queue.get()
+            item = self._queue.get()
             try:
-                if snapshot is None:
+                if item is None:
                     return
+                snapshot, _size_bytes = item
                 self._write(snapshot)
             except Exception:
+                add_counter("scholens.diagnostic_snapshot.write_failed")
                 self._logger.error(
                     "diagnostic.snapshot.write_failed",
                     exc_info=True,
                 )
             finally:
+                if item is not None:
+                    with self._state_lock:
+                        self._pending_bytes -= item[1]
                 self._queue.task_done()
 
     def _write(self, snapshot: DiagnosticSnapshot) -> None:
@@ -199,7 +247,11 @@ def _is_forbidden_key(key: str) -> bool:
 def _validate(value: object, *, path: str) -> JsonValue:
     if isinstance(value, SensitiveValue):
         raise ValueError(f"Sensitive value rejected at {path}")
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if isinstance(value, str):
+        if _INLINE_SECRET_PATTERN.search(value) or _JWT_PATTERN.search(value):
+            raise ValueError(f"Security-sensitive diagnostic value rejected at {path}")
+        return value
+    if value is None or isinstance(value, (int, float, bool)):
         return value
     if isinstance(value, (list, tuple)):
         return [_validate(item, path=f"{path}[]") for item in value]

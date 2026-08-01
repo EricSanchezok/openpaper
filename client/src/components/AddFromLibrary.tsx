@@ -1,6 +1,7 @@
 
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { PaperItem } from "@/lib/schema";
 import { fetchFromApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -41,7 +42,7 @@ export default function AddFromLibrary({ projectId, onPapersAdded, projectDocume
                 onPapersAdded();
             })
             .catch(error => {
-                console.error("Failed to add papers to project", error);
+                reportClientIssue("Failed to add papers to project", error);
                 toast.error("Failed to add papers to project.");
             });
     };

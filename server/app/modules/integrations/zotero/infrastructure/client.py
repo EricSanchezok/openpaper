@@ -51,13 +51,13 @@ class ZoteroApiClient:
                 if response.status_code == 429:
                     retry_after = int(response.headers.get("Retry-After", "2"))
                     logger.warning(
-                        "Zotero API rate-limited (429): %s %s; retrying after %ss "
-                        "(attempt %d/%d)",
-                        method,
-                        url,
-                        retry_after,
-                        attempt + 1,
-                        MAX_RETRIES,
+                        "zotero.api.rate_limited",
+                        extra={
+                            "method": method,
+                            "retry_after_seconds": retry_after,
+                            "attempt": attempt + 1,
+                            "max_attempts": MAX_RETRIES,
+                        },
                     )
                     # Record an error so a persistent 429 surfaces real context
                     # instead of the generic RuntimeError below.
@@ -71,30 +71,25 @@ class ZoteroApiClient:
                     time.sleep(int(backoff))
                 response.raise_for_status()
                 return response
-            except requests.RequestException as e:
-                last_error = e
-                # raise_for_status()'s message omits the response body, which is
-                # where Zotero explains *why* the call failed — capture it here.
-                resp = getattr(e, "response", None)
+            except requests.RequestException as exc:
+                last_error = exc
+                resp = getattr(exc, "response", None)
                 status = resp.status_code if resp is not None else "no response"
-                body = resp.text[:500] if resp is not None and resp.text else ""
                 logger.warning(
-                    "Zotero API request failed: %s %s -> %s (attempt %d/%d): %s%s",
-                    method,
-                    url,
-                    status,
-                    attempt + 1,
-                    MAX_RETRIES,
-                    e,
-                    f" | body: {body}" if body else "",
+                    "zotero.api.request_failed",
+                    extra={
+                        "method": method,
+                        "status_code": status,
+                        "attempt": attempt + 1,
+                        "max_attempts": MAX_RETRIES,
+                        "exception_type": type(exc).__name__,
+                    },
                 )
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(2**attempt)
         logger.error(
-            "Zotero API request giving up after %d attempts: %s %s",
-            MAX_RETRIES,
-            method,
-            url,
+            "zotero.api.retries_exhausted",
+            extra={"method": method, "max_attempts": MAX_RETRIES},
         )
         raise last_error or RuntimeError("Zotero API request failed")
 
@@ -225,9 +220,8 @@ class ZoteroApiClient:
             start += page_size
         else:
             logger.warning(
-                "Zotero PDF attachment scan hit the %d-item cap; some library "
-                "items may be reported as having no PDF.",
-                max_items,
+                "zotero.pdf_attachment_scan.limit_reached",
+                extra={"max_items": max_items},
             )
         return parents
 

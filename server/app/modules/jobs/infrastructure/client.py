@@ -39,6 +39,7 @@ class JobsClient:
         queue: str,
         job_id: str,
         kwargs: dict[str, Any],
+        headers: dict[str, str] | None = None,
     ) -> str:
         try:
             task = self._celery_app.send_task(
@@ -46,6 +47,7 @@ class JobsClient:
                 kwargs=kwargs,
                 queue=queue,
                 task_id=job_id,
+                headers=headers,
             )
             return str(task.id)
         except Exception as exc:

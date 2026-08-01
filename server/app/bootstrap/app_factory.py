@@ -99,11 +99,14 @@ from app.transport.http.errors import (
     app_error_handler,
     http_error_handler,
     unhandled_error_handler,
+    validation_error_handler,
 )
+from app.transport.http.error_boundary import UnhandledErrorMiddleware
 from app.transport.http.observability import RequestObservabilityMiddleware
 from app.transport.http.public_v1.identity import router as identity_router
 from app.transport.http.public_v1.onboarding import onboarding_router
 from fastapi import APIRouter, FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -170,11 +173,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         lifespan=app_lifespan,
         exception_handlers={
             AppError: app_error_handler,
+            RequestValidationError: validation_error_handler,
             StarletteHTTPException: http_error_handler,
             Exception: unhandled_error_handler,
         },
     )
-    configure_application_observability(application, runtime_settings)
     application.state.settings = runtime_settings
     application.state.diagnostic_snapshot_recorder = (
         create_diagnostic_snapshot_recorder(runtime_settings)
@@ -221,6 +224,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         dispatcher=tool_dispatcher,
         executor=executor,
         operation_factory=operation_context_factory,
+        diagnostic_recorder=application.state.diagnostic_snapshot_recorder,
     )
     application.state.mcp_session_manager = mcp_manager
     application.router.routes.append(Route("/mcp", endpoint=mcp_application))
@@ -228,6 +232,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         executor,
         conversation_runtime,
         operation_context_factory,
+        application.state.diagnostic_snapshot_recorder,
     )
     application.state.conversation_title_workflow = create_conversation_title_workflow(
         executor, operation_context_factory
@@ -254,6 +259,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     application.state.translation_workflow = create_translation_workflow(
         executor,
         runtime_settings,
+        application.state.diagnostic_snapshot_recorder,
     )
     application.state.zotero_workflow = create_zotero_workflow(
         executor,
@@ -264,12 +270,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         connector_tool_resolver,
         operation_context_factory,
     )
+    application.add_middleware(UnhandledErrorMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[runtime_settings.client_domain],
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["*"],
-        expose_headers=["*"],
+        expose_headers=[
+            "Content-Disposition",
+            "X-Correlation-ID",
+            "X-Request-ID",
+        ],
         allow_credentials=True,
         max_age=600,
     )
@@ -280,6 +291,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         release=runtime_settings.release_sha,
         success_sample_rate=runtime_settings.diagnostic_success_sample_rate,
     )
+    # Instrument last so the OpenTelemetry ASGI middleware owns the outer
+    # request span before structured request logs bind their trace fields.
+    configure_application_observability(application, runtime_settings)
     application.include_router(
         _public_router(),
         prefix=PUBLIC_API_PREFIX,

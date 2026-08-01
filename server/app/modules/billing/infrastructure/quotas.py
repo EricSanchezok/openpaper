@@ -29,7 +29,7 @@ from app.database.models import (
     SubscriptionPlan,
     SubscriptionStatus,
 )
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.shared.domain import AppError, FailureKind
 from app.shared.application import Actor
 from sqlalchemy import func, select

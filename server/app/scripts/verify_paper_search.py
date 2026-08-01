@@ -163,7 +163,7 @@ def verify() -> None:
         else:
             raise AssertionError("outsider unexpectedly read a project document")
 
-    logger.info("PostgreSQL capability journey passed")
+    logger.info("paper_search.verification.passed")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import {
     createContext,
     ReactNode,
@@ -205,7 +206,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
             }
             return null;
         } catch (error) {
-            console.error("Error refreshing paper URL:", error);
+            reportClientIssue("Error refreshing paper URL:", error);
             return null;
         }
     }, [projectId, updatePaper]);
@@ -233,7 +234,7 @@ export function ProjectWorkspaceProvider({ projectId, children }: ProjectWorkspa
                     return newOnes.length ? [...prevJobs, ...newOnes] : prevJobs;
                 });
             } catch (err) {
-                console.error("Failed to fetch pending upload jobs for project", err);
+                reportClientIssue("Failed to fetch pending upload jobs for project", err);
             }
         })();
         return () => {

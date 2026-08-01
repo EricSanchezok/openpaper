@@ -24,7 +24,7 @@ def optional_savepoint(
             yield
     except Exception:
         logger.exception(
-            "Optional callback side effect failed",
+            "jobs.callback.optional_side_effect_failed",
             extra={"operation": operation, **context},
         )
 

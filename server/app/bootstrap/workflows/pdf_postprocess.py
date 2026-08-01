@@ -120,7 +120,7 @@ class PdfPostprocessWorkflow:
             deterministic = self._provider.deterministic(fields=fields)
             deterministic_patch = deterministic.patch
         except Exception:
-            logger.exception("PDF deterministic metadata resolution failed")
+            logger.exception("paper.pdf_metadata.deterministic_resolution_failed")
 
         resolved_fields = _apply_patch(fields, deterministic_patch)
         agentic_patch = CitationMetadataPatch()
@@ -136,7 +136,7 @@ class PdfPostprocessWorkflow:
                 )
                 agentic_patch = agentic.patch
             except Exception:
-                logger.exception("PDF agentic metadata resolution failed")
+                logger.exception("paper.pdf_metadata.agentic_resolution_failed")
 
         return PdfPostprocessResolution(
             doi=agentic_patch.doi or deterministic_patch.doi,

@@ -1,5 +1,6 @@
 "use client"
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -68,7 +69,7 @@ export function ZoteroIntegrationCard() {
 			const data = await fetchFromApi<ZoteroStatus>("/integrations/zotero/connection");
 			setZoteroStatus(data);
 		} catch (error) {
-			console.error("Failed to fetch Zotero status:", error);
+			reportClientIssue("Failed to fetch Zotero status:", error);
 			setZoteroStatus({ connected: false });
 		} finally {
 			setZoteroLoading(false);

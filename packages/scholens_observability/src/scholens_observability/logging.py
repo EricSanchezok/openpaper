@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import traceback
 from datetime import UTC, datetime
@@ -26,6 +27,19 @@ _SECURITY_FIELD_FRAGMENTS = (
     "connection_string",
     "database_url",
 )
+_INLINE_SECRET_PATTERN = re.compile(
+    r"(?i)\b(?:authorization|cookie|password|secret|api[_-]?key|access[_-]?key|"
+    r"session[_-]?token|refresh[_-]?token)\b\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
+)
+_JWT_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\."
+    r"[A-Za-z0-9_-]{16,}(?![A-Za-z0-9_-])"
+)
+
+
+def _redact_string(value: str) -> str:
+    redacted = _INLINE_SECRET_PATTERN.sub("[REDACTED]", value)
+    return _JWT_PATTERN.sub("[REDACTED_JWT]", redacted)
 
 
 def _trace_fields() -> dict[str, str]:
@@ -44,7 +58,9 @@ def _safe_key(key: str) -> bool:
 
 
 def _safe_value(value: object) -> object:
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if isinstance(value, str):
+        return _redact_string(value)
+    if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, (list, tuple)):
         return [_safe_value(item) for item in value]
@@ -54,7 +70,10 @@ def _safe_value(value: object) -> object:
             for key, item in value.items()
             if _safe_key(str(key))
         }
-    return str(value)
+    # Arbitrary object stringification can invoke custom repr/str methods or
+    # expose exception messages containing URLs and credentials. Callers must
+    # deliberately project business objects into safe scalar fields.
+    return f"<{type(value).__name__}>"
 
 
 class StructuredFormatter(logging.Formatter):
@@ -63,7 +82,9 @@ class StructuredFormatter(logging.Formatter):
         self._json_output = json_output
 
     def format(self, record: logging.LogRecord) -> str:
-        event = getattr(record, "event", None) or record.getMessage()
+        event = _redact_string(
+            str(getattr(record, "event", None) or record.getMessage())
+        )
         payload: dict[str, object] = {
             "timestamp": datetime.now(UTC).isoformat(),
             "severity": record.levelname,

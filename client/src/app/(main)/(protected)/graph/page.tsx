@@ -1,5 +1,6 @@
 "use client"
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { Suspense, useState, useEffect, useCallback } from "react"
 import { useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
@@ -99,7 +100,7 @@ function CitationGraphContent() {
                 setHistoryIndex(newHistory.length - 1);
             }
         } catch (err) {
-            console.error("Failed to fetch citation graph:", err);
+            reportClientIssue("Failed to fetch citation graph:", err);
             setError("Could not find paper. Please check the DOI and try again.");
         } finally {
             setLoading(false);
@@ -128,7 +129,7 @@ function CitationGraphContent() {
                 setHistoryIndex(newHistory.length - 1);
             }
         } catch (err) {
-            console.error("Failed to fetch author works:", err);
+            reportClientIssue("Failed to fetch author works:", err);
             setError("Could not find author works. Please try again.");
         } finally {
             setLoading(false);

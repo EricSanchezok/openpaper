@@ -1,6 +1,7 @@
 
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useSubscription, isTokenCreditAtLimit } from '@/hooks/useSubscription';
 import { fetchFromApi, fetchStreamFromApi, getPaperFileUrl } from '@/lib/api';
 import { errorMessageWithDiagnostic } from '@/lib/errors';
@@ -83,7 +84,7 @@ function UnderstandPageContent() {
 
     useEffect(() => {
         if (papersError) {
-            console.error("Error fetching papers:", papersError);
+            reportClientIssue("Error fetching papers:", papersError);
             toast.error("Failed to fetch papers.");
         }
     }, [papersError]);
@@ -170,7 +171,7 @@ function UnderstandPageContent() {
                 setIsCentered(false);
             }
         } catch (error) {
-            console.error("Error fetching messages:", error);
+            reportClientIssue("Error fetching messages:", error);
             setMessages([]);
             setConversationId(null);
             setConversation(null);
@@ -339,7 +340,7 @@ function UnderstandPageContent() {
                 setConversation(newConversationResponse);
                 window.history.pushState(null, '', `/understand?id=${currentConversationId}`);
             } catch (error) {
-                console.error('Error creating conversation:', error);
+                reportClientIssue('Error creating conversation:', error);
                 toast.error("Failed to start a new conversation.");
                 setMessages(prev => prev.slice(0, -1));
                 setCurrentMessage(userMessage.content);
@@ -463,7 +464,7 @@ function UnderstandPageContent() {
         try {
             return await getPaperFileUrl(documentId);
         } catch (error) {
-            console.error('Error refreshing paper URL:', error);
+            reportClientIssue('Error refreshing paper URL:', error);
             return null;
         }
     }, []);

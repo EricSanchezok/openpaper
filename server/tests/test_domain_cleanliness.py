@@ -11,13 +11,18 @@ BUSINESS_ROOTS = (
     ROOT / "client" / "src",
 )
 HTTP_ROOT = ROOT / "server" / "app" / "transport" / "http"
+HTTP_BOUNDARY_FILES = {
+    "auth_dependencies.py",
+    "error_boundary.py",
+    "errors.py",
+}
 
 
 def _http_route_paths() -> list[Path]:
     return [
         path
         for path in HTTP_ROOT.rglob("*.py")
-        if path.name not in {"__init__.py", "auth_dependencies.py", "errors.py"}
+        if path.name != "__init__.py" and path.name not in HTTP_BOUNDARY_FILES
     ]
 
 

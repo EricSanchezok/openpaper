@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from uuid import UUID
 
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.helpers.ai_limits import AILimitExceeded, enforce_rate_limit
 from app.helpers.paper_search import (
     construct_citation_graph,

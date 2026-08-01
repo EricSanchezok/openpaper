@@ -36,6 +36,10 @@ def test_context_is_scoped_and_restored() -> None:
 
 
 def test_structured_logging_drops_security_fields(capsys: pytest.CaptureFixture[str]) -> None:
+    class SecretRepr:
+        def __str__(self) -> str:
+            return "embedded-password-must-not-appear"
+
     root = logging.getLogger()
     previous_handlers = list(root.handlers)
     previous_level = root.level
@@ -48,6 +52,7 @@ def test_structured_logging_drops_security_fields(capsys: pytest.CaptureFixture[
             "test.failure",
             api_key="must-not-appear",
             safe_identifier="visible",
+            unsafe_object=SecretRepr(),
             exc_info=RuntimeError("postgres://user:secret@example.invalid/db"),
         )
         output = capsys.readouterr().out.strip()
@@ -55,8 +60,30 @@ def test_structured_logging_drops_security_fields(capsys: pytest.CaptureFixture[
         assert payload["event"] == "test.failure"
         assert payload["safe_identifier"] == "visible"
         assert payload["exception_type"] == "RuntimeError"
+        assert payload["unsafe_object"] == "<SecretRepr>"
         assert "must-not-appear" not in output
+        assert "embedded-password" not in output
         assert "postgres://" not in output
+    finally:
+        root.handlers.clear()
+        root.handlers.extend(previous_handlers)
+        root.setLevel(previous_level)
+
+
+def test_structured_logging_redacts_inline_credentials(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = logging.getLogger()
+    previous_handlers = list(root.handlers)
+    previous_level = root.level
+    try:
+        configure_logging(service="test", environment="production")
+        logging.getLogger("tests.observability").error(
+            "dependency.failed authorization=Bearer abcdefghijklmnopqrstuvwxyz"
+        )
+        output = capsys.readouterr().out.strip()
+        assert "abcdefghijklmnopqrstuvwxyz" not in output
+        assert "[REDACTED]" in output
     finally:
         root.handlers.clear()
         root.handlers.extend(previous_handlers)
@@ -89,6 +116,19 @@ def test_diagnostic_snapshot_rejects_credentials() -> None:
             correlation_id=None,
             actor_id=None,
             sections={"request": {"value": SensitiveValue("secret")}},
+        )
+    with pytest.raises(ValueError, match="Security-sensitive diagnostic value"):
+        build_snapshot(
+            snapshot_id=diagnostic_id(),
+            service="api",
+            environment="test",
+            release=None,
+            reason="test",
+            request_id=None,
+            operation_id=None,
+            correlation_id=None,
+            actor_id=None,
+            sections={"request": {"note": "api_key=connector-secret-value"}},
         )
 
 
@@ -145,6 +185,41 @@ def test_buffered_snapshot_recorder_writes_encrypted_gzip() -> None:
     assert payload["sections"]["failure"]["code"] == "test_failure"
 
 
+def test_snapshot_recorder_drops_work_before_exceeding_memory_budget() -> None:
+    class FakeS3:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def put_object(self, **kwargs: object) -> object:
+            self.calls.append(kwargs)
+            return {}
+
+    client = FakeS3()
+    recorder = BufferedS3DiagnosticSnapshotRecorder(
+        client=client,
+        bucket="diagnostics",
+        kms_key_id="alias/scholens-diagnostics",
+        max_buffered_bytes=1,
+    )
+    recorder.record(
+        build_snapshot(
+            snapshot_id=diagnostic_id(),
+            service="api",
+            environment="test",
+            release=None,
+            reason="oversized_for_queue",
+            request_id="request-1",
+            operation_id=None,
+            correlation_id="correlation-1",
+            actor_id="42",
+            sections={"failure": {"code": "test_failure"}},
+        )
+    )
+    recorder.close()
+
+    assert client.calls == []
+
+
 def test_request_middleware_assigns_trusted_request_id() -> None:
     app = FastAPI()
     app.add_middleware(
@@ -171,3 +246,36 @@ def test_request_middleware_assigns_trusted_request_id() -> None:
     assert response_id != str(UUID(int=2))
     assert response.json()["request_id"] == response_id
     assert response.headers["X-Correlation-ID"] == str(UUID(int=1))
+
+
+def test_success_snapshots_skip_reads_and_sample_authenticated_commands() -> None:
+    class Recorder:
+        def __init__(self) -> None:
+            self.snapshots: list[object] = []
+
+        def record(self, snapshot: object) -> None:
+            self.snapshots.append(snapshot)
+
+    recorder = Recorder()
+    app = FastAPI()
+    app.state.diagnostic_snapshot_recorder = recorder
+    app.add_middleware(
+        RequestObservabilityMiddleware,
+        service="test-api",
+        environment="test",
+        release=None,
+        success_sample_rate=1,
+    )
+
+    @app.api_route("/items", methods=["GET", "POST"])
+    def items(request: Request) -> dict[str, bool]:
+        request.state.authenticated = True
+        request.state.correlation_id = str(UUID(int=3))
+        return {"ok": True}
+
+    with TestClient(app) as client:
+        assert client.get("/items").status_code == 200
+        assert recorder.snapshots == []
+        assert client.post("/items").status_code == 200
+
+    assert len(recorder.snapshots) == 1

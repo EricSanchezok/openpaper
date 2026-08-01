@@ -100,7 +100,7 @@ async def upload_pdf(
             chunks.append(chunk)
         content = b"".join(chunks)
     except (OSError, RuntimeError):
-        logger.exception("Error reading uploaded file")
+        logger.exception("paper_upload.read_failed")
         raise AppError(
             code="upload_read_failed",
             message="The uploaded file could not be read",

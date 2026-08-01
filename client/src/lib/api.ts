@@ -23,11 +23,22 @@ async function requestWithAuth(endpoint: string, options: RequestInit): Promise<
     const token = getAccessToken();
     const headers = new Headers(options.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const response = await fetch(apiUrl(endpoint), {
-        ...options,
-        headers,
-        credentials: "include",
-    });
+    const performFetch = async (requestHeaders: Headers): Promise<Response> => {
+        try {
+            return await fetch(apiUrl(endpoint), {
+                ...options,
+                headers: requestHeaders,
+                credentials: "include",
+            });
+        } catch (error) {
+            reportClientError(error, {
+                boundary: "api_network",
+                method: options.method ?? "GET",
+            });
+            throw error;
+        }
+    };
+    const response = await performFetch(headers);
 
     if (response.status !== 401 || !token) return response;
 
@@ -35,11 +46,7 @@ async function requestWithAuth(endpoint: string, options: RequestInit): Promise<
         const refreshedToken = await refreshAccessToken();
         const retryHeaders = new Headers(options.headers);
         retryHeaders.set("Authorization", `Bearer ${refreshedToken}`);
-        return fetch(apiUrl(endpoint), {
-            ...options,
-            headers: retryHeaders,
-            credentials: "include",
-        });
+        return performFetch(retryHeaders);
     } catch {
         clearSession();
         return response;

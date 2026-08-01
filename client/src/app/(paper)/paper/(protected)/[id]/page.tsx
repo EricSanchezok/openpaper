@@ -1,5 +1,6 @@
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { PdfHighlighterViewer } from '@/components/PdfHighlighterViewer';
 import type { RenderedHighlightPosition } from '@/components/PdfHighlighterViewer';
 import { Button } from '@/components/ui/button';
@@ -375,7 +376,7 @@ export default function PaperView() {
                 setTimeout(() => pollJobStatus(jobId), 2000);
             }
         } catch (error) {
-            console.error('Error polling job status:', error);
+            reportClientIssue('Error polling job status:', error);
         }
     };
 
@@ -482,7 +483,7 @@ export default function PaperView() {
                 const response = await fetchPaperData(id);
                 setPaperData(response);
             } catch (error) {
-                console.error('Error fetching paper:', error);
+                reportClientIssue('Error fetching paper:', error);
             } finally {
                 setLoading(false);
             }
@@ -515,7 +516,7 @@ export default function PaperView() {
             }
             return null;
         } catch (error) {
-            console.error('Error refreshing PDF URL:', error);
+            reportClientIssue('Error refreshing PDF URL:', error);
             return null;
         }
     }, [id]);
@@ -535,7 +536,7 @@ export default function PaperView() {
             await navigator.clipboard.writeText(shareUrl);
             toast.success("Sharing link copied to clipboard!");
         } catch (error) {
-            console.error('Error sharing paper:', error);
+            reportClientIssue('Error sharing paper:', error);
             toast.error("Failed to share paper.");
         } finally {
             setIsSharing(false);
@@ -552,7 +553,7 @@ export default function PaperView() {
             setPaperData(prev => prev ? { ...prev, share_id: null, is_public: false } : null);
             toast.success("Paper is now private.");
         } catch (error) {
-            console.error('Error unsharing paper:', error);
+            reportClientIssue('Error unsharing paper:', error);
             toast.error("Failed to make paper private.");
         } finally {
             setIsSharing(false);
@@ -577,7 +578,7 @@ export default function PaperView() {
                 )
             }
         } catch (error) {
-            console.error('Error updating paper status:', error);
+            reportClientIssue('Error updating paper status:', error);
             toast.error("Failed to update paper status.");
         }
     }, [id, paperData]);

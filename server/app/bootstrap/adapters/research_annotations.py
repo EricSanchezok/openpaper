@@ -75,7 +75,7 @@ def create_ai_highlights(
         document_id=document_id,
     ):
         logger.info(
-            "AI highlights already exist; skipping duplicate delivery",
+            "research.ai_highlights.duplicate_skipped",
             extra={"document_id": str(document_id)},
         )
         return CreatedAiHighlights((), ())

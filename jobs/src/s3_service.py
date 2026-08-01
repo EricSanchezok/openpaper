@@ -59,13 +59,13 @@ class S3Service:
             ClientError: If the file cannot be downloaded from S3
         """
         try:
-            logger.info(f"Downloading file from S3 with key: {object_key}")
+            logger.info("s3.object.download_started")
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name, Key=object_key
             )
             return response["Body"].read()
-        except (BotoCoreError, ClientError) as e:
-            logger.error(f"Error downloading file from S3: {e}")
+        except (BotoCoreError, ClientError):
+            logger.exception("s3.object.download_failed")
             raise
 
     def upload_bytes_to_key(
@@ -96,8 +96,8 @@ class S3Service:
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=object_key)
             return True
-        except ClientError as e:
-            logger.error(f"Error deleting file from S3: {e}")
+        except ClientError:
+            logger.exception("s3.object.delete_failed")
             return False
 
 

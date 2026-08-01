@@ -16,12 +16,18 @@ async def time_it(
 ) -> AsyncIterator[None]:
     """Measure one async operation and emit its duration even when it fails."""
     start_time = time.monotonic()
-    logger.info("Starting: %s", description)
+    logger.info("job.operation.started", extra={"operation": description})
     try:
         yield
     finally:
         duration = time.monotonic() - start_time
-        logger.info("Finished: %s. Duration: %.2f seconds", description, duration)
+        logger.info(
+            "job.operation.completed",
+            extra={
+                "operation": description,
+                "duration_seconds": round(duration, 3),
+            },
+        )
         if job_id:
             event_name = f"timer:{description.lower().replace(' ', '_')}"
             properties = {"duration": duration, **(event_properties or {})}

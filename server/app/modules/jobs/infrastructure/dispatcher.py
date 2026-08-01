@@ -32,7 +32,7 @@ def _reserve_dispatches(*, limit: int) -> tuple[ReservedJobDispatch, ...]:
         recovered_count = job_repository.recover_expired_leases(db, limit=limit)
         if recovered_count:
             logger.warning(
-                "Recovered expired Jobs leases",
+                "jobs.leases.recovered",
                 extra={"recovered_count": recovered_count},
             )
         dispatches = job_repository.reserve_dispatches(
@@ -88,6 +88,14 @@ def dispatch_pending_jobs_once(*, limit: int = DISPATCH_BATCH_SIZE) -> int:
         attributes={"jobs.dispatch.batch_size": len(dispatches)},
     ):
         for dispatch in dispatches:
+            record_histogram(
+                "scholens.jobs.queue_age",
+                max(
+                    0,
+                    (datetime.now(UTC) - dispatch.enqueued_at).total_seconds(),
+                ),
+                unit="s",
+            )
             status = "published"
             try:
                 jobs_client.publish_task(
@@ -95,16 +103,25 @@ def dispatch_pending_jobs_once(*, limit: int = DISPATCH_BATCH_SIZE) -> int:
                     queue=dispatch.queue,
                     job_id=str(dispatch.job_id),
                     kwargs=dispatch.kwargs,
+                    headers={
+                        "scholens-correlation-id": str(dispatch.correlation_id),
+                        "scholens-causation-id": str(dispatch.origin_operation_id),
+                        **(
+                            {"scholens-actor-id": str(dispatch.requested_by_id)}
+                            if dispatch.requested_by_id is not None
+                            else {}
+                        ),
+                    },
                 )
             except RuntimeError as exc:
                 status = "retry"
                 changed = _record_publish_failure(dispatch, error=exc)
                 logger.warning(
-                    "Jobs outbox publish failed",
+                    "jobs.outbox.publish_failed",
                     extra={
                         "job_id": str(dispatch.job_id),
                         "attempt": dispatch.attempt_count,
-                        "error_code": str(exc)[:80],
+                        "exception_type": type(exc).__name__,
                         "lease_owned": changed,
                     },
                 )
@@ -114,7 +131,7 @@ def dispatch_pending_jobs_once(*, limit: int = DISPATCH_BATCH_SIZE) -> int:
                 else:
                     status = "lease_superseded"
                     logger.warning(
-                        "Jobs outbox publish lease was superseded",
+                        "jobs.outbox.lease_superseded",
                         extra={
                             "job_id": str(dispatch.job_id),
                             "attempt": dispatch.attempt_count,
@@ -138,7 +155,7 @@ async def run_job_dispatcher(stop: asyncio.Event) -> None:
         try:
             published = await asyncio.to_thread(dispatch_pending_jobs_once)
         except Exception:
-            logger.exception("Jobs outbox dispatcher iteration failed")
+            logger.exception("jobs.outbox.dispatch_failed")
             published = 0
         if published:
             continue

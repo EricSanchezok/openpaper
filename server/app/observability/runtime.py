@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from threading import Lock
-from typing import Any
+from typing import Any, Callable, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from app.bootstrap.settings import AppSettings
@@ -13,6 +13,7 @@ from opentelemetry.instrumentation.celery import CeleryInstrumentor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from scholens_observability import configure_logging, configure_telemetry
 
@@ -30,17 +31,24 @@ def _sanitized_url(value: object) -> str:
 def _requests_request_hook(span: Any, request: Any) -> None:
     sanitized = _sanitized_url(getattr(request, "url", ""))
     span.set_attribute("url.full", sanitized)
+    span.set_attribute("url.query", "")
     span.set_attribute("http.url", sanitized)
 
 
 def _httpx_request_hook(span: Any, request: Any) -> None:
     sanitized = _sanitized_url(getattr(request, "url", ""))
     span.set_attribute("url.full", sanitized)
+    span.set_attribute("url.query", "")
     span.set_attribute("http.url", sanitized)
 
 
 async def _httpx_async_request_hook(span: Any, request: Any) -> None:
     _httpx_request_hook(span, request)
+
+
+def _fastapi_request_hook(span: Any, scope: dict[str, Any]) -> None:
+    span.set_attribute("url.full", str(scope.get("path", "/")))
+    span.set_attribute("url.query", "")
 
 
 def configure_application_observability(
@@ -69,9 +77,27 @@ def configure_application_observability(
                 async_request_hook=_httpx_async_request_hook,
             )
             SQLAlchemyInstrumentor().instrument(engine=engine)
-            CeleryInstrumentor().instrument()  # type: ignore[no-untyped-call]
+            celery_instrumentor = cast(
+                Callable[[], Any],
+                CeleryInstrumentor,
+            )()
+            instrument_celery = cast(
+                Callable[[], object],
+                celery_instrumentor.instrument,
+            )
+            instrument_celery()
+            redis_instrumentor = cast(
+                Callable[[], Any],
+                RedisInstrumentor,
+            )()
+            instrument_redis = cast(
+                Callable[[], object],
+                redis_instrumentor.instrument,
+            )
+            instrument_redis()
             _DEPENDENCIES_INSTRUMENTED = True
     FastAPIInstrumentor.instrument_app(
         application,
+        server_request_hook=_fastapi_request_hook,
         excluded_urls="livez,readyz",
     )

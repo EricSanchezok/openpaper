@@ -21,7 +21,7 @@ def main() -> None:
         "script_location", str(repository_root / "migrations")
     )
     command.upgrade(alembic_config, "head")
-    logger.info("Scholens migrations are current")
+    logger.info("migration.product.current")
 
 
 if __name__ == "__main__":

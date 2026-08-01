@@ -1,3 +1,5 @@
+"""PostHog product analytics; never used as technical observability."""
+
 import logging
 import os
 from typing import Any
@@ -44,17 +46,20 @@ def _lookup_subscription(db: Session | None, user_id: int) -> Subscription | Non
     if db is not None:
         try:
             return subscription_repository.get_by_user_id(db, user_id=user_id)
-        except (InvalidRequestError, OperationalError) as e:
+        except (InvalidRequestError, OperationalError) as exc:
             logger.warning(
-                "track_event: provided db session unusable (%s); falling back",
-                type(e).__name__,
+                "product_analytics.subscription_lookup.session_unusable",
+                extra={"exception_type": type(exc).__name__},
             )
 
     try:
         with SessionLocal() as fresh_db:
             return subscription_repository.get_by_user_id(fresh_db, user_id=user_id)
-    except Exception as e:
-        logger.warning("track_event: subscription lookup failed: %s", e)
+    except Exception:
+        logger.warning(
+            "product_analytics.subscription_lookup.failed",
+            exc_info=True,
+        )
         return None
 
 
@@ -84,7 +89,7 @@ def track_event(
             try:
                 subscription = _lookup_subscription(db, int(user_id))
             except (TypeError, ValueError):
-                logger.warning("track_event: invalid user id %r", user_id)
+                logger.warning("product_analytics.user_id.invalid")
 
             if subscription:
                 event_properties.update(
@@ -117,7 +122,6 @@ def track_event(
             )
     else:
         logger.debug(
-            "PostHog tracking disabled for event %s with properties %s",
-            event_name,
-            event_properties,
+            "product_analytics.capture.skipped",
+            extra={"product_event": event_name, "reason": "disabled"},
         )

@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, FileText, FolderKanban, Command, Loader2 } from "lucide-react";
@@ -157,7 +158,7 @@ export function HomeSearch() {
                 if (error instanceof Error && error.name === 'AbortError') {
                     return;
                 }
-                console.error("Search error:", error);
+                reportClientIssue("Search error:", error);
                 setHasSearched(true);
                 setIsLoading(false);
             }

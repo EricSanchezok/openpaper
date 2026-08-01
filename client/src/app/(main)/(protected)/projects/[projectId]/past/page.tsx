@@ -1,5 +1,6 @@
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useEffect } from 'react';
 import { fetchFromApi } from '@/lib/api';
 import Link from 'next/link';
@@ -23,7 +24,7 @@ export default function ProjectPastConversationsPage() {
             });
             refetchConversations();
         } catch (error) {
-            console.error('Error deleting conversation', error);
+            reportClientIssue('Error deleting conversation', error);
         }
     };
 

@@ -24,7 +24,9 @@ aws cloudformation deploy \
     EnvironmentName=production \
     DomainName=scholens.example.com \
     InstanceRoleName=EXISTING_EC2_ROLE_NAME \
-    AlertEmail=operator@example.com
+    AlertEmail=operator@example.com \
+    BreakGlassPrincipalArn=arn:aws:iam::ACCOUNT_ID:role/EXISTING_SECURITY_OPERATOR_ROLE \
+    MonthlyCloudWatchBudgetUsd=50
 ```
 
 Confirm the SNS subscription sent to `AlertEmail`; unconfirmed subscriptions
@@ -37,9 +39,12 @@ aws cloudformation describe-stacks \
   --output table
 ```
 
-The diagnostic bucket is KMS-encrypted, versioned, private, and expires current
-and noncurrent objects after seven days. The application role has `PutObject`
-only: operators need a separate audited break-glass read role. Source maps are
+The diagnostic bucket is KMS-encrypted, unversioned, private, and expires every
+object after seven days. The application role has `PutObject` only. Reading or
+deleting a snapshot requires assuming the stack-created break-glass role, whose
+S3 object data events are written by CloudTrail to a separate private audit
+bucket for 30 days. Confirm that `BreakGlassPrincipalArn` names an existing
+human-operated security role rather than an application role. Source maps are
 private, expire after 30 days, and can only be read by the matching RUM app
 monitor through `aws:SourceAccount` and `aws:SourceArn` conditions.
 
@@ -62,6 +67,14 @@ The installer fetches the reviewed host and OpenTelemetry configurations from
 SSM Parameter Store. The agent listens for OTLP/gRPC on host port 4317 and
 sends application metrics to CloudWatch and traces to X-Ray. The EC2 security
 group must not expose 4317; it is for local Docker-to-host traffic only.
+The stack enables X-Ray Transaction Search and Application Signals discovery,
+so every trace accepted from the application's own sampler is indexed for the
+Application Signals service map. This 100% indexing applies only after the
+application's one-per-second-plus-ten-percent trace sampling, not to every
+production request.
+Each process keeps a one-root-trace-per-second reservoir and samples ten
+percent of the remaining root traces; child spans honor the parent decision.
+Structured error logs and failure counters remain unsampled.
 
 Verify:
 
@@ -86,6 +99,8 @@ The API and jobs processes emit JSON to stdout. Docker's `awslogs` driver sends
 each service to a separate 30-day CloudWatch log group. Do not put AWS access
 keys in the runtime file; the Docker daemon, CloudWatch Agent, API, and jobs use
 the EC2 instance role.
+Production startup fails if either diagnostic snapshot value is absent; this is
+a deployment configuration error rather than a runtime condition to hide.
 
 After changing the runtime file, deploy a normal immutable release. Confirm
 that these groups receive events:
@@ -115,11 +130,13 @@ the browser bundle, checks CloudWatch's 50 MiB per-map limit, and uploads only
 the runtime image's public static directory. The GitHub publish role needs
 `s3:PutObject` for that bucket prefix.
 
-RUM samples 100% of sessions, records errors, performance and interactions,
+RUM samples 100% of sessions, records errors, performance and HTTP telemetry,
 and sends custom error events containing only bounded technical identifiers.
-It does not record API request/response bodies, resource URLs, credentials, or
-user prompts. PostHog remains the product analytics system; it is not used for
-technical exception diagnosis.
+RUM cookies are disabled. It does not record API request/response bodies,
+resource URLs, credentials, or user prompts. Page IDs contain paths only, and
+the browser SDK excludes any HTTP URL containing a query or fragment; those
+failures are still counted by the shared URL-free API error reporter. PostHog remains the product
+analytics system; it is not used for technical exception diagnosis.
 
 ## 5. Verify correlation end to end
 
@@ -154,8 +171,14 @@ fields @timestamp, service, event, error_code, request_id, correlation_id, diagn
   operation IDs belong in logs/traces, never metric dimensions.
 - Review RUM 100% sampling and log volume monthly. Reduce the RUM sample only
   through an explicit product/operations decision, not an emergency code fork.
+- The stack creates a forecasted monthly CloudWatch budget and emails
+  `AlertEmail` when forecast spend reaches `MonthlyCloudWatchBudgetUsd`. It also
+  alarms on the combined API 5xx count/rate, terminal stream failures, worker
+  heartbeat loss, queue age, dependency failures, LLM timeout rate, unknown
+  token usage, diagnostic write failures, and browser error rate.
 
-To disable snapshot capture without changing code, remove the two diagnostic
-environment values and redeploy. To disable telemetry export, remove
-`SCHOLENS_OTEL_EXPORTER_OTLP_ENDPOINT`; structured local logs and stable error
-responses continue to work.
+Diagnostic snapshots are mandatory in production. To disable them during an
+incident, deploy an explicit reviewed code/configuration change; removing the
+bucket or KMS values deliberately fails startup. To disable telemetry export,
+remove `SCHOLENS_OTEL_EXPORTER_OTLP_ENDPOINT`; structured local logs and stable
+error responses continue to work.

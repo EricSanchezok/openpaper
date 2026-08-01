@@ -1,5 +1,6 @@
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PdfHighlighterViewer } from '@/components/PdfHighlighterViewer';
@@ -143,7 +144,7 @@ export default function SharedPaperView() {
                 const response = await fetchPublicPaper(shareId);
                 setPaperData(response.paper);
             } catch (err) {
-                console.error("Error fetching shared paper data:", err);
+                reportClientIssue("Error fetching shared paper data:", err);
                 setError("Failed to load shared paper. The link might be invalid or expired.");
                 setPaperData(null);
             } finally {
@@ -163,7 +164,7 @@ export default function SharedPaperView() {
             }
             return null;
         } catch (error) {
-            console.error('Error refreshing PDF URL:', error);
+            reportClientIssue('Error refreshing PDF URL:', error);
             return null;
         }
     }, [shareId]);

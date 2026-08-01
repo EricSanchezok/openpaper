@@ -1,4 +1,4 @@
-import { AwsRum } from 'aws-rum-web';
+import { AwsRum, PageIdFormatEnum } from 'aws-rum-web';
 
 type ErrorContext = Record<string, string | number | boolean | undefined>;
 
@@ -14,6 +14,7 @@ declare global {
 }
 
 let rumInitialized = false;
+const reportedErrors = new WeakSet<Error>();
 
 export function initializeClientObservability(): void {
     if (typeof window === 'undefined' || rumInitialized) return;
@@ -30,12 +31,25 @@ export function initializeClientObservability(): void {
             releaseId,
             region,
             {
-                allowCookies: true,
+                allowCookies: false,
                 enableXRay: true,
                 guestRoleArn,
                 identityPoolId,
+                pageIdFormat: PageIdFormatEnum.Path,
                 sessionSampleRate: 1,
-                telemetries: ['errors', 'performance', 'interaction'],
+                telemetries: [
+                    'errors',
+                    'performance',
+                    [
+                        'http',
+                        {
+                            // RUM records request URLs verbatim. Requests with a
+                            // query or fragment stay observable through the
+                            // shared ApiError reporter without exporting the URL.
+                            urlsToInclude: [/^[^?#]+$/],
+                        },
+                    ],
+                ],
                 recordResourceUrl: false,
                 releaseId,
             },
@@ -50,11 +64,23 @@ export function reportClientError(
     error: unknown,
     context: ErrorContext = {},
 ): void {
-    const normalized = error instanceof Error ? error : new Error(String(error));
+    const normalized = error instanceof Error
+        ? error
+        : new Error('Non-Error client failure');
     if (typeof window === 'undefined') return;
+    if (reportedErrors.has(normalized)) return;
+    reportedErrors.add(normalized);
     window.__SCHOLENS_RUM__?.recordError(normalized);
     window.__SCHOLENS_RUM__?.recordEvent?.('scholens_client_error', {
         error_name: normalized.name,
         ...context,
+    });
+}
+
+/** Report a caught UI failure without leaking arbitrary console arguments. */
+export function reportClientIssue(...values: unknown[]): void {
+    const error = values.find((value): value is Error => value instanceof Error);
+    reportClientError(error ?? new Error('Client operation failed'), {
+        boundary: 'caught_client_error',
     });
 }

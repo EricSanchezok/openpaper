@@ -23,7 +23,7 @@ from app.modules.jobs.domain import (
 )
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +61,10 @@ class ReservedJobDispatch:
     queue: str
     kwargs: dict[str, JsonValue]
     attempt_count: int
+    enqueued_at: datetime
+    correlation_id: uuid.UUID
+    origin_operation_id: uuid.UUID
+    requested_by_id: int | None
 
 
 class JobRepository:
@@ -357,6 +361,7 @@ class JobRepository:
         dispatches = list(
             db.scalars(
                 select(JobDispatch)
+                .options(joinedload(JobDispatch.job))
                 .where(
                     or_(
                         and_(
@@ -376,6 +381,7 @@ class JobRepository:
         )
         reserved: list[ReservedJobDispatch] = []
         for dispatch in dispatches:
+            job = dispatch.job
             dispatch.status = JobDispatchStatus.PUBLISHING.value
             dispatch.attempt_count += 1
             dispatch.available_at = now + lease
@@ -387,6 +393,10 @@ class JobRepository:
                     queue=dispatch.queue,
                     kwargs=dict(dispatch.kwargs),
                     attempt_count=dispatch.attempt_count,
+                    enqueued_at=dispatch.created_at,
+                    correlation_id=job.correlation_id,
+                    origin_operation_id=job.origin_operation_id,
+                    requested_by_id=job.requested_by_id,
                 )
             )
         db.flush()

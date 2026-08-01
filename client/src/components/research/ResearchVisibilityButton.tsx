@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { LockKeyhole, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -57,7 +58,7 @@ export function ResearchVisibilityButton({
                     : "Hidden from Project collaborators",
             );
         } catch (error) {
-            console.error("Failed to update research visibility:", error);
+            reportClientIssue("Failed to update research visibility:", error);
             toast.error("Could not update sharing");
         } finally {
             setIsSaving(false);

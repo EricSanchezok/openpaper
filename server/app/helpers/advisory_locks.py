@@ -85,10 +85,11 @@ class AdvisoryLock:
                 text("SELECT pg_advisory_unlock(:ns, hashtext(:key))"),
                 {"ns": self._namespace, "key": self._key},
             )
-        except Exception as e:
+        except Exception:
             logger.error(
-                f"Failed to release advisory lock (ns={self._namespace}, "
-                f"key={self._key}): {str(e)}"
+                "database.advisory_lock.release_failed",
+                exc_info=True,
+                extra={"lock_namespace": self._namespace},
             )
         finally:
             self._conn.close()

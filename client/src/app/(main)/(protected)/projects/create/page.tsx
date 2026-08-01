@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -33,7 +34,7 @@ export default function CreateProjectPage() {
 
 			// Keep loading state active during navigation
 			setIsLoading(false);
-			console.error(err);
+			reportClientIssue(err);
 		}
 	};
 

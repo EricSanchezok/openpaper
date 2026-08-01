@@ -74,8 +74,8 @@ def notify_converted_billing_interval(
 
         resend.Emails.send(payload)
 
-    except Exception as e:
-        logger.error(f"Failed to notify billing interval change: {e}", exc_info=True)
+    except Exception:
+        logger.exception("email.billing_interval_notification.failed")
 
 
 def notify_billing_issue(email: str, issue: str, name: str | None = None) -> None:
@@ -99,8 +99,8 @@ def notify_billing_issue(email: str, issue: str, name: str | None = None) -> Non
 
         resend.Emails.send(payload)
 
-    except Exception as e:
-        logger.error(f"Failed to notify billing issue: {e}", exc_info=True)
+    except Exception:
+        logger.exception("email.billing_issue_notification.failed")
 
 
 def send_subscription_welcome_email(
@@ -118,8 +118,8 @@ def send_subscription_welcome_email(
 
         resend.Emails.send(payload)
 
-    except Exception as e:
-        logger.error(f"Failed to send subscription welcome email: {e}", exc_info=True)
+    except Exception:
+        logger.exception("email.subscription_welcome.failed")
 
 
 def send_profile_email(profile: OnboardingResponse) -> None:
@@ -159,8 +159,8 @@ def send_profile_email(profile: OnboardingResponse) -> None:
 
         resend.Emails.send(payload)
 
-    except Exception as e:
-        logger.error(f"Failed to send profile email: {e}", exc_info=True)
+    except Exception:
+        logger.exception("email.profile.failed")
 
 
 def send_project_invite_email(
@@ -202,8 +202,8 @@ def send_project_invite_email(
         resend.Emails.send(payload)
         return True
 
-    except Exception as e:
-        logger.error(f"Failed to send invite email to {to_email}: {e}", exc_info=True)
+    except Exception:
+        logger.exception("email.project_invitation.failed")
         return False
 
 
@@ -237,8 +237,8 @@ def send_confirmation_cancellation_email(
         resend.Emails.send(payload)
         return True
 
-    except Exception as e:
-        logger.error(f"Failed to send invite email to {to_email}: {e}", exc_info=True)
+    except Exception:
+        logger.exception("email.subscription_cancellation.failed")
         return False
 
 
@@ -288,12 +288,9 @@ def send_data_table_complete_email(
         }
 
         resend.Emails.send(payload)
-        logger.info(f"Data table complete email sent to {to_email}")
+        logger.info("email.data_table_completion.sent")
         return True
 
-    except Exception as e:
-        logger.error(
-            f"Failed to send data table complete email to {to_email}: {e}",
-            exc_info=True,
-        )
+    except Exception:
+        logger.exception("email.data_table_completion.failed")
         return False

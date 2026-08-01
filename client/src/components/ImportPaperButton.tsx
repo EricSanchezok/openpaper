@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Import, Loader } from 'lucide-react';
@@ -91,7 +92,7 @@ export function ImportPaperButton() {
                 throw new Error("Invalid response from server.");
             }
         } catch (error) {
-            console.error("Failed to import paper:", error);
+            reportClientIssue("Failed to import paper:", error);
             toast.error("Import failed", {
                 id: toastId,
                 description: error instanceof Error ? error.message : "Could not import the paper. Please try again.",

@@ -10,7 +10,7 @@ from uuid import UUID
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.workflows.pdf_postprocess import PdfPostprocessWorkflow
 from app.bootstrap.workflows.zotero import ZoteroPostprocessWorkflow
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.helpers.ai_limits import release_concurrency_by_id
 from app.modules.jobs.application.authentication import VerifiedJobCallback
 from app.modules.jobs.application.contracts import (
@@ -192,7 +192,7 @@ async def _execute_post_commit(action: JobPostCommitAction) -> None:
         raise TypeError(f"unsupported Job post-commit action: {type(action).__name__}")
     except Exception:
         logger.exception(
-            "Job post-commit action failed",
+            "jobs.post_commit_action.failed",
             extra={"action_type": type(action).__name__},
         )
 

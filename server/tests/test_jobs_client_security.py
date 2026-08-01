@@ -31,6 +31,7 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
                 queue="pdf_processing",
                 job_id="job-pdf",
                 kwargs={"s3_object_key": "documents/hash/source.pdf"},
+                headers={"scholens-correlation-id": "correlation-id"},
             )
             == "task_pdf"
         )
@@ -38,3 +39,6 @@ def test_jobs_client_reuses_one_configured_celery_producer() -> None:
     celery.assert_called_once()
     assert celery_app.send_task.call_count == 1
     assert celery_app.send_task.call_args_list[0].kwargs["task_id"] == "job-pdf"
+    assert celery_app.send_task.call_args_list[0].kwargs["headers"] == {
+        "scholens-correlation-id": "correlation-id"
+    }

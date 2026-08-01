@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import { toast } from "sonner";
 import { fetchFromApi } from "@/lib/api";
 import { PaperStatus, PaperStatusEnum } from "@/components/utils/PdfStatus";
@@ -233,7 +234,7 @@ export const copyToClipboard = (text: string, styleName: string) => {
             richColors: true,
         });
     }).catch(err => {
-        console.error('Failed to copy text: ', err);
+        reportClientIssue('Failed to copy text: ', err);
         toast("Copy failed", {
             description: "Could not copy citation to clipboard.",
             richColors: true,
@@ -272,7 +273,7 @@ export const handleStatusChange = async <T extends PaperBase>(
         }
         setPaper(paper.document_id, { ...paper, status });
     } catch (error) {
-        console.error('Error updating paper status:', error);
+        reportClientIssue('Error updating paper status:', error);
         toast.error("Failed to update paper status.");
     }
 };

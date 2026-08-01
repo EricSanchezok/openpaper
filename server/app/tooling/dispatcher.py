@@ -174,6 +174,7 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                     "errors": exc.errors(
                         include_url=False,
                         include_context=False,
+                        include_input=False,
                     )
                 },
             ) from exc

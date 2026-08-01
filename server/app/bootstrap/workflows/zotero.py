@@ -356,7 +356,11 @@ class ZoteroWorkflow:
                 properties=properties,
             )
         except Exception:
-            logger.warning("Zotero telemetry failed for %s", name, exc_info=True)
+            logger.warning(
+                "zotero.product_analytics.failed",
+                exc_info=True,
+                extra={"product_event": name},
+            )
 
 
 class ZoteroPostprocessWorkflow:
@@ -538,7 +542,7 @@ class ZoteroPostprocessWorkflow:
             )
         except Exception:
             logger.warning(
-                "Zotero telemetry failed for zotero_auto_sync",
+                "zotero.auto_sync.product_analytics_failed",
                 exc_info=True,
             )
 
@@ -707,7 +711,7 @@ async def _execute_import_plan(
                 await ingestion.release(actor=actor, job_id=reservation.job_id)
         except Exception:
             logger.exception(
-                "Zotero item import failed",
+                "zotero.item_import.failed",
                 extra={"zotero_item_key": planned.item.item_key},
             )
             if reservation is not None and ingestion is not None:

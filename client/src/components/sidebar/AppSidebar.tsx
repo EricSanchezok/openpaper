@@ -1,5 +1,6 @@
 "use client"
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
@@ -44,7 +45,7 @@ export function AppSidebar() {
                 );
                 setProjects((projectsResponse as ProjectListResponse).items);
             } catch (error) {
-                console.error("Error fetching sidebar data:", error);
+                reportClientIssue("Error fetching sidebar data:", error);
                 setEverythingConversations([]);
                 setProjects([]);
             }

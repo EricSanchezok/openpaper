@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import {
 	Table,
 	TableBody,
@@ -212,7 +213,7 @@ export function LibraryTable({
 			);
 			const reason =
 				firstError?.reason instanceof Error ? firstError.reason.message : null;
-			console.error("Failed to delete some papers:", results);
+			reportClientIssue("Failed to delete some papers:", results);
 			toast.error(
 				`Could not delete ${failed} paper${failed !== 1 ? "s" : ""}.` +
 				(reason ? ` ${reason}` : "")
@@ -251,7 +252,7 @@ export function LibraryTable({
 			// toast.success("Tag removed.");
 			mutate(); // Revalidate the papers list
 		} catch (error) {
-			console.error("Failed to remove tag", error);
+			reportClientIssue("Failed to remove tag", error);
 			toast.error("Failed to remove tag.");
 		}
 	};

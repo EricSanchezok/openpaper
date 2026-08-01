@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { Loader2, Sparkles, Table, Trash2, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -91,7 +92,7 @@ function ResearchItemCard({
             });
             onDeleted();
         } catch (error) {
-            console.error("Failed to delete research item", error);
+            reportClientIssue("Failed to delete research item", error);
             toast.error("Could not delete this research item.");
         }
     };
@@ -220,7 +221,7 @@ export function ArtifactsPanel() {
             setItems(researchResponse.items ?? []);
             setJobs(jobResponse.items ?? []);
         } catch (error) {
-            console.error("Failed to load Project research items", error);
+            reportClientIssue("Failed to load Project research items", error);
         }
     }, [projectId]);
 
@@ -257,7 +258,7 @@ export function ArtifactsPanel() {
             await refresh();
             await refetchSubscription();
         } catch (error) {
-            console.error("Failed to create audio overview", error);
+            reportClientIssue("Failed to create audio overview", error);
             toast.error("Could not start the audio overview.");
         } finally {
             setSubmitting(false);
@@ -281,7 +282,7 @@ export function ArtifactsPanel() {
             await refresh();
             await refetchSubscription();
         } catch (error) {
-            console.error("Failed to create data table", error);
+            reportClientIssue("Failed to create data table", error);
             toast.error("Could not start the data table.");
         } finally {
             setSubmitting(false);

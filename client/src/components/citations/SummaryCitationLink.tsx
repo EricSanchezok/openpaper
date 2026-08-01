@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import { Citation, ReferenceCitation } from "@/lib/schema";
 import { HTMLAttributes, ReactNode, createElement, Children } from "react";
 import { PaperItem } from "@/lib/schema";
@@ -45,7 +46,7 @@ export default function SummaryCitationLink({ children, handleCitationClick, mes
                     while ((match = citationRegex.exec(child)) !== null) {
 
                         if (!match || match.index === undefined) {
-                            console.warn('Invalid match found in citation regex:', match);
+                            reportClientIssue('Invalid match found in citation regex:', match);
                             continue; // Skip invalid matches
                         }
 

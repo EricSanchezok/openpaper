@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +58,7 @@ export default function PricingPage() {
                     }
                 }
             } catch (error) {
-                console.error('Failed to fetch subscription:', error);
+                reportClientIssue('Failed to fetch subscription:', error);
             } finally {
                 setLoading(false);
             }
@@ -81,7 +82,7 @@ export default function PricingPage() {
                 window.location.href = response.url;
             }
         } catch (error) {
-            console.error('Failed to create portal session:', error);
+            reportClientIssue('Failed to create portal session:', error);
             // You might want to show a toast notification here
             toast.error('Failed to open subscription management portal. Please try again later. Contact support if the issue persists.');
         } finally {
@@ -109,11 +110,11 @@ export default function PricingPage() {
                 });
                 setUserSubscription(updatedSubscription);
             } else {
-                console.error('Failed to schedule interval change:', response.message);
+                reportClientIssue('Failed to schedule interval change:', response.message);
                 toast.error(`Failed to schedule billing change: ${response.message}`);
             }
         } catch (error) {
-            console.error('Failed to schedule interval change:', error);
+            reportClientIssue('Failed to schedule interval change:', error);
             toast.error('Failed to schedule billing change. Please try again later.');
         } finally {
             setIsIntervalChangeLoading(false);
@@ -141,11 +142,11 @@ export default function PricingPage() {
                 });
                 setUserSubscription(updatedSubscription);
             } else {
-                console.error('Failed to cancel scheduled change:', response.error);
+                reportClientIssue('Failed to cancel scheduled change:', response.error);
                 toast.error(`Failed to cancel scheduled change: ${response.error}`);
             }
         } catch (error) {
-            console.error('Failed to cancel scheduled change:', error);
+            reportClientIssue('Failed to cancel scheduled change:', error);
             toast.error('Failed to cancel scheduled change. Please try again later.');
         } finally {
             setIsIntervalChangeLoading(false);
@@ -174,12 +175,12 @@ export default function PricingPage() {
 
                 setUserSubscription(updatedSubscription);
             } else {
-                console.error('Failed to resubscribe:', response.error);
+                reportClientIssue('Failed to resubscribe:', response.error);
                 // You might want to show an error toast here
                 toast.error(`Failed to resubscribe: ${response.error}`);
             }
         } catch (error) {
-            console.error('Failed to resubscribe:', error);
+            reportClientIssue('Failed to resubscribe:', error);
             // You might want to show an error toast here
             toast.error('Failed to resubscribe. Please try again later.');
         } finally {

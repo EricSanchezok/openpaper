@@ -58,17 +58,26 @@ def _request_with_retry(
             response = requests.request(method, url, timeout=timeout)
             response.raise_for_status()
             return response
-        except requests.RequestException as e:
-            last_exception = e
+        except requests.RequestException as exc:
+            last_exception = exc
             if attempt < max_retries - 1:
                 logger.warning(
-                    f"OpenAlex API request failed (attempt {attempt + 1}/{max_retries}): {e}. "
-                    f"Retrying in {retry_delay}s..."
+                    "openalex.request.retrying",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_attempts": max_retries,
+                        "retry_delay_seconds": retry_delay,
+                        "exception_type": type(exc).__name__,
+                    },
                 )
                 time.sleep(retry_delay)
             else:
                 logger.error(
-                    f"OpenAlex API request failed after {max_retries} attempts: {e}"
+                    "openalex.request.failed",
+                    extra={
+                        "max_attempts": max_retries,
+                        "exception_type": type(exc).__name__,
+                    },
                 )
 
     if last_exception is not None:
@@ -130,12 +139,11 @@ def search_open_alex(
 
     constructed_url = base_url + "?" + "&".join(f"{k}={v}" for k, v in params.items())
 
-    logger.debug(f"Constructed URL: {constructed_url}")
-
     response = _request_with_retry(_with_openalex_auth(constructed_url))
-
-    logger.info(f"Response Status: {response.status_code}")
-    logger.debug(f"Response JSON: {response.json()}")
+    logger.info(
+        "openalex.search.completed",
+        extra={"status_code": response.status_code},
+    )
 
     return OpenAlexResponse(**response.json())
 
@@ -167,7 +175,7 @@ def get_host_organization_name(host_organization_url: str) -> str | None:
     elif org_id.startswith("I"):
         entity_type = "institutions"
     else:
-        logger.warning(f"Unknown host_organization ID type: {org_id}")
+        logger.warning("openalex.host_organization.unknown_id_type")
         return None
 
     url = _with_openalex_auth(f"https://api.openalex.org/{entity_type}/{org_id}")
@@ -182,14 +190,15 @@ def get_host_organization_name(host_organization_url: str) -> str | None:
                 return None
             else:
                 response.raise_for_status()
-        except requests.RequestException as e:
+        except requests.RequestException:
             if attempt < OPENALEX_MAX_RETRIES - 1:
                 logger.warning(
-                    f"Error fetching host organization (attempt {attempt + 1}): {e}. Retrying..."
+                    "openalex.host_organization.retrying",
+                    extra={"attempt": attempt + 1},
                 )
                 time.sleep(OPENALEX_RETRY_DELAY)
             else:
-                logger.exception(f"Error fetching host organization: {url}")
+                logger.exception("openalex.host_organization.failed")
                 return None
     return None
 
@@ -236,10 +245,15 @@ def get_paper_by_open_alex_id(open_alex_id: str) -> OpenAlexWork | None:
                 return None
             else:
                 response.raise_for_status()
-        except requests.RequestException as e:
+        except requests.RequestException as exc:
             if attempt < OPENALEX_MAX_RETRIES - 1:
                 logger.warning(
-                    f"Error fetching paper by OpenAlex ID (attempt {attempt + 1}): {e}. Retrying..."
+                    "openalex.work_by_id.retrying",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_attempts": OPENALEX_MAX_RETRIES,
+                        "exception_type": type(exc).__name__,
+                    },
                 )
                 time.sleep(OPENALEX_RETRY_DELAY)
             else:
@@ -276,10 +290,15 @@ def get_work_by_doi(doi: str) -> OpenAlexWork | None:
                 return None
             else:
                 response.raise_for_status()
-        except requests.RequestException as e:
+        except requests.RequestException as exc:
             if attempt < OPENALEX_MAX_RETRIES - 1:
                 logger.warning(
-                    f"Error fetching work by DOI (attempt {attempt + 1}): {e}. Retrying..."
+                    "openalex.work_by_doi.retrying",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_attempts": OPENALEX_MAX_RETRIES,
+                        "exception_type": type(exc).__name__,
+                    },
                 )
                 time.sleep(OPENALEX_RETRY_DELAY)
             else:
@@ -407,23 +426,19 @@ def get_doi(title: str, authors: list[str] | None = None) -> str | None:
     try:
         crossref_doi = get_crossref_doi(title, authors)
     except requests.RequestException:
-        logger.exception(
-            f"Error querying CrossRef API for DOI - {title}", exc_info=True
-        )
+        logger.exception("crossref.doi_lookup.failed")
         crossref_doi = None
 
     try:
         openalex_doi = get_openalex_doi(title)
     except requests.RequestException:
-        logger.exception(
-            f"Error querying OpenAlex API for DOI - {title}", exc_info=True
-        )
+        logger.exception("openalex.doi_lookup.failed")
         openalex_doi = None
 
     if crossref_doi:
-        logger.info(f"Found DOI from CrossRef: {crossref_doi} for title: {title}")
+        logger.info("crossref.doi_lookup.succeeded")
     elif openalex_doi:
-        logger.info(f"Found DOI from OpenAlex: {openalex_doi} for title: {title}")
+        logger.info("openalex.doi_lookup.succeeded")
 
     return crossref_doi or openalex_doi
 
@@ -466,9 +481,7 @@ def get_enriched_data(doi: str) -> EnrichedData | None:
                 )
 
         except Exception:
-            logger.error(
-                f"Error when querying Open Alex API for DOI {doi}", exc_info=True
-            )
+            logger.exception("openalex.enrichment_request.failed")
             return None
         return None
 
@@ -512,22 +525,18 @@ def get_enriched_data(doi: str) -> EnrichedData | None:
     try:
         openalex_data = get_openalex_enriched_data(doi)
         if openalex_data:
-            logger.info(f"Found enriched data from OpenAlex for DOI: {doi}")
+            logger.info("openalex.enrichment.succeeded")
             return openalex_data
     except requests.RequestException:
-        logger.exception(
-            f"Error querying OpenAlex API for enriched data - {doi}", exc_info=True
-        )
+        logger.exception("openalex.enrichment.failed")
 
     try:
         crossref_data = get_crossref_enriched_data(doi)
         if crossref_data:
-            logger.info(f"Found enriched data from CrossRef for DOI: {doi}")
+            logger.info("crossref.enrichment.succeeded")
             return crossref_data
 
     except requests.RequestException:
-        logger.exception(
-            f"Error querying CrossRef API for enriched data - {doi}", exc_info=True
-        )
+        logger.exception("crossref.enrichment.failed")
 
     return None

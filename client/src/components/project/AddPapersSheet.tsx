@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -124,7 +125,7 @@ export function AddPapersSheet() {
                 newJobs.push({ jobId: response.job_id, fileName: file.name });
             } catch (err) {
                 setUploadError(`Failed to upload file: ${file.name}. Please try again.`);
-                console.error(err);
+                reportClientIssue(err);
             }
         }
         addUploadJobs(newJobs);
@@ -147,7 +148,7 @@ export function AddPapersSheet() {
             addUploadJobs([{ jobId: job.jobId, fileName: job.fileName }]);
             setAddPapersOpen(false);
         } catch (serverError) {
-            console.error("Both client and server-side fetches failed:", serverError);
+            reportClientIssue("Both client and server-side fetches failed:", serverError);
             setUploadError(`Failed to upload file from url: ${url}. Please try again.`);
         } finally {
             setIsUploading(false);

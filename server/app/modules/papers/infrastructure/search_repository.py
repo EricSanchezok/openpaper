@@ -50,7 +50,7 @@ class DocumentSearchRepository:
         sanitized = sanitize_for_postgres(raw_content)
         if sanitized != raw_content:
             logger.warning(
-                "Sanitized null characters before indexing document passages",
+                "paper_search.passages.null_characters_sanitized",
                 extra={"document_id": str(document_id)},
             )
         db.execute(

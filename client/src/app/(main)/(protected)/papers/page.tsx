@@ -1,5 +1,6 @@
 "use client"
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { fetchFromApi } from "@/lib/api";
 import { useCallback, useEffect, useState } from "react";
 import { PaperItem, MinimalJob, JobListResponse, Project } from "@/lib/schema";
@@ -118,7 +119,7 @@ function PapersPageContent() {
                 fileName: job.progress_message || "Uploading paper…",
             })));
         } catch (err) {
-            console.error("Failed to fetch pending upload jobs", err);
+            reportClientIssue("Failed to fetch pending upload jobs", err);
         }
     }, []);
 
@@ -195,7 +196,7 @@ function PapersPageContent() {
 
             router.push(`/projects/${project.id}`);
         } catch (error) {
-            console.error("Failed to create project", error);
+            reportClientIssue("Failed to create project", error);
             toast.error("Failed to create project.");
         } finally {
             setCreateProjectDialogOpen(false);

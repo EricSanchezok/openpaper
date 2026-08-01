@@ -64,7 +64,7 @@ class ZoteroAuthClient:
 
     def get_request_token(self) -> ZoteroRequestTokenResult | None:
         if not self.client_key or not self.client_secret or not self.redirect_uri:
-            logger.error("Zotero OAuth credentials are not configured")
+            logger.error("zotero.oauth.credentials_missing")
             return None
 
         try:
@@ -73,14 +73,14 @@ class ZoteroAuthClient:
             oauth_token = token_data.get("oauth_token")
             oauth_token_secret = token_data.get("oauth_token_secret")
             if not oauth_token or not oauth_token_secret:
-                logger.error("Zotero request token response missing required fields")
+                logger.error("zotero.oauth.request_token_invalid")
                 return None
             return ZoteroRequestTokenResult(
                 oauth_token=oauth_token,
                 oauth_token_secret=oauth_token_secret,
             )
-        except Exception as e:
-            logger.error(f"Error getting request token from Zotero: {e}")
+        except Exception:
+            logger.exception("zotero.oauth.request_token.failed")
             return None
 
     def get_authorize_url(
@@ -99,7 +99,7 @@ class ZoteroAuthClient:
         verifier: str,
     ) -> ZoteroAccessTokenResult | None:
         if not self.client_key or not self.client_secret:
-            logger.error("Zotero OAuth credentials are not configured")
+            logger.error("zotero.oauth.credentials_missing")
             return None
 
         try:
@@ -112,14 +112,14 @@ class ZoteroAuthClient:
             zotero_user_id = token_data.get("userID")
             api_key = token_data.get("oauth_token_secret")
             if not zotero_user_id or not api_key:
-                logger.error("Zotero access token response missing userID or api key")
+                logger.error("zotero.oauth.access_token_invalid")
                 return None
             return ZoteroAccessTokenResult(
                 zotero_user_id=str(zotero_user_id),
                 api_key=str(api_key),
             )
-        except Exception as e:
-            logger.error(f"Error getting access token from Zotero: {e}")
+        except Exception:
+            logger.exception("zotero.oauth.access_token.failed")
             return None
 
 

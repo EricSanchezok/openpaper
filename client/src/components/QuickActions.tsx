@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, FolderPlus } from "lucide-react";
@@ -94,14 +95,14 @@ export function QuickActions({ onUploadComplete, onProjectCreated, onUploadStart
                     setCreateProjectOpen(false);
                     onProjectCreated?.();
                 } catch (navError) {
-                    console.error("Navigation error:", navError);
+                    reportClientIssue("Navigation error:", navError);
                     toast.error("Project created, but failed to navigate. Please try again.");
                 }
             } else {
                 toast.error("Failed to create project. Please try again.");
             }
         } catch (error) {
-            console.error("Error creating project:", error);
+            reportClientIssue("Error creating project:", error);
             toast.error("Failed to create project. Please try again.");
         }
     };

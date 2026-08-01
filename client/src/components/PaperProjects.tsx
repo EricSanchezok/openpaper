@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import {
     Project,
 } from '@/lib/schema';
@@ -53,7 +54,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
                 .then((paperProjects) => {
                     setProjects(paperProjects || []);
                 }).catch(err => {
-                    console.error("Error fetching projects", err);
+                    reportClientIssue("Error fetching projects", err);
                     toast.error("Error fetching projects");
                 }).finally(() => {
                     setIsLoadingProjects(false);
@@ -69,7 +70,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
             toast.success("Paper unlinked from project successfully!");
             setProjects(prevProjects => prevProjects.filter(p => p.id !== projectId));
         } catch (error) {
-            console.error("Failed to unlink paper from project", error);
+            reportClientIssue("Failed to unlink paper from project", error);
             toast.error("Failed to unlink paper from project.");
         }
     };
@@ -88,7 +89,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
                 setProjects(prev => [...prev, projectToAdd]);
             }
         } catch (error) {
-            console.error("Failed to add paper to project", error);
+            reportClientIssue("Failed to add paper to project", error);
             toast.error("Failed to add paper to project.");
         } finally {
             setAddingToProjectId(null);
@@ -113,7 +114,7 @@ export function PaperProjects({ id, view = 'full' }: PaperProjectsProps) {
 
             router.push(`/projects/${project.id}`);
         } catch (error) {
-            console.error("Failed to create project", error);
+            reportClientIssue("Failed to create project", error);
             toast.error("Failed to create project.");
         } finally {
             setCreateProjectDialogOpen(false);

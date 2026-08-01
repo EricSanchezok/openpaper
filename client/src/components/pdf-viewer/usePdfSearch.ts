@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState, useCallback, useRef, useEffect, MutableRefObject } from "react";
 import type { PdfHighlighterUtils } from "react-pdf-highlighter-extended";
 import {
@@ -261,7 +262,7 @@ export function usePdfSearch({
 								matchElements.push(highlight);
 							}
 						} catch (e) {
-							console.warn("Range error:", e);
+							reportClientIssue("Range error:", e);
 						}
 					}
 				}
@@ -347,7 +348,7 @@ export function usePdfSearch({
 						}
 					}
 				} catch (err) {
-					console.warn(`Failed to extract text from page ${pageNum}:`, err);
+					reportClientIssue(`Failed to extract text from page ${pageNum}:`, err);
 				}
 			}
 		}
@@ -408,7 +409,7 @@ export function usePdfSearch({
 
 			const textLayer = await waitForTextLayer();
 			if (!textLayer) {
-				console.warn(`Timeout waiting for text layer on page ${targetPage}`);
+				reportClientIssue(`Timeout waiting for text layer on page ${targetPage}`);
 				return;
 			}
 

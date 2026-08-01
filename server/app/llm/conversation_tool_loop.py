@@ -7,7 +7,7 @@ import uuid
 from typing import Any, AsyncGenerator
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.llm.base import BaseLLMClient
 from app.llm.conversation_prompts import tool_loop_role_instructions
 from app.llm.prompts import (
@@ -224,8 +224,7 @@ class ConversationToolLoop(BaseLLMClient):
                     "content": "Gathered a lot of data. Compacting new tool results...",
                 }
                 logger.info(
-                    "Tool results exceed the context budget; compacting new "
-                    "results only",
+                    "conversation.tool_results.compaction_required",
                     extra={
                         "estimated_tokens": tool_results_tokens,
                         "budget_tokens": TOOL_RESULTS_TOKEN_BUDGET,
@@ -343,7 +342,7 @@ class ConversationToolLoop(BaseLLMClient):
                     < MAX_CONSECUTIVE_MALFORMED_TOOL_CALL_ROUNDS
                 ):
                     continue
-                logger.info("No tool calls returned from LLM, ending tool loop.")
+                logger.info("conversation.tool_loop.no_calls")
                 break
 
             dispatches = []
@@ -361,7 +360,7 @@ class ConversationToolLoop(BaseLLMClient):
                 )
                 if call_signature in prev_queries:
                     logger.info(
-                        "Skipping repeated tool call",
+                        "conversation.tool_call.duplicate_skipped",
                         extra={"tool_name": tool_name},
                     )
                     continue
@@ -381,7 +380,10 @@ class ConversationToolLoop(BaseLLMClient):
                 display_name = tool_name.replace("_", " ").title()
                 status = f"{display_name} - {paper_name}{display_query}"
                 yield {"type": "status", "content": status}
-                logger.debug("Tool-loop reasoning: %s", llm_response.thinking)
+                logger.debug(
+                    "conversation.tool_loop.reasoning_received",
+                    extra={"reasoning_char_count": len(llm_response.thinking or "")},
+                )
 
                 dispatch_task = asyncio.create_task(
                     self._dispatch_tool(
@@ -414,7 +416,7 @@ class ConversationToolLoop(BaseLLMClient):
 
             if not dispatches:
                 logger.info(
-                    "Only duplicate tool calls were returned; ending tool loop."
+                    "conversation.tool_loop.duplicate_only"
                 )
                 break
 
@@ -452,7 +454,7 @@ class ConversationToolLoop(BaseLLMClient):
                 except AppError as exc:
                     result_status = exc.code
                     logger.info(
-                        "Tool call rejected",
+                        "conversation.tool_call.rejected",
                         extra={"tool_name": tool_name, "error_code": exc.code},
                     )
                     tool_state.add_tool_error(
@@ -474,7 +476,7 @@ class ConversationToolLoop(BaseLLMClient):
                 except Exception:
                     result_status = "tool_execution_failed"
                     logger.exception(
-                        "Conversation tool execution failed",
+                        "conversation.tool_call.failed",
                         extra={"tool_name": tool_name},
                     )
                     tool_state.add_tool_error(
@@ -511,8 +513,7 @@ class ConversationToolLoop(BaseLLMClient):
             and self._catalog.is_available(tool_access, "search_papers")
         ):
             logger.info(
-                "No evidence gathered through normal flow. "
-                "Attempting fallback keyword search."
+                "conversation.fallback.started"
             )
             yield {
                 "type": "status",
@@ -524,7 +525,7 @@ class ConversationToolLoop(BaseLLMClient):
 
                 if keywords:
                     logger.info(
-                        "Fallback paper search started",
+                        "conversation.fallback.paper_search_started",
                         extra={"keyword_count": len(keywords)},
                     )
 
@@ -559,7 +560,7 @@ class ConversationToolLoop(BaseLLMClient):
                         tool_state.add_tool_outcome(tool_call, outcome)
 
                     if tool_state.has_answer_material():
-                        logger.info("Fallback search produced answer material")
+                        logger.info("conversation.fallback.material_found")
                         track_event(
                             "fallback_search_success",
                             {
@@ -569,14 +570,14 @@ class ConversationToolLoop(BaseLLMClient):
                             user_id=str(current_user.id),
                         )
                     else:
-                        logger.info("Fallback search found no relevant evidence")
+                        logger.info("conversation.fallback.no_material")
                         track_event(
                             "fallback_search_no_results",
                             {"keywords": keywords},
                             user_id=str(current_user.id),
                         )
             except Exception as e:
-                logger.exception("Fallback search failed")
+                logger.exception("conversation.fallback.failed")
                 track_event(
                     "fallback_search_error",
                     {"error_type": type(e).__name__},
@@ -695,14 +696,13 @@ class ConversationToolLoop(BaseLLMClient):
                 )
                 if applied_count == 0:
                     logger.warning(
-                        "Tool result compaction returned no matching summaries; "
-                        "keeping the raw results."
+                        "conversation.compaction.no_matching_summaries"
                     )
                     return False
 
                 new_size = tool_state.get_tool_results_size()
                 logger.info(
-                    "Tool result compaction completed",
+                    "conversation.compaction.completed",
                     extra={
                         "original_count": original_count,
                         "original_size": original_size,
@@ -729,11 +729,11 @@ class ConversationToolLoop(BaseLLMClient):
                 )
                 return True
             else:
-                logger.warning("Empty response from LLM during tool result compaction.")
+                logger.warning("conversation.compaction.empty_response")
 
         except Exception:
             logger.warning(
-                "Tool result compaction failed; keeping original results",
+                "conversation.compaction.failed",
                 exc_info=True,
             )
             add_counter(
@@ -768,7 +768,7 @@ class ConversationToolLoop(BaseLLMClient):
                 )
                 return [str(k) for k in keywords if k][:5]
             except (json.JSONDecodeError, AttributeError):
-                logger.warning("Keyword schema response was invalid")
+                logger.warning("conversation.keywords.invalid_response")
 
-        logger.warning("Failed to extract keywords from question")
+        logger.warning("conversation.keywords.extraction_failed")
         return []

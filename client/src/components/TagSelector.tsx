@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
                 }>("/library/tags");
                 setTags(response.items);
             } catch (error) {
-                console.error("Failed to fetch tags", error);
+                reportClientIssue("Failed to fetch tags", error);
                 toast.error("Failed to load tags.");
             }
         };
@@ -64,7 +65,7 @@ export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
             setNewTagName("");
             toast.success(`Tag "${newTag.name}" created.`);
         } catch (error) {
-            console.error("Failed to create tag", error);
+            reportClientIssue("Failed to create tag", error);
             toast.error("Failed to create tag.");
         }
     };
@@ -80,7 +81,7 @@ export function TagSelector({ documentIds, onTagsApplied }: TagSelectorProps) {
             });
             onTagsApplied();
         } catch (error) {
-            console.error("Failed to apply tags", error);
+            reportClientIssue("Failed to apply tags", error);
             toast.error("Failed to apply tags.");
         }
     };

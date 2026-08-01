@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { Loader, LockIcon, ShareIcon } from 'lucide-react';
@@ -79,7 +80,7 @@ export function SharePaperButton() {
             setPaperData(prev => prev ? { ...prev, share_id: null, is_public: false } : null);
             toast.success("Paper is now private.");
         } catch (error) {
-            console.error('Error unsharing paper:', error);
+            reportClientIssue('Error unsharing paper:', error);
             toast.error("Failed to make paper private.");
         } finally {
             setIsSharing(false);

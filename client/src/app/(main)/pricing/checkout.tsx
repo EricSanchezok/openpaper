@@ -1,5 +1,6 @@
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import {
     EmbeddedCheckoutProvider,
     EmbeddedCheckout
@@ -49,7 +50,7 @@ export default function CheckoutSheet({ open, onOpenChange, interval, planName, 
             .catch((err) => {
                 setError('An error occurred while setting up the checkout. Please try again.');
                 setIsLoading(false);
-                console.error(err);
+                reportClientIssue(err);
                 throw err;
             });
     }, [interval]);

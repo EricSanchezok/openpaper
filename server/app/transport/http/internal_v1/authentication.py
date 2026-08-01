@@ -6,11 +6,10 @@ import hashlib
 import hmac
 import os
 import time
-from uuid import UUID
-
 from app.bootstrap.container import build_job_callback_protection
 from app.modules.jobs.application.authentication import VerifiedJobCallback
 from app.shared.domain import AppError, FailureKind
+from app.transport.http.observability import ensure_request_id
 from app.transport.http.internal_v1.references import job_delivery_reference
 from fastapi import Request
 
@@ -72,6 +71,6 @@ async def verify_jobs_webhook(
             kind=FailureKind.CONFLICT,
         )
     return VerifiedJobCallback(
-        request_id=UUID(str(request.state.request_id)),
+        request_id=ensure_request_id(request),
         delivery_ref=job_delivery_reference(nonce),
     )

@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -97,7 +98,7 @@ export function RecentPapersGrid({ papers: propPapers, limit = 6 }: RecentPapers
             try {
                 setPapers(await fetchRelevantPapers(limit));
             } catch (error) {
-                console.error("Error fetching papers:", error);
+                reportClientIssue("Error fetching papers:", error);
             } finally {
                 setIsLoading(false);
             }

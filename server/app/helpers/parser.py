@@ -100,13 +100,20 @@ def validate_pdf_content(pdf_bytes: bytes, source: str = "upload") -> tuple[bool
                 return False, f"PDF exceeds the {DOCUMENT_PAGE_LIMIT}-page limit"
 
         except Exception:
-            logger.info("Rejected unreadable PDF from %s", source, exc_info=True)
+            logger.info(
+                "pdf.validation.unreadable",
+                exc_info=True,
+                extra={"source_kind": "url" if "://" in source else "upload"},
+            )
             return False, "PDF structure is corrupted or unreadable"
 
         return True, ""
 
     except Exception:
-        logger.exception("Error validating PDF from %s", source)
+        logger.exception(
+            "pdf.validation.failed",
+            extra={"source_kind": "url" if "://" in source else "upload"},
+        )
         return False, "Failed to validate PDF"
 
 
@@ -234,10 +241,10 @@ def validate_url_and_fetch_pdf(url: str) -> tuple[bool, bytes, str]:
     except ValueError as exc:
         return False, b"", str(exc)
     except requests.exceptions.RequestException:
-        logger.info("PDF URL download failed", exc_info=True)
+        logger.info("paper.pdf_url.download_failed", exc_info=True)
         return False, b"", "Failed to download PDF from URL"
     except Exception:
-        logger.exception("Unexpected PDF URL processing failure")
+        logger.exception("paper.pdf_url.processing_failed")
         return False, b"", "Failed to process PDF URL"
 
 
@@ -256,8 +263,8 @@ def extract_pdf_page_dimensions(pdf_bytes: bytes) -> dict[int, tuple[float, floa
             box = page.cropbox
             dims[i] = (float(box.width), float(box.height))
         return dims
-    except Exception as e:
-        logger.warning("Failed to extract PDF page dimensions: %s", e)
+    except Exception:
+        logger.warning("pdf.page_dimensions.failed", exc_info=True)
         return {}
 
 

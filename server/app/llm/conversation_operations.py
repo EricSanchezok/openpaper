@@ -44,7 +44,7 @@ class ConversationOperations(BaseLLMClient):
 
         if response and response.text:
             return response.text.strip()
-        logger.error("Failed to generate a new conversation title.")
+        logger.error("conversation.title_generation.failed")
         return None
 
 
@@ -86,7 +86,7 @@ class DataTableOperations(BaseLLMClient):
         if response and response.text:
             return response.text.strip()
         else:
-            logger.error("Failed to generate a title for the data table.")
+            logger.error("data_table.title_generation.failed")
             return None
 
 

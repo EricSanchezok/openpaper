@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import Link from "next/link";
 import { Project } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
@@ -47,7 +48,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 				toast.error('Failed to delete project. Please try again.');
 			}
 		} catch (error) {
-			console.error('An error occurred while deleting the project:', error);
+			reportClientIssue('An error occurred while deleting the project:', error);
 			toast.error('An unexpected error occurred. Please try again.');
 		}
 	};
@@ -71,7 +72,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 				toast.error('Failed to update project. Please try again.');
 			}
 		} catch (error) {
-			console.error('An error occurred while updating the project:', error);
+			reportClientIssue('An error occurred while updating the project:', error);
 			toast.error('An unexpected error occurred. Please try again.');
 		}
 	};
@@ -106,7 +107,7 @@ export function ProjectCard({ project, onProjectUpdate, onUnlink }: {
 				toast.error('Failed to exit project. Please try again.');
 			}
 		} catch (error) {
-			console.error('An error occurred while exiting the project:', error);
+			reportClientIssue('An error occurred while exiting the project:', error);
 			toast.error('An unexpected error occurred. Please try again.');
 		}
 	};

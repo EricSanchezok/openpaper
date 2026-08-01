@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
 
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.helpers.parser import (
     extract_pdf_page_dimensions,
     validate_pdf_content,
@@ -33,6 +34,9 @@ from app.modules.integrations.zotero.infrastructure.client import ZoteroApiClien
 from app.modules.integrations.zotero.infrastructure.oauth import zotero_auth_client
 from app.shared.application import Actor
 from app.database.models import ZoteroImportSource
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_date(value: str | None) -> str | None:
@@ -276,6 +280,11 @@ class DefaultZoteroOperations:
             )
             return await asyncio.to_thread(_page_dimensions, content)
         except Exception:
+            logger.warning(
+                "zotero.page_dimensions.unavailable",
+                extra={"source_kind": "stored_document"},
+                exc_info=True,
+            )
             return ()
 
     async def fetch_sync_batch(
@@ -302,6 +311,10 @@ class DefaultZoteroOperations:
                     page_dimensions=dimensions,
                 )
             except Exception:
+                logger.warning(
+                    "zotero.sync_target.fetch_failed",
+                    exc_info=True,
+                )
                 return target.item_key
 
         results = await asyncio.gather(*(fetch(target) for target in targets))
@@ -392,6 +405,10 @@ class DefaultZoteroOperations:
                     return content, snapshot, None
                 error = validation_error or "PDF attachment could not be validated"
             except Exception:
+                logger.warning(
+                    "zotero.attachment.download_failed",
+                    exc_info=True,
+                )
                 error = "PDF attachment download failed"
         else:
             error = "No PDF attached to this item in Zotero"

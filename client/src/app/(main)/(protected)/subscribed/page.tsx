@@ -1,5 +1,6 @@
 'use client'
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -62,7 +63,7 @@ function SubscribedPageContent() {
                 setSessionStatus(response)
             } catch (err) {
                 setError('Failed to fetch subscription status')
-                console.error('Error fetching session status:', err)
+                reportClientIssue('Error fetching session status:', err)
             } finally {
                 setLoading(false)
             }

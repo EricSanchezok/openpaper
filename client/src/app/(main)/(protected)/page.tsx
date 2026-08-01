@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useProjects } from "@/hooks/useProjects";
 import { useRouter } from "next/navigation";
@@ -261,7 +262,7 @@ export default function Home() {
 					window.location.href = redirectUrl.toString();
 				}, 500);
 			} else if (response.status === 'failed') {
-				console.error('Upload job failed');
+				reportClientIssue('Upload job failed');
 				setShowErrorAlert(true);
 				setIsUploading(false);
 				setJobUploadStatus(null);
@@ -269,7 +270,7 @@ export default function Home() {
 				setTimeout(() => pollJobStatus(jobId), 2000);
 			}
 		} catch (error) {
-			console.error('Error polling job status:', error);
+			reportClientIssue('Error polling job status:', error);
 			setShowErrorAlert(true);
 			setIsUploading(false);
 		}
@@ -287,7 +288,7 @@ export default function Home() {
 			try {
 				setRelevantPapers(await fetchRelevantPapers());
 			} catch (error) {
-				console.error("Error fetching data:", error);
+				reportClientIssue("Error fetching data:", error);
 				setRelevantPapers([]);
 			} finally {
 				setIsLoadingData(false);
@@ -303,7 +304,7 @@ export default function Home() {
 			setRelevantPapers(await fetchRelevantPapers());
 			refetchProjects();
 		} catch (error) {
-			console.error("Error refreshing data:", error);
+			reportClientIssue("Error refreshing data:", error);
 		}
 	};
 
@@ -337,7 +338,7 @@ export default function Home() {
 				pollJobStatus(jobs[0].jobId);
 			}
 		} catch (error) {
-			console.error('Error uploading file:', error);
+			reportClientIssue('Error uploading file:', error);
 			setShowErrorAlert(true);
 			if (error instanceof Error) {
 				setErrorAlertMessage(error.message);

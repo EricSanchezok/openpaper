@@ -7,7 +7,7 @@ import logging
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.helpers.s3 import s3_service
 from app.modules.papers.application.contracts.uploads import UploadAcceptedResponse
 from app.modules.papers.application.ingestion import PdfUrlSource, PreparedPaperInput
@@ -157,7 +157,7 @@ class PaperIngestionWorkflow:
             await ingestion.release(actor=actor, job_id=reservation.job_id)
             raise
         except Exception as exc:
-            logger.error("Document processing job submission failed", exc_info=True)
+            logger.error("paper_ingestion.job_submission.failed", exc_info=True)
             self._fail(
                 actor=actor,
                 operation=reserve_operation,

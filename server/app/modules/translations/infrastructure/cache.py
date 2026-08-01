@@ -67,11 +67,11 @@ class RedisTranslationCache:
                 target_language=target_language,
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-            logger.warning("Discarding invalid translation cache value")
+            logger.warning("translation.cache.invalid_value")
             await self._delete(key)
             return None
         except RedisError:
-            logger.exception("Translation cache lookup failed")
+            logger.exception("translation.cache.lookup_failed")
             return None
 
     async def set(self, key: str, value: TranslationCacheValue) -> None:
@@ -86,7 +86,7 @@ class RedisTranslationCache:
             separators=(",", ":"),
         )
         if len(raw.encode()) > MAX_CACHE_VALUE_BYTES:
-            logger.warning("Translation result exceeds cache value limit")
+            logger.warning("translation.cache.value_too_large")
             return
         try:
             await self._client.set(
@@ -95,7 +95,7 @@ class RedisTranslationCache:
                 ex=TRANSLATION_CACHE_TTL_SECONDS,
             )
         except RedisError:
-            logger.exception("Translation cache write failed")
+            logger.exception("translation.cache.write_failed")
 
     async def acquire(self, key: str) -> str | None:
         token = secrets.token_urlsafe(24)
@@ -110,7 +110,7 @@ class RedisTranslationCache:
             )
             return token if acquired else None
         except RedisError:
-            logger.exception("Translation cache lease acquisition failed")
+            logger.exception("translation.cache.lease_acquire_failed")
             return token
 
     async def release(self, key: str, lease_token: str) -> None:
@@ -124,7 +124,7 @@ class RedisTranslationCache:
                 lease_token,
             )
         except RedisError:
-            logger.exception("Translation cache lease release failed")
+            logger.exception("translation.cache.lease_release_failed")
 
     async def _delete(self, key: str) -> None:
         if self._client is None:
@@ -132,7 +132,7 @@ class RedisTranslationCache:
         try:
             await self._client.delete(key)
         except RedisError:
-            logger.exception("Invalid translation cache value could not be deleted")
+            logger.exception("translation.cache.invalid_value_delete_failed")
 
     @staticmethod
     def _lease_key(key: str) -> str:

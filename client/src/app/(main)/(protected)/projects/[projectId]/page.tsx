@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { ArrowRight, BookOpen, Library, MessageCircle, UploadCloud } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -106,7 +107,7 @@ export default function ProjectPage() {
             router.push(`/projects/${projectId}/conversations/${newConversation.id}`);
         } catch (err) {
             setError("Failed to create a new conversation. Please try again.");
-            console.error(err);
+            reportClientIssue(err);
             setIsSubmitting(false);
         }
     };

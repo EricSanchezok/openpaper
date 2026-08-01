@@ -37,7 +37,14 @@ from app.shared.application import (
     OperationContext,
 )
 from app.shared.domain import AppError, FailureKind
-from scholens_observability import add_counter, current_context, log_event
+from scholens_observability import (
+    DiagnosticSnapshotRecorder,
+    NullDiagnosticSnapshotRecorder,
+    add_counter,
+    build_snapshot,
+    current_context,
+    log_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +75,15 @@ class TranslationWorkflow:
         cache: TranslationCache,
         provider: TranslationStreamProvider,
         capacity: TranslationCapacity,
+        diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
     ) -> None:
         self._executor = executor
         self._cache = cache
         self._provider = provider
         self._capacity = capacity
+        self._diagnostic_recorder = (
+            diagnostic_recorder or NullDiagnosticSnapshotRecorder()
+        )
 
     async def open_stream(
         self,
@@ -208,7 +219,13 @@ class TranslationWorkflow:
                 kind=FailureKind.DEPENDENCY_FAILURE,
                 retryable=exc.kind is not TranslationStreamFailureKind.USAGE_SETTLEMENT_FAILED,
             )
-            yield _error_event(error, operation=operation, cause=exc)
+            yield self._error_event(
+                error,
+                operation=operation,
+                cause=exc,
+                actor=actor,
+                prepared=prepared,
+            )
         except ValueError as exc:
             error = AppError(
                 code="translation_result_invalid",
@@ -216,7 +233,13 @@ class TranslationWorkflow:
                 kind=FailureKind.DEPENDENCY_FAILURE,
                 retryable=False,
             )
-            yield _error_event(error, operation=operation, cause=exc)
+            yield self._error_event(
+                error,
+                operation=operation,
+                cause=exc,
+                actor=actor,
+                prepared=prepared,
+            )
         except Exception as exc:
             error = AppError(
                 code="translation_stream_interrupted",
@@ -224,11 +247,87 @@ class TranslationWorkflow:
                 kind=FailureKind.DEPENDENCY_FAILURE,
                 retryable=True,
             )
-            yield _error_event(error, operation=operation, cause=exc)
+            yield self._error_event(
+                error,
+                operation=operation,
+                cause=exc,
+                actor=actor,
+                prepared=prepared,
+            )
         finally:
             await self._capacity.release(capacity_lease)
             if cache_lease_token is not None:
                 await self._cache.release(cache_key, cache_lease_token)
+
+    def _error_event(
+        self,
+        error: AppError,
+        *,
+        operation: OperationContext,
+        cause: BaseException,
+        actor: Actor,
+        prepared: PreparedTranslation,
+    ) -> TranslationStreamEvent:
+        context = current_context()
+        snapshot_id = uuid4()
+        envelope = ErrorEnvelope.from_app_error(
+            error,
+            stage="translation_stream",
+            request_id=context.request_id,
+            correlation_id=str(operation.trace.correlation_id),
+            diagnostic_id=str(snapshot_id),
+        )
+        try:
+            self._diagnostic_recorder.record(
+                build_snapshot(
+                    snapshot_id=snapshot_id,
+                    service=context.service,
+                    environment=context.environment,
+                    release=context.release,
+                    reason="translation_stream_failed",
+                    request_id=context.request_id,
+                    operation_id=str(operation.trace.operation_id),
+                    correlation_id=str(operation.trace.correlation_id),
+                    actor_id=str(actor.id),
+                    sections={
+                        "failure": {
+                            "code": error.code,
+                            "kind": error.kind.value,
+                            "exception_type": type(cause).__name__,
+                        },
+                        "translation": {
+                            "document_id": str(prepared.document_id),
+                            "target_language": prepared.target_language,
+                        },
+                    },
+                )
+            )
+        except Exception as capture_error:
+            log_event(
+                logger,
+                logging.ERROR,
+                "diagnostic.snapshot.capture_failed",
+                exc_info=capture_error,
+                diagnostic_id=str(snapshot_id),
+            )
+        add_counter(
+            "scholens.translation.stream_errors",
+            attributes={"code": error.code},
+        )
+        log_event(
+            logger,
+            logging.ERROR,
+            "translation.stream.failed",
+            exc_info=cause,
+            error_code=error.code,
+            error_kind=error.kind.value,
+            retryable=error.retryable,
+            diagnostic_id=envelope.diagnostic_id,
+        )
+        return TranslationStreamEvent(
+            event="error",
+            data=envelope.to_dict(),
+        )
 
 
 def _prepare_translation(
@@ -267,38 +366,4 @@ async def _cached_stream(
     yield TranslationStreamEvent(
         event="complete",
         data={"cache_hit": True},
-    )
-
-
-def _error_event(
-    error: AppError,
-    *,
-    operation: OperationContext,
-    cause: BaseException,
-) -> TranslationStreamEvent:
-    context = current_context()
-    envelope = ErrorEnvelope.from_app_error(
-        error,
-        stage="translation_stream",
-        request_id=context.request_id,
-        correlation_id=str(operation.trace.correlation_id),
-        diagnostic_id=str(uuid4()),
-    )
-    add_counter(
-        "scholens.translation.stream_errors",
-        attributes={"code": error.code},
-    )
-    log_event(
-        logger,
-        logging.ERROR,
-        "translation.stream.failed",
-        exc_info=cause,
-        error_code=error.code,
-        error_kind=error.kind.value,
-        retryable=error.retryable,
-        diagnostic_id=envelope.diagnostic_id,
-    )
-    return TranslationStreamEvent(
-        event="error",
-        data=envelope.to_dict(),
     )

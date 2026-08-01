@@ -163,7 +163,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
             )
             remote_declarations = list(connector_tools.declarations)
         except Exception:
-            logger.exception("Failed to discover citation MCP tools")
+            logger.exception("citation.connector.discovery_failed")
             connector_tools = None
             remote_declarations = []
         function_declarations = [*remote_declarations, submit_findings_function]
@@ -186,7 +186,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                     tool_call_results=tool_call_results or None,
                 )
             except Exception:
-                logger.exception("Citation research loop LLM call failed")
+                logger.exception("citation.research.llm_failed")
                 break
 
             if resp.thinking:
@@ -231,7 +231,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                     result = connector_tools.call_sync(name, args)
                 except AppError as exc:
                     logger.warning(
-                        "Citation connector tool failed",
+                        "citation.connector.call_failed",
                         extra={
                             "provider": provider.value if provider is not None else None,
                             "tool_name": name,
@@ -254,7 +254,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                     call_status = "failed"
                 except Exception:
                     logger.exception(
-                        "Citation connector tool failed",
+                        "citation.connector.call_failed",
                         extra={"tool_name": name},
                     )
                     result = {
@@ -352,7 +352,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                 raise ValueError("Citation extraction did not return an object")
             findings: dict[str, Any] = parsed_findings
         except Exception:
-            logger.exception("Citation extraction failed")
+            logger.exception("citation.extraction.failed")
             return None
 
         # If nothing usable was found, return None rather than a low-signal dict.

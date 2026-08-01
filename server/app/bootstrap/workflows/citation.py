@@ -114,7 +114,7 @@ class CitationWorkflow:
             deterministic = self._provider.deterministic(fields=fields)
         except Exception:
             logger.exception(
-                "Deterministic citation metadata lookup failed",
+                "citation.metadata_lookup.failed",
                 extra={"document_id": str(document_id)},
             )
             deterministic = None

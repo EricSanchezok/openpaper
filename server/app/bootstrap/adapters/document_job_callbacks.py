@@ -248,8 +248,12 @@ def _finalize_zotero_import(
     )
 
     logger.info(
-        f"Finalized Zotero import for job {job_id} with paper {paper.id}"
-        + (f" (worker error: {error_message})" if error_message else "")
+        "zotero.import.finalized",
+        extra={
+            "job_id": job_id,
+            "document_id": str(paper.id),
+            "completed_with_worker_error": bool(error_message),
+        },
     )
     return str(paper.id)
 
@@ -282,12 +286,15 @@ def handle_failed_upload(
     job = upload_reservation_repository.get(db=db, id=job_id, user=job_user)
     if job and job.job.status == JobStatus.COMPLETED:
         logger.warning(
-            f"Ignoring failed-upload cleanup for already-completed job {job_id} "
-            f"(reason: {reason}); refusing to delete a populated paper"
+            "document.upload_failure_cleanup.skipped_completed",
+            extra={"job_id": str(job_id)},
         )
         return ()
 
-    logger.error(f"PDF processing failed for job {job_id}: {reason}")
+    logger.error(
+        "document.pdf_processing.failed",
+        extra={"job_id": str(job_id)},
+    )
     changes: list[OperationChange] = []
 
     if job and job.job.document_id is not None:
@@ -744,9 +751,11 @@ async def handle_paper_processing_webhook(
         JobStatus.CANCELLED.value,
     }:
         logger.warning(
-            "Ignoring late callback for terminal PDF job %s with status %s",
-            normalized_job_id,
-            durable_job.status,
+            "document.pdf_callback.skipped_terminal_job",
+            extra={
+                "job_id": normalized_job_id,
+                "job_status": durable_job.status,
+            },
         )
         return JobHandlerResult(
             value={"status": "webhook ignored - job is terminal"},
@@ -762,8 +771,8 @@ async def handle_paper_processing_webhook(
     )
     if not job_lock.acquire():
         logger.warning(
-            "PDF callback for job %s is already being processed",
-            normalized_job_id,
+            "document.pdf_callback.lock_unavailable",
+            extra={"job_id": normalized_job_id},
         )
         return JobHandlerResult(
             value={"status": "webhook ignored - already being processed"}
@@ -905,8 +914,8 @@ async def handle_paper_processing_webhook(
                 metadata = result.metadata
                 if metadata is None or not metadata.title:
                     logger.error(
-                        "No metadata in PDF callback for job %s",
-                        normalized_job_id,
+                        "document.pdf_callback.metadata_missing",
+                        extra={"job_id": normalized_job_id},
                     )
                     return _failed_pdf_result(
                         db=db,
@@ -919,8 +928,8 @@ async def handle_paper_processing_webhook(
                     )
                 if not result.raw_content:
                     logger.error(
-                        "No raw content in PDF callback for job %s",
-                        normalized_job_id,
+                        "document.pdf_callback.content_missing",
+                        extra={"job_id": normalized_job_id},
                     )
                     return _failed_pdf_result(
                         db=db,
@@ -1165,7 +1174,7 @@ async def handle_paper_processing_webhook(
                 )
         except Exception:
             logger.exception(
-                "PDF callback application failed",
+                "paper.pdf_callback.application_failed",
                 extra={"job_id": normalized_job_id},
             )
             try:
@@ -1181,7 +1190,7 @@ async def handle_paper_processing_webhook(
                     )
             except Exception as cleanup_error:
                 logger.exception(
-                    "PDF callback failure cleanup failed",
+                    "paper.pdf_callback.cleanup_failed",
                     extra={"job_id": normalized_job_id},
                 )
                 raise AppError(

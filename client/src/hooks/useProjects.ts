@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState, useEffect, useCallback } from "react";
 import { fetchFromApi } from "@/lib/api";
 import { Project, PaperItem, ConversationSummary, ConversationListResponse, ProjectListResponse } from "@/lib/schema";
@@ -24,7 +25,7 @@ export function useProjects(): UseProjectsResult {
             setProjects(response.items);
         } catch (err) {
             setError(err instanceof Error ? err : new Error("Failed to fetch projects"));
-            console.error("Error fetching projects:", err);
+            reportClientIssue("Error fetching projects:", err);
         } finally {
             setIsLoading(false);
         }
@@ -67,7 +68,7 @@ export function useProject(projectId?: string): UseProjectResult {
             setProject(response);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch project ${projectId}`));
-            console.error(`Error fetching project ${projectId}:`, err);
+            reportClientIssue(`Error fetching project ${projectId}:`, err);
         } finally {
             setIsLoading(false);
         }
@@ -129,7 +130,7 @@ export function useProjectPapers(
             setPapers(response.items);
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch papers for project ${projectId}`));
-            console.error(`Error fetching papers for project ${projectId}:`, err);
+            reportClientIssue(`Error fetching papers for project ${projectId}:`, err);
         } finally {
             setIsLoading(false);
         }
@@ -185,7 +186,7 @@ export function useProjectConversations(projectId?: string): UseProjectConversat
             );
         } catch (err) {
             setError(err instanceof Error ? err : new Error(`Failed to fetch conversations for project ${projectId}`));
-            console.error(`Error fetching conversations for project ${projectId}:`, err);
+            reportClientIssue(`Error fetching conversations for project ${projectId}:`, err);
         } finally {
             setIsLoading(false);
         }

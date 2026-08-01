@@ -1,6 +1,6 @@
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.execution import get_application_executor
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.modules.papers.application.contracts.search import (
     PaperSearchRequest,
     PaperSearchResponse,

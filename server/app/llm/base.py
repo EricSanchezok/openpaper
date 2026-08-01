@@ -6,7 +6,7 @@ import time
 from typing import Any, Iterator, Sequence
 
 from app.database.models import ReasoningLevel
-from app.database.telemetry import track_event
+from app.database.product_analytics import track_event
 from app.llm.backend import (
     FileContent,
     HistoryMessage,
@@ -70,9 +70,11 @@ class BaseLLMClient:
                     if attempt >= structured_retries:
                         raise
                     logger.warning(
-                        "Structured LLM response failed validation; retrying (%s/%s)",
-                        attempt + 1,
-                        structured_retries,
+                        "llm.structured_response.retrying",
+                        extra={
+                            "attempt": attempt + 1,
+                            "max_attempts": structured_retries + 1,
+                        },
                     )
                     time.sleep(2**attempt)
 
@@ -85,7 +87,10 @@ class BaseLLMClient:
                     "has_function_declarations": function_declarations is not None,
                 },
             )
-            logger.info("Generated LLM content in %.2fms", duration_ms)
+            logger.info(
+                "llm.generation.completed",
+                extra={"duration_ms": round(duration_ms, 3)},
+            )
             return response
         except Exception as exc:
             duration_ms = (time.time() - start_time) * 1000
@@ -97,7 +102,10 @@ class BaseLLMClient:
                     "error_type": type(exc).__name__,
                 },
             )
-            logger.exception("DeepSeek generation failed")
+            logger.error(
+                "llm.generation.failed",
+                extra={"exception_type": type(exc).__name__},
+            )
             raise
 
     def model_revision(

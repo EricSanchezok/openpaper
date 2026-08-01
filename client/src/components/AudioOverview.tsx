@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { Loader2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -49,7 +50,7 @@ export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
             );
             setJobs(jobResponse.items ?? []);
         } catch (error) {
-            console.error("Failed to load audio overviews", error);
+            reportClientIssue("Failed to load audio overviews", error);
         }
     }, [document_id]);
 
@@ -80,7 +81,7 @@ export function AudioOverviewPanel({ document_id }: AudioOverviewProps) {
             setInstructions("");
             await refresh();
         } catch (error) {
-            console.error("Failed to start audio overview", error);
+            reportClientIssue("Failed to start audio overview", error);
             toast.error("Could not start the audio overview.");
         } finally {
             setSubmitting(false);

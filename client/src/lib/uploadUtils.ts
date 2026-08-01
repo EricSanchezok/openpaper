@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import { fetchFromApi } from "@/lib/api"
 import { MinimalJob, PdfUploadResponse } from "@/lib/schema"
 
@@ -64,7 +65,7 @@ export const uploadFiles = async (files: File[]): Promise<MinimalJob[]> => {
             const job = await uploadFile(file)
             newJobs.push(job)
         } catch (error) {
-            console.error("Failed to start upload for", file.name, error)
+            reportClientIssue("Failed to start upload for", file.name, error)
             errors.push(error instanceof Error ? error : new Error(String(error)))
         }
     }
@@ -101,7 +102,7 @@ export const uploadFromUrlWithFallback = async (url: string, projectId?: string)
         const file = await fetchPdfAsFile(url);
         return await uploadFile(file, projectId);
     } catch (error) {
-        console.log('Client-side fetch failed, trying server-side fetch...', error);
+        reportClientIssue('Client-side fetch failed, trying server-side fetch...', error);
         return await uploadFromUrl(url, projectId);
     }
 }

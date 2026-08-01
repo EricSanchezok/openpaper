@@ -1,3 +1,4 @@
+import { reportClientIssue } from "@/lib/client-observability";
 import { useState, useEffect, useCallback } from "react";
 import {
 	PaperHighlight,
@@ -80,7 +81,7 @@ export function useHighlighterHighlights(
 
 			setHighlights(deduplicatedHighlights);
 		} catch (error) {
-			console.error("Error loading highlights from server:", error);
+			reportClientIssue("Error loading highlights from server:", error);
 		}
 	}, [documentId]);
 
@@ -123,7 +124,7 @@ export function useHighlighterHighlights(
 			) as ResearchItem;
 			return toHighlight(item) ?? undefined;
 		} catch (error) {
-			console.error("Error sending highlight to server:", error);
+			reportClientIssue("Error sending highlight to server:", error);
 		}
 	};
 
@@ -152,7 +153,7 @@ export function useHighlighterHighlights(
 
 			setHighlights((prev) => prev.filter((h) => h.id !== highlight.id));
 		} catch (error) {
-			console.error("Error removing highlight from server:", error);
+			reportClientIssue("Error removing highlight from server:", error);
 		}
 	};
 
@@ -166,7 +167,7 @@ export function useHighlighterHighlights(
 			color?: HighlightColor
 		) => {
 			if (!position) {
-				console.error("Position is required for highlights");
+				reportClientIssue("Position is required for highlights");
 				return;
 			}
 
@@ -190,7 +191,7 @@ export function useHighlighterHighlights(
 					setHighlights((prev) => [...prev, savedHighlight]);
 				}
 			} catch (error) {
-				console.error("Error adding highlight:", error);
+				reportClientIssue("Error adding highlight:", error);
 			}
 
 			// Reset states

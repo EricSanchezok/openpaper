@@ -1,5 +1,6 @@
 "use client";
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
@@ -138,7 +139,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 						setPdfLoaderKey(prev => prev + 1);
 					}
 				} catch (e) {
-					console.error("Failed to refresh PDF URL:", e);
+					reportClientIssue("Failed to refresh PDF URL:", e);
 				} finally {
 					setIsRefreshingUrl(false);
 				}
@@ -1361,7 +1362,7 @@ export function PdfHighlighterViewer(props: PdfHighlighterViewerProps) {
 						const parsed = JSON.parse(positionData) as RenderedHighlightPosition;
 						positions.set(highlightId, parsed);
 					} catch (e) {
-						console.warn("Failed to parse position data for highlight", highlightId, e);
+						reportClientIssue("Failed to parse position data for highlight", highlightId, e);
 					}
 				}
 			});

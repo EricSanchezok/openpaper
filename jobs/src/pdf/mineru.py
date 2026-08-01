@@ -489,8 +489,7 @@ class MinerUClient:
                 await self.state_store.release_submit_lock(data_id, lock_token)
             except ParserTransientError:
                 logger.warning(
-                    "Could not release MinerU submit lock for %s",
-                    data_id,
+                    "job.mineru.submit_lock.release_failed",
                     exc_info=True,
                 )
 
@@ -555,8 +554,7 @@ class MinerUClient:
                 except ParserTransientError as exc:
                     last_error = exc
                 logger.warning(
-                    "MinerU upload failed; retrying the idempotent PUT; diagnostics=%s",
-                    json.dumps(last_error.diagnostic_fields(), sort_keys=True),
+                    "job.mineru.upload.retrying",
                     extra={
                         **last_error.diagnostic_fields(),
                         "attempt": attempt,
@@ -686,9 +684,7 @@ class MinerUClient:
                 last_error = exc
                 consecutive_failures += 1
                 logger.warning(
-                    "MinerU poll failed; retrying within the task deadline; "
-                    "diagnostics=%s",
-                    json.dumps(exc.diagnostic_fields(), sort_keys=True),
+                    "job.mineru.poll.retrying",
                     extra={
                         **exc.diagnostic_fields(),
                         "consecutive_failures": consecutive_failures,
@@ -903,9 +899,7 @@ class MinerUClient:
                 except ParserTransientError as exc:
                     last_error = exc
                     logger.warning(
-                        "MinerU archive download failed; refreshing its URL; "
-                        "diagnostics=%s",
-                        json.dumps(exc.diagnostic_fields(), sort_keys=True),
+                        "job.mineru.archive_download.retrying",
                         extra={
                             **exc.diagnostic_fields(),
                             "attempt": attempt,

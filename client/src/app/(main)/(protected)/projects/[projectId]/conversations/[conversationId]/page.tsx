@@ -1,5 +1,6 @@
 'use client';
 
+import { reportClientIssue } from "@/lib/client-observability";
 import { useSubscription, isTokenCreditAtLimit } from '@/hooks/useSubscription';
 import { fetchFromApi, fetchStreamFromApi } from '@/lib/api';
 import { errorMessageWithDiagnostic } from '@/lib/errors';
@@ -181,7 +182,7 @@ function ProjectConversationPageContent() {
                 setIsCentered(false);
             }
         } catch (error) {
-            console.error("Error fetching messages:", error);
+            reportClientIssue("Error fetching messages:", error);
             // Go back to the project page
             router.push(`/projects/${projectId}`);
             toast.error("Failed to load conversation history.");

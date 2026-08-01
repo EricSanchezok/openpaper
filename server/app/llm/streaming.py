@@ -88,7 +88,7 @@ def _read_iterator(
             try:
                 close()
             except Exception:
-                logger.exception("Blocking LLM iterator close failed")
+                logger.exception("llm.iterator.close_failed")
         _queue_safely(
             loop,
             queue,
@@ -107,7 +107,7 @@ def _consume_background_failure(task: asyncio.Task[None]) -> None:
         error = exc
     if error is not None:
         logger.error(
-            "Blocking LLM background operation failed",
+            "llm.background_operation.failed",
             exc_info=(type(error), error, error.__traceback__),
         )
 
