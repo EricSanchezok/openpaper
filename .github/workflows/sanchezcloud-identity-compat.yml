@@ -98,7 +98,7 @@ jobs:
         run: |
           resolved_ref=$(git -C .ci/sanchezcloud-identity rev-parse HEAD)
           test "$resolved_ref" = "$EXPECTED_REF"
-          uv run --project server python - <<'PY'
+          server/.venv/bin/python - <<'PY'
           import os
           import sanchezcloud_identity
 
@@ -110,7 +110,7 @@ jobs:
           PY
       - name: Verify Scholens identity integration
         run: >-
-          uv run --project server pytest -q
+          server/.venv/bin/pytest -q
           server/tests/test_identity_integration.py
           server/tests/test_architecture_boundaries.py
       - name: Verify candidate schema contract
@@ -120,10 +120,10 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d sanchezcloud \
             -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth AUTHORIZATION postgres"
-          uv run --project server sanchezcloud-identity migrate
-          uv run --project server sanchezcloud-identity migrate
-          uv run --project server sanchezcloud-identity check-schema
-          test "$(uv run --project server sanchezcloud-identity schema-version)" = "${{ inputs.schema_version }}"
+          server/.venv/bin/sanchezcloud-identity migrate
+          server/.venv/bin/sanchezcloud-identity migrate
+          server/.venv/bin/sanchezcloud-identity check-schema
+          test "$(server/.venv/bin/sanchezcloud-identity schema-version)" = "${{ inputs.schema_version }}"
       - name: Build Scholens with the candidate SDK
         env:
           DOCKER_BUILDKIT: "1"
