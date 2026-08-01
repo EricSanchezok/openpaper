@@ -2317,8 +2317,8 @@ wheels = [
 
 [[package]]
 name = "sanchezcloud-identity"
-version = "0.5.0"
-source = { git = "https://github.com/EricSanchezok/sanchezcloud-identity.git?rev=68b341b0e8d839210ebe8e3001378c43f41aadfc#68b341b0e8d839210ebe8e3001378c43f41aadfc" }
+version = "0.5.1"
+source = { git = "https://github.com/EricSanchezok/sanchezcloud-identity.git?rev=v0.5.1#97553db587d8260a367d97e51c9b1a6f6d003aeb" }
 dependencies = [
     { name = "asyncpg" },
     { name = "bcrypt" },
@@ -2422,7 +2422,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.33.0" },
     { name = "requests-oauthlib", specifier = ">=2.0.0" },
     { name = "resend", specifier = ">=2.10.0" },
-    { name = "sanchezcloud-identity", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/sanchezcloud-identity.git?rev=68b341b0e8d839210ebe8e3001378c43f41aadfc" },
+    { name = "sanchezcloud-identity", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/sanchezcloud-identity.git?rev=v0.5.1" },
     { name = "scholens-observability", directory = "../packages/scholens_observability" },
     { name = "sqladmin", extras = ["full"], specifier = ">=0.25.1" },
     { name = "sqlalchemy", specifier = ">=2.0.39" },
