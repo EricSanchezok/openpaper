@@ -8,6 +8,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from app.modules.identity.infrastructure.cloud_auth import auth_lifespan
 from app.modules.jobs.infrastructure.dispatcher import run_job_dispatcher
+from app.observability.diagnostics import close_diagnostic_snapshot_recorder
 from fastapi import FastAPI
 
 
@@ -27,3 +28,6 @@ async def app_lifespan(application: FastAPI) -> AsyncIterator[None]:
         finally:
             stop_dispatcher.set()
             await dispatcher
+            close_diagnostic_snapshot_recorder(
+                application.state.diagnostic_snapshot_recorder
+            )

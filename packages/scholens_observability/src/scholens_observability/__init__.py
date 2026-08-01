@@ -9,6 +9,7 @@ from .context import (
     update_context,
 )
 from .diagnostics import (
+    BufferedS3DiagnosticSnapshotRecorder,
     DiagnosticSnapshot,
     DiagnosticSnapshotRecorder,
     NullDiagnosticSnapshotRecorder,
@@ -23,6 +24,7 @@ from .tracing import configure_telemetry, instrumented_span, shutdown_telemetry
 
 __all__ = [
     "DiagnosticSnapshot",
+    "BufferedS3DiagnosticSnapshotRecorder",
     "DiagnosticSnapshotRecorder",
     "NullDiagnosticSnapshotRecorder",
     "ObservabilityContext",

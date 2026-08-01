@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import gzip
+import time
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from scholens_observability import (
     ObservabilityContext,
+    BufferedS3DiagnosticSnapshotRecorder,
     SensitiveValue,
     bind_context,
     build_snapshot,
@@ -96,6 +99,50 @@ def test_success_sampling_is_deterministic() -> None:
         for _ in range(10)
     }
     assert len(values) == 1
+
+
+def test_buffered_snapshot_recorder_writes_encrypted_gzip() -> None:
+    class FakeS3:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def put_object(self, **kwargs: object) -> object:
+            self.calls.append(kwargs)
+            return {}
+
+    client = FakeS3()
+    recorder = BufferedS3DiagnosticSnapshotRecorder(
+        client=client,
+        bucket="diagnostics",
+        kms_key_id="alias/scholens-diagnostics",
+    )
+    snapshot = build_snapshot(
+        snapshot_id=diagnostic_id(),
+        service="api",
+        environment="test",
+        release="abc123",
+        reason="test_failure",
+        request_id="request-1",
+        operation_id=None,
+        correlation_id="correlation-1",
+        actor_id="42",
+        sections={"failure": {"code": "test_failure"}},
+    )
+    recorder.record(snapshot)
+    deadline = time.monotonic() + 1
+    while not client.calls and time.monotonic() < deadline:
+        time.sleep(0.01)
+    recorder.close()
+
+    assert len(client.calls) == 1
+    call = client.calls[0]
+    assert call["ServerSideEncryption"] == "aws:kms"
+    assert call["SSEKMSKeyId"] == "alias/scholens-diagnostics"
+    body = call["Body"]
+    assert isinstance(body, bytes)
+    payload = json.loads(gzip.decompress(body))
+    assert payload["reason"] == "test_failure"
+    assert payload["sections"]["failure"]["code"] == "test_failure"
 
 
 def test_request_middleware_assigns_trusted_request_id() -> None:

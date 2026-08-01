@@ -63,6 +63,7 @@ from app.modules.identity.infrastructure.cloud_auth import (
     cloud_user_router,
 )
 from app.observability import configure_application_observability
+from app.observability.diagnostics import create_diagnostic_snapshot_recorder
 from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.execution import (
     create_application_executor,
@@ -175,6 +176,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     configure_application_observability(application, runtime_settings)
     application.state.settings = runtime_settings
+    application.state.diagnostic_snapshot_recorder = (
+        create_diagnostic_snapshot_recorder(runtime_settings)
+    )
     operation_context_factory = OperationContextFactory()
     application.state.operation_context_factory = operation_context_factory
     executor = create_application_executor(runtime_settings)
@@ -274,6 +278,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         service="scholens-api",
         environment=runtime_settings.environment,
         release=runtime_settings.release_sha,
+        success_sample_rate=runtime_settings.diagnostic_success_sample_rate,
     )
     application.include_router(
         _public_router(),

@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import gzip
 import json
+import logging
+import queue
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, TypeAlias
+from typing import Any, Protocol, TypeAlias
 from uuid import UUID, uuid4
 
 JsonScalar: TypeAlias = str | int | float | bool | None
@@ -64,6 +68,115 @@ class DiagnosticSnapshotRecorder(Protocol):
 class NullDiagnosticSnapshotRecorder:
     def record(self, snapshot: DiagnosticSnapshot) -> None:
         del snapshot
+
+    def close(self, *, timeout: float = 0) -> None:
+        del timeout
+
+
+class ObjectStorageClient(Protocol):
+    def put_object(self, **kwargs: Any) -> object: ...
+
+
+class BufferedS3DiagnosticSnapshotRecorder:
+    """Best-effort bounded snapshot writer; request handling never waits on S3."""
+
+    def __init__(
+        self,
+        *,
+        client: ObjectStorageClient,
+        bucket: str,
+        kms_key_id: str,
+        prefix: str = "diagnostics",
+        queue_capacity: int = 256,
+    ) -> None:
+        self._client = client
+        self._bucket = bucket
+        self._kms_key_id = kms_key_id
+        self._prefix = prefix.strip("/")
+        self._queue: queue.Queue[DiagnosticSnapshot | None] = queue.Queue(
+            maxsize=queue_capacity
+        )
+        self._logger = logging.getLogger(__name__)
+        self._thread = threading.Thread(
+            target=self._run,
+            name="diagnostic-snapshot-writer",
+            daemon=True,
+        )
+        self._closed = False
+        self._thread.start()
+
+    def record(self, snapshot: DiagnosticSnapshot) -> None:
+        if self._closed:
+            return
+        try:
+            self._queue.put_nowait(snapshot)
+        except queue.Full:
+            self._logger.warning(
+                "diagnostic.snapshot.dropped",
+                extra={"reason": "writer_queue_full"},
+            )
+
+    def close(self, *, timeout: float = 5) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._queue.put_nowait(None)
+        except queue.Full:
+            # The daemon writer will continue draining without blocking shutdown.
+            return
+        self._thread.join(timeout=timeout)
+
+    def _run(self) -> None:
+        while True:
+            snapshot = self._queue.get()
+            try:
+                if snapshot is None:
+                    return
+                self._write(snapshot)
+            except Exception:
+                self._logger.error(
+                    "diagnostic.snapshot.write_failed",
+                    exc_info=True,
+                )
+            finally:
+                self._queue.task_done()
+
+    def _write(self, snapshot: DiagnosticSnapshot) -> None:
+        captured = snapshot.captured_at.astimezone(UTC)
+        identity = snapshot.correlation_id or snapshot.request_id or "unscoped"
+        key = (
+            f"{self._prefix}/{captured:%Y/%m/%d}/{identity}/"
+            f"{snapshot.service}/{snapshot.id}.json.gz"
+        )
+        payload = {
+            "id": str(snapshot.id),
+            "schema_version": snapshot.schema_version,
+            "captured_at": snapshot.captured_at.isoformat(),
+            "service": snapshot.service,
+            "environment": snapshot.environment,
+            "release": snapshot.release,
+            "reason": snapshot.reason,
+            "request_id": snapshot.request_id,
+            "operation_id": snapshot.operation_id,
+            "correlation_id": snapshot.correlation_id,
+            "actor_id": snapshot.actor_id,
+            "sections": snapshot.sections,
+            "truncated": snapshot.truncated,
+            "original_size_bytes": snapshot.original_size_bytes,
+        }
+        body = gzip.compress(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+        )
+        self._client.put_object(
+            Bucket=self._bucket,
+            Key=key,
+            Body=body,
+            ContentType="application/json",
+            ContentEncoding="gzip",
+            ServerSideEncryption="aws:kms",
+            SSEKMSKeyId=self._kms_key_id,
+        )
 
 
 def diagnostic_id() -> UUID:

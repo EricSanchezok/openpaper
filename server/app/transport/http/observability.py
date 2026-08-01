@@ -11,10 +11,12 @@ from uuid import uuid4
 from app.shared.application import OperationContext
 from scholens_observability import (
     ObservabilityContext,
+    build_snapshot,
     add_counter,
     bind_context,
     log_event,
     record_histogram,
+    should_sample_success,
     update_context,
 )
 from fastapi import Request
@@ -59,6 +61,7 @@ class RequestObservabilityMiddleware:
         service: str,
         environment: str,
         release: str | None,
+        success_sample_rate: float = 0.01,
     ) -> None:
         self._app = app
         self._base_context = ObservabilityContext(
@@ -66,6 +69,7 @@ class RequestObservabilityMiddleware:
             environment=environment,
             release=release,
         )
+        self._success_sample_rate = success_sample_rate
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -141,6 +145,59 @@ class RequestObservabilityMiddleware:
                     response_started=response_started,
                     duration_ms=round(duration_ms, 3),
                 )
+                self._record_sampled_success(
+                    scope=scope,
+                    state=state,
+                    route=route,
+                    status_code=response_status,
+                    duration_ms=duration_ms,
+                )
+
+    def _record_sampled_success(
+        self,
+        *,
+        scope: Scope,
+        state: dict[str, Any],
+        route: str,
+        status_code: int,
+        duration_ms: float,
+    ) -> None:
+        correlation_id = state.get("correlation_id")
+        if (
+            status_code >= 400
+            or not state.get("authenticated")
+            or not isinstance(correlation_id, str)
+            or not should_sample_success(
+                correlation_id,
+                rate=self._success_sample_rate,
+            )
+        ):
+            return
+        application = scope.get("app")
+        app_state = getattr(application, "state", None)
+        recorder = getattr(app_state, "diagnostic_snapshot_recorder", None)
+        if recorder is None:
+            return
+        snapshot = build_snapshot(
+            snapshot_id=uuid4(),
+            service=self._base_context.service,
+            environment=self._base_context.environment,
+            release=self._base_context.release,
+            reason="http_success_sample",
+            request_id=state.get("request_id"),
+            operation_id=state.get("operation_id"),
+            correlation_id=correlation_id,
+            actor_id=state.get("actor_id"),
+            sections={
+                "request": {
+                    "method": str(scope.get("method", "UNKNOWN")),
+                    "route": route,
+                    "status_code": status_code,
+                    "duration_ms": round(duration_ms, 3),
+                }
+            },
+        )
+        recorder.record(snapshot)
 
 
 def _route_template(scope: Scope) -> str:

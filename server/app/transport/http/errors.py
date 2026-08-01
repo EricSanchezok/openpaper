@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.shared.domain import AppError, FailureKind
+from app.observability.diagnostics import record_http_diagnostic
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -100,6 +101,36 @@ def _diagnostic_fields(
     )
 
 
+def _record_diagnostic(
+    request: Request,
+    *,
+    fields: _DiagnosticFields,
+    reason: str,
+    error_code: str,
+    error_kind: FailureKind,
+    status_code: int,
+) -> None:
+    if fields.diagnostic_id is None:
+        return
+    try:
+        record_http_diagnostic(
+            request,
+            snapshot_id=UUID(fields.diagnostic_id),
+            reason=reason,
+            error_code=error_code,
+            error_kind=error_kind.value,
+            status_code=status_code,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "diagnostic.snapshot.capture_failed",
+            exc_info=exc,
+            diagnostic_id=fields.diagnostic_id,
+        )
+
+
 def _http_error_payload(request: Request, exc: HTTPException) -> ApiErrorResponse:
     kind = _kind_for_status(exc.status_code)
     fields = _diagnostic_fields(request, status_code=exc.status_code)
@@ -159,6 +190,14 @@ async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
         correlation_id=fields.correlation_id,
         diagnostic_id=fields.diagnostic_id,
     )
+    _record_diagnostic(
+        request,
+        fields=fields,
+        reason="http_application_error",
+        error_code=exc.code,
+        error_kind=exc.kind,
+        status_code=status_code,
+    )
     add_counter(
         "scholens.errors",
         attributes={"code": exc.code, "kind": exc.kind.value},
@@ -183,6 +222,20 @@ async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, HTTPException):
         raise TypeError("http_error_handler received an unexpected exception")
     payload = _http_error_payload(request, exc)
+    fields = _DiagnosticFields(
+        stage=payload.stage,
+        request_id=payload.request_id,
+        correlation_id=payload.correlation_id,
+        diagnostic_id=payload.diagnostic_id,
+    )
+    _record_diagnostic(
+        request,
+        fields=fields,
+        reason="http_protocol_error",
+        error_code=payload.code,
+        error_kind=payload.kind,
+        status_code=exc.status_code,
+    )
     add_counter(
         "scholens.errors",
         attributes={"code": payload.code, "kind": payload.kind.value},
@@ -206,6 +259,14 @@ async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
     fields = _diagnostic_fields(request, status_code=500)
+    _record_diagnostic(
+        request,
+        fields=fields,
+        reason="http_unhandled_error",
+        error_code="internal_error",
+        error_kind=FailureKind.INTERNAL,
+        status_code=500,
+    )
     add_counter(
         "scholens.errors",
         attributes={"code": "internal_error", "kind": FailureKind.INTERNAL.value},
