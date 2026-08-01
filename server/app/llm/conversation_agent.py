@@ -20,6 +20,7 @@ from app.llm.prompts import (
 )
 from app.llm.backend import StreamChunk, SupplementaryContent, TextContent
 from app.llm.streaming import iterate_in_thread
+from app.llm.errors import classify_llm_error
 from app.modules.conversations.application.chat import (
     ChatPaperSnapshot,
     ConversationContextSnapshot,
@@ -280,7 +281,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
                     yield {"type": "reasoning", "content": chunk.thinking}
                 text = chunk.text
 
-                logger.debug(f"Received chunk: {text}")
+                logger.debug("llm.stream.chunk_received", extra={"chunk_chars": len(text)})
 
                 if not text:
                     continue
@@ -294,16 +295,12 @@ class ConversationAgentRuntime(ConversationToolLoop):
             if not stream_reader_task.done():
                 stream_reader_task.cancel()
 
-        # Check if stream_reader_task raised an exception
-        if stream_reader_task.done():
-            exc = stream_reader_task.exception()
-            if exc is not None:
-                logger.error(f"Stream reader task failed with exception: {exc}")
-                yield {
-                    "type": "error",
-                    "content": "Sorry, an error occurred while working on this response. Please try again.",
-                }
-                return
+        try:
+            await stream_reader_task
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:
+            raise classify_llm_error(exc, stage="final_answer") from exc
 
         remaining = grounded_parser.finish()
         if remaining:

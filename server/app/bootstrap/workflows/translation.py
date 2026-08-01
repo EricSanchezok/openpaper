@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.llm.token_credits import llm_usage_context
@@ -30,7 +30,14 @@ from app.modules.translations.domain import (
     translation_paper_title_hash,
     validate_translated_text,
 )
-from app.shared.application import Actor, ApplicationExecutor, OperationContext
+from app.shared.application import (
+    Actor,
+    ApplicationExecutor,
+    ErrorEnvelope,
+    OperationContext,
+)
+from app.shared.domain import AppError, FailureKind
+from scholens_observability import add_counter, current_context, log_event
 
 logger = logging.getLogger(__name__)
 
@@ -194,39 +201,30 @@ class TranslationWorkflow:
                 data={"cache_hit": False},
             )
         except TranslationStreamFailure as exc:
-            logger.exception(
-                "Translation stream failed",
-                extra={
-                    "document_id": str(prepared.document_id),
-                    "operation_id": str(operation.trace.operation_id),
-                    "failure_kind": exc.kind.value,
-                },
+            code, message = _STREAM_FAILURE_DETAILS[exc.kind]
+            error = AppError(
+                code=code,
+                message=message,
+                kind=FailureKind.DEPENDENCY_FAILURE,
+                retryable=exc.kind is not TranslationStreamFailureKind.USAGE_SETTLEMENT_FAILED,
             )
-            yield _error_event(*_STREAM_FAILURE_DETAILS[exc.kind])
-        except ValueError:
-            logger.exception(
-                "Translation provider returned an invalid result",
-                extra={
-                    "document_id": str(prepared.document_id),
-                    "operation_id": str(operation.trace.operation_id),
-                },
+            yield _error_event(error, operation=operation, cause=exc)
+        except ValueError as exc:
+            error = AppError(
+                code="translation_result_invalid",
+                message="Translation provider returned an invalid result",
+                kind=FailureKind.DEPENDENCY_FAILURE,
+                retryable=False,
             )
-            yield _error_event(
-                "translation_result_invalid",
-                "Translation provider returned an invalid result",
+            yield _error_event(error, operation=operation, cause=exc)
+        except Exception as exc:
+            error = AppError(
+                code="translation_stream_interrupted",
+                message="Translation stream was interrupted",
+                kind=FailureKind.DEPENDENCY_FAILURE,
+                retryable=True,
             )
-        except Exception:
-            logger.exception(
-                "Unexpected translation stream failure",
-                extra={
-                    "document_id": str(prepared.document_id),
-                    "operation_id": str(operation.trace.operation_id),
-                },
-            )
-            yield _error_event(
-                "translation_stream_interrupted",
-                "Translation stream was interrupted",
-            )
+            yield _error_event(error, operation=operation, cause=exc)
         finally:
             await self._capacity.release(capacity_lease)
             if cache_lease_token is not None:
@@ -272,8 +270,35 @@ async def _cached_stream(
     )
 
 
-def _error_event(code: str, message: str) -> TranslationStreamEvent:
+def _error_event(
+    error: AppError,
+    *,
+    operation: OperationContext,
+    cause: BaseException,
+) -> TranslationStreamEvent:
+    context = current_context()
+    envelope = ErrorEnvelope.from_app_error(
+        error,
+        stage="translation_stream",
+        request_id=context.request_id,
+        correlation_id=str(operation.trace.correlation_id),
+        diagnostic_id=str(uuid4()),
+    )
+    add_counter(
+        "scholens.translation.stream_errors",
+        attributes={"code": error.code},
+    )
+    log_event(
+        logger,
+        logging.ERROR,
+        "translation.stream.failed",
+        exc_info=cause,
+        error_code=error.code,
+        error_kind=error.kind.value,
+        retryable=error.retryable,
+        diagnostic_id=envelope.diagnostic_id,
+    )
     return TranslationStreamEvent(
         event="error",
-        data={"code": code, "message": message},
+        data=envelope.to_dict(),
     )

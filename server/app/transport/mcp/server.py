@@ -16,6 +16,7 @@ from app.modules.papers.application.contracts.search import LibraryPaperCollecti
 from app.shared.application import (
     CredentialKind,
     CredentialRef,
+    ErrorEnvelope,
     McpOrigin,
     OperationContextFactory,
     OperationInitiator,
@@ -43,6 +44,7 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import Receive, Scope, Send
 from pydantic import TypeAdapter
+from scholens_observability import current_context, log_event, update_context
 
 logger = logging.getLogger(__name__)
 _SOURCE_LIST = TypeAdapter(list[ToolSourceCandidate])
@@ -91,12 +93,20 @@ def _error_result(
         if details is not None
         else None
     )
-    error = {
-        "kind": kind.value,
-        "code": code,
-        "message": message,
-        "details": safe_details,
-    }
+    app_error = AppError(
+        code=code,
+        message=message,
+        kind=kind,
+        details=safe_details,
+    )
+    context = current_context()
+    error = ErrorEnvelope.from_app_error(
+        app_error,
+        stage="mcp_tool_call",
+        request_id=context.request_id,
+        correlation_id=context.correlation_id,
+        diagnostic_id=str(uuid.uuid4()),
+    ).to_dict()
     return mcp_types.CallToolResult(
         content=[
             mcp_types.TextContent(
@@ -163,8 +173,14 @@ class AuthenticatedMcpApplication:
                 ),
             )
             return
-        except Exception:
-            logger.exception("MCP authentication failed")
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "mcp.authentication.failed",
+                exc_info=exc,
+                error_code="access_key_authentication_unavailable",
+            )
             await self._send_auth_error(send, status_code=503)
             return
 
@@ -182,7 +198,13 @@ class AuthenticatedMcpApplication:
         else:
             invocation_session_id = str(uuid.uuid4())
             session_reference = None
-        request_reference = RequestReference(uuid.uuid4())
+        request_id = scope.setdefault("state", {}).get("request_id")
+        request_reference = RequestReference(
+            uuid.UUID(str(request_id)) if request_id else uuid.uuid4()
+        )
+        scope["state"]["authenticated"] = True
+        scope["state"]["actor_id"] = str(authenticated.actor.id)
+        update_context(actor_id=str(authenticated.actor.id), origin="mcp")
         authenticated_token = _authenticated_context.set(authenticated)
         client_token = _client_ip_context.set(client_ip)
         invocation_session_token = _invocation_session_context.set(
@@ -216,8 +238,24 @@ class AuthenticatedMcpApplication:
             if unavailable
             else "The access key is invalid"
         )
+        context = current_context()
+        error = ErrorEnvelope.from_app_error(
+            AppError(
+                code=code,
+                message=message,
+                kind=(
+                    FailureKind.UNAVAILABLE
+                    if unavailable
+                    else FailureKind.UNAUTHENTICATED
+                ),
+            ),
+            stage="mcp_authentication",
+            request_id=context.request_id,
+            correlation_id=None,
+            diagnostic_id=(str(uuid.uuid4()) if unavailable else None),
+        )
         body = json.dumps(
-            {"error": {"code": code, "message": message}},
+            {"error": error.to_dict()},
             separators=(",", ":"),
         ).encode()
         await send(
@@ -235,13 +273,20 @@ class AuthenticatedMcpApplication:
 
     @staticmethod
     async def _send_session_error(send: Send) -> None:
+        context = current_context()
+        error = ErrorEnvelope.from_app_error(
+            AppError(
+                code="mcp_session_invalid",
+                message="The MCP session ID is invalid",
+                kind=FailureKind.INVALID_ARGUMENT,
+            ),
+            stage="mcp_session",
+            request_id=context.request_id,
+            correlation_id=None,
+            diagnostic_id=None,
+        )
         body = json.dumps(
-            {
-                "error": {
-                    "code": "mcp_session_invalid",
-                    "message": "The MCP session ID is invalid",
-                }
-            },
+            {"error": error.to_dict()},
             separators=(",", ":"),
         ).encode()
         await send(
@@ -340,6 +385,14 @@ def build_mcp_transport(
                 str(authenticated.access_key_id),
             ),
         )
+        update_context(
+            actor_id=str(authenticated.actor.id),
+            operation_id=str(operation.trace.operation_id),
+            correlation_id=str(operation.trace.correlation_id),
+            origin="mcp",
+            component="tool_dispatcher",
+            stage="execute",
+        )
         try:
             outcome = await dispatcher.dispatch(
                 name=name,
@@ -361,8 +414,15 @@ def build_mcp_transport(
                 message=exc.message,
                 details=exc.details,
             )
-        except Exception:
-            logger.exception("MCP tool execution failed", extra={"tool_name": name})
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "mcp.tool.failed",
+                exc_info=exc,
+                tool_name=name,
+                error_code="tool_execution_failed",
+            )
             return _error_result(
                 kind=FailureKind.UNAVAILABLE,
                 code="tool_execution_failed",

@@ -387,12 +387,12 @@ async def test_mcp_tool_call_enforces_the_same_permission_snapshot() -> None:
             )
 
     error = response.json()["result"]["structuredContent"]["error"]
-    assert error == {
-        "kind": "not_found",
-        "code": "tool_not_found",
-        "message": "Tool not found",
-        "details": None,
-    }
+    assert error["kind"] == "not_found"
+    assert error["code"] == "tool_not_found"
+    assert error["message"] == "Tool not found"
+    assert error.get("details") is None
+    assert error["retryable"] is False
+    assert error["stage"] == "mcp_tool_call"
 
 
 @pytest.mark.asyncio
@@ -426,12 +426,13 @@ async def test_mcp_maps_application_errors_to_structured_tool_errors() -> None:
 
     result = response.json()["result"]
     assert result["isError"] is True
-    assert result["structuredContent"]["error"] == {
-        "kind": "permission_denied",
-        "code": "project_access_denied",
-        "message": "Project access denied",
-        "details": {"project_id": "missing"},
-    }
+    error = result["structuredContent"]["error"]
+    assert error["kind"] == "permission_denied"
+    assert error["code"] == "project_access_denied"
+    assert error["message"] == "Project access denied"
+    assert error["details"] == {"project_id": "missing"}
+    assert error["retryable"] is False
+    assert error["stage"] == "mcp_tool_call"
 
 
 @pytest.mark.asyncio

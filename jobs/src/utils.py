@@ -3,7 +3,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from src.telemetry import track_event
+from src.product_analytics import track_event
 
 logger = logging.getLogger(__name__)
 

@@ -46,6 +46,8 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import React, { useState, useRef, useEffect, useMemo, useCallback, FormEvent } from 'react';
 import { toast } from "sonner";
 import { fetchFromApi, fetchStreamFromApi } from '@/lib/api';
+import { errorMessageWithDiagnostic } from '@/lib/errors';
+import { consumeConversationStream } from '@/lib/streaming';
 import { useAuth } from '@/lib/auth';
 import { useSubscription, getTokenCreditUsagePercentage, isTokenCreditAtLimit, isTokenCreditNearLimit } from '@/hooks/useSubscription';
 import { Avatar, AvatarFallback } from './ui/avatar';
@@ -142,7 +144,10 @@ export function SidePanelContent({
     const [displayedText, setDisplayedText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [currentLoadingMessageIndex, setCurrentLoadingMessageIndex] = useState(0);
-    const [errorState, setErrorState] = useState<{ failedUserMessage: string } | null>(null);
+    const [errorState, setErrorState] = useState<{
+        failedUserMessage: string;
+        message: string;
+    } | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const chatInputFormRef = useRef<HTMLFormElement | null>(null);
@@ -165,8 +170,6 @@ export function SidePanelContent({
         enabled: Boolean(user && paperData),
         initialConversationId,
     });
-
-    const END_DELIMITER = "END_OF_STREAM";
 
     const COMPREHENSIVE_OVERVIEW_DISPLAY = "Create a comprehensive overview";
     const COMPREHENSIVE_OVERVIEW_PROMPT = "Create a comprehensive, thoughtful brief for this paper. Separate each section with clear headings covering: Key Takeaways (the main points in 2-3 bullets), Background (the problem and context), Key Contributions (what's novel about this work), Methods (the approach taken), Results (main findings), Limitations (weaknesses of the study), Open Questions (gaps for future research), and Important Figures/Tables (which visuals to pay attention to). This should serve as a helpful guided reading before I dive into the paper myself.";
@@ -375,102 +378,18 @@ export function SidePanelContent({
 
             setUserMessageReferences([]);
 
-            const reader = stream.getReader();
-            const decoder = new TextDecoder();
-            let accumulatedContent = '';
-            let references: Reference | undefined = undefined;
-            let trace: MessageTrace | undefined = undefined;
-            let buffer = ''; // Buffer to accumulate partial chunks
-
-            // Debug counters
-            let chunkCount = 0;
-            let contentChunks = 0;
-            let referenceChunks = 0;
-
-            while (true) {
-                const { done, value } = await reader.read();
-
-                if (done) {
-                    // Process any remaining buffer content
-                    if (buffer.trim()) {
-                        console.warn('Unprocessed buffer at end of stream:', buffer);
-                    }
-                    break;
-                }
-
-                // Decode the chunk and add to buffer
-                const chunk = decoder.decode(value, { stream: true });
-                buffer += chunk;
-                chunkCount++;
-                console.log(`Processing chunk #${chunkCount}:`, chunk);
-
-                // Split buffer by delimiter and process complete events
-                const parts = buffer.split(END_DELIMITER);
-
-                // Keep the last part (potentially incomplete) in the buffer
-                buffer = parts.pop() || '';
-
-                // Process all complete parts
-                for (const event of parts) {
-                    if (!event.trim()) continue;
-
-                    try {
-                        // Parse the JSON chunk
-                        const parsedChunk = JSON.parse(event.trim());
-                        const chunkType = parsedChunk.type;
-                        const chunkContent = parsedChunk.content;
-
-                        if (chunkType === 'content') {
-                            contentChunks++;
-                            console.log(`Processing content chunk #${contentChunks}:`, chunkContent);
-
-                            // Add this content to our accumulated content
-                            accumulatedContent += chunkContent;
-
-                            // Update the message with the new content
-                            setStreamingChunks(prev => {
-                                const newChunks = [...prev, chunkContent];
-                                // Update previous content for animation tracking
-                                return newChunks;
-                            });
-                        }
-                        else if (chunkType === 'references') {
-                            referenceChunks++;
-                            console.log(`Processing references chunk #${referenceChunks}:`, chunkContent);
-
-                            // Store the references
-                            references = chunkContent;
-
-                            // Update the message with the references
-                            setStreamingReferences(chunkContent);
-                        } else if (chunkType === 'trace') {
-                            trace = chunkContent as MessageTrace;
-                        } else if (chunkType === 'reasoning') {
-                            // The complete reasoning content arrives in the final
-                            // trace event and is persisted with the message.
-                        } else if (chunkType === 'error') {
-                            console.error('Server error in stream:', chunkContent);
-                            throw new Error(`Server error: ${chunkContent}`);
-                        } else {
-                            console.warn(`Unknown chunk type: ${chunkType}`);
-                        }
-                    } catch (error) {
-                        console.error('Error processing event:', error, 'Raw event:', event);
-                        // Continue processing other events rather than breaking
-                        continue;
-                    }
-                }
-            }
-
-            console.log(`Stream completed. Processed ${chunkCount} chunks (${contentChunks} content, ${referenceChunks} references).`);
-            console.log("Final accumulated content:", accumulatedContent);
-            console.log("Final references:", references);
+            const result = await consumeConversationStream(stream, {
+                onContent: chunk => setStreamingChunks(prev => [...prev, chunk]),
+                onReferences: value => setStreamingReferences(value as Reference),
+            });
+            const references = result.references as Reference | undefined;
+            const trace = result.trace as MessageTrace | undefined;
 
             // After streaming is complete, add the full message to the state
-            if (accumulatedContent) {
+            if (result.content) {
                 const finalMessage: ChatMessage = {
                     role: 'assistant',
-                    content: accumulatedContent,
+                    content: result.content,
                     references: references,
                     trace,
                 };
@@ -478,15 +397,13 @@ export function SidePanelContent({
             }
 
             // Refetch subscription data to update credit usage
-            try {
-                await refetchSubscription();
-            } catch (error) {
-                console.error('Error refetching subscription:', error);
-            }
+            await refetchSubscription();
 
         } catch (error) {
-            console.error('Error during streaming:', error);
-            setErrorState({ failedUserMessage });
+            setErrorState({
+                failedUserMessage,
+                message: errorMessageWithDiagnostic(error),
+            });
         } finally {
             setIsStreaming(false);
         }
@@ -850,7 +767,7 @@ export function SidePanelContent({
                                         {errorState && !isStreaming && (
                                             <div className="relative group prose dark:prose-invert p-2 !max-w-full rounded-lg w-full text-primary dark:text-primary-foreground">
                                                 <div className="text-red-500">
-                                                    <p>An error occurred while processing your request.</p>
+                                                    <p>{errorState.message}</p>
                                                     <Button
                                                         variant="outline"
                                                         className="mt-2"

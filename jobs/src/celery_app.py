@@ -8,8 +8,10 @@ from datetime import timedelta
 from dotenv import load_dotenv
 from celery import Celery
 from src.pdf import validate_pdf_runtime_configuration
+from src.observability import configure_jobs_observability
 
 load_dotenv()  # Load environment variables from .env file
+configure_jobs_observability()
 validate_pdf_runtime_configuration()
 
 BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@localhost:5672//")

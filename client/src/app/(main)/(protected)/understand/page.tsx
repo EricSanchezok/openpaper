@@ -3,6 +3,8 @@
 
 import { useSubscription, isTokenCreditAtLimit } from '@/hooks/useSubscription';
 import { fetchFromApi, fetchStreamFromApi, getPaperFileUrl } from '@/lib/api';
+import { errorMessageWithDiagnostic } from '@/lib/errors';
+import { consumeConversationStream } from '@/lib/streaming';
 import { useState, useEffect, FormEvent, useRef, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePapers } from '@/hooks/usePapers';
@@ -105,8 +107,6 @@ function UnderstandPageContent() {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputMessageRef = useRef<HTMLTextAreaElement>(null);
-
-    const END_DELIMITER = "END_OF_STREAM";
 
     const { subscription, refetch: refetchSubscription } = useSubscription();
     const tokenCreditLimitReached = isTokenCreditAtLimit(subscription);
@@ -385,76 +385,22 @@ function UnderstandPageContent() {
                 body: JSON.stringify(requestBody),
             });
 
-            const reader = stream.getReader();
-            const decoder = new TextDecoder();
-            let accumulatedContent = '';
-            let references: Reference | undefined = undefined;
-            const artifacts: CitationArtifact[] = [];
-            let trace: MessageTrace | undefined = undefined;
-            let buffer = '';
+            const result = await consumeConversationStream(stream, {
+                onContent: chunk => setStreamingChunks(prev => [...prev, chunk]),
+                onReferences: value => setStreamingReferences(value as Reference),
+                onArtifact: value => setStreamingArtifacts(
+                    prev => [...prev, value as CitationArtifact],
+                ),
+                onStatus: setStatusMessage,
+            });
+            const references = result.references as Reference | undefined;
+            const artifacts = result.artifacts as CitationArtifact[];
+            const trace = result.trace as MessageTrace | undefined;
 
-            while (true) {
-                const { done, value } = await reader.read();
-
-                if (done) {
-                    if (buffer.trim()) {
-                        console.warn('Unprocessed buffer at end of stream:', buffer);
-                    }
-                    break;
-                }
-
-                const chunk = decoder.decode(value, { stream: true });
-                buffer += chunk;
-
-                const parts = buffer.split(END_DELIMITER);
-                buffer = parts.pop() || '';
-
-                for (const event of parts) {
-                    if (!event.trim()) continue;
-
-                    try {
-                        const parsedChunk = JSON.parse(event.trim());
-
-                        if (parsedChunk && typeof parsedChunk === 'object' && 'type' in parsedChunk) {
-                            const chunkType = parsedChunk.type;
-                            const chunkContent = parsedChunk.content;
-
-                            if (chunkType === 'content') {
-                                accumulatedContent += chunkContent;
-                                setStreamingChunks(prev => [...prev, chunkContent]);
-                            } else if (chunkType === 'references') {
-                                references = chunkContent;
-                                setStreamingReferences(chunkContent);
-                            } else if (chunkType === 'artifact') {
-                                artifacts.push(chunkContent as CitationArtifact);
-                                setStreamingArtifacts(prev => [...prev, chunkContent as CitationArtifact]);
-                            } else if (chunkType === 'trace') {
-                                trace = chunkContent as MessageTrace;
-                            } else if (chunkType === 'status') {
-                                setStatusMessage(chunkContent);
-                            } else if (chunkType === 'error') {
-                                console.error('Server error in stream:', chunkContent);
-                                throw new Error(`Server error: ${chunkContent}`);
-                            } else {
-                                console.warn(`Unknown chunk type: ${chunkType}`);
-                            }
-                        } else if (parsedChunk) {
-                            console.warn('Received unexpected chunk:', parsedChunk);
-                        }
-                    } catch (error) {
-                        if (error instanceof Error) {
-                            throw error;
-                        }
-                        console.error('Error processing event:', error, 'Raw event:', event);
-                        continue;
-                    }
-                }
-            }
-
-            if (accumulatedContent) {
+            if (result.content) {
                 const finalMessage: ChatMessage = {
                     role: 'assistant',
-                    content: accumulatedContent,
+                    content: result.content,
                     references: references,
                     artifacts: artifacts.length ? artifacts : undefined,
                     trace: trace,
@@ -463,12 +409,12 @@ function UnderstandPageContent() {
             }
 
         } catch (error) {
-            console.error('Error during streaming:', error);
-            toast.error("An error occurred while processing your request.");
+            const message = errorMessageWithDiagnostic(error);
+            toast.error(message);
             setMessages(prev => prev.slice(0, -1));
             setCurrentMessage(userMessage.content);
             setTurnAttachments(submittedAttachments);
-            setError('An error occurred while processing your request.');
+            setError(message);
         } finally {
             setIsStreaming(false);
             setStatusMessage('');

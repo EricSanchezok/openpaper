@@ -4,6 +4,7 @@ from .actor import Actor
 from .clock import Clock
 from .cursors import SignedCursorCodec
 from .executor import ApplicationExecutor
+from .error_envelope import ErrorEnvelope
 from .operation_context import (
     ConversationOrigin,
     CredentialKind,
@@ -25,6 +26,7 @@ from .operation_context import (
 __all__ = [
     "Actor",
     "ApplicationExecutor",
+    "ErrorEnvelope",
     "Clock",
     "ConversationOrigin",
     "CredentialKind",

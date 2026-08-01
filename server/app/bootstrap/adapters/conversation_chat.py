@@ -75,7 +75,10 @@ async def _stream_chat_chunks(
     """Helper to stream chat chunks and handle common logic."""
     async for chunk in chunk_generator:
         if not isinstance(chunk, dict):
-            logger.warning(f"Received unexpected chunk format: {chunk}")
+            logger.warning(
+                "conversation.stream.invalid_chunk",
+                extra={"chunk_type": type(chunk).__name__},
+            )
             continue
 
         chunk_type = chunk.get("type")
@@ -87,7 +90,12 @@ async def _stream_chat_chunks(
             try:
                 yield f"{json.dumps({'type': 'artifact', 'content': chunk_content})}{END_DELIMITER}"
             except (TypeError, ValueError) as json_error:
-                logger.warning(f"Failed to serialize artifact: {json_error}")
+                raise AppError(
+                    code="stream_serialization_failed",
+                    message="A response artifact could not be serialized.",
+                    kind=FailureKind.INTERNAL,
+                    retryable=False,
+                ) from json_error
             continue
 
         if chunk_type == "reasoning":
@@ -112,7 +120,10 @@ async def _stream_chat_chunks(
                 json_response = json.dumps({"type": "content", "content": text_content})
                 yield f"{json_response}{END_DELIMITER}"
             except (TypeError, ValueError) as json_error:
-                logger.warning(f"Failed to serialize chunk content: {json_error}")
+                logger.warning(
+                    "conversation.stream.content_repaired",
+                    extra={"error_type": type(json_error).__name__},
+                )
                 safe_content = (
                     str(chunk_content).encode("utf-8", errors="replace").decode("utf-8")
                 )
@@ -129,14 +140,25 @@ async def _stream_chat_chunks(
                 )
                 yield f"{json_response}{END_DELIMITER}"
             except (TypeError, ValueError) as json_error:
-                logger.warning(f"Failed to serialize references: {json_error}")
-                yield f"{json.dumps({'type': 'error', 'content': 'Failed to serialize references'})}{END_DELIMITER}"
+                raise AppError(
+                    code="stream_serialization_failed",
+                    message="Response references could not be serialized.",
+                    kind=FailureKind.INTERNAL,
+                    retryable=False,
+                ) from json_error
         elif chunk_type == "status":
             status_content = (
                 chunk_content if isinstance(chunk_content, str) else str(chunk_content)
             )
             _append_status(status_messages, status_content)
             yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
+        elif chunk_type == "error":
+            raise AppError(
+                code="agent_runtime_failed",
+                message="The agent runtime could not complete this response.",
+                kind=FailureKind.DEPENDENCY_FAILURE,
+                retryable=True,
+            )
 
 
 async def stream_conversation_agent(
@@ -471,6 +493,10 @@ async def stream_conversation_agent(
                 **mention_scope_props,
             },
             user_id=str(current_user.id),
+        )
+        yield (
+            f"{json.dumps({'type': 'complete', 'content': {'turn_id': str(request.turn_id)}})}"
+            f"{END_DELIMITER}"
         )
 
     async def response_generator() -> AsyncGenerator[str, None]:

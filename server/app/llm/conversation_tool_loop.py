@@ -454,7 +454,10 @@ class ConversationToolLoop(BaseLLMClient):
                             }
                         },
                     )
-                    yield {"type": "error", "content": exc.code}
+                    yield {
+                        "type": "status",
+                        "content": "A tool call was rejected; reassessing the request...",
+                    }
                 except Exception:
                     result_status = "tool_execution_failed"
                     logger.exception(
@@ -465,7 +468,10 @@ class ConversationToolLoop(BaseLLMClient):
                         tool_call,
                         {"error": {"code": "tool_execution_failed"}},
                     )
-                    yield {"type": "error", "content": "tool_execution_failed"}
+                    yield {
+                        "type": "status",
+                        "content": "A tool call failed; trying another approach...",
+                    }
 
                 track_event(
                     "tool_call",

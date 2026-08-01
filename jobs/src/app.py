@@ -1,18 +1,16 @@
 """Health endpoint for the Scholens background worker deployment."""
 
-import logging
-
 from fastapi import FastAPI
+from src.observability import configure_jobs_observability, instrument_jobs_api
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+configure_jobs_observability()
 
 app = FastAPI(
     title="Scholens Jobs",
     description="Health endpoint for durable Scholens background workers",
     version="1.0.0",
 )
+instrument_jobs_api(app)
 
 
 @app.get("/health")

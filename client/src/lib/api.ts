@@ -4,6 +4,7 @@ import {
     refreshAccessToken,
 } from "./auth-session";
 import { apiUrl } from "./api-config";
+import { apiErrorFromResponse } from "./errors";
 import type {
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
@@ -64,27 +65,7 @@ export async function fetchFromApi<T = unknown>(
     });
 
     if (!response.ok) {
-        let errorMessage: unknown = `API error: ${response.status}`;
-
-        try {
-            const errorData = await response.json();
-            if (errorData.message) {
-                errorMessage = errorData.message;
-            } else if (errorData.error) {
-                errorMessage = errorData.error;
-            } else if (errorData.detail) {
-                errorMessage = errorData.detail;
-            }
-        } catch {
-            // If we can't parse the error response, fall back to status text
-            errorMessage = `API error: ${response.status} ${response.statusText}`;
-        }
-
-        if (typeof errorMessage !== 'string') {
-            errorMessage = JSON.stringify(errorMessage);
-        }
-
-        throw new Error(errorMessage as string)
+        throw await apiErrorFromResponse(response);
     }
 
     if (response.status === 204) {
@@ -108,27 +89,7 @@ export async function fetchStreamFromApi(
     });
 
     if (!response.ok) {
-        let errorMessage: unknown = `API error: ${response.status}`;
-
-        try {
-            const errorData = await response.json();
-            if (errorData.message) {
-                errorMessage = errorData.message;
-            } else if (errorData.error) {
-                errorMessage = errorData.error;
-            } else if (errorData.detail) {
-                errorMessage = errorData.detail;
-            }
-        } catch {
-            // If we can't parse the error response, fall back to status text
-            errorMessage = `API error: ${response.status} ${response.statusText}`;
-        }
-
-        if (typeof errorMessage !== 'string') {
-            errorMessage = JSON.stringify(errorMessage);
-        }
-
-        throw new Error(errorMessage as string);
+        throw await apiErrorFromResponse(response);
     }
 
     if (!response.body) {
