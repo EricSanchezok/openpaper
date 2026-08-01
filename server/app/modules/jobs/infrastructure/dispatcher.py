@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from time import monotonic
 
 from app.database.database import SessionLocal
 from app.modules.jobs.infrastructure.client import jobs_client
@@ -13,6 +14,7 @@ from app.modules.jobs.infrastructure.repository import (
     ReservedJobDispatch,
     job_repository,
 )
+from scholens_observability import add_counter, instrumented_span, record_histogram
 
 logger = logging.getLogger(__name__)
 
@@ -78,37 +80,55 @@ def _record_publish_failure(
 
 def dispatch_pending_jobs_once(*, limit: int = DISPATCH_BATCH_SIZE) -> int:
     """Publish outside a DB transaction, then persist each delivery outcome."""
+    started = monotonic()
     published_count = 0
-    for dispatch in _reserve_dispatches(limit=limit):
-        try:
-            jobs_client.publish_task(
-                task_name=dispatch.task_name,
-                queue=dispatch.queue,
-                job_id=str(dispatch.job_id),
-                kwargs=dispatch.kwargs,
-            )
-        except RuntimeError as exc:
-            changed = _record_publish_failure(dispatch, error=exc)
-            logger.warning(
-                "Jobs outbox publish failed",
-                extra={
-                    "job_id": str(dispatch.job_id),
-                    "attempt": dispatch.attempt_count,
-                    "error_code": str(exc)[:80],
-                    "lease_owned": changed,
-                },
-            )
-        else:
-            if _record_publish_success(dispatch):
-                published_count += 1
-            else:
+    dispatches = _reserve_dispatches(limit=limit)
+    with instrumented_span(
+        "jobs.outbox.dispatch",
+        attributes={"jobs.dispatch.batch_size": len(dispatches)},
+    ):
+        for dispatch in dispatches:
+            status = "published"
+            try:
+                jobs_client.publish_task(
+                    task_name=dispatch.task_name,
+                    queue=dispatch.queue,
+                    job_id=str(dispatch.job_id),
+                    kwargs=dispatch.kwargs,
+                )
+            except RuntimeError as exc:
+                status = "retry"
+                changed = _record_publish_failure(dispatch, error=exc)
                 logger.warning(
-                    "Jobs outbox publish lease was superseded",
+                    "Jobs outbox publish failed",
                     extra={
                         "job_id": str(dispatch.job_id),
                         "attempt": dispatch.attempt_count,
+                        "error_code": str(exc)[:80],
+                        "lease_owned": changed,
                     },
                 )
+            else:
+                if _record_publish_success(dispatch):
+                    published_count += 1
+                else:
+                    status = "lease_superseded"
+                    logger.warning(
+                        "Jobs outbox publish lease was superseded",
+                        extra={
+                            "job_id": str(dispatch.job_id),
+                            "attempt": dispatch.attempt_count,
+                        },
+                    )
+            add_counter(
+                "scholens.jobs.outbox.dispatches",
+                attributes={"status": status, "queue": dispatch.queue},
+            )
+    record_histogram(
+        "scholens.jobs.outbox.batch_duration",
+        (monotonic() - started) * 1000,
+        attributes={"status": "published" if published_count else "idle_or_failed"},
+    )
     return published_count
 
 

@@ -28,6 +28,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent as MCPTextContent
 from pydantic import TypeAdapter
+from scholens_observability import add_counter, instrumented_span, record_histogram
 
 T = TypeVar("T")
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
@@ -119,13 +120,25 @@ class ResolvedConnectorToolSet:
                 message="Connector tool is not available",
                 kind=FailureKind.NOT_FOUND,
             )
+        provider = bound.connection.provider.value
+        started = time.monotonic()
+        status = "success"
         try:
-            result = await _call_remote_tool(
-                connection=bound.connection,
-                name=bound.name,
-                arguments=arguments,
-            )
+            with instrumented_span(
+                "connector.tool.call",
+                attributes={
+                    "connector.provider": provider,
+                    "tool.name": name,
+                },
+            ):
+                result = await _call_remote_tool(
+                    connection=bound.connection,
+                    name=bound.name,
+                    arguments=arguments,
+                )
+                return _normalize_result(result)
         except Exception as exc:
+            status = "failure"
             credentials_invalid = _looks_like_authentication_error(exc)
             raise AppError(
                 code=(
@@ -144,12 +157,19 @@ class ResolvedConnectorToolSet:
                     else FailureKind.DEPENDENCY_FAILURE
                 ),
                 details={
-                    "provider": bound.connection.provider.value,
+                    "provider": provider,
                     "tool": name,
                     "retryable": not credentials_invalid,
                 },
             ) from exc
-        return _normalize_result(result)
+        finally:
+            attributes = {"provider": provider, "status": status}
+            add_counter("scholens.connector.tool.calls", attributes=attributes)
+            record_histogram(
+                "scholens.connector.tool.duration",
+                (time.monotonic() - started) * 1000,
+                attributes=attributes,
+            )
 
     def call_sync(self, name: str, arguments: dict[str, Any]) -> JsonValue:
         return _run_sync(lambda: self.call(name, arguments))
@@ -258,6 +278,29 @@ class ConnectorToolResolver:
     ) -> ResolvedConnectorToolSet:
         if WorkspacePermission.READ not in permissions:
             return ResolvedConnectorToolSet()
+        started = time.monotonic()
+        with instrumented_span("connector.tools.resolve"):
+            resolved = await self._resolve(
+                actor=actor,
+                reserved_names=reserved_names,
+            )
+        attributes = {
+            "status": "partial" if resolved.issues else "success",
+        }
+        add_counter("scholens.connector.resolutions", attributes=attributes)
+        record_histogram(
+            "scholens.connector.resolve.duration",
+            (time.monotonic() - started) * 1000,
+            attributes=attributes,
+        )
+        return resolved
+
+    async def _resolve(
+        self,
+        *,
+        actor: Actor,
+        reserved_names: set[str] | frozenset[str],
+    ) -> ResolvedConnectorToolSet:
         self._prune_schema_cache()
         credential_states = await asyncio.to_thread(
             self._credential_loader,

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from app.modules.papers.application.contracts.extraction import (
     ToolCallResult,
 )
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from scholens_observability import add_counter, instrumented_span, record_histogram
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -283,12 +285,41 @@ class DeepSeekBackend(LLMBackend):
                 self._cast_tool_declaration(item) for item in function_declarations
             ]
         kwargs.setdefault("max_tokens", self._max_output_tokens)
-        response = self._client.chat.completions.create(
-            model=model,
-            messages=messages,
-            extra_body=self._thinking_body(reasoning_level),
-            **kwargs,
-        )
+        started = time.monotonic()
+        status = "success"
+        try:
+            with instrumented_span(
+                "llm.generate",
+                attributes={
+                    "gen_ai.system": "deepseek",
+                    "gen_ai.request.model": model,
+                    "scholens.reasoning_level": reasoning_level.value,
+                    "scholens.llm.streaming": False,
+                },
+            ):
+                response = self._client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    extra_body=self._thinking_body(reasoning_level),
+                    **kwargs,
+                )
+        except BaseException:
+            status = "failure"
+            raise
+        finally:
+            attributes = {
+                "provider": "deepseek",
+                "model": model,
+                "reasoning": reasoning_level.value,
+                "streaming": False,
+                "status": status,
+            }
+            add_counter("scholens.llm.requests", attributes=attributes)
+            record_histogram(
+                "scholens.llm.duration",
+                (time.monotonic() - started) * 1000,
+                attributes=attributes,
+            )
         if not response.choices:
             raise ValueError("DeepSeek returned no choices")
         message = response.choices[0].message
@@ -352,47 +383,63 @@ class DeepSeekBackend(LLMBackend):
         def stream_chunks(
             cancellation: _StreamCancellation,
         ) -> Iterator[StreamChunk]:
-            stream = self._client.chat.completions.create(
-                model=model,
-                messages=messages,
-                stream=True,
-                stream_options={"include_usage": True},
-                extra_body=self._thinking_body(reasoning_level),
-                **kwargs,
-            )
-            close_provider = getattr(stream, "close", None)
-            if callable(close_provider):
-                cancellation.attach(close_provider)
+            started = time.monotonic()
+            first_chunk_at: float | None = None
+            status = "success"
             response_id: str | None = None
             usage_received = False
             stream_failed = False
             try:
-                if cancellation.cancelled:
-                    return
-                for chunk in stream:
-                    response_id = getattr(chunk, "id", response_id)
-                    if chunk.usage is not None:
-                        usage_received = True
-                        self._settle(
-                            model=model,
-                            reasoning_level=reasoning_level,
-                            response_id=response_id,
-                            usage=chunk.usage,
-                        )
-                    if not chunk.choices:
-                        continue
-                    choice = chunk.choices[0]
-                    text = choice.delta.content or ""
-                    thinking = getattr(choice.delta, "reasoning_content", None)
-                    if text or thinking or choice.finish_reason is not None:
-                        yield StreamChunk(
-                            text=text,
-                            is_done=choice.finish_reason is not None,
-                            thinking=(
-                                thinking if isinstance(thinking, str) else None
-                            ),
-                        )
+                with instrumented_span(
+                    "llm.stream",
+                    attributes={
+                        "gen_ai.system": "deepseek",
+                        "gen_ai.request.model": model,
+                        "scholens.reasoning_level": reasoning_level.value,
+                        "scholens.llm.streaming": True,
+                    },
+                ):
+                    stream = self._client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        stream=True,
+                        stream_options={"include_usage": True},
+                        extra_body=self._thinking_body(reasoning_level),
+                        **kwargs,
+                    )
+                    close_provider = getattr(stream, "close", None)
+                    if callable(close_provider):
+                        cancellation.attach(close_provider)
+                    if cancellation.cancelled:
+                        status = "cancelled"
+                        return
+                    for chunk in stream:
+                        response_id = getattr(chunk, "id", response_id)
+                        if chunk.usage is not None:
+                            usage_received = True
+                            self._settle(
+                                model=model,
+                                reasoning_level=reasoning_level,
+                                response_id=response_id,
+                                usage=chunk.usage,
+                            )
+                        if not chunk.choices:
+                            continue
+                        choice = chunk.choices[0]
+                        text = choice.delta.content or ""
+                        thinking = getattr(choice.delta, "reasoning_content", None)
+                        if text or thinking or choice.finish_reason is not None:
+                            if first_chunk_at is None:
+                                first_chunk_at = time.monotonic()
+                            yield StreamChunk(
+                                text=text,
+                                is_done=choice.finish_reason is not None,
+                                thinking=(
+                                    thinking if isinstance(thinking, str) else None
+                                ),
+                            )
             except BaseException:
+                status = "failure"
                 stream_failed = True
                 raise
             finally:
@@ -411,6 +458,29 @@ class DeepSeekBackend(LLMBackend):
                         logger.exception(
                             "Token usage settlement failed after provider stream error"
                         )
+                attributes = {
+                    "provider": "deepseek",
+                    "model": model,
+                    "reasoning": reasoning_level.value,
+                    "streaming": True,
+                    "status": status,
+                }
+                add_counter("scholens.llm.requests", attributes=attributes)
+                record_histogram(
+                    "scholens.llm.duration",
+                    (time.monotonic() - started) * 1000,
+                    attributes=attributes,
+                )
+                if first_chunk_at is not None:
+                    record_histogram(
+                        "scholens.llm.time_to_first_chunk",
+                        (first_chunk_at - started) * 1000,
+                        attributes={
+                            "provider": "deepseek",
+                            "model": model,
+                            "reasoning": reasoning_level.value,
+                        },
+                    )
 
         return _CancellableIterator(stream_chunks)
 

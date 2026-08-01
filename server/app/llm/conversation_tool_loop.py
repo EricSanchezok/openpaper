@@ -45,6 +45,7 @@ from app.tooling import (
 )
 from app.tooling.source_extraction import extract_external_sources
 from app.tooling.workspace import CONVERSATION_TOOL_PROFILE
+from scholens_observability import add_counter, instrumented_span, record_histogram
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,7 @@ class ConversationToolLoop(BaseLLMClient):
         user_operation_id: uuid.UUID,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Use the shared catalog to gather evidence or perform requested actions."""
+        loop_started = time.monotonic()
         conversation_history = executor.query(
             lambda capabilities: capabilities.conversation_chat_data.history(
                 actor=current_user,
@@ -288,12 +290,23 @@ class ConversationToolLoop(BaseLLMClient):
                 else None
             )
 
-            llm_response = self.generate_content(
-                system_prompt=tool_loop_prompt,
-                history=conversation_history,
-                contents=message_content,
-                function_declarations=tool_declarations,
-                tool_call_results=tool_call_results,
+            with instrumented_span(
+                "conversation.tool_loop.iteration",
+                attributes={
+                    "conversation.scope": conversation_scope.scope_type.value,
+                    "conversation.tool_loop.iteration": n_iterations,
+                },
+            ):
+                llm_response = self.generate_content(
+                    system_prompt=tool_loop_prompt,
+                    history=conversation_history,
+                    contents=message_content,
+                    function_declarations=tool_declarations,
+                    tool_call_results=tool_call_results,
+                )
+            add_counter(
+                "scholens.conversation.tool_loop.iterations",
+                attributes={"scope": conversation_scope.scope_type.value},
             )
 
             if llm_response.malformed_tool_calls:
@@ -510,7 +523,10 @@ class ConversationToolLoop(BaseLLMClient):
                 keywords = await self._extract_search_keywords(question)
 
                 if keywords:
-                    logger.info(f"Fallback search with keywords: {keywords}")
+                    logger.info(
+                        "Fallback paper search started",
+                        extra={"keyword_count": len(keywords)},
+                    )
 
                     for fallback_index, keyword in enumerate(keywords):
                         tool_call = ToolCall(
@@ -590,6 +606,19 @@ class ConversationToolLoop(BaseLLMClient):
             "type": "tool_run_completed",
             "content": tool_state,
         }
+        record_histogram(
+            "scholens.conversation.tool_loop.duration",
+            (time.monotonic() - loop_started) * 1000,
+            attributes={"scope": conversation_scope.scope_type.value},
+        )
+        add_counter(
+            "scholens.conversation.tool_loop.completed",
+            attributes={
+                "scope": conversation_scope.scope_type.value,
+                "has_material": tool_state.has_answer_material(),
+                "has_actions": bool(tool_state.action_results),
+            },
+        )
 
     async def _dispatch_tool(
         self,
@@ -673,9 +702,18 @@ class ConversationToolLoop(BaseLLMClient):
 
                 new_size = tool_state.get_tool_results_size()
                 logger.info(
-                    f"Tool result compaction complete. "
-                    f"Original: {original_count} results ({original_size} chars), "
-                    f"Compacted: {applied_count} results ({new_size} chars)"
+                    "Tool result compaction completed",
+                    extra={
+                        "original_count": original_count,
+                        "original_size": original_size,
+                        "compacted_count": applied_count,
+                        "compacted_size": new_size,
+                    },
+                )
+                record_histogram(
+                    "scholens.conversation.compaction.duration",
+                    (time.time() - start_time) * 1000,
+                    attributes={"status": "success"},
                 )
 
                 track_event(
@@ -693,9 +731,14 @@ class ConversationToolLoop(BaseLLMClient):
             else:
                 logger.warning("Empty response from LLM during tool result compaction.")
 
-        except Exception as e:
+        except Exception:
             logger.warning(
-                f"Tool result compaction failed: {e}. Keeping original results."
+                "Tool result compaction failed; keeping original results",
+                exc_info=True,
+            )
+            add_counter(
+                "scholens.conversation.compaction.failures",
+                attributes={"stage": "tool_results"},
             )
         return False
 
@@ -725,9 +768,7 @@ class ConversationToolLoop(BaseLLMClient):
                 )
                 return [str(k) for k in keywords if k][:5]
             except (json.JSONDecodeError, AttributeError):
-                logger.warning(
-                    f"Failed to parse keyword schema response: {llm_response.text}"
-                )
+                logger.warning("Keyword schema response was invalid")
 
         logger.warning("Failed to extract keywords from question")
         return []

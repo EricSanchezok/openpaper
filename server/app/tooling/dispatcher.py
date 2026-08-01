@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from time import monotonic
 from typing import Generic, Protocol, TypeVar, cast
 
 from app.shared.application import ApplicationExecutor
@@ -20,6 +21,7 @@ from app.tooling.contracts import (
 )
 from app.tooling.invocations import ToolInvocationGateway
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from scholens_observability import add_counter, instrumented_span, record_histogram
 
 CapabilitiesT = TypeVar("CapabilitiesT", bound="ToolInvocationCapabilities")
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
@@ -88,6 +90,64 @@ class ToolDispatcher(Generic[CapabilitiesT]):
         self._executor = executor
 
     async def dispatch(
+        self,
+        *,
+        name: str,
+        raw_arguments: dict[str, object],
+        context: ToolExecutionContext,
+        access: ToolAccess,
+    ) -> ToolOutcome:
+        started = monotonic()
+        status = "success"
+        execution = "unknown"
+        try:
+            return await self._dispatch(
+                name=name,
+                raw_arguments=raw_arguments,
+                context=context,
+                access=access,
+            )
+        except BaseException:
+            status = "failure"
+            raise
+        finally:
+            try:
+                execution = self._catalog.definition_for(access, name).execution.value
+            except KeyError:
+                pass
+            attributes = {
+                "tool": name,
+                "execution": execution,
+                "status": status,
+                "source": "local",
+            }
+            add_counter("scholens.tool.calls", attributes=attributes)
+            record_histogram(
+                "scholens.tool.duration",
+                (monotonic() - started) * 1000,
+                attributes=attributes,
+            )
+
+    async def _dispatch(
+        self,
+        *,
+        name: str,
+        raw_arguments: dict[str, object],
+        context: ToolExecutionContext,
+        access: ToolAccess,
+    ) -> ToolOutcome:
+        with instrumented_span(
+            "tool.dispatch",
+            attributes={"tool.name": name, "tool.source": "local"},
+        ):
+            return await self._dispatch_in_span(
+                name=name,
+                raw_arguments=raw_arguments,
+                context=context,
+                access=access,
+            )
+
+    async def _dispatch_in_span(
         self,
         *,
         name: str,
