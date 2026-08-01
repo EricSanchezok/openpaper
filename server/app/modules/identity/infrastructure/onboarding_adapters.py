@@ -9,7 +9,7 @@ from app.modules.identity.application.onboarding_contracts import (
     OnboardingResponse,
 )
 from app.modules.identity.application.onboarding import OnboardingSaveResult
-from app.modules.identity.infrastructure.cloud_auth import auth_manager
+from app.modules.identity.infrastructure.sanchezcloud_identity import auth_manager
 from app.modules.identity.infrastructure.onboarding_repository import (
     OnboardingCreate,
     onboarding_repository,

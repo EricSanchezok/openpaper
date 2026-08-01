@@ -40,13 +40,13 @@ def test_access_key_application_is_transport_and_tooling_independent() -> None:
     assert {path: imports for path, imports in violations.items() if imports} == {}
 
 
-def test_mcp_has_no_cloud_auth_or_legacy_actor_authentication_path() -> None:
+def test_mcp_has_no_sanchezcloud_identity_or_legacy_actor_authentication_path() -> None:
     execution = (APP_ROOT / "bootstrap" / "execution.py").read_text(encoding="utf-8")
     transport = (APP_ROOT / "transport" / "mcp" / "server.py").read_text(
         encoding="utf-8"
     )
 
-    assert "authenticate_cloud_access_token" not in execution
+    assert "authenticate_identity_access_token" not in execution
     assert "AuthenticatedIdentity" not in execution
     assert "capabilities.access_keys.authenticate(token)" in execution
     assert "executor.command" in execution

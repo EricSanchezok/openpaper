@@ -495,7 +495,7 @@ export default function Home() {
 								About
 							</Link>
 							<a
-								href="https://github.com/EricSanchezok/openpaper"
+								href="https://github.com/EricSanchezok/scholens"
 								target="_blank"
 								rel="noopener noreferrer"
 								className="hover:text-foreground transition-colors"

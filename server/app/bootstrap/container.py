@@ -126,7 +126,9 @@ from app.modules.integrations.connectors.infrastructure import (
 from app.modules.operation_journal.application import OperationJournal
 from app.shared.infrastructure import SystemClock
 from app.shared.domain import FailureKind
-from app.modules.identity.infrastructure import cloud_auth as cloud_auth_adapter
+from app.modules.identity.infrastructure import (
+    sanchezcloud_identity as sanchezcloud_identity_adapter,
+)
 from app.modules.papers.application.topics import PaperTopics
 from app.modules.papers.infrastructure.topics import SqlAlchemyPaperTopics
 from app.modules.integrations.zotero.application.zotero import Zotero
@@ -147,7 +149,9 @@ from app.bootstrap.adapters.billing_capacity import (
 )
 from sqlalchemy.orm import Session
 
-optional_cloud_user_dependency = cloud_auth_adapter.get_optional_cloud_user
+optional_identity_user_dependency = (
+    sanchezcloud_identity_adapter.get_optional_identity_user
+)
 
 
 def build_paper_search(

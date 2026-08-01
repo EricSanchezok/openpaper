@@ -1,8 +1,8 @@
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 FROM ${PYTHON_IMAGE} AS builder
 
-ARG PRIVATE_DEP_REVISION=59286aa262c0ab653558b3afec11c660008f1218
-ARG PRIVATE_DEP_ARCHIVE=https://api.github.com/repos/EricSanchezok/cloud-auth/tarball
+ARG SANCHEZCLOUD_IDENTITY_REVISION=68b341b0e8d839210ebe8e3001378c43f41aadfc
+ARG SANCHEZCLOUD_IDENTITY_ARCHIVE=https://api.github.com/repos/EricSanchezok/sanchezcloud-identity/tarball
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -11,19 +11,19 @@ RUN apt-get update \
 
 WORKDIR /app
 RUN --mount=type=secret,id=github_token \
-    mkdir -p /app/cloud-auth \
+    mkdir -p /app/sanchezcloud-identity \
     && curl --fail --location --silent --show-error \
         --header "Authorization: Bearer $(tr -d '\n' </run/secrets/github_token)" \
         --header "X-GitHub-Api-Version: 2022-11-28" \
-        --output /tmp/cloud-auth.tar.gz \
-        "${PRIVATE_DEP_ARCHIVE}/${PRIVATE_DEP_REVISION}" \
-    && tar -xzf /tmp/cloud-auth.tar.gz --strip-components=1 -C /app/cloud-auth \
-    && rm /tmp/cloud-auth.tar.gz
+        --output /tmp/sanchezcloud-identity.tar.gz \
+        "${SANCHEZCLOUD_IDENTITY_ARCHIVE}/${SANCHEZCLOUD_IDENTITY_REVISION}" \
+    && tar -xzf /tmp/sanchezcloud-identity.tar.gz --strip-components=1 -C /app/sanchezcloud-identity \
+    && rm /tmp/sanchezcloud-identity.tar.gz
 
 COPY packages/scholens_observability/ /packages/scholens_observability/
 COPY server/pyproject.toml server/uv.lock server/README.md /app/
-RUN uv sync --frozen --no-dev --no-install-project --no-install-package cloud-auth \
-    && uv pip install --no-deps /app/cloud-auth/
+RUN uv sync --frozen --no-dev --no-install-project --no-install-package sanchezcloud-identity \
+    && uv pip install --no-deps /app/sanchezcloud-identity/
 
 COPY server/app/ /app/app/
 COPY server/migrations/ /app/migrations/

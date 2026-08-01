@@ -97,7 +97,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
 def get_eval_user(db) -> Actor:
     raw_user_id = os.getenv("EVAL_USER_ID")
     if not raw_user_id or not raw_user_id.isdigit():
-        raise RuntimeError("EVAL_USER_ID must identify an existing cloud-auth user")
+        raise RuntimeError("EVAL_USER_ID must identify an existing sanchezcloud-identity user")
     user = db.get(AuthUser, int(raw_user_id))
     if user is None:
         raise RuntimeError("EVAL_USER_ID does not exist in auth.users")
@@ -476,7 +476,7 @@ def main():
             token = os.getenv("EVAL_BEARER_TOKEN")
             if not token:
                 raise RuntimeError(
-                    "EVAL_BEARER_TOKEN must contain a valid cloud-auth session token"
+                    "EVAL_BEARER_TOKEN must contain a valid sanchezcloud-identity session token"
                 )
         finally:
             db.close()

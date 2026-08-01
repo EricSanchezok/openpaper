@@ -58,9 +58,9 @@ from app.transport.http.public_v1.translations import (
     paper_translations_router,
     translation_preferences_router,
 )
-from app.modules.identity.infrastructure.cloud_auth import (
-    cloud_auth_router,
-    cloud_user_router,
+from app.modules.identity.infrastructure.sanchezcloud_identity import (
+    sanchezcloud_identity_router,
+    identity_user_router,
 )
 from app.observability import configure_application_observability
 from app.observability.diagnostics import create_diagnostic_snapshot_recorder
@@ -118,8 +118,8 @@ logger = logging.getLogger(__name__)
 def _public_router() -> APIRouter:
     router = APIRouter()
     router.include_router(identity_router)
-    router.include_router(cloud_auth_router, prefix="/auth", tags=["auth"])
-    router.include_router(cloud_user_router, prefix="/me", tags=["user"])
+    router.include_router(sanchezcloud_identity_router, prefix="/auth", tags=["auth"])
+    router.include_router(identity_user_router, prefix="/me", tags=["user"])
     router.include_router(topics_router, prefix="/discovery")
     router.include_router(admin_router, prefix="/admin")
     router.include_router(

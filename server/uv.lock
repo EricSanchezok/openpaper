@@ -730,31 +730,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cloud-auth"
-version = "0.4.0"
-source = { git = "https://github.com/EricSanchezok/cloud-auth.git?rev=59286aa262c0ab653558b3afec11c660008f1218#59286aa262c0ab653558b3afec11c660008f1218" }
-dependencies = [
-    { name = "asyncpg" },
-    { name = "bcrypt" },
-    { name = "click" },
-    { name = "pydantic", extra = ["email"] },
-    { name = "pyjwt" },
-    { name = "structlog" },
-    { name = "tenacity" },
-]
-
-[package.optional-dependencies]
-aliyun = [
-    { name = "alibabacloud-credentials" },
-    { name = "alibabacloud-dm20151123" },
-    { name = "cryptography" },
-]
-fastapi = [
-    { name = "fastapi" },
-    { name = "python-multipart" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2341,6 +2316,31 @@ wheels = [
 ]
 
 [[package]]
+name = "sanchezcloud-identity"
+version = "0.5.0"
+source = { git = "https://github.com/EricSanchezok/sanchezcloud-identity.git?rev=68b341b0e8d839210ebe8e3001378c43f41aadfc#68b341b0e8d839210ebe8e3001378c43f41aadfc" }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "bcrypt" },
+    { name = "click" },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pyjwt" },
+    { name = "structlog" },
+    { name = "tenacity" },
+]
+
+[package.optional-dependencies]
+aliyun = [
+    { name = "alibabacloud-credentials" },
+    { name = "alibabacloud-dm20151123" },
+    { name = "cryptography" },
+]
+fastapi = [
+    { name = "fastapi" },
+    { name = "python-multipart" },
+]
+
+[[package]]
 name = "scholens"
 version = "0.1.0"
 source = { editable = "." }
@@ -2348,7 +2348,6 @@ dependencies = [
     { name = "alembic" },
     { name = "boto3" },
     { name = "celery" },
-    { name = "cloud-auth", extra = ["aliyun", "fastapi"] },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "gunicorn" },
@@ -2373,6 +2372,7 @@ dependencies = [
     { name = "requests" },
     { name = "requests-oauthlib" },
     { name = "resend" },
+    { name = "sanchezcloud-identity", extra = ["aliyun", "fastapi"] },
     { name = "scholens-observability" },
     { name = "sqladmin", extra = ["full"] },
     { name = "sqlalchemy" },
@@ -2398,7 +2398,6 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.15.1" },
     { name = "boto3", specifier = ">=1.37.33" },
     { name = "celery", specifier = ">=5.5.3" },
-    { name = "cloud-auth", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/cloud-auth.git?rev=59286aa262c0ab653558b3afec11c660008f1218" },
     { name = "cryptography", specifier = ">=48.0.1" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "gunicorn", specifier = ">=23.0.0" },
@@ -2423,6 +2422,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.33.0" },
     { name = "requests-oauthlib", specifier = ">=2.0.0" },
     { name = "resend", specifier = ">=2.10.0" },
+    { name = "sanchezcloud-identity", extras = ["aliyun", "fastapi"], git = "https://github.com/EricSanchezok/sanchezcloud-identity.git?rev=68b341b0e8d839210ebe8e3001378c43f41aadfc" },
     { name = "scholens-observability", directory = "../packages/scholens_observability" },
     { name = "sqladmin", extras = ["full"], specifier = ">=0.25.1" },
     { name = "sqlalchemy", specifier = ">=2.0.39" },

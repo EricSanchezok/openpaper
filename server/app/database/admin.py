@@ -24,8 +24,8 @@ from sqladmin import Admin, ModelView
 
 
 class AuthUserAdmin(ModelView, model=AuthUser):
-    name = "Cloud Auth User"
-    name_plural = "Cloud Auth Users"
+    name = "SanchezCloud Identity User"
+    name_plural = "SanchezCloud Identity Users"
     column_list = [
         AuthUser.id,
         AuthUser.email,

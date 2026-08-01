@@ -6,7 +6,7 @@ from typing import Any
 from alembic import context
 from app.database.config import Settings
 from app.database.models import Base
-from cloud_auth import AUTH_SCHEMA_VERSION
+from sanchezcloud_identity import AUTH_SCHEMA_VERSION
 from sqlalchemy import Connection, engine_from_config, pool, text
 
 SCHOLENS_SCHEMA = "scholens"
@@ -53,7 +53,7 @@ def include_name(
     type_: str,
     parent_names: dict[str, str | None],
 ) -> bool:
-    """Do not reflect schemas owned by cloud-auth or other local products."""
+    """Do not reflect schemas owned by sanchezcloud-identity or other local products."""
     del parent_names
     return type_ != "schema" or name == SCHOLENS_SCHEMA
 
@@ -89,7 +89,7 @@ def _validate_migration_boundary(connection: Connection) -> None:
     ).scalar_one()
     if auth_ledger is None:
         raise RuntimeError(
-            "cloud-auth schema must be migrated independently before Scholens"
+            "sanchezcloud-identity schema must be migrated independently before Scholens"
         )
 
     auth_version = connection.execute(

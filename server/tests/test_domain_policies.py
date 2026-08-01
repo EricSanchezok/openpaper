@@ -218,7 +218,7 @@ def test_zotero_import_policy_rejects_reused_key_with_different_payload() -> Non
     assert error.value.code == "idempotency_key_reused"
 
 
-def test_identity_domain_separates_product_access_from_cloud_auth() -> None:
+def test_identity_domain_separates_product_access_from_sanchezcloud_identity() -> None:
     suspended = AccountAccessFacts("active", is_blocked=True, is_admin=False)
     with pytest.raises(AppError) as suspended_error:
         require_product_access(suspended)

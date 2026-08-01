@@ -72,7 +72,7 @@ export const UserMenuContent = ({
             </Button>
         </Link>
         {/* Feedback section */}
-        <Link href="https://github.com/EricSanchezok/openpaper/issues" target="_blank" className="w-full">
+        <Link href="https://github.com/EricSanchezok/scholens/issues" target="_blank" className="w-full">
             <Button variant="ghost" className="w-full justify-start">
                 <MessageCircleQuestion size={16} className="mr-2" />
                 Feedback

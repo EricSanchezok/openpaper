@@ -601,7 +601,7 @@ export default function ScholensLanding() {
                                         size="sm"
                                         asChild
                                     >
-                                        <a href="https://github.com/EricSanchezok/openpaper" target="_blank" rel="noopener noreferrer">
+                                        <a href="https://github.com/EricSanchezok/scholens" target="_blank" rel="noopener noreferrer">
                                             <GithubIcon className="w-4 h-4 mr-2" />
                                             View on GitHub
                                         </a>
@@ -645,7 +645,7 @@ export default function ScholensLanding() {
                                         size="sm"
                                         asChild
                                     >
-                                        <a href="https://github.com/EricSanchezok/openpaper" target="_blank" rel="noopener noreferrer">
+                                        <a href="https://github.com/EricSanchezok/scholens" target="_blank" rel="noopener noreferrer">
                                             Join Community
                                         </a>
                                     </Button>
@@ -706,7 +706,7 @@ export default function ScholensLanding() {
                 <p className="text-xs text-muted-foreground text-center sm:text-left">
                     Made with ❤️ in{" "}
                     <a
-                        href="https://github.com/EricSanchezok/openpaper"
+                        href="https://github.com/EricSanchezok/scholens"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="underline hover:text-foreground transition-colors"
@@ -730,7 +730,7 @@ export default function ScholensLanding() {
                     <Link href="/tos" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">
                         Terms of Service
                     </Link>
-                    <Link href="https://github.com/EricSanchezok/openpaper" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">
+                    <Link href="https://github.com/EricSanchezok/scholens" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">
                         GitHub
                     </Link>
                     <Link href="/blog" className="text-xs hover:underline underline-offset-4 text-muted-foreground hover:text-primary">

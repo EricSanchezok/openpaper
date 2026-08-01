@@ -11,8 +11,8 @@ submits real Data Table jobs, and grades primitive and derived values.
 Prerequisites:
 
 - Server, Jobs worker, broker, PostgreSQL, and S3 are running.
-- `EVAL_USER_ID` is the numeric ID of an existing cloud-auth user.
-- `EVAL_BEARER_TOKEN` is a valid cloud-auth bearer token for that same user.
+- `EVAL_USER_ID` is the numeric ID of an existing sanchezcloud-identity user.
+- `EVAL_BEARER_TOKEN` is a valid sanchezcloud-identity bearer token for that same user.
 - The user has enough Token Credits for the requested runs.
 
 ```bash
@@ -26,7 +26,7 @@ Results are written to `evals/results/eval_data_table.json`.
 ## ResearchQA archive
 
 The ResearchQA benchmark predates Scholens's DeepSeek-only runtime and its
-current cloud-auth/database contracts. Its paper remains in
+current sanchezcloud-identity/database contracts. Its paper remains in
 [`paper.md`](paper.md), and the published dataset is available at
 [`khoj-ai/ResearchQA`](https://huggingface.co/datasets/khoj-ai/ResearchQA).
 The exact historical harness used for the published results is preserved in

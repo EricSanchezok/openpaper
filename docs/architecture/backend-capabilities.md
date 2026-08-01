@@ -94,7 +94,7 @@ life of a conversation.
 
 Authentication, authorization, and attribution are deliberately separate:
 
-- cloud-auth sessions authenticate browser users; Scholens AccessKeys
+- sanchezcloud-identity sessions authenticate browser users; Scholens AccessKeys
   authenticate MCP clients;
 - `WorkspacePermission` and `ToolAccess` determine which catalog tools are
   visible and executable;

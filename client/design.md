@@ -328,7 +328,7 @@ spinner is `Loader2` + `animate-spin`; `animate-pulse` for skeleton shimmer; `an
   `(paper)` = reader, `(home)`/`(blog)`/`(legal)` = public. Put a route where its chrome
   belongs.
 - **Auth state** comes from `useAuth()` (`AuthProvider` in `lib/auth.tsx`). Email/password
-  registration, verification, login, refresh, and password reset use the shared cloud-auth
+  registration, verification, login, refresh, and password reset use the shared sanchezcloud-identity
   endpoints under `/api/v1/auth`. The access token stays in memory; the product-scoped refresh
   token is stored in the host-only `scholens_refresh` Secure HttpOnly cookie and rotated under
   a browser lock. `lib/api.ts` attaches the Bearer token and retries one 401 after rotation.

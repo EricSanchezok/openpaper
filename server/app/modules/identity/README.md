@@ -1,6 +1,6 @@
 # Scholens authentication
 
-Scholens uses the shared [`cloud-auth`](https://github.com/EricSanchezok/cloud-auth)
+Scholens uses the shared [`sanchezcloud-identity`](https://github.com/EricSanchezok/sanchezcloud-identity)
 service library. It does not maintain a second user table or login session.
 
 ## Identity boundary
@@ -16,7 +16,7 @@ service library. It does not maintain a second user table or login session.
 
 ## HTTP API
 
-The cloud-auth routers are mounted by the bootstrap composition root:
+The sanchezcloud-identity routers are mounted by the bootstrap composition root:
 
 - `/api/v1/auth/*`: register, verify email, login, refresh, logout, password reset
 - `/api/v1/me/profile`: shared identity profile operations
@@ -45,8 +45,8 @@ The token audience is fixed to `scholens` in application code and is not an
 environment override.
 
 `AUTH_DATABASE_URL` defaults to `DATABASE_URL`, so the synchronous Scholens
-ORM and the asynchronous cloud-auth pool can share one RDS database.
+ORM and the asynchronous sanchezcloud-identity pool can share one RDS database.
 
-Run cloud-auth migrations independently before Scholens migrations. Scholens
+Run sanchezcloud-identity migrations independently before Scholens migrations. Scholens
 only checks the installed auth schema version and never carries or executes
-cloud-auth migration files.
+sanchezcloud-identity migration files.

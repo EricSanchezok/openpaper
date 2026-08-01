@@ -59,7 +59,7 @@ def test_domain_and_application_contracts_are_framework_independent() -> None:
         "stripe",
         "requests",
         "requests_oauthlib",
-        "cloud_auth",
+        "sanchezcloud_identity",
     }
     contract_roots = [
         APP_ROOT / "shared" / "domain",
@@ -90,7 +90,7 @@ def test_domain_rules_are_pure_and_transport_neutral() -> None:
         "stripe",
         "requests",
         "requests_oauthlib",
-        "cloud_auth",
+        "sanchezcloud_identity",
     }
     domain_roots = [
         APP_ROOT / "shared" / "domain",

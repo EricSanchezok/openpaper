@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 import os
 
-from app.modules.identity.infrastructure.cloud_auth import auth_db, auth_manager
+from app.modules.identity.infrastructure.sanchezcloud_identity import (
+    auth_db,
+    auth_manager,
+)
 from app.modules.identity.infrastructure.users import user_repository
 from app.database.database import SessionLocal
-from cloud_auth.exceptions import AuthError
+from sanchezcloud_identity.exceptions import AuthError
 from fastapi import Request
 from sqladmin.authentication import AuthenticationBackend
 

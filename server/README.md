@@ -86,7 +86,7 @@ uv run alembic downgrade -1
 ```
 
 Before committing a migration, run `uv run alembic check`. Alembic compares
-only the `scholens` schema; `auth` belongs to cloud-auth and other product
+only the `scholens` schema; `auth` belongs to sanchezcloud-identity and other product
 schemas are deliberately outside this migration environment. The local
 product-only reset procedure is documented in
 [`DEVELOPMENT.md`](../DEVELOPMENT.md#reset-only-the-local-product-schema).

@@ -6,19 +6,19 @@ from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
 from app.database import admin_auth
 from app.database.models import AuthUser, Base
-from app.modules.identity.infrastructure import cloud_auth as runtime
+from app.modules.identity.infrastructure import sanchezcloud_identity as runtime
 from app.modules.identity.infrastructure import application_gateway
 from app.transport.http.public_v1 import auth_dependencies as dependencies
 from app.shared.application import OperationContextFactory
 from app.shared.domain import AppError, FailureKind
 from app.shared.infrastructure import SqlAlchemyApplicationExecutor
-from cloud_auth.models.user import UserRecord
+from sanchezcloud_identity.models.user import UserRecord
 from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import configure_mappers
 
 
-def _cloud_user() -> UserRecord:
+def _identity_user() -> UserRecord:
     return UserRecord(
         id=42,
         email="reader@example.com",
@@ -94,7 +94,7 @@ async def test_cloud_identity_is_enriched_with_scholens_profile() -> None:
     ) as get_profile:
         result = await dependencies.get_current_user(
             _request(),
-            _cloud_user(),
+            _identity_user(),
             _executor(db),
             OperationContextFactory(),
         )
@@ -120,7 +120,7 @@ async def test_product_block_does_not_modify_shared_account() -> None:
         with pytest.raises(AppError) as exc_info:
             await dependencies.get_current_user(
                 _request(),
-                _cloud_user(),
+                _identity_user(),
                 _executor(MagicMock()),
                 OperationContextFactory(),
             )
@@ -199,14 +199,14 @@ async def test_access_token_requires_active_scholens_session() -> None:
         ),
         pytest.raises(HTTPException) as exc_info,
     ):
-        await runtime._require_active_session(_cloud_user(), credentials)
+        await runtime._require_active_session(_identity_user(), credentials)
 
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "Session revoked or expired"
 
 
 @pytest.mark.asyncio
-async def test_admin_login_uses_cloud_auth_and_product_role() -> None:
+async def test_admin_login_uses_sanchezcloud_identity_and_product_role() -> None:
     request = SimpleNamespace(
         form=AsyncMock(
             return_value={"username": "reader@example.com", "password": "secret"}
@@ -225,7 +225,7 @@ async def test_admin_login_uses_cloud_auth_and_product_role() -> None:
         patch.object(
             admin_auth.auth_db,
             "get_user_by_email",
-            new=AsyncMock(return_value=_cloud_user()),
+            new=AsyncMock(return_value=_identity_user()),
         ),
         patch.object(
             admin_auth.auth_manager,
@@ -268,7 +268,7 @@ async def test_non_admin_login_revokes_new_cloud_session() -> None:
         patch.object(
             admin_auth.auth_db,
             "get_user_by_email",
-            new=AsyncMock(return_value=_cloud_user()),
+            new=AsyncMock(return_value=_identity_user()),
         ),
         patch.object(
             admin_auth.auth_manager,

@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import AsyncIterator, cast
 
 import asyncpg
-from cloud_auth import (
+from sanchezcloud_identity import (
     AsyncpgUserDatabase,
     AuthConfig,
     RegisterRateLimiter,
@@ -15,11 +15,18 @@ from cloud_auth import (
     close_pool,
     create_pool,
 )
-from cloud_auth.dependencies import create_get_current_user, create_get_optional_user
-from cloud_auth.email.aliyun import AliyunDirectMailSender
-from cloud_auth.exceptions import AuthError, DBError
-from cloud_auth.models.user import UserRecord
-from cloud_auth.routers import RefreshCookieConfig, get_auth_router, get_user_router
+from sanchezcloud_identity.dependencies import (
+    create_get_current_user,
+    create_get_optional_user,
+)
+from sanchezcloud_identity.email.aliyun import AliyunDirectMailSender
+from sanchezcloud_identity.exceptions import AuthError, DBError
+from sanchezcloud_identity.models.user import UserRecord
+from sanchezcloud_identity.routers import (
+    RefreshCookieConfig,
+    get_auth_router,
+    get_user_router,
+)
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -92,7 +99,7 @@ _auth_pool: asyncpg.Pool | None = None
 
 def get_auth_pool() -> asyncpg.Pool:
     if _auth_pool is None:
-        raise RuntimeError("cloud-auth database pool is not initialized")
+        raise RuntimeError("sanchezcloud-identity database pool is not initialized")
     return _auth_pool
 
 
@@ -120,11 +127,11 @@ def build_auth_email_sender(
 email_sender = build_auth_email_sender(settings)
 
 auth_manager = UserManager(db=auth_db, email_sender=email_sender, config=auth_config)
-_unchecked_cloud_user = cast(
+_unchecked_identity_user = cast(
     "Callable[..., Awaitable[UserRecord]]",
     create_get_current_user(db=auth_db, config=auth_config),
 )
-_unchecked_optional_cloud_user = cast(
+_unchecked_optional_identity_user = cast(
     "Callable[..., Awaitable[UserRecord | None]]",
     create_get_optional_user(db=auth_db, config=auth_config),
 )
@@ -159,23 +166,23 @@ async def _require_active_session(
     return user
 
 
-async def get_cloud_user(
+async def get_identity_user(
     credentials: HTTPAuthorizationCredentials = Depends(_required_bearer),
 ) -> UserRecord:
-    return await authenticate_cloud_access_token(credentials.credentials)
+    return await authenticate_identity_access_token(credentials.credentials)
 
 
-async def authenticate_cloud_access_token(access_token: str) -> UserRecord:
+async def authenticate_identity_access_token(access_token: str) -> UserRecord:
     """Validate one Bearer access token without depending on an HTTP request."""
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer",
         credentials=access_token,
     )
-    user = await _unchecked_cloud_user(credentials=credentials)
+    user = await _unchecked_identity_user(credentials=credentials)
     return await _require_active_session(user, credentials)
 
 
-async def get_optional_cloud_user(
+async def get_optional_identity_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
 ) -> UserRecord | None:
@@ -187,21 +194,21 @@ async def get_optional_cloud_user(
             detail="Invalid access token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = await _unchecked_optional_cloud_user(credentials=credentials)
+    user = await _unchecked_optional_identity_user(credentials=credentials)
     if user is None:
         return None
     return await _require_active_session(user, credentials)
 
 
-cloud_auth_router = get_auth_router(
+sanchezcloud_identity_router = get_auth_router(
     user_manager=auth_manager,
-    get_current_user=get_cloud_user,
+    get_current_user=get_identity_user,
     register_rate_limiter=RegisterRateLimiter(max_attempts=3, window_seconds=3600),
     refresh_cookie=refresh_cookie_config,
 )
-cloud_user_router = get_user_router(
+identity_user_router = get_user_router(
     user_manager=auth_manager,
-    get_current_user=get_cloud_user,
+    get_current_user=get_identity_user,
 )
 
 

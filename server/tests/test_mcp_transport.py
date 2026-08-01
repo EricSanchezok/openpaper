@@ -193,7 +193,7 @@ async def test_mcp_requires_a_valid_scholens_access_key() -> None:
             missing = await client.post("/mcp", json={})
             revoked = await client.post(
                 "/mcp",
-                headers={"authorization": "Bearer cloud-auth-access-token"},
+                headers={"authorization": "Bearer sanchezcloud-identity-access-token"},
                 json={},
             )
 

@@ -2,7 +2,7 @@
 
 This package deploys Scholens to the existing SanchezCloud EC2/RDS environment. It uses the
 same PostgreSQL database and `auth` schema as Scholight, while all Scholens-owned tables live in
-an isolated `scholens` schema. `cloud-auth` remains an in-process SDK; there is no separate auth
+an isolated `scholens` schema. `sanchezcloud-identity` remains an in-process SDK; there is no separate auth
 HTTP service to operate.
 
 The release contains three immutable ECR images (API, client, jobs), RabbitMQ and Redis on an
@@ -12,7 +12,7 @@ the Scholens client and API over the external `sanchezcloud-edge` Docker network
 ## Database boundary
 
 - Use the shared `sanchezcloud` database. Cross-database foreign keys are not possible.
-- `cloud-auth` alone owns `auth.*`; Scholens only references `auth.users(id)`.
+- `sanchezcloud-identity` alone owns `auth.*`; Scholens only references `auth.users(id)`.
 - Scholens alone owns `scholens.*`; models and migrations qualify this schema explicitly.
 - Use a dedicated `scholens_app` login for the API. It receives DML only.
 - Use `auth_migrator` only for `auth.*` and `scholens_migrator` only for
@@ -28,12 +28,12 @@ psql "$DATABASE_ADMIN_URL" \
   -f deploy/production/bootstrap-db.sql
 ```
 
-Run this bootstrap before cloud-auth migration, after cloud-auth migration, and
-after Scholens migration. The cloud-auth repository independently migrates
+Run this bootstrap before sanchezcloud-identity migration, after sanchezcloud-identity migration, and
+after Scholens migration. The sanchezcloud-identity repository independently migrates
 `auth.*`; the Scholens migration container checks the auth ledger and applies
 only `scholens.*`. Both runners use PostgreSQL advisory locks.
 
-The `/admin` login uses an ordinary verified cloud-auth account and then checks
+The `/admin` login uses an ordinary verified sanchezcloud-identity account and then checks
 `scholens.user_profiles.is_admin`. Bootstrap the first administrator out of band
 after that account registers:
 

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 class Actor(BaseModel):
     """The product identity required to authorize a business operation.
 
-    Transport-specific credentials and cloud-auth records are deliberately not
+    Transport-specific credentials and sanchezcloud-identity records are deliberately not
     exposed beyond the identity adapter.
     """
 

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """Apply only Scholens-owned migrations.
 
-    The independently managed cloud-auth migration must run first.
+    The independently managed sanchezcloud-identity migration must run first.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     repository_root = Path(__file__).resolve().parents[2]

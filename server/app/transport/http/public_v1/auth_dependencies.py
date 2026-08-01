@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.container import optional_cloud_user_dependency
+from app.bootstrap.container import optional_identity_user_dependency
 from app.bootstrap.execution import (
     get_application_executor,
     get_operation_context_factory,
@@ -19,7 +19,7 @@ from app.shared.application import (
     OperationInitiator,
     RequestReference,
 )
-from cloud_auth.models.user import UserRecord
+from sanchezcloud_identity.models.user import UserRecord
 from fastapi import Depends, HTTPException, Request, status
 from app.transport.http.observability import (
     attach_operation_context,
@@ -29,24 +29,24 @@ from app.transport.http.observability import (
 
 async def get_current_user(
     request: Request,
-    cloud_user: Annotated[
+    identity_user: Annotated[
         UserRecord | None,
-        Depends(optional_cloud_user_dependency),
+        Depends(optional_identity_user_dependency),
     ],
     executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
         get_application_executor
     ),
     operation_factory: OperationContextFactory = Depends(get_operation_context_factory),
 ) -> Actor | None:
-    if cloud_user is None:
+    if identity_user is None:
         return None
 
     identity = AuthenticatedIdentity(
-        id=cloud_user.id,
-        email=cloud_user.email,
-        display_name=cloud_user.display_name,
-        status=cloud_user.status,
-        email_verified=cloud_user.email_verified,
+        id=identity_user.id,
+        email=identity_user.email,
+        display_name=identity_user.display_name,
+        status=identity_user.status,
+        email_verified=identity_user.email_verified,
     )
     operation = operation_factory.root(
         initiated_by=OperationInitiator.USER,

@@ -37,7 +37,7 @@ the private file in its own working directory:
 
 | Runtime file        | Owned configuration                               |
 | ------------------- | ------------------------------------------------- |
-| `server/.env`       | Database, cloud-auth, MOSS, API integrations      |
+| `server/.env`       | Database, sanchezcloud-identity, MOSS, API integrations      |
 | `jobs/.env`         | MinerU, background processing, webhook delivery   |
 | Both Python files   | S3, DeepSeek, broker URLs, webhook signing secret |
 | `client/.env.local` | `NEXT_PUBLIC_*` browser configuration only        |
@@ -79,8 +79,8 @@ Settings; their encrypted API keys use `CONNECTOR_CREDENTIAL_ENCRYPTION_KEY`.
 
 ### Which account database is used?
 
-`cloud-auth` is embedded in the Scholens API; it is not a separate service.
-Unless `AUTH_DATABASE_URL` is explicitly set, both cloud-auth and Scholens use
+`sanchezcloud-identity` is embedded in the Scholens API; it is not a separate service.
+Unless `AUTH_DATABASE_URL` is explicitly set, both sanchezcloud-identity and Scholens use
 `DATABASE_URL`.
 
 - To share local accounts with Scholight, point `DATABASE_URL` at the same local
@@ -101,9 +101,9 @@ git clone <your-scholens-fork-url> scholens && cd scholens
 # Server
 touch server/.env
 cd server && uv sync
-# Provision auth/scholens schemas with separate owners. Apply cloud-auth from
+# Provision auth/scholens schemas with separate owners. Apply sanchezcloud-identity from
 # its own repository first, then apply only Scholens's migration:
-uv run --env-file .env --project ../../cloud-auth cloud-auth migrate
+uv run --env-file .env --project ../../sanchezcloud-identity sanchezcloud-identity migrate
 psql postgresql://postgres:postgres@127.0.0.1:5432/sanchezcloud \
   -c 'CREATE SCHEMA IF NOT EXISTS scholens AUTHORIZATION openpaper_local'
 uv run python -m app.scripts.migrate_product
@@ -138,7 +138,7 @@ Check: [localhost:8000/docs](http://localhost:8000/docs), [localhost:3000](http:
 
 ## Reset only the local product schema
 
-Scholens owns `scholens`; cloud-auth independently owns `auth`. During this
+Scholens owns `scholens`; sanchezcloud-identity independently owns `auth`. During this
 pre-release phase you may reset local product data, but never drop `auth`:
 
 ```sql

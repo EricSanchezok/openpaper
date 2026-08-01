@@ -97,19 +97,21 @@ def test_database_contract_shares_auth_and_isolates_scholens() -> None:
         assert not re.search(rf"{re.escape(removed_table)}(?![a-z_])", ci)
 
 
-def test_cloud_auth_revision_is_consistent_across_runtime_and_ci() -> None:
+def test_identity_revision_is_consistent_across_runtime_and_ci() -> None:
     project = (ROOT / "server" / "pyproject.toml").read_text(encoding="utf-8")
     dockerfile = (ROOT / "server" / "Dockerfile").read_text(encoding="utf-8")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
-    match = re.search(r"cloud-auth\[aliyun,fastapi\].+@([0-9a-f]{40})", project)
+    match = re.search(
+        r"sanchezcloud-identity\[aliyun,fastapi\].+@([0-9a-f]{40})", project
+    )
     assert match is not None
     revision = match.group(1)
-    assert f"ARG PRIVATE_DEP_REVISION={revision}" in dockerfile
+    assert f"ARG SANCHEZCLOUD_IDENTITY_REVISION={revision}" in dockerfile
     assert f"ref: {revision}" in ci
 
 
-def test_environment_catalog_matches_shared_cloud_auth_conventions() -> None:
+def test_environment_catalog_matches_shared_identity_conventions() -> None:
     catalog = (ROOT / ".env.example").read_text(encoding="utf-8")
     compose = (PRODUCTION / "compose.yaml").read_text(encoding="utf-8")
     runtime = (PRODUCTION / "runtime.env.example").read_text(encoding="utf-8")
@@ -318,7 +320,7 @@ def test_ci_builds_images_and_runs_independent_migrations_twice() -> None:
 
     assert "tags: scholens-api:ci" in workflow
     assert "for _ in 1 2; do" in workflow
-    assert "cloud-auth migrate" in workflow
+    assert "sanchezcloud-identity migrate" in workflow
     assert "python -m app.scripts.migrate_product" in workflow
     assert "uv run mypy app" in workflow
     assert "uv run mypy src" in workflow
