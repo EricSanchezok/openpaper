@@ -1,5 +1,6 @@
 import asyncio
 import json
+from uuid import UUID
 
 from app.shared.domain import AppError, FailureKind
 from app.transport.http.errors import (
@@ -44,10 +45,12 @@ def test_app_error_uses_stable_public_contract() -> None:
         )
     )
     assert response.status_code == 503
-    assert _body(response) == {
-        "code": "jobs_service_unavailable",
-        "message": "Processing is temporarily unavailable",
-    }
+    body = _body(response)
+    assert body["code"] == "jobs_service_unavailable"
+    assert body["message"] == "Processing is temporarily unavailable"
+    assert body["kind"] == "unavailable"
+    assert body["retryable"] is True
+    UUID(body["diagnostic_id"])
 
 
 def test_http_error_does_not_expose_arbitrary_detail() -> None:
@@ -60,10 +63,12 @@ def test_http_error_does_not_expose_arbitrary_detail() -> None:
             ),
         )
     )
-    assert _body(response) == {
-        "code": "request_failed",
-        "message": "Request failed",
-    }
+    body = _body(response)
+    assert body["code"] == "request_failed"
+    assert body["message"] == "Request failed"
+    assert body["kind"] == "internal"
+    assert body["retryable"] is False
+    UUID(body["diagnostic_id"])
 
 
 def test_unhandled_error_does_not_expose_exception() -> None:
@@ -74,7 +79,9 @@ def test_unhandled_error_does_not_expose_exception() -> None:
         )
     )
     assert response.status_code == 500
-    assert _body(response) == {
-        "code": "internal_error",
-        "message": "An internal error occurred",
-    }
+    body = _body(response)
+    assert body["code"] == "internal_error"
+    assert body["message"] == "An internal error occurred"
+    assert body["kind"] == "internal"
+    assert body["retryable"] is False
+    UUID(body["diagnostic_id"])

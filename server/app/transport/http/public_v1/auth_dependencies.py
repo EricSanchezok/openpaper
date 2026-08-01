@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.container import optional_cloud_user_dependency
@@ -23,6 +23,7 @@ from app.shared.application import (
 )
 from cloud_auth.models.user import UserRecord
 from fastapi import Depends, HTTPException, Request, status
+from app.transport.http.observability import attach_operation_context
 
 
 async def get_current_user(
@@ -50,18 +51,20 @@ async def get_current_user(
         initiated_by=OperationInitiator.USER,
         origin=HttpOrigin(
             request=RequestReference(
-                request_id=uuid4(),
+                request_id=UUID(str(request.state.request_id)),
             )
         ),
         credential=CredentialRef(CredentialKind.CLOUD_SESSION),
     )
-    request.state.operation_context = operation
-    return executor.command(
+    actor = executor.command(
         lambda capabilities: capabilities.identity.resolve_actor(
             identity,
             operation=operation,
         )
     )
+    request.state.authenticated = True
+    attach_operation_context(request, operation, actor_id=str(actor.id))
+    return actor
 
 
 async def get_required_user(

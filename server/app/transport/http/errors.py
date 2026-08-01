@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
+from uuid import uuid4
 
 from app.shared.domain import AppError, FailureKind
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from scholens_observability import add_counter, current_context, log_event
 from starlette.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
@@ -31,39 +34,169 @@ FAILURE_HTTP_STATUS = {
 class ApiErrorResponse(BaseModel):
     code: str
     message: str
+    kind: FailureKind
+    retryable: bool
+    stage: str | None = None
+    request_id: str | None = None
+    correlation_id: str | None = None
+    diagnostic_id: str | None = None
     details: dict[str, object] | None = None
 
 
-def _http_error_payload(exc: HTTPException) -> ApiErrorResponse:
+@dataclass(frozen=True, slots=True)
+class _DiagnosticFields:
+    stage: str | None
+    request_id: str | None
+    correlation_id: str | None
+    diagnostic_id: str | None
+
+
+def _kind_for_status(status_code: int) -> FailureKind:
+    if status_code == 401:
+        return FailureKind.UNAUTHENTICATED
+    if status_code == 403:
+        return FailureKind.PERMISSION_DENIED
+    if status_code == 404:
+        return FailureKind.NOT_FOUND
+    if status_code == 409:
+        return FailureKind.CONFLICT
+    if status_code == 413:
+        return FailureKind.PAYLOAD_TOO_LARGE
+    if status_code == 422:
+        return FailureKind.UNPROCESSABLE
+    if status_code == 429:
+        return FailureKind.RATE_LIMITED
+    if status_code >= 500:
+        return FailureKind.INTERNAL
+    return FailureKind.INVALID_ARGUMENT
+
+
+def _retryable(kind: FailureKind) -> bool:
+    return kind in {
+        FailureKind.RATE_LIMITED,
+        FailureKind.DEPENDENCY_FAILURE,
+        FailureKind.UNAVAILABLE,
+    }
+
+
+def _diagnostic_fields(
+    request: Request,
+    *,
+    status_code: int,
+) -> _DiagnosticFields:
+    context = current_context()
+    authenticated = bool(getattr(request.state, "authenticated", False))
+    return _DiagnosticFields(
+        stage=context.stage,
+        request_id=getattr(request.state, "request_id", context.request_id),
+        correlation_id=getattr(
+            request.state,
+            "correlation_id",
+            context.correlation_id,
+        ),
+        diagnostic_id=(
+            str(uuid4()) if authenticated or status_code >= 500 else None
+        ),
+    )
+
+
+def _http_error_payload(request: Request, exc: HTTPException) -> ApiErrorResponse:
+    kind = _kind_for_status(exc.status_code)
+    fields = _diagnostic_fields(request, status_code=exc.status_code)
     if isinstance(exc.detail, Mapping):
         code = str(exc.detail.get("code") or "request_failed")
         message = str(exc.detail.get("message") or code.replace("_", " "))
-        return ApiErrorResponse(code=code, message=message)
+        details = exc.detail.get("details")
+        return ApiErrorResponse(
+            code=code,
+            message=message,
+            kind=kind,
+            retryable=_retryable(kind),
+            details=dict(details) if isinstance(details, Mapping) else None,
+            stage=fields.stage,
+            request_id=fields.request_id,
+            correlation_id=fields.correlation_id,
+            diagnostic_id=fields.diagnostic_id,
+        )
     if isinstance(exc.detail, str):
         detail = exc.detail
         if detail.isidentifier() and detail.islower():
-            return ApiErrorResponse(code=detail, message=detail.replace("_", " "))
-    return ApiErrorResponse(code="request_failed", message="Request failed")
+            return ApiErrorResponse(
+                code=detail,
+                message=detail.replace("_", " "),
+                kind=kind,
+                retryable=_retryable(kind),
+                stage=fields.stage,
+                request_id=fields.request_id,
+                correlation_id=fields.correlation_id,
+                diagnostic_id=fields.diagnostic_id,
+            )
+    return ApiErrorResponse(
+        code="request_failed",
+        message="Request failed",
+        kind=kind,
+        retryable=_retryable(kind),
+        stage=fields.stage,
+        request_id=fields.request_id,
+        correlation_id=fields.correlation_id,
+        diagnostic_id=fields.diagnostic_id,
+    )
 
 
-async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, AppError):
         raise TypeError("app_error_handler received an unexpected exception")
+    status_code = FAILURE_HTTP_STATUS[exc.kind]
+    fields = _diagnostic_fields(request, status_code=status_code)
     payload = ApiErrorResponse(
         code=exc.code,
         message=exc.message,
+        kind=exc.kind,
+        retryable=exc.retryable,
         details=exc.details,
+        stage=fields.stage,
+        request_id=fields.request_id,
+        correlation_id=fields.correlation_id,
+        diagnostic_id=fields.diagnostic_id,
+    )
+    add_counter(
+        "scholens.errors",
+        attributes={"code": exc.code, "kind": exc.kind.value},
+    )
+    log_event(
+        logger,
+        logging.WARNING if status_code < 500 else logging.ERROR,
+        "http.application_error",
+        error_code=exc.code,
+        error_kind=exc.kind.value,
+        retryable=exc.retryable,
+        status_code=status_code,
+        diagnostic_id=payload.diagnostic_id,
     )
     return JSONResponse(
-        status_code=FAILURE_HTTP_STATUS[exc.kind],
+        status_code=status_code,
         content=payload.model_dump(exclude_none=True),
     )
 
 
-async def http_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, HTTPException):
         raise TypeError("http_error_handler received an unexpected exception")
-    payload = _http_error_payload(exc)
+    payload = _http_error_payload(request, exc)
+    add_counter(
+        "scholens.errors",
+        attributes={"code": payload.code, "kind": payload.kind.value},
+    )
+    log_event(
+        logger,
+        logging.WARNING if exc.status_code < 500 else logging.ERROR,
+        "http.protocol_error",
+        error_code=payload.code,
+        error_kind=payload.kind.value,
+        retryable=payload.retryable,
+        status_code=exc.status_code,
+        diagnostic_id=payload.diagnostic_id,
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content=payload.model_dump(exclude_none=True),
@@ -72,15 +205,34 @@ async def http_error_handler(_request: Request, exc: Exception) -> JSONResponse:
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error(
-        "Unhandled API error for %s %s",
-        request.method,
-        request.url.path,
-        exc_info=(type(exc), exc, exc.__traceback__),
+    fields = _diagnostic_fields(request, status_code=500)
+    add_counter(
+        "scholens.errors",
+        attributes={"code": "internal_error", "kind": FailureKind.INTERNAL.value},
+    )
+    log_event(
+        logger,
+        logging.ERROR,
+        "http.unhandled_error",
+        exc_info=exc,
+        method=request.method,
+        route=(
+            str(getattr(request.scope.get("route"), "path", request.url.path))
+        ),
+        error_code="internal_error",
+        error_kind=FailureKind.INTERNAL.value,
+        retryable=False,
+        diagnostic_id=fields.diagnostic_id,
     )
     payload = ApiErrorResponse(
         code="internal_error",
         message="An internal error occurred",
+        kind=FailureKind.INTERNAL,
+        retryable=False,
+        stage=fields.stage,
+        request_id=fields.request_id,
+        correlation_id=fields.correlation_id,
+        diagnostic_id=fields.diagnostic_id,
     )
     return JSONResponse(
         status_code=500,

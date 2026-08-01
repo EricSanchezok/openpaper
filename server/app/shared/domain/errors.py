@@ -33,9 +33,20 @@ class AppError(Exception):
         message: str,
         kind: FailureKind,
         details: dict[str, object] | None = None,
+        retryable: bool | None = None,
     ) -> None:
         super().__init__(code)
         self.code = code
         self.message = message
         self.kind = kind
         self.details = details
+        self.retryable = (
+            retryable
+            if retryable is not None
+            else kind
+            in {
+                FailureKind.RATE_LIMITED,
+                FailureKind.DEPENDENCY_FAILURE,
+                FailureKind.UNAVAILABLE,
+            }
+        )

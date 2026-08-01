@@ -15,7 +15,9 @@ worker_class = "uvicorn.workers.UvicornWorker"
 
 # Logging
 # Use '-' for stdout/stderr
-accesslog = "-"
+# RequestObservabilityMiddleware owns one canonical access event. Gunicorn's
+# access log would duplicate it without request/correlation context.
+accesslog = None
 errorlog = "-"
 loglevel = os.getenv(
     "GUNICORN_LOG_LEVEL", "info"

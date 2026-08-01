@@ -21,6 +21,7 @@ from app.transport.http.public_v1.auth_dependencies import (
     get_required_operation,
     get_required_user,
 )
+from app.transport.http.observability import attach_operation_context
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
@@ -54,6 +55,11 @@ async def create_conversation_message(
             turn_id=message.turn_id,
         ),
         credential=request_operation.credential,
+    )
+    attach_operation_context(
+        http_request,
+        operation,
+        actor_id=str(current_user.id),
     )
     stream = await chat.stream(
         actor=current_user,

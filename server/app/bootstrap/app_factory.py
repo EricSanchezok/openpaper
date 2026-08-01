@@ -62,6 +62,7 @@ from app.modules.identity.infrastructure.cloud_auth import (
     cloud_auth_router,
     cloud_user_router,
 )
+from app.observability import configure_application_observability
 from app.bootstrap.lifespan import app_lifespan
 from app.bootstrap.execution import (
     create_application_executor,
@@ -98,6 +99,7 @@ from app.transport.http.errors import (
     http_error_handler,
     unhandled_error_handler,
 )
+from app.transport.http.observability import RequestObservabilityMiddleware
 from app.transport.http.public_v1.identity import router as identity_router
 from app.transport.http.public_v1.onboarding import onboarding_router
 from fastapi import APIRouter, FastAPI
@@ -171,6 +173,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             Exception: unhandled_error_handler,
         },
     )
+    configure_application_observability(application, runtime_settings)
     application.state.settings = runtime_settings
     operation_context_factory = OperationContextFactory()
     application.state.operation_context_factory = operation_context_factory
@@ -265,6 +268,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         expose_headers=["*"],
         allow_credentials=True,
         max_age=600,
+    )
+    application.add_middleware(
+        RequestObservabilityMiddleware,
+        service="scholens-api",
+        environment=runtime_settings.environment,
+        release=runtime_settings.release_sha,
     )
     application.include_router(
         _public_router(),

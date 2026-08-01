@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import os
 import time
-from uuid import uuid4
+from uuid import UUID
 
 from app.bootstrap.container import build_job_callback_protection
 from app.modules.jobs.application.authentication import VerifiedJobCallback
@@ -72,6 +72,6 @@ async def verify_jobs_webhook(
             kind=FailureKind.CONFLICT,
         )
     return VerifiedJobCallback(
-        request_id=uuid4(),
+        request_id=UUID(str(request.state.request_id)),
         delivery_ref=job_delivery_reference(nonce),
     )

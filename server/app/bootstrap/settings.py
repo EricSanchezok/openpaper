@@ -20,6 +20,11 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     environment: str = "development"
+    release_sha: str | None = None
+    otel_exporter_otlp_endpoint: str | None = None
+    diagnostic_snapshot_bucket: str | None = None
+    diagnostic_snapshot_kms_key_id: str | None = None
+    diagnostic_success_sample_rate: float = Field(default=0.01, ge=0, le=1)
     client_domain: str = "http://localhost:3000"
     paper_search_backend: Literal["postgres_fts"] = "postgres_fts"
     paper_search_cursor_secret: str = Field(

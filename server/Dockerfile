@@ -20,6 +20,7 @@ RUN --mount=type=secret,id=github_token \
     && tar -xzf /tmp/cloud-auth.tar.gz --strip-components=1 -C /app/cloud-auth \
     && rm /tmp/cloud-auth.tar.gz
 
+COPY packages/scholens_observability/ /packages/scholens_observability/
 COPY server/pyproject.toml server/uv.lock server/README.md /app/
 RUN uv sync --frozen --no-dev --no-install-project --no-install-package cloud-auth \
     && uv pip install --no-deps /app/cloud-auth/

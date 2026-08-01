@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scholens_observability"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/scholens_observability/py.typed" = "scholens_observability/py.typed"
+
+[project]
+name = "scholens-observability"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Shared, business-agnostic observability runtime for Scholens services"
+dependencies = [
+    "opentelemetry-api>=1.30,<2",
+    "opentelemetry-sdk>=1.30,<2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.30,<2",
+]
