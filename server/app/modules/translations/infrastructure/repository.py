@@ -38,9 +38,7 @@ class SqlAlchemyTranslationPreferences:
                 set_={
                     "target_language": preferences.target_language,
                     "custom_instructions": preferences.custom_instructions,
-                    "auto_translate_selection": (
-                        preferences.auto_translate_selection
-                    ),
+                    "auto_translate_selection": (preferences.auto_translate_selection),
                     "updated_at": func.now(),
                 },
             )
@@ -48,6 +46,7 @@ class SqlAlchemyTranslationPreferences:
         )
         model = self._db.execute(statement).scalar_one()
         return _record(model)
+
 
 def _record(model: TranslationPreference) -> TranslationPreferencesRecord:
     return TranslationPreferencesRecord(

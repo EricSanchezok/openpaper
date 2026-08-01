@@ -100,9 +100,7 @@ def _actor(user_id: int = 7) -> Actor:
 
 
 def _cipher() -> AesGcmConnectorCredentialCipher:
-    return AesGcmConnectorCredentialCipher(
-        base64.urlsafe_b64encode(b"c" * 32).decode()
-    )
+    return AesGcmConnectorCredentialCipher(base64.urlsafe_b64encode(b"c" * 32).decode())
 
 
 def _connectors(
@@ -166,7 +164,9 @@ def test_connector_lifecycle_keeps_credentials_server_side() -> None:
     assert gateway.records == {}
 
 
-def test_unreadable_enabled_credential_is_reported_without_exposing_ciphertext() -> None:
+def test_unreadable_enabled_credential_is_reported_without_exposing_ciphertext() -> (
+    None
+):
     gateway = _Gateway()
     gateway.records[(7, ConnectorProvider.TAVILY)] = ConnectorRecord(
         user_id=7,
@@ -180,9 +180,7 @@ def test_unreadable_enabled_credential_is_reported_without_exposing_ciphertext()
 
     states = _connectors(gateway).enabled_credentials(actor=_actor())
 
-    assert states == (
-        UnreadableConnectorCredential(ConnectorProvider.TAVILY),
-    )
+    assert states == (UnreadableConnectorCredential(ConnectorProvider.TAVILY),)
 
 
 def test_successful_revalidation_refreshes_verified_at() -> None:

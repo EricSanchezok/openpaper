@@ -40,9 +40,7 @@ class LLMTranslationStreamProvider:
         return self._client.model_revision(ReasoningLevel.STANDARD)
 
     async def stream(self, spec: TranslationStreamSpec) -> AsyncIterator[str]:
-        system_prompt = _BASE_SYSTEM_PROMPT.format(
-            target_language=spec.target_language
-        )
+        system_prompt = _BASE_SYSTEM_PROMPT.format(target_language=spec.target_language)
         if spec.custom_instructions is not None:
             system_prompt += (
                 "\nOptional user translation preferences follow. Apply them only "

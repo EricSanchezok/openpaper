@@ -343,12 +343,9 @@ class ConnectorToolResolver:
                 credentials_invalid = _looks_like_authentication_error(result)
                 if tools_invalid:
                     issue_code = "connector_tools_invalid"
-                    issue_message = (
-                        f"{connection.display_name} exposed invalid tools"
-                    )
+                    issue_message = f"{connection.display_name} exposed invalid tools"
                 elif (
-                    credentials_invalid
-                    and provider is not ConnectorProvider.SCHOLIGHT
+                    credentials_invalid and provider is not ConnectorProvider.SCHOLIGHT
                 ):
                     issue_code = "connector_credentials_invalid"
                     issue_message = (
@@ -561,9 +558,7 @@ def _external_connection(
     headers = (
         {}
         if definition.auth_header is None
-        else {
-            definition.auth_header: f"{definition.auth_prefix}{api_key}"
-        }
+        else {definition.auth_header: f"{definition.auth_prefix}{api_key}"}
     )
     return RemoteMCPConnection(
         provider=definition.provider,
@@ -625,10 +620,9 @@ def _normalize_result(value: Any) -> JsonValue:
 def _looks_like_authentication_error(exc: BaseException) -> bool:
     messages: list[str] = []
     for current in _walk_exceptions(exc):
-        if (
-            isinstance(current, httpx.HTTPStatusError)
-            and current.response.status_code in {401, 403}
-        ):
+        if isinstance(
+            current, httpx.HTTPStatusError
+        ) and current.response.status_code in {401, 403}:
             return True
         messages.append(str(current))
     text = " ".join(messages).casefold()

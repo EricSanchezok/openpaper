@@ -363,7 +363,10 @@ class AnswerPacketBuilder:
                 "coverage": coverage,
             }
         )
-        if estimate_tokens(bounded_packet.model_dump_json()) <= ANSWER_PACKET_TOKEN_BUDGET:
+        if (
+            estimate_tokens(bounded_packet.model_dump_json())
+            <= ANSWER_PACKET_TOKEN_BUDGET
+        ):
             return bounded_packet
         return AnswerPacketBuilder._fit_material_metadata(
             bounded_packet,

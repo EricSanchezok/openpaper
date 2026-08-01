@@ -86,8 +86,7 @@ def test_outbound_http_auto_instrumentation_sanitizes_urls() -> None:
 
 def test_technical_observability_has_no_database_model() -> None:
     model_sources = "\n".join(
-        path.read_text()
-        for path in (ROOT / "server/app/database").rglob("*.py")
+        path.read_text() for path in (ROOT / "server/app/database").rglob("*.py")
     )
     for forbidden_name in (
         "DiagnosticSnapshotModel",

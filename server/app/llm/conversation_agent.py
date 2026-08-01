@@ -224,8 +224,7 @@ class ConversationAgentRuntime(ConversationToolLoop):
         )
         formatted_system_prompt += final_answer_role_instructions(scope_type)
         formatted_system_prompt += (
-            "\n\n## Required Citation Control Protocol\n"
-            + grounded_parser.instructions
+            "\n\n## Required Citation Control Protocol\n" + grounded_parser.instructions
         )
         message_content: list[TextContent | SupplementaryContent] = [
             SupplementaryContent(
@@ -284,7 +283,9 @@ class ConversationAgentRuntime(ConversationToolLoop):
                     yield {"type": "reasoning", "content": chunk.thinking}
                 text = chunk.text
 
-                logger.debug("llm.stream.chunk_received", extra={"chunk_chars": len(text)})
+                logger.debug(
+                    "llm.stream.chunk_received", extra={"chunk_chars": len(text)}
+                )
 
                 if not text:
                     continue

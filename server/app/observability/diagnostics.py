@@ -25,9 +25,7 @@ def create_diagnostic_snapshot_recorder(
 ) -> DiagnosticSnapshotRecorder:
     if not settings.diagnostic_snapshot_bucket:
         if settings.environment.casefold() == "production":
-            raise ValueError(
-                "DIAGNOSTIC_SNAPSHOT_BUCKET is required in production"
-            )
+            raise ValueError("DIAGNOSTIC_SNAPSHOT_BUCKET is required in production")
         return NullDiagnosticSnapshotRecorder()
     if not settings.diagnostic_snapshot_kms_key_id:
         if settings.environment.casefold() == "production":

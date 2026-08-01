@@ -27,7 +27,9 @@ class GroundedAnswerStreamParser:
     _SINGLE_MARKER_PREFIX = "[SCHOLENS_CITE:"
     _DOUBLE_MARKER_PREFIX = "[[SCHOLENS_CITE:"
 
-    def __init__(self, sources: Sequence[AnswerSource], *, nonce: str | None = None) -> None:
+    def __init__(
+        self, sources: Sequence[AnswerSource], *, nonce: str | None = None
+    ) -> None:
         self.nonce = nonce or secrets.token_hex(16)
         self._sources = {source.key: source for source in sources}
         self._buffer = ""
@@ -83,9 +85,7 @@ class GroundedAnswerStreamParser:
                 if marker_end < 0:
                     self._buffer = self._buffer[marker_at:]
                     break
-                raw_marker = self._buffer[
-                    marker_at : marker_end + len(marker_suffix)
-                ]
+                raw_marker = self._buffer[marker_at : marker_end + len(marker_suffix)]
                 self._buffer = self._buffer[marker_end + len(marker_suffix) :]
                 valid_marker_prefix = f"{marker_prefix}{self.nonce}:"
                 if raw_marker.startswith(valid_marker_prefix):

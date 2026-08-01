@@ -55,5 +55,7 @@ class ErrorEnvelope:
             "diagnostic_id": self.diagnostic_id,
             "details": self.details,
         }
-        payload.update({key: value for key, value in optional.items() if value is not None})
+        payload.update(
+            {key: value for key, value in optional.items() if value is not None}
+        )
         return payload

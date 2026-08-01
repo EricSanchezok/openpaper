@@ -136,11 +136,7 @@ def extract_external_sources(
             if len(slices) >= _MAX_ARGUMENT_BOUND_EXCERPTS:
                 return
             if isinstance(item, dict):
-                preferred = [
-                    (key, item[key])
-                    for key in _EXCERPT_FIELDS
-                    if key in item
-                ]
+                preferred = [(key, item[key]) for key in _EXCERPT_FIELDS if key in item]
                 entries = preferred or list(item.items())
                 for key, nested in entries:
                     visit_payload(nested, (*item_path, key))
@@ -241,9 +237,8 @@ def extract_external_sources(
         existing_quality = existing_entry[1] if existing_entry is not None else -1
         if existing is None:
             candidates[candidate_key] = (candidate, quality)
-        elif (
-            quality > existing_quality
-            or (existing.title is None and candidate.title is not None)
+        elif quality > existing_quality or (
+            existing.title is None and candidate.title is not None
         ):
             candidates[candidate_key] = (
                 ExternalSourceCandidate(
@@ -327,7 +322,10 @@ def extract_external_sources(
                         structured_excerpt = fallback_payload_excerpt
                     if origin_name == "payload" and excerpt is not None:
                         excerpt_field, excerpt_value = excerpt
-                        structured_excerpt = ((*path, excerpt_field), str(excerpt_value))
+                        structured_excerpt = (
+                            (*path, excerpt_field),
+                            str(excerpt_value),
+                        )
                     if structured_excerpt is not None or (
                         origin_name == "arguments" and not argument_bound_excerpts
                     ):
@@ -484,10 +482,7 @@ def verify_external_source(
     if not isinstance(excerpt_value, str):
         return False
     if not (
-        0
-        <= provenance.excerpt_start
-        < provenance.excerpt_end
-        <= len(excerpt_value)
+        0 <= provenance.excerpt_start < provenance.excerpt_end <= len(excerpt_value)
     ):
         return False
     return (

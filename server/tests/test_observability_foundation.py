@@ -35,7 +35,9 @@ def test_context_is_scoped_and_restored() -> None:
     assert current_context().component is None
 
 
-def test_structured_logging_drops_security_fields(capsys: pytest.CaptureFixture[str]) -> None:
+def test_structured_logging_drops_security_fields(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     class SecretRepr:
         def __str__(self) -> str:
             return "embedded-password-must-not-appear"
@@ -134,10 +136,7 @@ def test_diagnostic_snapshot_rejects_credentials() -> None:
 
 def test_success_sampling_is_deterministic() -> None:
     correlation_id = uuid4()
-    values = {
-        should_sample_success(correlation_id, rate=0.5)
-        for _ in range(10)
-    }
+    values = {should_sample_success(correlation_id, rate=0.5) for _ in range(10)}
     assert len(values) == 1
 
 

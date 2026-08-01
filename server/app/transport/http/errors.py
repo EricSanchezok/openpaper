@@ -96,9 +96,7 @@ def _diagnostic_fields(
             "correlation_id",
             context.correlation_id,
         ),
-        diagnostic_id=(
-            str(uuid4()) if authenticated or status_code >= 500 else None
-        ),
+        diagnostic_id=(str(uuid4()) if authenticated or status_code >= 500 else None),
     )
 
 
@@ -332,9 +330,7 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
         "http.unhandled_error",
         exc_info=exc,
         method=request.method,
-        route=(
-            str(getattr(request.scope.get("route"), "path", request.url.path))
-        ),
+        route=(str(getattr(request.scope.get("route"), "path", request.url.path))),
         error_code="internal_error",
         error_kind=FailureKind.INTERNAL.value,
         retryable=False,

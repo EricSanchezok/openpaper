@@ -11,9 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PUBLIC_API_PREFIX = "/api/v1"
 WEBHOOK_API_PREFIX = "/webhooks/v1"
 INTERNAL_API_PREFIX = "/internal/v1"
-_DEVELOPMENT_CONNECTOR_KEY = (
-    "ZGV2ZWxvcG1lbnQtY29ubmVjdG9yLWtleS0zMiEhISE="
-)
+_DEVELOPMENT_CONNECTOR_KEY = "ZGV2ZWxvcG1lbnQtY29ubmVjdG9yLWtleS0zMiEhISE="
 
 
 class AppSettings(BaseSettings):
@@ -59,18 +57,14 @@ class AppSettings(BaseSettings):
             raise ValueError("PAPER_SEARCH_CURSOR_SECRET is required in production")
         if (
             self.environment.casefold() == "production"
-            and self.connector_credential_encryption_key
-            == _DEVELOPMENT_CONNECTOR_KEY
+            and self.connector_credential_encryption_key == _DEVELOPMENT_CONNECTOR_KEY
         ):
             raise ValueError(
                 "CONNECTOR_CREDENTIAL_ENCRYPTION_KEY is required in production"
             )
-        if (
-            self.environment.casefold() == "production"
-            and (
-                self.scholight_mcp_delegation_jwt_secret is None
-                or len(self.scholight_mcp_delegation_jwt_secret.encode()) < 32
-            )
+        if self.environment.casefold() == "production" and (
+            self.scholight_mcp_delegation_jwt_secret is None
+            or len(self.scholight_mcp_delegation_jwt_secret.encode()) < 32
         ):
             raise ValueError(
                 "SCHOLIGHT_MCP_DELEGATION_JWT_SECRET is required in production"

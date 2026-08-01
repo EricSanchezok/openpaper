@@ -36,9 +36,7 @@ def normalize_language_tag(value: str) -> str:
     for part in parts[1:]:
         if len(part) == 4 and part.isalpha():
             normalized.append(part.title())
-        elif (len(part) == 2 and part.isalpha()) or (
-            len(part) == 3 and part.isdigit()
-        ):
+        elif (len(part) == 2 and part.isalpha()) or (len(part) == 3 and part.isdigit()):
             normalized.append(part.upper())
         else:
             normalized.append(part.lower())

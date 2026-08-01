@@ -26,9 +26,7 @@ from app.modules.translations.domain import (
 from app.shared.application import Actor, OperationContext
 from app.shared.domain import AppError, FailureKind
 
-TRANSLATION_PREFERENCES_UPDATED = OperationAction(
-    "translation.preferences_updated"
-)
+TRANSLATION_PREFERENCES_UPDATED = OperationAction("translation.preferences_updated")
 
 
 class Translations:

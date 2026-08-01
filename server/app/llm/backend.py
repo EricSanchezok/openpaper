@@ -260,9 +260,7 @@ class DeepSeekBackend(LLMBackend):
                 cache_hit_tokens=_usage_value(usage, "prompt_cache_hit_tokens"),
                 cache_miss_tokens=_usage_value(usage, "prompt_cache_miss_tokens"),
                 total_tokens=_usage_value(usage, "total_tokens"),
-                idempotency_key=(
-                    f"deepseek:{response_id}" if response_id else None
-                ),
+                idempotency_key=(f"deepseek:{response_id}" if response_id else None),
             )
             for token_kind, token_count in token_values.items():
                 if token_count > 0:

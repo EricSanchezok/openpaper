@@ -230,7 +230,7 @@ async def stream_conversation_agent(
             "sources": [
                 {"key": index, "kind": "user", "reference": reference}
                 for index, reference in enumerate(request.user_references, start=1)
-            ]
+            ],
         }
         if request.user_references
         else None

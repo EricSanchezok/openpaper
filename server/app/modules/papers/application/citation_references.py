@@ -33,13 +33,14 @@ def materialize_summary_references(
         clean_parts.append(prefix)
         output_length += len(prefix)
         requested = [
-            int(value.strip().removeprefix("^"))
-            for value in match.group(1).split(",")
+            int(value.strip().removeprefix("^")) for value in match.group(1).split(",")
         ]
         valid = list(dict.fromkeys(key for key in requested if key in by_index))
         if valid and output_length:
             current = "".join(clean_parts)
-            boundary = max(current.rfind(char, 0, output_length - 1) for char in _CLAIM_BOUNDARIES)
+            boundary = max(
+                current.rfind(char, 0, output_length - 1) for char in _CLAIM_BOUNDARIES
+            )
             start = boundary + 1
             while start < output_length and current[start].isspace():
                 start += 1

@@ -22,7 +22,9 @@ from app.shared.domain.enums import (
 )
 from app.modules.identity.infrastructure.models import AuthUser, UserProfile
 from app.modules.access_keys.infrastructure.models import AccessKey
-from app.modules.integrations.connectors.infrastructure.models import ConnectorConnection
+from app.modules.integrations.connectors.infrastructure.models import (
+    ConnectorConnection,
+)
 from app.modules.operation_journal.infrastructure.models import (
     OperationJournalEntryModel,
 )

@@ -6,7 +6,9 @@ from datetime import datetime
 
 from app.modules.integrations.connectors.application.ports import ConnectorRecord
 from app.modules.integrations.connectors.domain import ConnectorProvider
-from app.modules.integrations.connectors.infrastructure.models import ConnectorConnection
+from app.modules.integrations.connectors.infrastructure.models import (
+    ConnectorConnection,
+)
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session

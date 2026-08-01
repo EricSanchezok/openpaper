@@ -35,9 +35,13 @@ async def stream_with_stable_error(
     try:
         async for event in source:
             try:
-                serialized = event[: -len(delimiter)] if event.endswith(delimiter) else event
+                serialized = (
+                    event[: -len(delimiter)] if event.endswith(delimiter) else event
+                )
                 payload = json.loads(serialized)
-                completed = isinstance(payload, dict) and payload.get("type") == "complete"
+                completed = (
+                    isinstance(payload, dict) and payload.get("type") == "complete"
+                )
             except (TypeError, ValueError, json.JSONDecodeError):
                 pass
             yield event

@@ -319,10 +319,7 @@ def test_grounded_answer_parser_handles_every_chunk_boundary() -> None:
         reference="Verified excerpt",
     )
     nonce = "fixed"
-    value = (
-        "Intro.\n\nGrounded 🧠 claim."
-        "[[SCHOLENS_CITE:fixed:7]] End."
-    )
+    value = "Intro.\n\nGrounded 🧠 claim.[[SCHOLENS_CITE:fixed:7]] End."
     for split in range(len(value) + 1):
         parser = GroundedAnswerStreamParser([source], nonce=nonce)
         rendered = parser.feed(value[:split]) + parser.feed(value[split:])
@@ -332,9 +329,14 @@ def test_grounded_answer_parser_handles_every_chunk_boundary() -> None:
         assert references is not None
         assert references.sources[0].key == 1
         assert references.annotations[0].source_keys == [1]
-        assert rendered[
-            references.annotations[0].start_offset : references.annotations[0].end_offset
-        ] == "Grounded 🧠 claim."
+        assert (
+            rendered[
+                references.annotations[0].start_offset : references.annotations[
+                    0
+                ].end_offset
+            ]
+            == "Grounded 🧠 claim."
+        )
 
 
 def test_grounded_answer_parser_keeps_text_for_invalid_or_unclosed_frames() -> None:
@@ -345,8 +347,7 @@ def test_grounded_answer_parser_keeps_text_for_invalid_or_unclosed_frames() -> N
     )
     parser = GroundedAnswerStreamParser([source], nonce="fixed")
     rendered = parser.feed(
-        "Unsupported[[SCHOLENS_CITE:fixed:99]] "
-        "Unclosed[[SCHOLENS_CITE:fixed:1"
+        "Unsupported[[SCHOLENS_CITE:fixed:99]] Unclosed[[SCHOLENS_CITE:fixed:1"
     )
     rendered += parser.finish()
 
@@ -397,9 +398,14 @@ def test_grounded_answer_parser_accepts_provider_normalized_single_brackets() ->
         assert rendered == "Grounded claim. End."
         assert references is not None
         assert references.annotations[0].source_keys == [1]
-        assert rendered[
-            references.annotations[0].start_offset : references.annotations[0].end_offset
-        ] == "Grounded claim."
+        assert (
+            rendered[
+                references.annotations[0].start_offset : references.annotations[
+                    0
+                ].end_offset
+            ]
+            == "Grounded claim."
+        )
 
 
 def test_grounded_answer_parser_maps_each_marker_to_the_preceding_passage() -> None:
@@ -413,8 +419,7 @@ def test_grounded_answer_parser_maps_each_marker_to_the_preceding_passage() -> N
     ]
     parser = GroundedAnswerStreamParser(sources, nonce="fixed")
     rendered = parser.feed(
-        "First claim.[[SCHOLENS_CITE:fixed:3]] "
-        "Second claim.[[SCHOLENS_CITE:fixed:8,3]]"
+        "First claim.[[SCHOLENS_CITE:fixed:3]] Second claim.[[SCHOLENS_CITE:fixed:8,3]]"
     )
     rendered += parser.finish()
 
@@ -422,8 +427,7 @@ def test_grounded_answer_parser_maps_each_marker_to_the_preceding_passage() -> N
     references = parser.references()
     assert references is not None
     assert [
-        rendered[item.start_offset : item.end_offset]
-        for item in references.annotations
+        rendered[item.start_offset : item.end_offset] for item in references.annotations
     ] == ["First claim.", "Second claim."]
     assert references.annotations[0].source_keys == [1]
     assert references.annotations[1].source_keys == [2, 1]

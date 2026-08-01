@@ -37,10 +37,7 @@ class TranslationPreferencesUpdateRequest(BaseModel):
     @field_validator("custom_instructions")
     @classmethod
     def guard_custom_instructions_size(cls, value: str | None) -> str | None:
-        if (
-            value is not None
-            and len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS
-        ):
+        if value is not None and len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS:
             raise AppError(
                 code="translation_instructions_invalid",
                 message="Custom translation instructions are invalid",
@@ -58,9 +55,7 @@ class TranslationPreferencesResponse(BaseModel):
 class TranslationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(
-        json_schema_extra={"maxLength": MAX_SOURCE_TEXT_CHARS}
-    )
+    text: str = Field(json_schema_extra={"maxLength": MAX_SOURCE_TEXT_CHARS})
 
     @field_validator("text")
     @classmethod

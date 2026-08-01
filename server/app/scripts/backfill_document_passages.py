@@ -42,7 +42,9 @@ def backfill(batch_size: int = 100, dry_run: bool = False) -> None:
             ).scalar()
             or 0
         )
-        logger.info("passage_backfill.discovery.completed", extra={"paper_count": total})
+        logger.info(
+            "passage_backfill.discovery.completed", extra={"paper_count": total}
+        )
 
         indexed = 0
         skipped = 0

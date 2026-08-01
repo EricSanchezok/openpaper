@@ -114,7 +114,12 @@ class ToolRunState(BaseModel):
             }
             for a in self.artifacts
         ]
-        if not tool_calls and not citations and not self.action_results and not self.citation_metrics:
+        if (
+            not tool_calls
+            and not citations
+            and not self.action_results
+            and not self.citation_metrics
+        ):
             return None
         trace = {
             "tool_calls": tool_calls,

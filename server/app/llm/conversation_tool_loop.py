@@ -415,9 +415,7 @@ class ConversationToolLoop(BaseLLMClient):
                 )
 
             if not dispatches:
-                logger.info(
-                    "conversation.tool_loop.duplicate_only"
-                )
+                logger.info("conversation.tool_loop.duplicate_only")
                 break
 
             for tool_call, tool_name, status, start_time, dispatch_task in dispatches:
@@ -512,9 +510,7 @@ class ConversationToolLoop(BaseLLMClient):
             and not tool_state.action_results
             and self._catalog.is_available(tool_access, "search_papers")
         ):
-            logger.info(
-                "conversation.fallback.started"
-            )
+            logger.info("conversation.fallback.started")
             yield {
                 "type": "status",
                 "content": "Searching for relevant information...",
@@ -695,9 +691,7 @@ class ConversationToolLoop(BaseLLMClient):
                     compaction_response.compacted_results
                 )
                 if applied_count == 0:
-                    logger.warning(
-                        "conversation.compaction.no_matching_summaries"
-                    )
+                    logger.warning("conversation.compaction.no_matching_summaries")
                     return False
 
                 new_size = tool_state.get_tool_results_size()

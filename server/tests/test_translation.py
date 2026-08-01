@@ -89,7 +89,6 @@ class _PreferencesGateway:
         return preferences
 
 
-
 class _Entitlements:
     def __init__(self) -> None:
         self.has_credits = True
@@ -187,9 +186,9 @@ def test_translation_business_limits_use_stable_application_errors() -> None:
 
 def test_translation_normalization_and_cache_identity_are_deterministic() -> None:
     assert normalize_language_tag("ZH-hans-cn") == "zh-Hans-CN"
-    assert normalize_source_text("  Retrieval-\r\naugmented   generation\n\n Works. ") == (
-        "Retrieval-augmented generation\n\nWorks."
-    )
+    assert normalize_source_text(
+        "  Retrieval-\r\naugmented   generation\n\n Works. "
+    ) == ("Retrieval-augmented generation\n\nWorks.")
     document_id = uuid4()
     identity = TranslationCacheIdentity(
         schema_revision="v1",
@@ -425,7 +424,9 @@ async def test_paper_access_is_checked_before_cache_lookup() -> None:
 
 
 @pytest.mark.asyncio
-async def test_streaming_translation_uses_shared_usage_context_and_caches_completion() -> None:
+async def test_streaming_translation_uses_shared_usage_context_and_caches_completion() -> (
+    None
+):
     capabilities = _Capabilities()
     cache = _Cache()
     provider = _Provider()
@@ -493,7 +494,9 @@ async def test_authorized_users_share_the_same_completed_translation_cache() -> 
 
 
 @pytest.mark.asyncio
-async def test_cancelled_translation_releases_capacity_without_caching_partial_text() -> None:
+async def test_cancelled_translation_releases_capacity_without_caching_partial_text() -> (
+    None
+):
     capabilities = _Capabilities()
     cache = _Cache()
     capacity = _Capacity()
@@ -684,11 +687,9 @@ async def test_translation_sse_uses_standard_event_framing() -> None:
 
 
 def test_translation_openapi_declares_event_stream_response() -> None:
-    response = app.openapi()["paths"][
-        "/api/v1/papers/{document_id}/translations"
-    ]["post"]["responses"]["200"]
+    response = app.openapi()["paths"]["/api/v1/papers/{document_id}/translations"][
+        "post"
+    ]["responses"]["200"]
 
     assert set(response["content"]) == {"text/event-stream"}
-    assert response["content"]["text/event-stream"]["schema"] == {
-        "type": "string"
-    }
+    assert response["content"]["text/event-stream"]["schema"] == {"type": "string"}

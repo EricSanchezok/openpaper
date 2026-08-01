@@ -233,7 +233,9 @@ class MetadataRecoveryAgent(BaseLLMClient):
                     logger.warning(
                         "citation.connector.call_failed",
                         extra={
-                            "provider": provider.value if provider is not None else None,
+                            "provider": provider.value
+                            if provider is not None
+                            else None,
                             "tool_name": name,
                             "error_code": exc.code,
                         },
@@ -263,9 +265,7 @@ class MetadataRecoveryAgent(BaseLLMClient):
                             "message": "External connector tool failed",
                             "details": {
                                 "provider": (
-                                    provider.value
-                                    if provider is not None
-                                    else None
+                                    provider.value if provider is not None else None
                                 ),
                                 "tool": name,
                                 "retryable": True,

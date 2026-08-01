@@ -549,9 +549,7 @@ def upgrade() -> None:
             "AND custom_instructions = btrim(custom_instructions))",
             name="ck_translation_preferences_instructions",
         ),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["auth.users.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["user_id"], ["auth.users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id"),
         schema="scholens",
     )

@@ -112,9 +112,7 @@ class TranslationWorkflow:
                 prompt_revision=self._provider.prompt_revision(),
                 model_revision=self._provider.model_revision(),
                 document_id=prepared.document_id,
-                paper_title_hash=translation_paper_title_hash(
-                    prepared.paper_title
-                ),
+                paper_title_hash=translation_paper_title_hash(prepared.paper_title),
                 source_text=prepared.source_text,
                 target_language=prepared.target_language,
                 custom_instructions_hash=translation_instructions_hash(
@@ -217,7 +215,8 @@ class TranslationWorkflow:
                 code=code,
                 message=message,
                 kind=FailureKind.DEPENDENCY_FAILURE,
-                retryable=exc.kind is not TranslationStreamFailureKind.USAGE_SETTLEMENT_FAILED,
+                retryable=exc.kind
+                is not TranslationStreamFailureKind.USAGE_SETTLEMENT_FAILED,
             )
             yield self._error_event(
                 error,
