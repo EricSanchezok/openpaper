@@ -6,6 +6,7 @@ import {
   WarningTriangle,
   WifiOff,
 } from "iconoir-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -21,41 +22,32 @@ type FeedbackAction = { label: string; onClick: () => void };
 
 const stateDefaults: Record<
   Exclude<AsyncFeedbackState, "loading" | "retrying">,
-  { title: string; description: string; icon: typeof Database }
+  { icon: typeof Database }
 > = {
-  empty: {
-    title: "Nothing here yet",
-    description: "Content will appear here when it becomes available.",
-    icon: Database,
-  },
-  error: {
-    title: "Could not load this content",
-    description: "Try again. If the problem continues, come back later.",
-    icon: WarningTriangle,
-  },
-  offline: {
-    title: "You are offline",
-    description: "Reconnect to continue.",
-    icon: WifiOff,
-  },
+  empty: { icon: Database },
+  error: { icon: WarningTriangle },
+  offline: { icon: WifiOff },
 };
 
 export function LoadingState({
   presentation = "block",
-  label = "Loading",
+  label,
 }: {
   presentation?: AsyncFeedbackPresentation;
   label?: string;
 }) {
+  const t = useTranslations("AsyncFeedback");
+  const accessibleLabel = label ?? t("loading");
+
   if (presentation === "inline")
     return (
       <span className="text-muted inline-flex items-center gap-2 text-sm">
         <span className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
-        {label}
+        {accessibleLabel}
       </span>
     );
   return (
-    <div aria-label={label} className="grid gap-3" role="status">
+    <div aria-label={accessibleLabel} className="grid gap-3" role="status">
       <Skeleton className="h-4 w-2/5" />
       <Skeleton className="h-4 w-4/5" />
       <Skeleton className="h-20 w-full" />
@@ -98,9 +90,11 @@ export function AsyncFeedback({
   action?: FeedbackAction;
   icon?: typeof Database;
 }) {
+  const t = useTranslations("AsyncFeedback");
+
   if (state === "loading") return <LoadingState presentation={presentation} />;
   if (state === "retrying")
-    return <LoadingState label="Trying again" presentation={presentation} />;
+    return <LoadingState label={t("retrying")} presentation={presentation} />;
   const defaults = stateDefaults[state];
   const Glyph = icon ?? defaults.icon;
   return (
@@ -126,9 +120,11 @@ export function AsyncFeedback({
           <Icon glyph={Glyph} size={20} tone="secondary" />
         </div>
         <div>
-          <h2 className="text-sm font-medium">{title ?? defaults.title}</h2>
+          <h2 className="text-sm font-medium">
+            {title ?? t(`${state}.title`)}
+          </h2>
           <p className="text-muted mt-1 max-w-md text-sm">
-            {description ?? defaults.description}
+            {description ?? t(`${state}.description`)}
           </p>
         </div>
         {action && <RetryAction action={action} />}
@@ -163,17 +159,19 @@ export function AsyncBoundary<T>({
   empty?: (data: T) => boolean;
   children: (data: T) => React.ReactNode;
 }) {
+  const t = useTranslations("AsyncFeedback");
+
   if (offline)
     return (
       <AsyncFeedback
-        action={retry ? { label: "Retry", onClick: retry } : undefined}
+        action={retry ? { label: t("retry"), onClick: retry } : undefined}
         state="offline"
       />
     );
   if (error)
     return (
       <AsyncFeedback
-        action={retry ? { label: "Try again", onClick: retry } : undefined}
+        action={retry ? { label: t("tryAgain"), onClick: retry } : undefined}
         state="error"
       />
     );

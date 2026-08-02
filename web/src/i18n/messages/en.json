@@ -1,0 +1,52 @@
+{
+  "Common": {
+    "appName": "Scholens",
+    "actions": {
+      "openStorybook": "Open Storybook",
+      "tryAgain": "Try again"
+    },
+    "locales": {
+      "en": "English",
+      "zh-CN": "Simplified Chinese"
+    }
+  },
+  "Metadata": {
+    "title": "Scholens Web Foundation",
+    "description": "Scholens next-generation web foundation smoke test"
+  },
+  "FoundationSmoke": {
+    "eyebrow": "Web foundation · smoke route",
+    "description": "The independent Next.js, token, theme, query, component, and internationalization foundation is running. Product routes intentionally begin later."
+  },
+  "AsyncFeedback": {
+    "loading": "Loading",
+    "retrying": "Trying again",
+    "retry": "Retry",
+    "tryAgain": "Try again",
+    "empty": {
+      "title": "Nothing here yet",
+      "description": "Content will appear here when it becomes available."
+    },
+    "error": {
+      "title": "Could not load this content",
+      "description": "Try again. If the problem continues, come back later."
+    },
+    "offline": {
+      "title": "You are offline",
+      "description": "Reconnect to continue."
+    }
+  },
+  "Errors": {
+    "unexpected": {
+      "title": "Something went wrong",
+      "description": "The web foundation encountered an unexpected error."
+    }
+  },
+  "I18nDemo": {
+    "title": "Internationalization foundation",
+    "localeLabel": "Interface language",
+    "items": "{count, plural, =0 {No papers} one {# paper} other {# papers}}",
+    "credits": "{amount, number, compact} token credits",
+    "updated": "Updated {date, date, short}"
+  }
+}

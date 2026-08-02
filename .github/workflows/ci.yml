@@ -136,7 +136,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Generated contract checks
-        run: pnpm tokens:check && pnpm api:check
+        run: pnpm tokens:check && pnpm api:check && pnpm i18n:check
       - name: Static checks
         run: pnpm lint && pnpm format:check && pnpm typecheck
       - name: Install Chromium

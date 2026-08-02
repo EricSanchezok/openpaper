@@ -18,6 +18,7 @@ component assertion in Playwright.
 ```bash
 pnpm tokens:check
 pnpm api:check
+pnpm i18n:check
 pnpm lint
 pnpm format:check
 pnpm typecheck
@@ -36,7 +37,8 @@ Use global toolbar controls instead of duplicating entire story files:
 
 - Theme: Default, later additional independent themes.
 - Appearance: Light and Dark.
-- Locale: English, Simplified Chinese, Traditional Chinese.
+- Locale: English and Simplified Chinese. This toolbar loads the real message
+  dictionary through the application provider.
 - Viewport: Desktop, Narrow panel, Mobile.
 - Network: Instant, Slow, Offline.
 - Data: Populated, Empty, Error.

@@ -23,6 +23,7 @@ runtime behavior, accessibility, data contracts, and component APIs.
 | [Architecture](./architecture.md)                   | Adding a route, feature slice, provider, shared state, or dependency |
 | [Component development](./component-development.md) | Creating or importing a component                                    |
 | [Design tokens](./design-tokens.md)                 | Changing color, spacing, radius, theme, or Figma variables           |
+| [Internationalization](./internationalization.md)   | Adding UI copy, locale behavior, formatting, or another language     |
 | [API development](./api-development.md)             | Changing a backend contract or adding a request/query                |
 | [Testing](./testing.md)                             | Choosing test scope or adding a network/interaction state            |
 | [New feature checklist](./new-feature-checklist.md) | Starting and finishing every product feature                         |

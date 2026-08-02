@@ -1,0 +1,52 @@
+{
+  "Common": {
+    "appName": "Scholens",
+    "actions": {
+      "openStorybook": "打开 Storybook",
+      "tryAgain": "重试"
+    },
+    "locales": {
+      "en": "English",
+      "zh-CN": "简体中文"
+    }
+  },
+  "Metadata": {
+    "title": "Scholens 前端基础",
+    "description": "Scholens 新一代前端基础验证页面"
+  },
+  "FoundationSmoke": {
+    "eyebrow": "前端基础 · 验证页面",
+    "description": "独立的 Next.js、设计令牌、主题、查询、组件和多语言基础已经运行。具体产品页面将在后续开始开发。"
+  },
+  "AsyncFeedback": {
+    "loading": "正在加载",
+    "retrying": "正在重试",
+    "retry": "重试",
+    "tryAgain": "重试",
+    "empty": {
+      "title": "暂无内容",
+      "description": "内容可用后会显示在这里。"
+    },
+    "error": {
+      "title": "无法加载内容",
+      "description": "请重试。如果问题持续出现，请稍后再试。"
+    },
+    "offline": {
+      "title": "当前处于离线状态",
+      "description": "请重新连接网络后继续。"
+    }
+  },
+  "Errors": {
+    "unexpected": {
+      "title": "出现了问题",
+      "description": "前端基础遇到了意外错误。"
+    }
+  },
+  "I18nDemo": {
+    "title": "多语言基础",
+    "localeLabel": "界面语言",
+    "items": "{count, number} 篇论文",
+    "credits": "{amount, number, compact} Token 额度",
+    "updated": "更新于 {date, date, short}"
+  }
+}
