@@ -46,6 +46,8 @@ test:
   styling, themes, and generated artifacts.
 - [`internationalization.md`](./docs/internationalization.md): locale
   resolution, message catalogs, formatting, and Storybook workflow.
+- [`authentication-foundation.md`](./docs/authentication-foundation.md): auth
+  session runtime, responsive contract, forms, errors, and mock scenarios.
 - [`api-development.md`](./docs/api-development.md): public OpenAPI snapshots,
   typed transport, query conventions, and coordinated schema changes.
 - [`testing.md`](./docs/testing.md): unit, Storybook browser, MSW, accessibility,

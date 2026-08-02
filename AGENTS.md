@@ -65,7 +65,7 @@ responsive behavior, accessibility, runtime contracts, and component APIs.
 Do not edit generated files directly. Change their source and regenerate them.
 
 - Design tokens: edit `web/src/design-system/tokens/`, then run
-  `pnpm tokens:generate` from `web/`.
+  `pnpm tokens:build` from `web/`.
 - Frontend API types: update the FastAPI contract and public snapshot, then run
   `pnpm api:generate` from `web/`.
 - Commit source and generated outputs together.

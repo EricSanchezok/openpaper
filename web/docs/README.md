@@ -18,16 +18,17 @@ runtime behavior, accessibility, data contracts, and component APIs.
 
 ## Guides
 
-| Guide                                               | Read it when                                                         |
-| --------------------------------------------------- | -------------------------------------------------------------------- |
-| [Architecture](./architecture.md)                   | Adding a route, feature slice, provider, shared state, or dependency |
-| [Component development](./component-development.md) | Creating or importing a component                                    |
-| [Design tokens](./design-tokens.md)                 | Changing color, spacing, radius, theme, or Figma variables           |
-| [Internationalization](./internationalization.md)   | Adding UI copy, locale behavior, formatting, or another language     |
-| [API development](./api-development.md)             | Changing a backend contract or adding a request/query                |
-| [Testing](./testing.md)                             | Choosing test scope or adding a network/interaction state            |
-| [New feature checklist](./new-feature-checklist.md) | Starting and finishing every product feature                         |
-| [Architecture decisions](./decisions/README.md)     | Deliberately changing a rule in this handbook                        |
+| Guide                                                       | Read it when                                                         |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Architecture](./architecture.md)                           | Adding a route, feature slice, provider, shared state, or dependency |
+| [Component development](./component-development.md)         | Creating or importing a component                                    |
+| [Design tokens](./design-tokens.md)                         | Changing color, spacing, radius, theme, or Figma variables           |
+| [Internationalization](./internationalization.md)           | Adding UI copy, locale behavior, formatting, or another language     |
+| [Authentication foundation](./authentication-foundation.md) | Building auth UI, session behavior, responsive auth layout, or mocks |
+| [API development](./api-development.md)                     | Changing a backend contract or adding a request/query                |
+| [Testing](./testing.md)                                     | Choosing test scope or adding a network/interaction state            |
+| [New feature checklist](./new-feature-checklist.md)         | Starting and finishing every product feature                         |
+| [Architecture decisions](./decisions/README.md)             | Deliberately changing a rule in this handbook                        |
 
 ## Maintenance rule
 

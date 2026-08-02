@@ -1,3 +1,5 @@
+"use client";
+
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
@@ -43,6 +45,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       loading,
       children,
       disabled,
+      onClick,
+      tabIndex,
       variant,
       size,
       ...props
@@ -57,7 +61,16 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           aria-busy={loading || undefined}
           className={classes}
           data-disabled={disabled || loading || undefined}
+          onClick={(event) => {
+            if (disabled || loading) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            onClick?.(event as React.MouseEvent<HTMLButtonElement>);
+          }}
           ref={ref}
+          tabIndex={disabled || loading ? -1 : tabIndex}
           {...props}
         >
           {children}
@@ -69,7 +82,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         aria-busy={loading || undefined}
         className={classes}
         disabled={disabled || loading}
+        onClick={onClick}
         ref={ref}
+        tabIndex={tabIndex}
         {...props}
       >
         {loading && (

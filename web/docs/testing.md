@@ -39,7 +39,8 @@ Use global toolbar controls instead of duplicating entire story files:
 - Appearance: Light and Dark.
 - Locale: English and Simplified Chinese. This toolbar loads the real message
   dictionary through the application provider.
-- Viewport: Desktop, Narrow panel, Mobile.
+- Viewport: Desktop (1440), Tablet (768), Narrow panel (480), Mobile (390), and
+  Small Mobile (320). Authentication surfaces require 320, 390, 768, and 1440.
 - Network: Instant, Slow, Offline.
 - Data: Populated, Empty, Error.
 
@@ -70,6 +71,10 @@ Automated axe checks are a gate, not a complete audit. Also verify:
 - Status announcements for asynchronous changes when needed.
 - Text zoom, narrow containers, long translations, and reduced motion.
 - Contrast in both appearances.
+- No horizontal scrolling at the 320px minimum width.
+- Virtual-keyboard resilience on a physical or emulated mobile browser: the
+  active field, its error, and submit action remain reachable by scrolling.
+- Form usability at 200% browser text zoom in both supported locales.
 
 Serious and critical axe violations fail Storybook tests. Critical product
 flows receive a Playwright keyboard pass before release.

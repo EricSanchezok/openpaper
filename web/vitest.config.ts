@@ -13,6 +13,8 @@ export default defineConfig({
       "@radix-ui/react-scroll-area",
       "@radix-ui/react-toast",
       "@radix-ui/react-visually-hidden",
+      "openapi-fetch",
+      "zod",
     ],
   },
   resolve: { alias: { "@": path.resolve(directory, "src") } },

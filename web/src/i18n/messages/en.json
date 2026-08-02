@@ -37,6 +37,35 @@
       "description": "Reconnect to continue."
     }
   },
+  "Authentication": {
+    "a11y": {
+      "showPassword": "Show password",
+      "hidePassword": "Hide password"
+    },
+    "validation": {
+      "email": "Enter a valid email address",
+      "passwordRequired": "Enter your password",
+      "passwordMinimum": "Use at least 12 characters",
+      "passwordMismatch": "Passwords do not match",
+      "tokenRequired": "This link is incomplete"
+    },
+    "errors": {
+      "invalidCredentials": "The email or password is incorrect.",
+      "rateLimited": "Too many attempts. Try again later.",
+      "sessionExpired": "Your session has expired. Sign in again.",
+      "verificationInvalid": "This verification link is invalid or expired.",
+      "resetInvalid": "This reset link is invalid or expired.",
+      "serviceUnavailable": "Sign-in is temporarily unavailable.",
+      "validation": "Check the information you entered.",
+      "unknown": "Something went wrong. Try again."
+    },
+    "session": {
+      "bootstrapping": "Checking your session",
+      "authenticated": "Signed in",
+      "anonymous": "Signed out",
+      "unavailable": "Session service unavailable"
+    }
+  },
   "Errors": {
     "unexpected": {
       "title": "Something went wrong",

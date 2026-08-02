@@ -2,23 +2,26 @@ import { delay, http, HttpResponse } from "msw";
 
 const apiUrl = "http://localhost:8000/api/v1/foundation-check";
 
-export function foundationHandler({
-  network,
-  data,
-}: {
-  network: "instant" | "slow" | "offline";
-  data: "populated" | "empty" | "error";
-}) {
-  return http.get(apiUrl, async () => {
-    if (network === "offline") return HttpResponse.error();
-    if (network === "slow") await delay(1800);
-    if (data === "error")
-      return HttpResponse.json({ message: "Server error" }, { status: 500 });
-    return HttpResponse.json({
-      items: data === "empty" ? [] : [{ id: "1", title: "Foundation item" }],
-    });
+export const foundationHandler = http.get(apiUrl, async ({ request }) => {
+  const scenario = new URL(request.url).searchParams.get("scenario") ?? "";
+  const network = scenario.startsWith("slow")
+    ? "slow"
+    : scenario.startsWith("offline")
+      ? "offline"
+      : "instant";
+  const data = scenario.endsWith("empty")
+    ? "empty"
+    : scenario.endsWith("error")
+      ? "error"
+      : "populated";
+  if (network === "offline") return HttpResponse.error();
+  if (network === "slow") await delay(1800);
+  if (data === "error")
+    return HttpResponse.json({ message: "Server error" }, { status: 500 });
+  return HttpResponse.json({
+    items: data === "empty" ? [] : [{ id: "1", title: "Foundation item" }],
   });
-}
+});
 
 export const successHandlers = [
   http.get(apiUrl, () =>

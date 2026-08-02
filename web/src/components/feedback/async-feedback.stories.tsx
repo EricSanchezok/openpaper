@@ -5,7 +5,7 @@ import { fn } from "storybook/test";
 import { AsyncFeedback } from "./async-feedback";
 
 const meta = {
-  title: "Foundation/Async feedback",
+  title: "Feedback/AsyncFeedback",
   component: AsyncFeedback,
   tags: ["autodocs"],
   args: { action: { label: "Try again", onClick: fn() } },

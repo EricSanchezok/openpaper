@@ -1,5 +1,5 @@
 import type { Preview } from "@storybook/nextjs-vite";
-import { getWorker, initialize, mswLoader } from "msw-storybook-addon";
+import { initialize, mswLoader } from "msw-storybook-addon";
 import { NextIntlClientProvider } from "next-intl";
 import { useEffect } from "react";
 
@@ -107,31 +107,12 @@ const preview: Preview = {
     network: "instant",
     data: "populated",
   },
-  loaders: [
-    mswLoader,
-    async (context) => {
-      const worker = getWorker();
-      worker.resetHandlers();
-      worker.use(
-        foundationHandler({
-          network:
-            context.globals.network === "slow" ||
-            context.globals.network === "offline"
-              ? context.globals.network
-              : "instant",
-          data:
-            context.globals.data === "empty" || context.globals.data === "error"
-              ? context.globals.data
-              : "populated",
-        }),
-      );
-      return {};
-    },
-  ],
+  loaders: [mswLoader],
   parameters: {
     a11y: { test: "error" },
     controls: { expanded: true },
     layout: "fullscreen",
+    msw: { handlers: [foundationHandler] },
     viewport: {
       options: {
         desktop: {

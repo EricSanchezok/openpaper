@@ -5,9 +5,9 @@ import { cn } from "@/lib/utilities/cn";
 
 type FieldContextValue = {
   controlId: string;
-  descriptionId: string;
+  descriptionId?: string;
   invalid: boolean;
-  messageId: string;
+  messageId?: string;
 };
 
 const FieldContext = React.createContext<FieldContextValue | null>(null);
@@ -31,23 +31,30 @@ export const Label = React.forwardRef<
 Label.displayName = LabelPrimitive.Root.displayName;
 
 export function Field({
+  children,
   className,
   invalid = false,
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { invalid?: boolean }) {
   const id = React.useId();
-  const value = React.useMemo(
-    () => ({
-      controlId: `${id}-control`,
-      descriptionId: `${id}-description`,
-      messageId: `${id}-message`,
-      invalid,
-    }),
-    [id, invalid],
+  const parts = React.Children.toArray(children);
+  const hasDescription = parts.some(
+    (child) => React.isValidElement(child) && child.type === FieldDescription,
   );
+  const hasMessage = parts.some(
+    (child) => React.isValidElement(child) && child.type === FieldMessage,
+  );
+  const value = {
+    controlId: `${id}-control`,
+    descriptionId: hasDescription ? `${id}-description` : undefined,
+    messageId: hasMessage ? `${id}-message` : undefined,
+    invalid,
+  };
   return (
     <FieldContext.Provider value={value}>
-      <div className={cn("grid gap-2", className)} {...props} />
+      <div className={cn("grid gap-2", className)} {...props}>
+        {children}
+      </div>
     </FieldContext.Provider>
   );
 }
@@ -66,11 +73,12 @@ export function FieldControl({
 }) {
   const { controlId, descriptionId, invalid, messageId } = useFieldContext();
   const childProps = children.props;
+  const describedBy = [descriptionId, messageId].filter(Boolean).join(" ");
   return React.cloneElement(children, {
     id: childProps.id ?? controlId,
     "aria-invalid": childProps["aria-invalid"] ?? (invalid || undefined),
     "aria-describedby":
-      childProps["aria-describedby"] ?? `${descriptionId} ${messageId}`.trim(),
+      childProps["aria-describedby"] ?? (describedBy || undefined),
   });
 }
 

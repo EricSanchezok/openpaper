@@ -19,7 +19,7 @@ import {
 } from "./select";
 
 const meta = {
-  title: "Forms/Auth controls",
+  title: "Examples/Auth control gallery",
   tags: ["autodocs"],
   parameters: { layout: "centered" },
 } satisfies Meta;
@@ -69,7 +69,12 @@ export const AllStates: Story = {
         placeholder="At least 12 characters"
         showPasswordLabel="Show password"
       />
-      <Input disabled value="Unavailable" readOnly />
+      <Input
+        aria-label="Unavailable field"
+        disabled
+        value="Unavailable"
+        readOnly
+      />
       <label className="flex min-h-11 items-center gap-3">
         <Checkbox /> Remember me
       </label>
@@ -92,6 +97,7 @@ export const AllStates: Story = {
 export const PasswordKeyboardInteraction: Story = {
   render: () => (
     <PasswordInput
+      aria-label="Password"
       defaultValue="twelve-characters"
       hidePasswordLabel="Hide password"
       showPasswordLabel="Show password"

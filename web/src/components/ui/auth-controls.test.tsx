@@ -32,6 +32,20 @@ describe("authentication controls", () => {
     );
   });
 
+  it("does not reference field descriptions that were not rendered", () => {
+    render(
+      <Field>
+        <FieldLabel>Email</FieldLabel>
+        <FieldControl>
+          <Input />
+        </FieldControl>
+      </Field>,
+    );
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute(
+      "aria-describedby",
+    );
+  });
+
   it("does not submit while a button is loading", async () => {
     const onClick = vi.fn();
     render(
@@ -54,6 +68,20 @@ describe("authentication controls", () => {
     await userEvent.click(link);
     expect(onClick).not.toHaveBeenCalled();
     expect(link).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("prevents an asChild button from activating while loading", async () => {
+    const onClick = vi.fn();
+    render(
+      <Button asChild loading onClick={onClick}>
+        <a href="#target">Continue</a>
+      </Button>,
+    );
+    const link = screen.getByRole("link", { name: "Continue" });
+    await userEvent.click(link);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    expect(link).toHaveAttribute("tabindex", "-1");
   });
 
   it("toggles password visibility with a localized label", async () => {

@@ -9,6 +9,17 @@ const config: StorybookConfig = {
   ],
   framework: { name: "@storybook/nextjs-vite", options: {} },
   staticDirs: ["../public"],
+  viteFinal: async (viteConfig) => ({
+    ...viteConfig,
+    optimizeDeps: {
+      ...viteConfig.optimizeDeps,
+      include: [
+        ...(viteConfig.optimizeDeps?.include ?? []),
+        "openapi-fetch",
+        "zod",
+      ],
+    },
+  }),
 };
 
 export default config;

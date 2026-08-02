@@ -5,8 +5,10 @@ import { AsyncBoundary } from "./async-feedback";
 
 type PreviewData = { items: Array<{ id: string; title: string }> };
 
-async function loadPreview(): Promise<PreviewData> {
-  const response = await fetch("http://localhost:8000/api/v1/foundation-check");
+async function loadPreview(scenario: string): Promise<PreviewData> {
+  const response = await fetch(
+    `http://localhost:8000/api/v1/foundation-check?scenario=${encodeURIComponent(scenario)}`,
+  );
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
   return response.json() as Promise<PreviewData>;
 }
@@ -14,7 +16,7 @@ async function loadPreview(): Promise<PreviewData> {
 function NetworkPreview({ scenario }: { scenario: string }) {
   const query = useQuery({
     queryKey: ["foundation-preview", scenario],
-    queryFn: loadPreview,
+    queryFn: () => loadPreview(scenario),
     retry: false,
   });
 
@@ -44,7 +46,7 @@ function NetworkPreview({ scenario }: { scenario: string }) {
 }
 
 const meta = {
-  title: "Foundation/Network scenarios",
+  title: "Examples/Network scenarios",
   parameters: { layout: "padded" },
   render: (_args, context) => (
     <div className="max-w-xl">

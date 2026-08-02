@@ -37,6 +37,35 @@
       "description": "请重新连接网络后继续。"
     }
   },
+  "Authentication": {
+    "a11y": {
+      "showPassword": "显示密码",
+      "hidePassword": "隐藏密码"
+    },
+    "validation": {
+      "email": "请输入有效的邮箱地址",
+      "passwordRequired": "请输入密码",
+      "passwordMinimum": "密码至少需要 12 个字符",
+      "passwordMismatch": "两次输入的密码不一致",
+      "tokenRequired": "此链接不完整"
+    },
+    "errors": {
+      "invalidCredentials": "邮箱或密码不正确。",
+      "rateLimited": "尝试次数过多，请稍后再试。",
+      "sessionExpired": "登录状态已过期，请重新登录。",
+      "verificationInvalid": "此验证链接无效或已过期。",
+      "resetInvalid": "此重置链接无效或已过期。",
+      "serviceUnavailable": "登录服务暂时不可用。",
+      "validation": "请检查输入的信息。",
+      "unknown": "出现了问题，请重试。"
+    },
+    "session": {
+      "bootstrapping": "正在检查登录状态",
+      "authenticated": "已登录",
+      "anonymous": "未登录",
+      "unavailable": "登录服务不可用"
+    }
+  },
   "Errors": {
     "unexpected": {
       "title": "出现了问题",

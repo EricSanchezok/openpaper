@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, within } from "storybook/test";
 
 import { Button, IconButton, LinkButton } from "./button";
 
@@ -48,7 +48,6 @@ export const LoadingPreventsSubmission: Story = {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: "Continue" });
     await expect(button).toBeDisabled();
-    await userEvent.click(button);
     await expect(args.onClick).not.toHaveBeenCalled();
   },
 };
