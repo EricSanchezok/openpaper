@@ -22,12 +22,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 
-def _request() -> Request:
+def _request(path: str = "/api/example") -> Request:
     return Request(
         {
             "type": "http",
             "method": "GET",
-            "path": "/api/example",
+            "path": path,
             "headers": [],
             "query_string": b"",
             "server": ("internal.example", 8000),
@@ -118,6 +118,92 @@ def test_validation_error_uses_envelope_without_echoing_input() -> None:
     assert body["kind"] == "unprocessable"
     assert body["retryable"] is False
     assert "connector-secret-must-not-be-echoed" not in bytes(response.body).decode()
+
+
+def test_auth_login_error_is_uniform_and_does_not_enumerate_accounts() -> None:
+    response = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/login"),
+            HTTPException(status_code=404, detail="User does not exist"),
+        )
+    )
+    assert response.status_code == 401
+    body = _body(response)
+    assert body["code"] == "auth_invalid_credentials"
+    assert body["message"] == "Invalid email or password"
+    assert "exist" not in bytes(response.body).decode()
+
+
+def test_auth_refresh_distinguishes_missing_and_expired_sessions() -> None:
+    missing = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/refresh"),
+            HTTPException(status_code=401, detail="Refresh token cookie is missing"),
+        )
+    )
+    expired = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/refresh"),
+            HTTPException(status_code=400, detail="Refresh token is expired"),
+        )
+    )
+    assert missing.status_code == 401
+    assert expired.status_code == 401
+    assert _body(missing)["code"] == "auth_session_missing"
+    assert _body(expired)["code"] == "auth_session_expired"
+
+
+def test_auth_token_links_and_rate_limits_use_stable_codes() -> None:
+    verification = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/verify-email"),
+            HTTPException(status_code=400, detail="Expired token"),
+        )
+    )
+    reset = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/reset-password"),
+            HTTPException(status_code=400, detail="Invalid token"),
+        )
+    )
+    limited = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/register"),
+            HTTPException(status_code=429, detail="Rate limit exceeded"),
+        )
+    )
+    assert _body(verification)["code"] == "auth_verification_token_invalid"
+    assert _body(reset)["code"] == "auth_reset_token_invalid"
+    assert _body(limited)["code"] == "auth_rate_limited"
+    assert limited.headers["retry-after"] == "60"
+
+
+def test_auth_service_error_is_retryable_and_exposes_retry_after() -> None:
+    response = asyncio.run(
+        http_error_handler(
+            _request("/api/v1/auth/login"),
+            HTTPException(status_code=500, detail="Database unavailable"),
+        )
+    )
+    body = _body(response)
+    assert response.status_code == 503
+    assert body["code"] == "auth_service_unavailable"
+    assert body["kind"] == "unavailable"
+    assert body["retryable"] is True
+    assert response.headers["retry-after"] == "5"
+
+
+def test_auth_validation_uses_public_validation_code() -> None:
+    response = asyncio.run(
+        validation_error_handler(
+            _request("/api/v1/auth/login"),
+            RequestValidationError(
+                [{"type": "missing", "loc": ("body", "email"), "input": {}}]
+            ),
+        )
+    )
+    assert response.status_code == 422
+    assert _body(response)["code"] == "validation_error"
 
 
 def test_unhandled_error_response_keeps_cors_and_request_identity() -> None:

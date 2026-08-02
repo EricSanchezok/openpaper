@@ -1704,6 +1704,43 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ApiErrorResponse */
+        ApiErrorResponse: {
+            /** Code */
+            code: string;
+            /**
+             * Correlation Id
+             * @default null
+             */
+            correlation_id: string | null;
+            /**
+             * Details
+             * @default null
+             */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Diagnostic Id
+             * @default null
+             */
+            diagnostic_id: string | null;
+            kind: components["schemas"]["FailureKind"];
+            /** Message */
+            message: string;
+            /**
+             * Request Id
+             * @default null
+             */
+            request_id: string | null;
+            /** Retryable */
+            retryable: boolean;
+            /**
+             * Stage
+             * @default null
+             */
+            stage: string | null;
+        };
         /** AudioOverviewContent */
         AudioOverviewContent: {
             /** Audio Url */
@@ -2391,6 +2428,15 @@ export interface components {
              */
             url: string;
         };
+        /**
+         * FailureKind
+         * @description Protocol-neutral failure categories.
+         *
+         *     A transport maps these categories to its own status vocabulary.  Error
+         *     codes remain the stable, product-specific contract.
+         * @enum {string}
+         */
+        FailureKind: "invalid_argument" | "unauthenticated" | "permission_denied" | "not_found" | "conflict" | "payload_too_large" | "unprocessable" | "rate_limited" | "dependency_failure" | "unavailable" | "internal";
         /** ForgotPasswordRequest */
         ForgotPasswordRequest: {
             /**
@@ -3992,13 +4038,40 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid or expired authentication token */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication failed or session unavailable */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4025,13 +4098,31 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4058,13 +4149,40 @@ export interface operations {
                     "application/json": components["schemas"]["AccessTokenResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Authentication failed or session unavailable */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4087,6 +4205,24 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
+            /** @description Authentication failed or session unavailable */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
         };
     };
     _refresh_cookie_api_v1_auth_refresh_post: {
@@ -4105,6 +4241,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccessTokenResponse"];
+                };
+            };
+            /** @description Authentication failed or session unavailable */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4131,13 +4285,31 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4164,13 +4336,31 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4197,13 +4387,40 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid or expired authentication token */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -4230,13 +4447,31 @@ export interface operations {
                     "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid or expired authentication token */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -5640,6 +5875,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Actor"];
+                };
+            };
+            /** @description Authentication failed or session unavailable */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Authentication service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
