@@ -1,14 +1,14 @@
 # Internationalization
 
-Scholens supports `en`, `zh-CN`, and `zh-TW` through `next-intl`. Interface
+Scholens supports `en` and `zh-CN` through `next-intl`. Interface
 locale is application chrome and product copy; it is not the Reader's paper
 translation language. Keep those settings, persistence rules, and backend
 contracts separate.
 
 ## Routing and resolution
 
-Authenticated application URLs stay locale-neutral. Do not add `/en`,
-`/zh-CN`, or `/zh-TW` route segments unless the product later needs localized
+Authenticated application URLs stay locale-neutral. Do not add `/en` or
+`/zh-CN` route segments unless the product later needs localized
 public, indexable pages and records a superseding ADR.
 
 The effective interface locale is resolved in this order:
@@ -62,10 +62,10 @@ the failure. All normal route and component errors use the active dictionary.
 
 ## Adding or changing copy
 
-1. Add the same namespaced key to `en.json`, `zh-CN.json`, and `zh-TW.json`.
+1. Add the same namespaced key to `en.json` and `zh-CN.json`.
 2. Preserve the same ICU argument names in every locale.
 3. Run `pnpm i18n:check`; missing, extra, or incompatible messages fail.
-4. Review the component in Storybook using all three Locale toolbar values,
+4. Review the component in Storybook using both Locale toolbar values,
    long content, and the Narrow panel viewport.
 5. Add an interaction or route test when locale changes behavior beyond text.
 

@@ -34,8 +34,8 @@ Use this checklist for every new route or substantial product capability.
 - [ ] Use Async Feedback presentation appropriate to the surface; domain copy
       remains feature-owned.
 - [ ] Verify Light and Dark. Do not patch appearance with call-site raw colors.
-- [ ] Add namespaced messages for English, Simplified Chinese, and Traditional
-      Chinese; verify long translations and do not concatenate fragments.
+- [ ] Add namespaced messages for English and Simplified Chinese; verify long
+      translations and do not concatenate fragments.
 
 ## Data
 

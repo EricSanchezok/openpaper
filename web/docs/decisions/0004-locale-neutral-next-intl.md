@@ -6,9 +6,9 @@ Owners: Scholens web
 
 ## Context
 
-The replacement frontend needs English, Simplified Chinese, and Traditional
-Chinese before product routes are built. It needs Server Component support,
-typed ICU messages, Storybook isolation, and a stable preference contract. The
+The replacement frontend needs English and Simplified Chinese before product
+routes are built. It needs Server Component support, typed ICU messages,
+Storybook isolation, and a stable preference contract. The
 authenticated workspace is not an indexable marketing site, so locale-prefixed
 URLs would add routing and navigation state without a product benefit.
 

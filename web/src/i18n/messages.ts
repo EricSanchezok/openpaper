@@ -9,8 +9,6 @@ const messageLoaders = {
   en: () => import("@/i18n/messages/en.json").then((module) => module.default),
   "zh-CN": () =>
     import("@/i18n/messages/zh-CN.json").then((module) => module.default),
-  "zh-TW": () =>
-    import("@/i18n/messages/zh-TW.json").then((module) => module.default),
 } satisfies Record<AppLocale, () => Promise<AbstractIntlMessages>>;
 
 export async function loadMessages(locale: AppLocale) {

@@ -96,7 +96,6 @@ export const AllStates: Story = {
             <SelectContent>
               <SelectItem value="en">English</SelectItem>
               <SelectItem value="zh-CN">简体中文</SelectItem>
-              <SelectItem value="zh-TW">繁體中文</SelectItem>
             </SelectContent>
           </Select>
           <Combobox

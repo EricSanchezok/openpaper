@@ -7,14 +7,13 @@ import { localeDirection, type AppLocale } from "../src/i18n/config";
 import { formats } from "../src/i18n/formats";
 import en from "../src/i18n/messages/en.json";
 import zhCN from "../src/i18n/messages/zh-CN.json";
-import zhTW from "../src/i18n/messages/zh-TW.json";
 import { QueryProvider } from "../src/lib/query/query-provider";
 import { foundationHandler } from "./msw/handlers";
 import "../src/styles/globals.css";
 
 initialize({ onUnhandledRequest: "bypass" });
 
-const messages = { en, "zh-CN": zhCN, "zh-TW": zhTW } as const;
+const messages = { en, "zh-CN": zhCN } as const;
 
 const preview: Preview = {
   decorators: [
@@ -22,9 +21,7 @@ const preview: Preview = {
       const appearance =
         context.globals.appearance === "dark" ? "dark" : "light";
       const locale: AppLocale =
-        context.globals.locale === "zh-CN" || context.globals.locale === "zh-TW"
-          ? context.globals.locale
-          : "en";
+        context.globals.locale === "zh-CN" ? "zh-CN" : "en";
       useEffect(() => {
         document.documentElement.dataset.theme = "default";
         document.documentElement.dataset.colorScheme = appearance;
@@ -75,7 +72,6 @@ const preview: Preview = {
         items: [
           { value: "en", title: "English" },
           { value: "zh-CN", title: "简体中文" },
-          { value: "zh-TW", title: "繁體中文" },
         ],
       },
     },

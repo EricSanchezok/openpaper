@@ -39,8 +39,8 @@ actually shared.
 - Every interactive control must have default, hover, pressed, focus-visible,
   disabled, and loading behavior where applicable.
 - Icon-only controls require an accessible label and usually a Tooltip.
-- Narrow containers, long English, Simplified Chinese, and Traditional Chinese
-  content must not break layout.
+- Narrow containers and long English or Simplified Chinese content must not
+  break layout.
 - User-visible product copy uses `next-intl` message keys. Do not concatenate
   translated fragments or hardcode fallback English inside product components.
 - UI primitives remain language-agnostic. Callers provide labels and content;

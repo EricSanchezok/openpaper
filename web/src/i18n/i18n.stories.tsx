@@ -53,12 +53,3 @@ export const SimplifiedChinese: Story = {
     ).toBeVisible();
   },
 };
-
-export const TraditionalChinese: Story = {
-  globals: { locale: "zh-TW" },
-  play: async ({ canvasElement }) => {
-    await expect(
-      within(canvasElement).getByRole("heading", { name: "多語言基礎" }),
-    ).toBeVisible();
-  },
-};

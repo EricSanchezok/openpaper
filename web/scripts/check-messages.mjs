@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const messagesDirectory = path.join(root, "src", "i18n", "messages");
-const locales = ["en", "zh-CN", "zh-TW"];
+const locales = ["en", "zh-CN"];
 
 function flatten(value, prefix = "", result = new Map()) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

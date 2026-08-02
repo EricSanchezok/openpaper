@@ -1,27 +1,15 @@
 import { defaultLocale, isAppLocale, type AppLocale } from "@/i18n/config";
 
-function localeCandidates(value: string): string[] {
-  return value.trim().replaceAll("_", "-").split("-").filter(Boolean);
-}
-
 export function normalizeLocale(value: unknown): AppLocale | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
 
   const normalized = value.trim().replaceAll("_", "-");
   if (isAppLocale(normalized)) return normalized;
 
-  const [language, regionOrScript] = localeCandidates(normalized).map((part) =>
-    part.toLowerCase(),
-  );
+  const [language] = normalized.toLowerCase().split("-");
 
   if (language === "en") return "en";
-  if (language !== "zh") return undefined;
-
-  if (["hant", "tw", "hk", "mo"].includes(regionOrScript ?? "")) {
-    return "zh-TW";
-  }
-
-  return "zh-CN";
+  return language === "zh" ? "zh-CN" : undefined;
 }
 
 export function localeFromAcceptLanguage(

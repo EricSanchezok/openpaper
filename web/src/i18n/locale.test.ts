@@ -11,8 +11,8 @@ describe("locale resolution", () => {
     ["en-US", "en"],
     ["zh", "zh-CN"],
     ["zh-Hans", "zh-CN"],
-    ["zh-Hant", "zh-TW"],
-    ["zh_HK", "zh-TW"],
+    ["zh-Hant", "zh-CN"],
+    ["zh_HK", "zh-CN"],
   ])("normalizes %s to %s", (input, expected) => {
     expect(normalizeLocale(input)).toBe(expected);
   });
@@ -26,10 +26,10 @@ describe("locale resolution", () => {
     expect(
       resolveLocale({
         accountLocale: "zh-TW",
-        cookieLocale: "zh-CN",
+        cookieLocale: "en",
         acceptLanguage: "en-US",
       }),
-    ).toBe("zh-TW");
+    ).toBe("zh-CN");
     expect(
       resolveLocale({ cookieLocale: "zh-CN", acceptLanguage: "en-US" }),
     ).toBe("zh-CN");

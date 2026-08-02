@@ -1,4 +1,4 @@
-export const locales = ["en", "zh-CN", "zh-TW"] as const;
+export const locales = ["en", "zh-CN"] as const;
 
 export type AppLocale = (typeof locales)[number];
 
@@ -13,7 +13,6 @@ export function isAppLocale(value: unknown): value is AppLocale {
 const localeDirections: Record<AppLocale, "ltr" | "rtl"> = {
   en: "ltr",
   "zh-CN": "ltr",
-  "zh-TW": "ltr",
 };
 
 export function localeDirection(locale: AppLocale): "ltr" | "rtl" {
