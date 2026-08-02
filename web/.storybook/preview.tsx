@@ -11,7 +11,7 @@ import { QueryProvider } from "../src/lib/query/query-provider";
 import { foundationHandler } from "./msw/handlers";
 import "../src/styles/globals.css";
 
-initialize({ onUnhandledRequest: "bypass" });
+initialize({ onUnhandledRequest: "error" });
 
 const messages = { en, "zh-CN": zhCN } as const;
 
@@ -143,6 +143,14 @@ const preview: Preview = {
           styles: { width: "480px", height: "900px" },
         },
         mobile: { name: "Mobile", styles: { width: "390px", height: "844px" } },
+        smallMobile: {
+          name: "Small Mobile",
+          styles: { width: "320px", height: "568px" },
+        },
+        tablet: {
+          name: "Tablet",
+          styles: { width: "768px", height: "1024px" },
+        },
       },
     },
   },

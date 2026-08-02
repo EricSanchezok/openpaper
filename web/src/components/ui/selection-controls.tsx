@@ -15,7 +15,7 @@ export const Checkbox = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CheckboxPrimitive.Root
     className={cn(
-      "border-control bg-surface text-primary-foreground hover:border-line-strong data-[state=checked]:border-primary data-[state=checked]:bg-primary grid size-5 place-items-center rounded-[var(--radius-xs)] border transition-colors disabled:opacity-[var(--opacity-disabled)]",
+      "border-control bg-surface text-primary-foreground hover:border-line-strong data-[state=checked]:border-primary data-[state=checked]:bg-primary grid size-5 place-items-center rounded-[var(--radius-xs)] border transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-[var(--opacity-disabled)]",
       className,
     )}
     ref={ref}
@@ -35,7 +35,7 @@ export const RadioItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <RadioGroupPrimitive.Item
     className={cn(
-      "border-control bg-surface data-[state=checked]:border-primary grid size-5 place-items-center rounded-full border disabled:opacity-[var(--opacity-disabled)]",
+      "border-control bg-surface data-[state=checked]:border-primary grid size-5 place-items-center rounded-full border focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-[var(--opacity-disabled)]",
       className,
     )}
     ref={ref}
@@ -52,7 +52,7 @@ export const Switch = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SwitchPrimitive.Root
     className={cn(
-      "bg-action-secondary data-[state=checked]:bg-primary h-6 w-11 rounded-full p-0.5 transition-colors disabled:opacity-[var(--opacity-disabled)]",
+      "bg-action-secondary data-[state=checked]:bg-primary h-6 w-11 rounded-full p-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-[var(--opacity-disabled)]",
       className,
     )}
     ref={ref}

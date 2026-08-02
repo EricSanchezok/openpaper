@@ -14,8 +14,10 @@ export const SheetTitle = DialogPrimitive.Title;
 export const SheetDescription = DialogPrimitive.Description;
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ children, className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    closeLabel: string;
+  }
+>(({ children, className, closeLabel, ...props }, ref) => (
   <DialogPrimitive.Portal>
     <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[var(--color-overlay-backdrop)]" />
     <DialogPrimitive.Content
@@ -30,7 +32,7 @@ export const SheetContent = React.forwardRef<
       <DialogPrimitive.Close asChild>
         <IconButton
           className="absolute top-3 right-3"
-          label="Close panel"
+          label={closeLabel}
           variant="ghost"
         >
           <Icon glyph={Xmark} size={20} />

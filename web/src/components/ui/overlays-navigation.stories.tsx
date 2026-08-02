@@ -30,14 +30,7 @@ import {
   SheetTrigger,
 } from "./sheet";
 import { Pagination } from "./tabs-pagination";
-import {
-  Toast,
-  ToastClose,
-  ToastDescription,
-  ToastProvider,
-  ToastTitle,
-  ToastViewport,
-} from "./toast";
+import { ToastProvider, useToast } from "./toast";
 import {
   Popover,
   PopoverContent,
@@ -49,7 +42,7 @@ import {
 } from "./tooltip-popover";
 
 const meta = {
-  title: "Foundation/Overlays and navigation",
+  title: "Examples/Overlays and navigation",
   tags: ["autodocs"],
   parameters: { layout: "padded" },
 } satisfies Meta;
@@ -128,7 +121,7 @@ export const ModalAndPanel: Story = {
         <SheetTrigger asChild>
           <Button variant="secondary">Open panel</Button>
         </SheetTrigger>
-        <SheetContent>
+        <SheetContent closeLabel="Close panel">
           <SheetTitle className="text-xl font-semibold">Side panel</SheetTitle>
           <SheetDescription className="text-muted mt-2 text-sm">
             Narrow layouts remain independently scrollable.
@@ -141,30 +134,44 @@ export const ModalAndPanel: Story = {
 
 function StatefulNavigation() {
   const [page, setPage] = useState(2);
-  const [open, setOpen] = useState(false);
   return (
-    <ToastProvider>
-      <div className="grid justify-items-start gap-5">
-        <Pagination onPageChange={setPage} page={page} pages={8} />
-        <p aria-live="polite" className="text-muted text-sm">
-          Page {page} of 8
-        </p>
-        <div className="flex gap-3">
-          <Button onClick={() => setOpen(true)} variant="secondary">
-            Show toast
-          </Button>
-          <LinkButton href="#isolated-link" variant="ghost">
-            Link action
-          </LinkButton>
-        </div>
-      </div>
-      <Toast onOpenChange={setOpen} open={open}>
-        <ToastTitle>Saved</ToastTitle>
-        <ToastDescription>The isolated action completed.</ToastDescription>
-        <ToastClose />
-      </Toast>
-      <ToastViewport />
+    <ToastProvider dismissLabel="Dismiss notification">
+      <StatefulNavigationContent page={page} setPage={setPage} />
     </ToastProvider>
+  );
+}
+
+function StatefulNavigationContent({
+  page,
+  setPage,
+}: {
+  page: number;
+  setPage: (page: number) => void;
+}) {
+  const { notify } = useToast();
+  return (
+    <div className="grid justify-items-start gap-5">
+      <Pagination onPageChange={setPage} page={page} pages={8} />
+      <p aria-live="polite" className="text-muted text-sm">
+        Page {page} of 8
+      </p>
+      <div className="flex gap-3">
+        <Button
+          onClick={() =>
+            notify({
+              description: "The isolated action completed.",
+              title: "Saved",
+            })
+          }
+          variant="secondary"
+        >
+          Show toast
+        </Button>
+        <LinkButton href="#isolated-link" variant="ghost">
+          Link action
+        </LinkButton>
+      </div>
+    </div>
   );
 }
 

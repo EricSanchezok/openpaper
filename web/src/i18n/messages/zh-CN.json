@@ -3,6 +3,7 @@
     "appName": "Scholens",
     "actions": {
       "openStorybook": "打开 Storybook",
+      "dismiss": "关闭",
       "tryAgain": "重试"
     },
     "locales": {

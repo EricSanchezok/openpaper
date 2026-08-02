@@ -5,7 +5,7 @@ import * as React from "react";
 import { cn } from "@/lib/utilities/cn";
 
 export const buttonVariants = cva(
-  "inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-md)] border text-sm font-medium transition-colors disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--color-action-disabled-bg)] disabled:text-disabled aria-busy:cursor-wait",
+  "inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-md)] border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--color-action-disabled-bg)] disabled:text-disabled aria-busy:cursor-wait",
   {
     variants: {
       variant: {
@@ -19,10 +19,10 @@ export const buttonVariants = cva(
           "border-[var(--color-danger-border)] bg-state-danger-bg text-danger hover:brightness-95",
       },
       size: {
-        sm: "h-9 px-3",
+        sm: "h-11 px-3 sm:h-9",
         md: "h-11 px-4",
         icon: "size-11 p-0",
-        "icon-sm": "size-9 p-0",
+        "icon-sm": "size-11 p-0 sm:size-9",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },
@@ -53,8 +53,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     if (asChild) {
       return (
         <Slot
+          aria-disabled={disabled || loading || undefined}
           aria-busy={loading || undefined}
           className={classes}
+          data-disabled={disabled || loading || undefined}
           ref={ref}
           {...props}
         >
@@ -93,14 +95,26 @@ IconButton.displayName = "IconButton";
 
 export function LinkButton({
   className,
+  disabled,
   variant,
   size,
+  onClick,
   ...props
 }: React.AnchorHTMLAttributes<HTMLAnchorElement> &
-  VariantProps<typeof buttonVariants>) {
+  VariantProps<typeof buttonVariants> & { disabled?: boolean }) {
   return (
     <a
+      aria-disabled={disabled || undefined}
       className={cn(buttonVariants({ variant, size }), className)}
+      data-disabled={disabled || undefined}
+      onClick={(event) => {
+        if (disabled) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
+      tabIndex={disabled ? -1 : props.tabIndex}
       {...props}
     />
   );
