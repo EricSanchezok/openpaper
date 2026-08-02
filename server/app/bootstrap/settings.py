@@ -24,6 +24,7 @@ class AppSettings(BaseSettings):
     diagnostic_snapshot_kms_key_id: str | None = None
     diagnostic_success_sample_rate: float = Field(default=0.01, ge=0, le=1)
     client_domain: str = "http://localhost:3000"
+    client_allowed_origins: str | None = None
     paper_search_backend: Literal["postgres_fts"] = "postgres_fts"
     paper_search_cursor_secret: str = Field(
         default="development-only-search-cursor-secret",
@@ -34,6 +35,13 @@ class AppSettings(BaseSettings):
     connector_credential_encryption_key: str = _DEVELOPMENT_CONNECTOR_KEY
     scholight_mcp_url: str = "https://scholight.sanchezcloud.net/api/mcp"
     scholight_mcp_delegation_jwt_secret: str | None = None
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """Return an explicit browser-origin allowlist with a safe canonical fallback."""
+        raw_origins = self.client_allowed_origins or self.client_domain
+        origins = (origin.strip() for origin in raw_origins.split(","))
+        return list(dict.fromkeys(origin for origin in origins if origin))
 
     @model_validator(mode="after")
     def reject_development_secrets_in_production(self) -> AppSettings:

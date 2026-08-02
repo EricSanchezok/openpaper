@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from app.scripts.export_public_openapi import OUTPUT, public_openapi_schema
+
+
+def test_public_openapi_contains_only_public_v1_routes() -> None:
+    schema = public_openapi_schema()
+    assert schema["paths"]
+    assert all(path.startswith("/api/v1") for path in schema["paths"])
+
+
+def test_public_openapi_snapshot_is_current() -> None:
+    committed = json.loads(Path(OUTPUT).read_text(encoding="utf-8"))
+    assert committed == public_openapi_schema()

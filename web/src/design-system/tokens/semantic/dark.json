@@ -1,0 +1,93 @@
+{
+  "color": {
+    "bg": {
+      "canvas": { "$type": "color", "$value": "{palette.neutral.1000}" },
+      "sidebar": { "$type": "color", "$value": "{palette.neutral.950}" },
+      "surface": { "$type": "color", "$value": "{palette.neutral.950}" },
+      "subtle": { "$type": "color", "$value": "{palette.neutral.900}" },
+      "hover": { "$type": "color", "$value": "{palette.neutral.800}" },
+      "pressed": { "$type": "color", "$value": "{palette.neutral.700}" },
+      "elevated": { "$type": "color", "$value": "{palette.neutral.900}" }
+    },
+    "text": {
+      "primary": { "$type": "color", "$value": "{palette.neutral.0}" },
+      "secondary": { "$type": "color", "$value": "{palette.neutral.200}" },
+      "muted": { "$type": "color", "$value": "{palette.neutral.400}" },
+      "tertiary": { "$type": "color", "$value": "{palette.neutral.500}" },
+      "inverse": { "$type": "color", "$value": "{palette.neutral.1000}" },
+      "disabled": { "$type": "color", "$value": "{palette.neutral.600}" },
+      "link": { "$type": "color", "$value": "{palette.neutral.0}" },
+      "link-hover": { "$type": "color", "$value": "{palette.neutral.200}" }
+    },
+    "icon": {
+      "primary": { "$type": "color", "$value": "{palette.neutral.0}" },
+      "secondary": { "$type": "color", "$value": "{palette.neutral.400}" },
+      "disabled": { "$type": "color", "$value": "{palette.neutral.600}" },
+      "inverse": { "$type": "color", "$value": "{palette.neutral.1000}" }
+    },
+    "border": {
+      "default": { "$type": "color", "$value": "{palette.neutral.800}" },
+      "subtle": { "$type": "color", "$value": "{palette.neutral.900}" },
+      "strong": { "$type": "color", "$value": "{palette.neutral.600}" },
+      "control": { "$type": "color", "$value": "{palette.neutral.600}" },
+      "focus": { "$type": "color", "$value": "{palette.neutral.0}" }
+    },
+    "action": {
+      "primary": { "$type": "color", "$value": "{palette.neutral.0}" },
+      "primary-hover": { "$type": "color", "$value": "{palette.neutral.200}" },
+      "primary-foreground": {
+        "$type": "color",
+        "$value": "{palette.neutral.1000}"
+      },
+      "secondary": { "$type": "color", "$value": "{palette.neutral.800}" },
+      "disabled-bg": { "$type": "color", "$value": "{palette.neutral.800}" },
+      "disabled-text": { "$type": "color", "$value": "{palette.neutral.600}" }
+    },
+    "accent": {
+      "bg": { "$type": "color", "$value": "{palette.accent.900}" },
+      "foreground": { "$type": "color", "$value": "{palette.accent.100}" },
+      "border": { "$type": "color", "$value": "{palette.accent.700}" }
+    },
+    "selection": {
+      "bg": { "$type": "color", "$value": "{palette.neutral.900}" },
+      "foreground": { "$type": "color", "$value": "{palette.neutral.100}" }
+    },
+    "focus": { "ring": { "$type": "color", "$value": "{palette.neutral.0}" } },
+    "overlay": {
+      "backdrop": { "$type": "color", "$value": "{palette.overlay.40}" }
+    },
+    "elevation": {
+      "shadow": { "$type": "color", "$value": "{palette.overlay.40}" }
+    },
+    "annotation": {
+      "bg": { "$type": "color", "$value": "{palette.status.warning.strong}" },
+      "text": { "$type": "color", "$value": "{palette.status.warning.subtle}" }
+    },
+    "info": {
+      "bg": { "$type": "color", "$value": "{palette.status.info.strong}" },
+      "text": { "$type": "color", "$value": "{palette.status.info.subtle}" },
+      "border": { "$type": "color", "$value": "{palette.status.info.strong}" }
+    },
+    "success": {
+      "bg": { "$type": "color", "$value": "{palette.status.success.strong}" },
+      "text": { "$type": "color", "$value": "{palette.status.success.subtle}" },
+      "border": {
+        "$type": "color",
+        "$value": "{palette.status.success.strong}"
+      }
+    },
+    "warning": {
+      "bg": { "$type": "color", "$value": "{palette.status.warning.strong}" },
+      "text": { "$type": "color", "$value": "{palette.status.warning.subtle}" },
+      "border": {
+        "$type": "color",
+        "$value": "{palette.status.warning.strong}"
+      }
+    },
+    "danger": {
+      "bg": { "$type": "color", "$value": "{palette.status.danger.strong}" },
+      "text": { "$type": "color", "$value": "{palette.status.danger.subtle}" },
+      "border": { "$type": "color", "$value": "{palette.status.danger.strong}" }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+.next/
+coverage/
+playwright-report/
+storybook-static/
+test-results/
+public/mockServiceWorker.js
+src/lib/api/generated/

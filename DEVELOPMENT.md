@@ -1,10 +1,14 @@
 # Development Setup
 
-Three services run locally: **server** (API), **client** (Next.js), and **jobs** (Celery). More detail: [server/README.md](./server/README.md), [client/README.md](./client/README.md), [jobs/README.md](./jobs/README.md).
+Four application services can run locally: **server** (API), the new **web** foundation,
+the legacy **client** used only for comparison, and **jobs** (Celery). Storybook runs
+independently for isolated component development. More detail:
+[server/README.md](./server/README.md), [web/README.md](./web/README.md),
+[client/README.md](./client/README.md), [jobs/README.md](./jobs/README.md).
 
 ## Prerequisites
 
-Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js 22 LTS + Yarn,
+Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js 22 LTS, pnpm + Yarn,
 PostgreSQL, and Docker (RabbitMQ + Redis for jobs). Avoid odd-numbered Node
 releases; the frontend dependency graph follows the active/LTS Node support
 window enforced in `client/package.json`.
@@ -13,7 +17,9 @@ window enforced in `client/package.json`.
 
 | Service           | Port        | Start                            |
 | ----------------- | ----------- | -------------------------------- |
-| Client            | 3000        | `corepack yarn dev` in `client/` |
+| Web (canonical)   | 3000        | `pnpm dev` in `web/`             |
+| Legacy client     | 3001        | `corepack yarn dev` in `client/` |
+| Storybook         | 6006        | `pnpm storybook` in `web/`       |
 | Server            | 8000        | `uv run start` in `server/`      |
 | Jobs API          | 8001        | `uv run start` in `jobs/`        |
 | RabbitMQ / Redis  | 5672 / 6379 | Docker via `jobs` `uv run start` |
@@ -29,18 +35,19 @@ S3、MinerU、MOSS Voice 和 DeepSeek 的账号申请步骤见
 [`docs/setup/external-services.zh-CN.md`](./docs/setup/external-services.zh-CN.md)。
 
 ```bash
-touch server/.env jobs/.env client/.env.local
+touch server/.env jobs/.env web/.env.local client/.env.local
 ```
 
 The root file is a committed catalog, not a runtime file. Each process reads
 the private file in its own working directory:
 
-| Runtime file        | Owned configuration                               |
-| ------------------- | ------------------------------------------------- |
-| `server/.env`       | Database, sanchezcloud-identity, MOSS, API integrations      |
-| `jobs/.env`         | MinerU, background processing, webhook delivery   |
-| Both Python files   | S3, DeepSeek, broker URLs, webhook signing secret |
-| `client/.env.local` | `NEXT_PUBLIC_*` browser configuration only        |
+| Runtime file        | Owned configuration                                     |
+| ------------------- | ------------------------------------------------------- |
+| `server/.env`       | Database, sanchezcloud-identity, MOSS, API integrations |
+| `jobs/.env`         | MinerU, background processing, webhook delivery         |
+| Both Python files   | S3, DeepSeek, broker URLs, webhook signing secret       |
+| `web/.env.local`    | canonical `NEXT_PUBLIC_*` browser configuration         |
+| `client/.env.local` | legacy comparison client configuration                  |
 
 Do not copy Python-service credentials into `client/.env.local`. Next.js only
 exposes `NEXT_PUBLIC_*` values to browser code, but keeping secrets out of the
@@ -53,18 +60,19 @@ client build context is the safer operational boundary.
 
 ### Required for a minimal local stack
 
-| Variable                                                                                 | Where                                                     |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `DATABASE_URL`                                                                           | server                                                    |
-| `DEEPSEEK_API_KEY`                                                                       | server, jobs                                              |
-| `MINERU_API_TOKEN`                                                                       | jobs                                                      |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME` | server + jobs                                             |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                             | server + jobs                                             |
-| `CELERY_API_URL`                                                                         | server                                                    |
-| `WEBHOOK_BASE_URL`                                                                       | jobs                                                      |
-| `AUTH_JWT_SECRET` (32+ bytes)                                                            | server                                                    |
-| `CLIENT_DOMAIN`                                                                          | server (`http://localhost:3000`)                           |
-| `NEXT_PUBLIC_API_URL`                                                                    | client                                                    |
+| Variable                                                                                 | Where                                                  |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `DATABASE_URL`                                                                           | server                                                 |
+| `DEEPSEEK_API_KEY`                                                                       | server, jobs                                           |
+| `MINERU_API_TOKEN`                                                                       | jobs                                                   |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME` | server + jobs                                          |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                             | server + jobs                                          |
+| `CELERY_API_URL`                                                                         | server                                                 |
+| `WEBHOOK_BASE_URL`                                                                       | jobs                                                   |
+| `AUTH_JWT_SECRET` (32+ bytes)                                                            | server                                                 |
+| `CLIENT_DOMAIN`                                                                          | server canonical URL (`http://localhost:3000`)         |
+| `CLIENT_ALLOWED_ORIGINS`                                                                 | server (`http://localhost:3000,http://localhost:3001`) |
+| `NEXT_PUBLIC_API_URL`                                                                    | web + legacy client                                    |
 
 MOSS Voice is required only for audio overviews. Zotero, Stripe, email, PostHog,
 and admin variables are grouped in the root `.env.example`.
@@ -117,6 +125,11 @@ cd jobs && uv sync
 cd ..
 touch client/.env.local
 cd client && corepack yarn install
+
+# New web foundation
+cd ..
+touch web/.env.local
+cd web && corepack enable && pnpm install --frozen-lockfile
 ```
 
 `openpaper_local` is the local product migration role. If `DATABASE_URL` uses
@@ -128,13 +141,22 @@ role.
 
 Use separate terminals, in this order:
 
-| #   | Directory | Command                                                                                  |
-| --- | --------- | ---------------------------------------------------------------------------------------- |
+| #   | Directory | Command                                                                                    |
+| --- | --------- | ------------------------------------------------------------------------------------------ |
 | 1   | `jobs/`   | `uv run start` — Docker RabbitMQ/Redis, Celery worker, Celery Beat (Zotero sync), jobs API |
-| 2   | `server/` | `uv run start` — loads `.env`, applies Scholens migrations, starts API                  |
-| 3   | `client/` | `corepack yarn dev`                                                                      |
+| 2   | `server/` | `uv run start` — loads `.env`, applies Scholens migrations, starts API                     |
+| 3   | `web/`    | `pnpm dev` — canonical web foundation on port 3000                                         |
+| 4   | `client/` | `corepack yarn dev` — legacy comparison UI on port 3001                                    |
 
-Check: [localhost:8000/docs](http://localhost:8000/docs), [localhost:3000](http://localhost:3000), worker log shows `celery@... ready`.
+Check: [localhost:8000/docs](http://localhost:8000/docs),
+[localhost:3000](http://localhost:3000), [localhost:3001](http://localhost:3001),
+and confirm the worker log shows `celery@... ready`. Storybook is optional at
+[localhost:6006](http://localhost:6006).
+
+Before adding replacement-frontend product code, read the
+[`web/docs` engineering handbook](./web/docs/README.md). It defines dependency
+direction, feature slices, component intake, Figma/token synchronization, API
+generation, testing responsibilities, and the required new-feature checklist.
 
 ## Reset only the local product schema
 

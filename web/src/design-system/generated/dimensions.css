@@ -1,0 +1,30 @@
+:root {
+  --border-width: 1px;
+  --control-md: 44px;
+  --control-sm: 36px;
+  --focus-width: 2px;
+  --icon-lg: 24px;
+  --icon-md: 20px;
+  --icon-sm: 16px;
+  --icon-stroke: 1.5;
+  --layout-reading-column: 720px;
+  --layout-sidebar: 248px;
+  --opacity-disabled: 0.38;
+  --radius-full: 999px;
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  --radius-xl: 16px;
+  --radius-xs: 4px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --touch-target: 44px;
+}

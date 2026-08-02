@@ -1,10 +1,8 @@
-# ![Scholens](./client/src/app/scholens.svg) Scholens
+# Scholens
 
 **The fastest way to annotate and deeply understand research papers.**
 
 Scholens is a workspace for reading research. Upload your papers, highlight and annotate them, take notes, and ask questions — with an AI assistant that grounds every answer in verifiable citations you can click to jump straight to the source.
-
-![Scholens](./demo.gif)
 
 ## Why Scholens?
 
@@ -56,9 +54,11 @@ For the hardened AWS/EC2 deployment that shares SanchezCloud accounts with Schol
 
 Contributions are welcome! To get a local development environment running:
 
-- **[DEVELOPMENT.md](./DEVELOPMENT.md)** — full setup guide: prerequisites, environment variables, and how to start all three services.
+- **[AGENTS.md](./AGENTS.md)** — repository boundaries and required engineering documentation for coding agents.
+- **[DEVELOPMENT.md](./DEVELOPMENT.md)** — full setup guide: prerequisites, environment variables, ports, and how to start the local stack.
+- **[web/README.md](./web/README.md)** — the replacement Next.js application and engineering handbook.
 - **[server/README.md](./server/README.md)** — the FastAPI backend.
-- **[client/README.md](./client/README.md)** — the Next.js web app.
+- **[client/README.md](./client/README.md)** — the legacy comparison frontend.
 - **[jobs/README.md](./jobs/README.md)** — the Celery worker for async processing (PDF parsing, Zotero sync, audio).
 
 Scholens is derived from the AGPL-licensed
