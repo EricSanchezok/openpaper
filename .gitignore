@@ -8,6 +8,7 @@ __pycache__/
 
 # dependencies
 client/node_modules
+web/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -19,9 +20,15 @@ client/node_modules
 # testing
 client/coverage
 client/test-results/
+web/coverage
+web/test-results/
+web/playwright-report/
 
 # next.js
 client/.next/
+web/.next/
+web/out/
+web/storybook-static/
 client/out/
 client/public/blog-latest.json
 client/public/pdf.worker.mjs

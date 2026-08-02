@@ -273,7 +273,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     application.add_middleware(UnhandledErrorMiddleware)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[runtime_settings.client_domain],
+        allow_origins=runtime_settings.cors_allowed_origins,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["*"],
         expose_headers=[

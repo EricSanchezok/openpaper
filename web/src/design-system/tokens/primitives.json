@@ -1,0 +1,43 @@
+{
+  "primitive": {
+    "neutral": {
+      "0": { "$type": "color", "$value": "#ffffff" },
+      "25": { "$type": "color", "$value": "#fafaf8" },
+      "50": { "$type": "color", "$value": "#f5f5f3" },
+      "100": { "$type": "color", "$value": "#ececea" },
+      "150": { "$type": "color", "$value": "#e7e7e4" },
+      "200": { "$type": "color", "$value": "#e4e4e1" },
+      "300": { "$type": "color", "$value": "#d7d7d2" },
+      "400": { "$type": "color", "$value": "#bbbbb5" },
+      "500": { "$type": "color", "$value": "#a2a29c" },
+      "550": { "$type": "color", "$value": "#94948e" },
+      "600": { "$type": "color", "$value": "#73736e" },
+      "700": { "$type": "color", "$value": "#5e5e59" },
+      "800": { "$type": "color", "$value": "#4b4b47" },
+      "900": { "$type": "color", "$value": "#323230" },
+      "950": { "$type": "color", "$value": "#20201e" },
+      "1000": { "$type": "color", "$value": "#141412" }
+    },
+    "status": {
+      "info": {
+        "subtle": { "$type": "color", "$value": "#eef3f6" },
+        "strong": { "$type": "color", "$value": "#3b5665" }
+      },
+      "success": {
+        "subtle": { "$type": "color", "$value": "#eff8f1" },
+        "strong": { "$type": "color", "$value": "#2d6a45" }
+      },
+      "warning": {
+        "subtle": { "$type": "color", "$value": "#fbf3db" },
+        "strong": { "$type": "color", "$value": "#7a5a12" }
+      },
+      "danger": {
+        "subtle": { "$type": "color", "$value": "#fff2f0" },
+        "strong": { "$type": "color", "$value": "#963e38" }
+      }
+    },
+    "overlay": {
+      "40": { "$type": "color", "$value": "#00000066" }
+    }
+  }
+}

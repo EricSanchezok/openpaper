@@ -1,0 +1,52 @@
+{
+  "space": {
+    "1": { "$type": "dimension", "$value": { "value": 4, "unit": "px" } },
+    "2": { "$type": "dimension", "$value": { "value": 8, "unit": "px" } },
+    "3": { "$type": "dimension", "$value": { "value": 12, "unit": "px" } },
+    "4": { "$type": "dimension", "$value": { "value": 16, "unit": "px" } },
+    "5": { "$type": "dimension", "$value": { "value": 20, "unit": "px" } },
+    "6": { "$type": "dimension", "$value": { "value": 24, "unit": "px" } },
+    "8": { "$type": "dimension", "$value": { "value": 32, "unit": "px" } },
+    "10": { "$type": "dimension", "$value": { "value": 40, "unit": "px" } },
+    "12": { "$type": "dimension", "$value": { "value": 48, "unit": "px" } },
+    "16": { "$type": "dimension", "$value": { "value": 64, "unit": "px" } }
+  },
+  "radius": {
+    "xs": { "$type": "dimension", "$value": { "value": 4, "unit": "px" } },
+    "sm": { "$type": "dimension", "$value": { "value": 6, "unit": "px" } },
+    "md": { "$type": "dimension", "$value": { "value": 8, "unit": "px" } },
+    "lg": { "$type": "dimension", "$value": { "value": 12, "unit": "px" } },
+    "xl": { "$type": "dimension", "$value": { "value": 16, "unit": "px" } },
+    "full": { "$type": "dimension", "$value": { "value": 999, "unit": "px" } }
+  },
+  "layout": {
+    "sidebar": {
+      "$type": "dimension",
+      "$value": { "value": 248, "unit": "px" }
+    },
+    "reading-column": {
+      "$type": "dimension",
+      "$value": { "value": 720, "unit": "px" }
+    }
+  },
+  "control": {
+    "sm": { "$type": "dimension", "$value": { "value": 36, "unit": "px" } },
+    "md": { "$type": "dimension", "$value": { "value": 44, "unit": "px" } }
+  },
+  "icon": {
+    "sm": { "$type": "dimension", "$value": { "value": 16, "unit": "px" } },
+    "md": { "$type": "dimension", "$value": { "value": 20, "unit": "px" } },
+    "lg": { "$type": "dimension", "$value": { "value": 24, "unit": "px" } },
+    "stroke": { "$type": "number", "$value": 1.5 }
+  },
+  "touch": {
+    "target": { "$type": "dimension", "$value": { "value": 44, "unit": "px" } }
+  },
+  "border": {
+    "width": { "$type": "dimension", "$value": { "value": 1, "unit": "px" } }
+  },
+  "focus": {
+    "width": { "$type": "dimension", "$value": { "value": 2, "unit": "px" } }
+  },
+  "opacity": { "disabled": { "$type": "number", "$value": 0.38 } }
+}
