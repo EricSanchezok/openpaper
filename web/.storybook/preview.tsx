@@ -1,29 +1,49 @@
 import type { Preview } from "@storybook/nextjs-vite";
 import { getWorker, initialize, mswLoader } from "msw-storybook-addon";
+import { NextIntlClientProvider } from "next-intl";
 import { useEffect } from "react";
 
+import { localeDirection, type AppLocale } from "../src/i18n/config";
+import { formats } from "../src/i18n/formats";
+import en from "../src/i18n/messages/en.json";
+import zhCN from "../src/i18n/messages/zh-CN.json";
+import zhTW from "../src/i18n/messages/zh-TW.json";
 import { QueryProvider } from "../src/lib/query/query-provider";
 import { foundationHandler } from "./msw/handlers";
 import "../src/styles/globals.css";
 
 initialize({ onUnhandledRequest: "bypass" });
 
+const messages = { en, "zh-CN": zhCN, "zh-TW": zhTW } as const;
+
 const preview: Preview = {
   decorators: [
     (Story, context) => {
       const appearance =
         context.globals.appearance === "dark" ? "dark" : "light";
+      const locale: AppLocale =
+        context.globals.locale === "zh-CN" || context.globals.locale === "zh-TW"
+          ? context.globals.locale
+          : "en";
       useEffect(() => {
         document.documentElement.dataset.theme = "default";
         document.documentElement.dataset.colorScheme = appearance;
-        document.documentElement.lang = String(context.globals.locale ?? "en");
-      }, [appearance, context.globals.locale]);
+        document.documentElement.lang = locale;
+        document.documentElement.dir = localeDirection(locale);
+      }, [appearance, locale]);
       return (
-        <QueryProvider>
-          <div className="bg-canvas text-foreground min-h-screen p-6">
-            <Story />
-          </div>
-        </QueryProvider>
+        <NextIntlClientProvider
+          formats={formats}
+          locale={locale}
+          messages={messages[locale]}
+          timeZone="UTC"
+        >
+          <QueryProvider>
+            <div className="bg-canvas text-foreground min-h-screen p-6">
+              <Story />
+            </div>
+          </QueryProvider>
+        </NextIntlClientProvider>
       );
     },
   ],

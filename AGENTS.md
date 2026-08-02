@@ -53,6 +53,8 @@ The canonical rules live in [`web/docs`](./web/docs/README.md). In particular:
   do not handwrite duplicate DTOs;
 - every reusable component needs isolated Storybook coverage, interaction
   states, keyboard behavior, narrow-content coverage, and Light/Dark review.
+- interface copy follows `web/docs/internationalization.md`; UI locale and
+  Reader content translation are separate product concepts.
 
 Do not mechanically recreate Figma layers or absolute coordinates. Figma owns
 layout intent, visual hierarchy, interaction states, and acceptance; code owns
@@ -76,6 +78,7 @@ Run checks proportional to the change. The full replacement-frontend gate is:
 cd web
 pnpm tokens:check
 pnpm api:check
+pnpm i18n:check
 pnpm lint
 pnpm format:check
 pnpm typecheck

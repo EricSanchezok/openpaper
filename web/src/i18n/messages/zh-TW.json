@@ -1,0 +1,53 @@
+{
+  "Common": {
+    "appName": "Scholens",
+    "actions": {
+      "openStorybook": "開啟 Storybook",
+      "tryAgain": "重試"
+    },
+    "locales": {
+      "en": "English",
+      "zh-CN": "简体中文",
+      "zh-TW": "繁體中文"
+    }
+  },
+  "Metadata": {
+    "title": "Scholens 前端基礎",
+    "description": "Scholens 新一代前端基礎驗證頁面"
+  },
+  "FoundationSmoke": {
+    "eyebrow": "前端基礎 · 驗證頁面",
+    "description": "獨立的 Next.js、設計令牌、主題、查詢、元件和多語言基礎已經運作。具體產品頁面將於後續開始開發。"
+  },
+  "AsyncFeedback": {
+    "loading": "正在載入",
+    "retrying": "正在重試",
+    "retry": "重試",
+    "tryAgain": "重試",
+    "empty": {
+      "title": "暫無內容",
+      "description": "內容可用後會顯示在這裡。"
+    },
+    "error": {
+      "title": "無法載入內容",
+      "description": "請重試。如果問題持續發生，請稍後再試。"
+    },
+    "offline": {
+      "title": "目前處於離線狀態",
+      "description": "請重新連線後繼續。"
+    }
+  },
+  "Errors": {
+    "unexpected": {
+      "title": "發生問題",
+      "description": "前端基礎遇到了意外錯誤。"
+    }
+  },
+  "I18nDemo": {
+    "title": "多語言基礎",
+    "localeLabel": "介面語言",
+    "items": "{count, number} 篇論文",
+    "credits": "{amount, number, compact} Token 額度",
+    "updated": "更新於 {date, date, short}"
+  }
+}

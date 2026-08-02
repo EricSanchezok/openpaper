@@ -13,6 +13,7 @@ history; add a later ADR that supersedes it.
 - [ADR 0001: Independent web application](./0001-independent-web-application.md)
 - [ADR 0002: DTCG token source of truth](./0002-dtcg-token-source-of-truth.md)
 - [ADR 0003: Generated public API contract](./0003-generated-public-api-contract.md)
+- [ADR 0004: Locale-neutral application internationalization](./0004-locale-neutral-next-intl.md)
 
 ## Template
 

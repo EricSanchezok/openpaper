@@ -14,6 +14,7 @@ pnpm storybook           # http://localhost:6006, no API required
 pnpm test
 pnpm test:storybook
 pnpm test:e2e
+pnpm i18n:check          # message keys and ICU arguments stay aligned
 ```
 
 The legacy comparison client remains available at `http://localhost:3001`.
@@ -43,6 +44,8 @@ test:
   classification, API design, external component intake, and Storybook rules.
 - [`design-tokens.md`](./docs/design-tokens.md): Figma/DTCG workflow, semantic
   styling, themes, and generated artifacts.
+- [`internationalization.md`](./docs/internationalization.md): locale
+  resolution, message catalogs, formatting, and Storybook workflow.
 - [`api-development.md`](./docs/api-development.md): public OpenAPI snapshots,
   typed transport, query conventions, and coordinated schema changes.
 - [`testing.md`](./docs/testing.md): unit, Storybook browser, MSW, accessibility,

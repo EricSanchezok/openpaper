@@ -15,3 +15,24 @@ test("foundation smoke route initializes providers and theme", async ({
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
 });
+
+test("locale cookie selects the active interface dictionary", async ({
+  context,
+  page,
+}) => {
+  await context.addCookies([
+    {
+      name: "scholens-locale",
+      value: "zh-CN",
+      domain: "localhost",
+      path: "/",
+    },
+  ]);
+  await page.goto("/");
+
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByText("前端基础 · 验证页面")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /打开 Storybook/ }),
+  ).toBeVisible();
+});
