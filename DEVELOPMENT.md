@@ -113,7 +113,7 @@ cd server && uv sync
 # its own repository first, then apply only Scholens's migration:
 uv run --env-file .env --project ../../sanchezcloud-identity sanchezcloud-identity migrate
 psql postgresql://postgres:postgres@127.0.0.1:5432/sanchezcloud \
-  -c 'CREATE SCHEMA IF NOT EXISTS scholens AUTHORIZATION openpaper_local'
+  -c 'CREATE SCHEMA IF NOT EXISTS scholens AUTHORIZATION scholens_migrator'
 uv run python -m app.scripts.migrate_product
 
 # Jobs
@@ -132,7 +132,7 @@ touch web/.env.local
 cd web && corepack enable && pnpm install --frozen-lockfile
 ```
 
-`openpaper_local` is the local product migration role. If `DATABASE_URL` uses
+`scholens_migrator` is the local product migration role. If `DATABASE_URL` uses
 a different role, substitute it in this one-time administrator command.
 Alembic intentionally refuses to migrate a `scholens` schema owned by another
 role.

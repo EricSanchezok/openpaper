@@ -214,6 +214,13 @@ def test_environment_catalog_matches_shared_identity_conventions() -> None:
     assert "FIRECRAWL_API_KEY" not in catalog + runtime + compose
 
 
+def test_local_development_uses_the_scholens_migrator_name() -> None:
+    development = (ROOT / "DEVELOPMENT.md").read_text(encoding="utf-8")
+
+    assert "scholens_migrator" in development
+    assert "openpaper_local" not in development
+
+
 def test_environment_catalog_covers_code_and_compose_references() -> None:
     assignment = re.compile(r"^([A-Z][A-Z0-9_]*)=", re.MULTILINE)
     catalog_variables = set(
