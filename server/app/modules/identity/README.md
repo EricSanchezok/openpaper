@@ -1,13 +1,15 @@
 # Scholens authentication
 
-Scholens uses the shared [`sanchezcloud-identity`](https://github.com/EricSanchezok/sanchezcloud-identity)
-service library. It does not maintain a second user table or login session.
+Scholens embeds the shared
+[`sanchezcloud-identity`](https://github.com/EricSanchezok/sanchezcloud-identity) Python SDK. It
+does not maintain a second user table or login session. Cross-product onboarding, database-role,
+upgrade, and troubleshooting rules are canonical in the
+[Identity engineering handbook](https://github.com/EricSanchezok/sanchezcloud-identity/blob/main/docs/README.md).
 
 ## Identity boundary
 
 - Canonical identities live in `auth.users` and use `BIGINT` IDs.
-- Scholens-owned settings live in `user_profiles` and reference
-  `scholens.user_profiles` and reference `auth.users.id`.
+- Scholens-owned settings live in `scholens.user_profiles` and reference `auth.users.id`.
 - Every Scholens user-owned table references `auth.users.id` directly.
 - Access and refresh tokens are scoped to the `scholens` client through their
   JWT audience and refresh-token `client_id`.
@@ -29,7 +31,7 @@ host-only `scholens_refresh` cookie with `HttpOnly`, `SameSite=Strict`, and
 
 ## Required configuration
 
-Cloud-auth settings use the `AUTH_` prefix. Production must provide at least:
+Identity host settings use the `AUTH_` prefix. Production must provide at least:
 
 ```dotenv
 AUTH_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
