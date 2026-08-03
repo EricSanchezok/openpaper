@@ -38,9 +38,86 @@
     }
   },
   "Authentication": {
+    "brand": "Scholens",
     "a11y": {
       "showPassword": "Show password",
       "hidePassword": "Hide password"
+    },
+    "navigation": {
+      "backToSignIn": "Back to sign in",
+      "createAccount": "Create account",
+      "forgotPassword": "Forgot password?",
+      "alreadyHaveAccount": "Already have an account? Sign in"
+    },
+    "fields": {
+      "displayName": "Display name",
+      "displayNamePlaceholder": "How should we call you?",
+      "email": "Email address",
+      "emailPlaceholder": "you@university.edu",
+      "password": "Password",
+      "passwordPlaceholder": "Password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm password",
+      "passwordMinimum": "At least 12 characters"
+    },
+    "signIn": {
+      "state": "Sign in",
+      "title": "Welcome back",
+      "description": "Sign in to continue to your papers and projects.",
+      "submit": "Sign in",
+      "submitting": "Signing in…"
+    },
+    "register": {
+      "state": "Create account",
+      "title": "Create your account",
+      "description": "Keep your papers, projects, and annotations in one place.",
+      "submit": "Create account",
+      "submitting": "Creating account…"
+    },
+    "checkInbox": {
+      "state": "Check inbox",
+      "title": "Check your inbox",
+      "registerDescription": "We sent a secure verification link to {email}.",
+      "forgotDescription": "If an account matches {email}, we sent a reset link.",
+      "verificationNote": "Open the link in your inbox to finish creating your account.",
+      "resetNote": "Open the link in your inbox to choose a new password.",
+      "resend": "Resend verification email",
+      "resending": "Sending…",
+      "resent": "Verification email sent"
+    },
+    "verify": {
+      "state": "Verify email",
+      "loadingTitle": "Verifying your email",
+      "loadingDescription": "This usually takes a moment.",
+      "successTitle": "Email verified",
+      "successDescription": "Your Scholens account is ready.",
+      "continue": "Continue",
+      "invalidTitle": "This link has expired",
+      "invalidDescription": "Request a new verification email to continue."
+    },
+    "forgot": {
+      "state": "Forgot password",
+      "title": "Reset your password",
+      "description": "We will email you a secure password reset link.",
+      "submit": "Send reset link",
+      "submitting": "Sending link…"
+    },
+    "reset": {
+      "state": "Reset password",
+      "title": "Choose a new password",
+      "description": "Use at least 12 characters to secure your account.",
+      "submit": "Reset password",
+      "submitting": "Updating password…",
+      "successTitle": "Password updated",
+      "successDescription": "Sign in with your new password to continue.",
+      "invalidTitle": "This link has expired",
+      "invalidDescription": "Request a new password reset link to continue.",
+      "requestNew": "Request a new link"
+    },
+    "service": {
+      "title": "Authentication is temporarily unavailable",
+      "description": "You can keep this form open and retry the session check.",
+      "retry": "Retry session check"
     },
     "validation": {
       "email": "Enter a valid email address",
@@ -52,12 +129,14 @@
     "errors": {
       "invalidCredentials": "The email or password is incorrect.",
       "rateLimited": "Too many attempts. Try again later.",
+      "rateLimitedSeconds": "Too many attempts. Try again in {seconds, plural, one {# second} other {# seconds}}.",
       "sessionExpired": "Your session has expired. Sign in again.",
       "verificationInvalid": "This verification link is invalid or expired.",
       "resetInvalid": "This reset link is invalid or expired.",
       "serviceUnavailable": "Sign-in is temporarily unavailable.",
       "validation": "Check the information you entered.",
-      "unknown": "Something went wrong. Try again."
+      "unknown": "Something went wrong. Try again.",
+      "correlation": "Reference: {id}"
     },
     "session": {
       "bootstrapping": "Checking your session",

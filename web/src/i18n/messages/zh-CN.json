@@ -38,9 +38,86 @@
     }
   },
   "Authentication": {
+    "brand": "Scholens",
     "a11y": {
       "showPassword": "显示密码",
       "hidePassword": "隐藏密码"
+    },
+    "navigation": {
+      "backToSignIn": "返回登录",
+      "createAccount": "创建账号",
+      "forgotPassword": "忘记密码？",
+      "alreadyHaveAccount": "已有账号？登录"
+    },
+    "fields": {
+      "displayName": "显示名称",
+      "displayNamePlaceholder": "希望我们如何称呼你？",
+      "email": "邮箱地址",
+      "emailPlaceholder": "you@university.edu",
+      "password": "密码",
+      "passwordPlaceholder": "密码",
+      "newPassword": "新密码",
+      "confirmPassword": "确认密码",
+      "passwordMinimum": "至少 12 个字符"
+    },
+    "signIn": {
+      "state": "登录",
+      "title": "欢迎回来",
+      "description": "登录后继续管理论文和项目。",
+      "submit": "登录",
+      "submitting": "正在登录…"
+    },
+    "register": {
+      "state": "创建账号",
+      "title": "创建你的账号",
+      "description": "在一个地方管理论文、项目和标注。",
+      "submit": "创建账号",
+      "submitting": "正在创建账号…"
+    },
+    "checkInbox": {
+      "state": "检查邮箱",
+      "title": "检查你的邮箱",
+      "registerDescription": "我们已向 {email} 发送安全验证链接。",
+      "forgotDescription": "如果存在与 {email} 匹配的账号，我们已发送重置链接。",
+      "verificationNote": "打开邮箱中的链接以完成账号创建。",
+      "resetNote": "打开邮箱中的链接以设置新密码。",
+      "resend": "重新发送验证邮件",
+      "resending": "正在发送…",
+      "resent": "验证邮件已发送"
+    },
+    "verify": {
+      "state": "验证邮箱",
+      "loadingTitle": "正在验证邮箱",
+      "loadingDescription": "通常只需要一点时间。",
+      "successTitle": "邮箱已验证",
+      "successDescription": "你的 Scholens 账号已经可以使用。",
+      "continue": "继续",
+      "invalidTitle": "此链接已过期",
+      "invalidDescription": "请重新申请验证邮件后继续。"
+    },
+    "forgot": {
+      "state": "忘记密码",
+      "title": "重置你的密码",
+      "description": "我们会向你发送安全的密码重置链接。",
+      "submit": "发送重置链接",
+      "submitting": "正在发送链接…"
+    },
+    "reset": {
+      "state": "重置密码",
+      "title": "设置新密码",
+      "description": "请使用至少 12 个字符来保护账号。",
+      "submit": "重置密码",
+      "submitting": "正在更新密码…",
+      "successTitle": "密码已更新",
+      "successDescription": "请使用新密码登录。",
+      "invalidTitle": "此链接已过期",
+      "invalidDescription": "请重新申请密码重置链接后继续。",
+      "requestNew": "申请新链接"
+    },
+    "service": {
+      "title": "认证服务暂时不可用",
+      "description": "你可以保留此表单并重试登录状态检查。",
+      "retry": "重试状态检查"
     },
     "validation": {
       "email": "请输入有效的邮箱地址",
@@ -52,12 +129,14 @@
     "errors": {
       "invalidCredentials": "邮箱或密码不正确。",
       "rateLimited": "尝试次数过多，请稍后再试。",
+      "rateLimitedSeconds": "尝试次数过多，请在 {seconds} 秒后重试。",
       "sessionExpired": "登录状态已过期，请重新登录。",
       "verificationInvalid": "此验证链接无效或已过期。",
       "resetInvalid": "此重置链接无效或已过期。",
       "serviceUnavailable": "登录服务暂时不可用。",
       "validation": "请检查输入的信息。",
-      "unknown": "出现了问题，请重试。"
+      "unknown": "出现了问题，请重试。",
+      "correlation": "参考编号：{id}"
     },
     "session": {
       "bootstrapping": "正在检查登录状态",

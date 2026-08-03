@@ -5,10 +5,23 @@ export class ApiError extends Error {
     readonly code?: string,
     readonly correlationId?: string,
     readonly details?: unknown,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export function parseRetryAfter(
+  value: string | null,
+  now = Date.now(),
+): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const date = Date.parse(value);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, Math.ceil((date - now) / 1_000));
 }
 
 export async function toApiError(response: Response): Promise<ApiError> {
@@ -36,5 +49,6 @@ export async function toApiError(response: Response): Promise<ApiError> {
     typeof record?.code === "string" ? record.code : undefined,
     correlationId,
     body,
+    parseRetryAfter(response.headers.get("retry-after")),
   );
 }
