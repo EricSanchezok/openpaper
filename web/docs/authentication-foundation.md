@@ -1,7 +1,7 @@
 # Authentication Foundation
 
 This document is the implementation contract for Scholens authentication. It
-defines shared behavior before any `/login` or related route is built.
+defines the shared session runtime and the complete `/login` entry lifecycle.
 
 ## Scope
 
@@ -12,7 +12,39 @@ The foundation owns:
 - reusable form schemas and accessible form controls;
 - responsive authentication surfaces and deterministic mock scenarios.
 
-It does not own a product page, OAuth, social login, or referral codes.
+It does not own OAuth, social login, referral codes, or post-login product
+navigation beyond the validated `returnTo` handoff.
+
+## Route and lifecycle contract
+
+Authentication is a single responsive route. Do not add separate pages for
+registration, recovery, verification, or reset:
+
+```text
+/login
+/login?mode=register
+/login?mode=forgot
+/login?mode=verify&token=...
+/login?mode=reset&token=...
+```
+
+The public `AuthenticationMode` values are `sign-in`, `register`, `forgot`,
+`verify`, and `reset`. A missing or unknown mode renders sign-in. Mode links use
+`buildAuthenticationHref()` so a validated internal `returnTo` is retained and
+action tokens are removed when they no longer apply.
+
+- Sign-in redirects with `router.replace(returnTo ?? "/")`.
+- Register and forgot-password always render an ambiguous check-inbox result.
+- Register stores only the pending email in `sessionStorage`; passwords and
+  action tokens are never stored.
+- Verify executes a present token once. A missing token renders an invalid-link
+  result without a request.
+- Reset validates and submits a present token, then replaces the URL with the
+  token-free sign-in route. It never signs the user in automatically.
+- An already authenticated visitor leaves ordinary auth modes immediately.
+  Verify and reset action links are allowed to complete first.
+- Session bootstrap uses a fixed-size skeleton. An unavailable session service
+  leaves the form usable with an explicit retry notice.
 
 ## Responsive contract
 
@@ -81,6 +113,10 @@ ID for support. Sign-in failures intentionally do not distinguish nonexistent,
 inactive, locked, or wrong-password accounts. Registration, resend, and forgot
 password flows must preserve ambiguous success responses.
 
+`ApiError.retryAfterSeconds` is parsed from either form of `Retry-After`: delta
+seconds or an HTTP date. Feature code displays localized retry guidance and
+never parses backend English messages.
+
 ## Form contract
 
 Schemas live in `src/features/authentication/schemas.ts`. Confirm-password
@@ -113,9 +149,19 @@ refresh, `/me`, slow responses, offline, and service unavailable. Unhandled
 requests fail immediately. The Auth session harness covers all four session
 states without a live backend.
 
-## Route implementation gate
+The executable lifecycle catalogue is
+`src/features/authentication/authentication-page.stories.tsx`. It is the first
+place to review sign-in, invalid credentials, rate limiting, registration,
+forgot password, verify, reset, mobile, and Simplified Chinese behavior.
 
-Before implementing `/login`, all relevant stories and tests must pass at the
-four required widths, in English and Simplified Chinese, and in Light and Dark.
-The route must reuse this foundation rather than introducing another session
-provider, transport, schema, or responsive component tree.
+Playwright route coverage lives in `tests/e2e/authentication.spec.ts`; it owns
+URL normalization, missing-token behavior, safe `returnTo`, wire-payload and
+browser-storage boundaries, 320px overflow, locale selection, and the route
+axe scan.
+
+## Change gate
+
+Authentication changes must preserve the single route, single responsive DOM,
+shared session provider, public transport, generated API types, and shared
+schemas. Run unit, Storybook browser, Playwright, i18n, API, token, type, lint,
+format, and production build gates before merging.
