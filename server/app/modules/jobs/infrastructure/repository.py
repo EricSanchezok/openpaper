@@ -23,7 +23,7 @@ from app.modules.jobs.domain import (
 )
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,7 +361,7 @@ class JobRepository:
         dispatches = list(
             db.scalars(
                 select(JobDispatch)
-                .options(joinedload(JobDispatch.job))
+                .options(selectinload(JobDispatch.job))
                 .where(
                     or_(
                         and_(
