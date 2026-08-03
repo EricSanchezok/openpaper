@@ -24,7 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs-pagination";
 
 const meta = {
-  title: "Foundation/UI primitives",
+  title: "Examples/Foundation gallery",
   tags: ["autodocs"],
   parameters: { layout: "padded" },
 } satisfies Meta;
@@ -59,10 +59,10 @@ export const AllStates: Story = {
           aria-label="Description"
           placeholder="Long content remains readable inside narrow containers."
         />
-        <Field>
+        <Field invalid>
           <Label htmlFor="error">Error state</Label>
           <Input aria-invalid id="error" />
-          <FieldMessage error>This field is required.</FieldMessage>
+          <FieldMessage>This field is required.</FieldMessage>
         </Field>
       </section>
       <Separator />
@@ -145,7 +145,7 @@ export const KeyboardDialog: Story = {
       <DialogTrigger asChild>
         <Button>Open dialog</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent closeLabel="Close dialog">
         <DialogTitle>Isolated interaction</DialogTitle>
         <DialogDescription>
           This dialog can be opened, focused, and dismissed without a product

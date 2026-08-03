@@ -205,6 +205,7 @@ sanchezcloud_identity_router = get_auth_router(
     get_current_user=get_identity_user,
     register_rate_limiter=RegisterRateLimiter(max_attempts=3, window_seconds=3600),
     refresh_cookie=refresh_cookie_config,
+    uniform_login_errors=True,
 )
 identity_user_router = get_user_router(
     user_manager=auth_manager,

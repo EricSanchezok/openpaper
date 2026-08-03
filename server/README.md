@@ -2,6 +2,11 @@
 
 This server manages the backend for the Scholens project, which allows users to upload, chat with, annotate, and manage research papers in one place.
 
+Shared identity integration follows the
+[`sanchezcloud-identity` engineering handbook](https://github.com/EricSanchezok/sanchezcloud-identity/blob/main/docs/README.md).
+Scholens-specific ownership is documented in
+[`docs/architecture/data-ownership.md`](../docs/architecture/data-ownership.md).
+
 ## Prerequisites
 - Python 3.12 or higher
 - [Uv](https://docs.astral.sh/uv/getting-started/installation/)

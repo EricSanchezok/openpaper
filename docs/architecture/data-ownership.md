@@ -1,42 +1,51 @@
-# SanchezCloud data ownership
+# SanchezCloud identity and Scholens data ownership
 
-Scholens shares one PostgreSQL database named `sanchezcloud` with the other
-SanchezCloud products. Schema ownership, not database separation, defines the
-service boundary:
+The canonical cross-product identity rules live in the
+[SanchezCloud Identity engineering handbook](https://github.com/EricSanchezok/sanchezcloud-identity/blob/main/docs/README.md).
+This document defines the Scholens-specific database and deployment contract.
 
-| Repository | Owns | Must not own |
-| --- | --- | --- |
-| `sanchezcloud-identity` | `auth.users`, `auth.refresh_tokens`, `auth.schema_migrations`; shared identity, credentials, global account security, product-scoped sessions | subscriptions, quotas, usage, product roles or product blocks |
-| `scholight` | `scholight.*`; search product state, quota, usage, keys and history; its arXiv/Zilliz search pipeline | auth migrations or Scholens data |
-| `scholens` | `scholens.*`; documents, projects, product profile/admin/block state, subscriptions and product usage | auth migrations or Scholight data |
+## Storage ownership
 
-`public` contains no application tables. Product rows may reference
-`auth.users(id)`, but products do not write another product schema.
+| Owner | Responsibilities | PostgreSQL ownership | Explicitly excluded |
+| --- | --- | --- | --- |
+| `sanchezcloud-identity` | Email identity, passwords, verification, global account status, lockout, public Account ID, shared avatar references, connected clients, security events, audience tokens, and refresh families | `auth.users`, `auth.refresh_tokens`, `auth.user_clients`, `auth.user_avatars`, `auth.security_events`, `auth.schema_migrations` | Product roles, blocks, subscriptions, quotas, usage, documents, projects |
+| Scholens | Documents, projects, collaboration, product profile/admin/block state, subscriptions, connectors, and usage | `scholens.*` including `scholens.schema_migrations` | Identity migrations, Scholight state, and Scholight Zilliz collections |
 
-Each schema has a distinct owner role (`auth_migrator`,
-`scholight_migrator`, or `scholens_migrator`). Runtime roles receive only the
-DML needed by their product. Migrators do not receive database-level `CREATE`,
-cannot perform DDL in another schema, and keep independent migration ledgers.
+Both schemas share the `sanchezcloud` database but have independent owners and migration
+ledgers. `public` contains no application tables. Scholens rows may reference the internal
+`auth.users.id`; they must not use a public Account ID as a relational key or write another
+product schema.
 
-Scholens validates the installed `auth.schema_migrations` version before
-running its single clean baseline. It never bundles or executes sanchezcloud-identity
-migrations.
+## Identity integration
 
-## Adding another product
+- `client_id=scholens`, the JWT secret, audience, and `scholens_refresh` cookie are stable and
+  unique to Scholens.
+- Access tokens stay in browser memory. Production refresh cookies are host-only, `Secure`,
+  `HttpOnly`, and `SameSite=Strict`.
+- Identity managers own password, token, and refresh-session behavior. Scholens must not query
+  or mutate `auth.refresh_tokens` directly.
+- Product profiles, roles, administrators, blocks, subscriptions, quota, and usage remain in
+  `scholens.*`.
 
-For a product named `example`:
+## Database roles and migration order
 
-1. Assign a stable `client_id="example"`, an independent JWT secret, and an
-   `example_refresh` HttpOnly cookie.
-2. Pre-provision `example`, `example_migrator`, and `example_app`; grant no
-   database-level `CREATE`.
-3. Keep all product profiles, roles, blocks, plans, quota and usage in
-   `example.*`, linked to `auth.users(id)`.
-4. Give the product an independent migration ledger and require a compatible
-   auth ledger before migration.
-5. Use sanchezcloud-identity's `UserManager` session API and never query
-   `auth.refresh_tokens` directly.
-6. Test from an empty PostgreSQL database that ownership, cross-schema denial,
-   runtime DML, and an empty `public` schema all hold.
+- `auth_migrator` owns only `auth` and is used by the protected Identity workflow.
+- `scholens_migrator` owns only `scholens`, reads the Identity schema ledger, and may reference
+  `auth.users` during product migrations.
+- `scholens_app` owns nothing. It receives minimum Identity core DML, the existing append-only
+  security-event capability, and Scholens runtime DML. It cannot write migration ledgers, execute
+  DDL, alter another schema, or update/delete operation-journal entries.
 
-Scholens does not use or administer Scholight's Zilliz collections.
+`deploy/production/bootstrap-db.sql` is the reviewed grant contract. It does not create login
+roles or persist credentials. The required order is:
+
+1. infrastructure creates roles and runs the bootstrap to create owned schemas;
+2. the protected Identity workflow migrates `auth.*` as `auth_migrator`;
+3. the database owner reapplies grants;
+4. Scholens validates the Identity version and migrates `scholens.*` as `scholens_migrator`;
+5. the database owner reapplies runtime grants;
+6. CI audits `scholens_app` with the Identity `product-runtime` profile and separately verifies
+   Scholens DML, append-only journal behavior, and cross-schema denials.
+
+A Scholens deployment never bundles or executes Identity migrations. Candidate Identity failures
+remain advisory until Scholens is declared production-ready in the consumer registry.

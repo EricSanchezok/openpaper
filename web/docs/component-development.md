@@ -80,6 +80,30 @@ interactive component normally includes:
 Keep stories beside their component or feature. Use deterministic fixtures;
 stories must not depend on the FastAPI process or a developer account.
 
+## Component maturity
+
+Maturity describes reuse confidence, not visual importance:
+
+| Status          | Meaning                                                                    |
+| --------------- | -------------------------------------------------------------------------- |
+| Ready           | Public API and required states are covered; product features may reuse it  |
+| Needs hardening | Foundation exists, but a real feature must close remaining state/test gaps |
+| Feature-owned   | Product semantics belong to one feature; do not promote it to generic UI   |
+
+Current baseline:
+
+| Component group                                      | Status          |
+| ---------------------------------------------------- | --------------- |
+| Button, IconButton, LinkButton                       | Ready           |
+| Input, PasswordInput, Field, Checkbox, Select        | Ready           |
+| Alert, Toast, Progress, Skeleton, AsyncFeedback      | Ready           |
+| Dialog, AlertDialog, Popover, Tooltip                | Ready           |
+| Combobox and complex responsive overlay compositions | Needs hardening |
+| AuthViewport and Auth session harness                | Feature-owned   |
+
+Update this table when a feature exposes a missing state. Do not silently work
+around a `Needs hardening` primitive in page-local code.
+
 ## Definition of done
 
 - The component is in the correct boundary and has no forbidden imports.

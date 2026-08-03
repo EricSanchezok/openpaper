@@ -53,6 +53,13 @@ class _DiagnosticFields:
     diagnostic_id: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class _NormalizedHttpError:
+    status_code: int
+    detail: Mapping[str, object] | str
+    headers: Mapping[str, str] | None
+
+
 def _kind_for_status(status_code: int) -> FailureKind:
     if status_code == 401:
         return FailureKind.UNAUTHENTICATED
@@ -68,9 +75,109 @@ def _kind_for_status(status_code: int) -> FailureKind:
         return FailureKind.UNPROCESSABLE
     if status_code == 429:
         return FailureKind.RATE_LIMITED
+    if status_code == 502:
+        return FailureKind.DEPENDENCY_FAILURE
+    if status_code == 503:
+        return FailureKind.UNAVAILABLE
     if status_code >= 500:
         return FailureKind.INTERNAL
     return FailureKind.INVALID_ARGUMENT
+
+
+def _auth_error(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    headers: Mapping[str, str] | None = None,
+) -> _NormalizedHttpError:
+    return _NormalizedHttpError(
+        status_code=status_code,
+        detail={"code": code, "message": message},
+        headers=headers,
+    )
+
+
+def _normalize_http_error(
+    request: Request,
+    exc: HTTPException,
+) -> _NormalizedHttpError:
+    """Translate provider-specific auth failures at the public HTTP boundary."""
+
+    path = request.url.path.rstrip("/")
+    headers = dict(exc.headers or {})
+    detail_text = str(exc.detail).lower()
+
+    if path == "/api/v1/me" and exc.status_code in {401, 403}:
+        return _auth_error(
+            status_code=401,
+            code="auth_token_invalid_or_expired",
+            message="Authentication is required",
+            headers=headers,
+        )
+
+    prefix = "/api/v1/auth/"
+    if not path.startswith(prefix):
+        return _NormalizedHttpError(exc.status_code, exc.detail, exc.headers)
+
+    endpoint = path.removeprefix(prefix)
+    if exc.status_code == 429:
+        headers.setdefault("Retry-After", "60")
+        return _auth_error(
+            status_code=429,
+            code="auth_rate_limited",
+            message="Too many authentication attempts",
+            headers=headers,
+        )
+    if exc.status_code >= 500:
+        headers.setdefault("Retry-After", "5")
+        return _auth_error(
+            status_code=503,
+            code="auth_service_unavailable",
+            message="Authentication is temporarily unavailable",
+            headers=headers,
+        )
+    if endpoint == "login" and exc.status_code in {400, 401, 403, 404}:
+        return _auth_error(
+            status_code=401,
+            code="auth_invalid_credentials",
+            message="Invalid email or password",
+            headers=headers,
+        )
+    if endpoint == "refresh" and exc.status_code in {400, 401, 403, 404}:
+        code = (
+            "auth_session_missing"
+            if "missing" in detail_text
+            else "auth_session_expired"
+        )
+        return _auth_error(
+            status_code=401,
+            code=code,
+            message="The session is unavailable",
+            headers=headers,
+        )
+    if endpoint == "verify-email" and exc.status_code in {400, 401, 404}:
+        return _auth_error(
+            status_code=400,
+            code="auth_verification_token_invalid",
+            message="The verification link is invalid or expired",
+            headers=headers,
+        )
+    if endpoint == "reset-password" and exc.status_code in {400, 401, 404}:
+        return _auth_error(
+            status_code=400,
+            code="auth_reset_token_invalid",
+            message="The reset link is invalid or expired",
+            headers=headers,
+        )
+    if exc.status_code in {401, 403}:
+        return _auth_error(
+            status_code=401,
+            code="auth_token_invalid_or_expired",
+            message="Authentication is required",
+            headers=headers,
+        )
+    return _NormalizedHttpError(exc.status_code, exc.detail, exc.headers)
 
 
 def _retryable(kind: FailureKind) -> bool:
@@ -130,7 +237,10 @@ def _record_diagnostic(
         )
 
 
-def _http_error_payload(request: Request, exc: HTTPException) -> ApiErrorResponse:
+def _http_error_payload(
+    request: Request,
+    exc: _NormalizedHttpError,
+) -> ApiErrorResponse:
     kind = _kind_for_status(exc.status_code)
     fields = _diagnostic_fields(request, status_code=exc.status_code)
     if isinstance(exc.detail, Mapping):
@@ -220,7 +330,8 @@ async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
 async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, HTTPException):
         raise TypeError("http_error_handler received an unexpected exception")
-    payload = _http_error_payload(request, exc)
+    normalized = _normalize_http_error(request, exc)
+    payload = _http_error_payload(request, normalized)
     fields = _DiagnosticFields(
         stage=payload.stage,
         request_id=payload.request_id,
@@ -233,7 +344,7 @@ async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
         reason="http_protocol_error",
         error_code=payload.code,
         error_kind=payload.kind,
-        status_code=exc.status_code,
+        status_code=normalized.status_code,
     )
     add_counter(
         "scholens.errors",
@@ -241,18 +352,18 @@ async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
     )
     log_event(
         logger,
-        logging.WARNING if exc.status_code < 500 else logging.ERROR,
+        logging.WARNING if normalized.status_code < 500 else logging.ERROR,
         "http.protocol_error",
         error_code=payload.code,
         error_kind=payload.kind.value,
         retryable=payload.retryable,
-        status_code=exc.status_code,
+        status_code=normalized.status_code,
         diagnostic_id=payload.diagnostic_id,
     )
     return JSONResponse(
-        status_code=exc.status_code,
+        status_code=normalized.status_code,
         content=payload.model_dump(exclude_none=True),
-        headers=exc.headers,
+        headers=normalized.headers,
     )
 
 
@@ -270,8 +381,9 @@ async def validation_error_handler(
         }
         for error in exc.errors()
     ]
+    is_auth_request = request.url.path.startswith("/api/v1/auth/")
     payload = ApiErrorResponse(
-        code="request_validation_failed",
+        code="validation_error" if is_auth_request else "request_validation_failed",
         message="The request data is invalid",
         kind=FailureKind.UNPROCESSABLE,
         retryable=False,

@@ -44,15 +44,32 @@
 }
 
 html {
+  min-width: 320px;
   background: var(--color-bg-canvas);
 }
 
 body {
+  min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
   background: var(--color-bg-canvas);
   color: var(--color-text-primary);
   font-family: Arial, Helvetica, sans-serif;
   text-rendering: optimizeLegibility;
+}
+
+@utility safe-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+}
+
+@utility component-container {
+  container-type: inline-size;
 }
 
 ::selection {

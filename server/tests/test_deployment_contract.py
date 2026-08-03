@@ -146,6 +146,8 @@ def test_candidate_identity_compatibility_workflow_is_standardized() -> None:
     assert "uv pip install" in workflow
     assert "AUTH_SCHEMA_VERSION" in workflow
     assert "sanchezcloud-identity migrate" in workflow
+    assert "audit-database-role --profile product-runtime" in workflow
+    assert "app_role=scholens_app" in workflow
     assert "SANCHEZCLOUD_IDENTITY_REVISION" in workflow
     assert "CLOUD_AUTH_READ_TOKEN" not in workflow
 
@@ -210,6 +212,13 @@ def test_environment_catalog_matches_shared_identity_conventions() -> None:
         assert legacy_variable not in catalog + runtime + compose + ci
     assert "EXA_API_KEY" not in catalog + runtime + compose
     assert "FIRECRAWL_API_KEY" not in catalog + runtime + compose
+
+
+def test_local_development_uses_the_scholens_migrator_name() -> None:
+    development = (ROOT / "DEVELOPMENT.md").read_text(encoding="utf-8")
+
+    assert "scholens_migrator" in development
+    assert "openpaper_local" not in development
 
 
 def test_environment_catalog_covers_code_and_compose_references() -> None:

@@ -1,5 +1,5 @@
 import type { Preview } from "@storybook/nextjs-vite";
-import { getWorker, initialize, mswLoader } from "msw-storybook-addon";
+import { initialize, mswLoader } from "msw-storybook-addon";
 import { NextIntlClientProvider } from "next-intl";
 import { useEffect } from "react";
 
@@ -11,7 +11,7 @@ import { QueryProvider } from "../src/lib/query/query-provider";
 import { foundationHandler } from "./msw/handlers";
 import "../src/styles/globals.css";
 
-initialize({ onUnhandledRequest: "bypass" });
+initialize({ onUnhandledRequest: "error" });
 
 const messages = { en, "zh-CN": zhCN } as const;
 
@@ -107,31 +107,12 @@ const preview: Preview = {
     network: "instant",
     data: "populated",
   },
-  loaders: [
-    mswLoader,
-    async (context) => {
-      const worker = getWorker();
-      worker.resetHandlers();
-      worker.use(
-        foundationHandler({
-          network:
-            context.globals.network === "slow" ||
-            context.globals.network === "offline"
-              ? context.globals.network
-              : "instant",
-          data:
-            context.globals.data === "empty" || context.globals.data === "error"
-              ? context.globals.data
-              : "populated",
-        }),
-      );
-      return {};
-    },
-  ],
+  loaders: [mswLoader],
   parameters: {
     a11y: { test: "error" },
     controls: { expanded: true },
     layout: "fullscreen",
+    msw: { handlers: [foundationHandler] },
     viewport: {
       options: {
         desktop: {
@@ -143,6 +124,14 @@ const preview: Preview = {
           styles: { width: "480px", height: "900px" },
         },
         mobile: { name: "Mobile", styles: { width: "390px", height: "844px" } },
+        smallMobile: {
+          name: "Small Mobile",
+          styles: { width: "320px", height: "568px" },
+        },
+        tablet: {
+          name: "Tablet",
+          styles: { width: "768px", height: "1024px" },
+        },
       },
     },
   },
