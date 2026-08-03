@@ -4,12 +4,17 @@ import {
   authenticatedFetch,
   clearAccessToken,
   getAccessToken,
+  parseRetryAfter,
   refreshAccessToken,
   resetRefreshForTests,
   setAccessToken,
 } from "@/lib/api";
 import { createAuthSchemas } from "./schemas";
-import { safeReturnTo } from "./return-to";
+import {
+  authenticationHref,
+  parseAuthenticationMode,
+} from "./authentication-mode";
+import { safeReturnTo, validatedReturnTo } from "./return-to";
 import { publishAuthEvent, subscribeToAuthEvents } from "./auth-channel";
 
 const messages = {
@@ -40,6 +45,28 @@ describe("authentication domain foundation", () => {
     );
     expect(safeReturnTo("//evil.example/steal")).toBe("/");
     expect(safeReturnTo("https://evil.example/steal")).toBe("/");
+    expect(validatedReturnTo("javascript:alert(1)")).toBeUndefined();
+  });
+
+  it("normalizes authentication modes and preserves only safe return targets", () => {
+    expect(parseAuthenticationMode("register")).toBe("register");
+    expect(parseAuthenticationMode("unknown")).toBe("sign-in");
+    expect(authenticationHref({ mode: "forgot", returnTo: "/library" })).toBe(
+      "/login?mode=forgot&returnTo=%2Flibrary",
+    );
+    expect(
+      authenticationHref({
+        mode: "reset",
+        returnTo: "https://evil.example/steal",
+      }),
+    ).toBe("/login?mode=reset");
+  });
+
+  it("parses Retry-After seconds and HTTP dates", () => {
+    const now = Date.parse("2026-08-03T00:00:00Z");
+    expect(parseRetryAfter("60", now)).toBe(60);
+    expect(parseRetryAfter("Mon, 03 Aug 2026 00:01:30 GMT", now)).toBe(90);
+    expect(parseRetryAfter("not-a-date", now)).toBeUndefined();
   });
 
   it("does not send confirm password and enforces the 12-character rule", () => {

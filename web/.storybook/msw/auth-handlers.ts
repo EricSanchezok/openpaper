@@ -25,6 +25,29 @@ export const actor = {
 };
 
 export const authHandlers = {
+  lifecycleSuccess: [
+    http.post(`${api}/auth/register`, () =>
+      HttpResponse.json({
+        message: "If the address can receive mail, check your inbox.",
+      }),
+    ),
+    http.post(`${api}/auth/resend-verification`, () =>
+      HttpResponse.json({
+        message: "If the address can receive mail, check your inbox.",
+      }),
+    ),
+    http.post(`${api}/auth/forgot-password`, () =>
+      HttpResponse.json({
+        message: "If the address can receive mail, check your inbox.",
+      }),
+    ),
+    http.post(`${api}/auth/verify-email`, () =>
+      HttpResponse.json({ message: "Email verified." }),
+    ),
+    http.post(`${api}/auth/reset-password`, () =>
+      HttpResponse.json({ message: "Password reset." }),
+    ),
+  ],
   success: [
     http.post(`${api}/auth/login`, () =>
       HttpResponse.json({
@@ -57,6 +80,11 @@ export const authHandlers = {
         },
         { status: 429, headers: { "Retry-After": "60" } },
       ),
+    ),
+  ],
+  serviceUnavailableLogin: [
+    http.post(`${api}/auth/login`, () =>
+      error("auth_service_unavailable", 503),
     ),
   ],
   verificationExpired: [
