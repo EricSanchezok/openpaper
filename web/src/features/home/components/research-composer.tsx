@@ -306,6 +306,7 @@ export function ResearchComposer({
           "placeholder:text-muted max-h-32 w-full resize-none bg-transparent py-0 text-sm outline-none focus-visible:outline-none",
           compact ? "min-h-[22px] leading-[22px]" : "min-h-7 leading-7",
         )}
+        data-focus-delegate
         disabled={busy || unavailable}
         onKeyDown={(event) => {
           if (event.key === "@") setPickerOpen(true);

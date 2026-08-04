@@ -44,9 +44,14 @@
     border-color: var(--color-border-default);
   }
 
-  :focus-visible {
+  :focus-visible:not([data-focus-delegate]) {
     outline: var(--focus-width) solid var(--color-focus-ring);
     outline-offset: 2px;
+  }
+
+  [data-focus-delegate]:focus-visible {
+    outline: none;
+    outline-offset: 0;
   }
 }
 

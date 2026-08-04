@@ -67,9 +67,16 @@ Interactive descendants inherit the state of their shared control. In
 particular, an icon inside a disabled button resolves to the shared disabled
 icon role even when its enabled state is inverse. Composite controls may
 suppress a native child's outline only when the containing control exposes an
-equivalent focus-visible state using semantic control or focus tokens.
+equivalent focus-visible state using semantic control or focus tokens. Mark
+that child with `data-focus-delegate`; this is the shared contract that keeps
+the global focus fallback from drawing a second, rectangular focus surface.
 Global border and focus fallbacks live in the CSS base cascade layer so
 component utilities can override them without specificity escalation.
+
+Disabled prominence is also semantic. If a disabled primary action disappears
+into a canvas in one appearance, adjust `color.action.disabled-*` for that
+appearance and review every disabled-button story. Do not patch the individual
+button or feature call site.
 
 Allowed raw-color exceptions are limited to source images, PDF content, and
 third-party brand marks that must preserve their identity. The surrounding UI

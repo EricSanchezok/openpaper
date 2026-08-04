@@ -50,6 +50,12 @@ export const Default: Story = {
     await expect(
       await canvas.findByText("Thesis literature review"),
     ).toBeVisible();
+    const composer = canvas.getByRole("textbox", { name: "Ask anything" });
+    const submit = canvas.getByRole("button", { name: "Ask Scholens" });
+    await expect(submit).toBeDisabled();
+    await userEvent.click(composer);
+    await expect(composer).toHaveAttribute("data-focus-delegate");
+    await expect(composer).toHaveStyle({ outlineStyle: "none" });
   },
 };
 

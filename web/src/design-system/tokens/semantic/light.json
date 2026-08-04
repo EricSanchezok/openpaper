@@ -40,7 +40,7 @@
         "$value": "{palette.neutral.0}"
       },
       "secondary": { "$type": "color", "$value": "{palette.neutral.100}" },
-      "disabled-bg": { "$type": "color", "$value": "{palette.neutral.100}" },
+      "disabled-bg": { "$type": "color", "$value": "{palette.neutral.300}" },
       "disabled-text": { "$type": "color", "$value": "{palette.neutral.500}" }
     },
     "accent": {

@@ -282,7 +282,7 @@ function Sidebar({
     <TooltipProvider delayDuration={250}>
       <aside
         className={cn(
-          "border-line bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r px-3 pt-3 pb-[max(var(--space-2),env(safe-area-inset-bottom))] transition-[width] duration-200 ease-out motion-reduce:transition-none",
+          "border-line bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r px-3 pt-3 pb-[max(var(--space-1),env(safe-area-inset-bottom))] transition-[width] duration-200 ease-out motion-reduce:transition-none",
           collapsed ? "w-[72px]" : "w-[var(--layout-sidebar)]",
         )}
       >
