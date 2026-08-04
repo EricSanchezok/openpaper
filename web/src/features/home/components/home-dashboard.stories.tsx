@@ -55,7 +55,7 @@ export const Empty: Story = {
   args: { papers: [], projects: [] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Start with a question/)).toBeVisible();
+    await expect(canvas.getByText(/Ask across a paper/)).toBeVisible();
     await expect(canvas.queryByText("Recent papers")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Recent projects")).not.toBeInTheDocument();
   },

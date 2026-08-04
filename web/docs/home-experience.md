@@ -15,9 +15,11 @@ the deliberately deferred boundaries.
 - Conversations, papers, projects, and message history are server state owned
   by TanStack Query. Composer input uses React Hook Form and Zod. Sidebar,
   picker, and in-progress stream state remain local.
-- Desktop and mobile compose one `AppShell`. The desktop sidebar is 248 px when
-  expanded and 64 px when collapsed; narrow screens expose the same navigation
+- Desktop and mobile compose one `AppShell`. The desktop sidebar is 264 px when
+  expanded and 72 px when collapsed; narrow screens expose the same navigation
   through a Sheet.
+- Collapsing the desktop sidebar changes only its horizontal geometry. The top
+  control, navigation rows, and account trigger retain their vertical anchors.
 - Deferred destinations retain their product names in the visible navigation;
   availability is disclosed through the disabled control and its tooltip, not
   implementation-plan copy.
@@ -47,6 +49,9 @@ conversation list are invalidated.
 
 When both recent-paper and recent-project queries settle empty, Home uses a
 focused first-run composition instead of preserving empty card silhouettes.
+Its 760 px composer is positioned as the primary task rather than at the top of
+the available canvas. The account menu aligns to the expanded sidebar content
+edge and opens to the right of the collapsed rail.
 When only one collection has data, only that section is rendered and centered.
 Loading and recoverable errors remain visible per collection. The populated
 state continues to follow the canonical two-paper/three-project Figma layout.

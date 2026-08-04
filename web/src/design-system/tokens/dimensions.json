@@ -22,7 +22,7 @@
   "layout": {
     "sidebar": {
       "$type": "dimension",
-      "$value": { "value": 248, "unit": "px" }
+      "$value": { "value": 264, "unit": "px" }
     },
     "reading-column": {
       "$type": "dimension",

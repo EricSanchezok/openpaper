@@ -105,7 +105,7 @@ test("renders an intentional first-run Home without empty card shells", async ({
   );
 
   await page.goto("/");
-  await expect(page.getByText(/Start with a question/)).toBeVisible();
+  await expect(page.getByText(/Ask across a paper/)).toBeVisible();
   await expect(page.getByText("Recent papers", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Recent projects", { exact: true })).toHaveCount(
     0,
@@ -128,6 +128,40 @@ test("opens the context picker and changes its searchable selection", async ({
   await expect(
     page.getByRole("checkbox", { name: /RAG evaluation/ }),
   ).toBeVisible();
+});
+
+test("keeps sidebar controls vertically anchored while collapsing", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const collapse = page.getByRole("button", { name: "Collapse sidebar" });
+  const newChat = page.getByRole("link", { name: "New chat" });
+  const account = page.getByRole("button", { name: "Open account menu" });
+  const before = {
+    newChat: await newChat.evaluate((element) =>
+      element.getBoundingClientRect().toJSON(),
+    ),
+    account: await account.evaluate((element) =>
+      element.getBoundingClientRect().toJSON(),
+    ),
+  };
+
+  await collapse.click();
+  await expect(
+    page.getByRole("button", { name: "Expand sidebar" }),
+  ).toBeVisible();
+  await expect(page.locator("aside")).toHaveCSS("width", "72px");
+  const after = {
+    newChat: await newChat.evaluate((element) =>
+      element.getBoundingClientRect().toJSON(),
+    ),
+    account: await account.evaluate((element) =>
+      element.getBoundingClientRect().toJSON(),
+    ),
+  };
+
+  expect(Math.abs(after.newChat.y - before.newChat.y)).toBeLessThan(1);
+  expect(Math.abs(after.account.y - before.account.y)).toBeLessThan(1);
 });
 
 test("fits the Home shell at 390px without horizontal scrolling", async ({

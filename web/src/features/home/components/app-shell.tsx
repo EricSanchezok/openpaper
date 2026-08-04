@@ -172,13 +172,13 @@ function AccountMenu({
   const initial = name.slice(0, 1).toUpperCase();
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button
           aria-label={t("account.openMenu")}
           className={cn(
-            "hover:bg-hover flex h-[52px] items-center rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
-            collapsed ? "w-11 justify-center" : "w-full gap-2.5",
+            "hover:bg-hover flex h-14 items-center rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            collapsed ? "ml-auto w-11 justify-center" : "w-full gap-2.5",
           )}
           type="button"
         >
@@ -187,8 +187,13 @@ function AccountMenu({
           </span>
           {!collapsed && (
             <>
-              <span className="min-w-0 flex-1 truncate text-left text-[13px] font-medium">
-                {name}
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[13px] leading-5 font-medium">
+                  {name}
+                </span>
+                <span className="text-secondary block truncate text-[11px] leading-4">
+                  {actor.email}
+                </span>
               </span>
               <Icon glyph={NavArrowDown} size={16} tone="secondary" />
             </>
@@ -196,13 +201,26 @@ function AccountMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align={collapsed ? "start" : "center"}
-        className="w-60"
-        side="top"
+        align={collapsed ? "end" : "start"}
+        className={cn(
+          "shadow-[0_10px_28px_-10px_var(--color-elevation-shadow)]",
+          collapsed ? "w-64" : "w-[var(--radix-dropdown-menu-trigger-width)]",
+        )}
+        side={collapsed ? "right" : "top"}
+        sideOffset={collapsed ? 8 : 4}
       >
-        <DropdownMenuLabel className="grid gap-0.5 px-2 py-2">
-          <span className="text-foreground truncate text-sm">{name}</span>
-          <span className="text-muted truncate font-normal">{actor.email}</span>
+        <DropdownMenuLabel className="flex items-center gap-2.5 px-2 py-2.5">
+          <span className="bg-pressed text-foreground grid size-8 shrink-0 place-items-center rounded-full text-xs font-medium">
+            {initial}
+          </span>
+          <span className="min-w-0">
+            <span className="text-foreground block truncate text-sm leading-5">
+              {name}
+            </span>
+            <span className="text-secondary block truncate text-[11px] leading-4 font-normal">
+              {actor.email}
+            </span>
+          </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>
@@ -268,24 +286,22 @@ function Sidebar({
     <TooltipProvider delayDuration={250}>
       <aside
         className={cn(
-          "border-line bg-sidebar flex h-full shrink-0 flex-col border-r transition-[width] duration-200 motion-reduce:transition-none",
-          collapsed ? "w-16 p-2.5" : "w-[248px] p-4",
+          "border-line bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r px-3 py-3 transition-[width] duration-200 ease-out motion-reduce:transition-none",
+          collapsed ? "w-[72px]" : "w-[var(--layout-sidebar)]",
         )}
       >
-        <div
-          className={cn(
-            "mb-4 flex h-11 items-center",
-            collapsed ? "justify-center" : "justify-between",
-          )}
-        >
-          {!collapsed && (
-            <Link
-              className="text-base font-medium tracking-[-0.003em]"
-              href="/"
-            >
-              Scholens
-            </Link>
-          )}
+        <div className="relative mb-4 flex h-11 shrink-0 items-center justify-end">
+          <Link
+            aria-hidden={collapsed || undefined}
+            className={cn(
+              "absolute left-1 text-base font-medium tracking-[-0.003em] whitespace-nowrap transition-opacity duration-150 motion-reduce:transition-none",
+              collapsed && "pointer-events-none opacity-0",
+            )}
+            href="/"
+            tabIndex={collapsed ? -1 : undefined}
+          >
+            Scholens
+          </Link>
           <IconButton
             className="bg-surface border-line hover:bg-hover"
             label={
@@ -300,7 +316,10 @@ function Sidebar({
             />
           </IconButton>
         </div>
-        <nav className="grid gap-1" aria-label={t("navigation.openMenu")}>
+        <nav
+          className={cn("grid gap-1", collapsed && "justify-items-end")}
+          aria-label={t("navigation.openMenu")}
+        >
           <SidebarControl
             active={!activeConversationId}
             collapsed={collapsed}
@@ -396,7 +415,7 @@ export function AppShell({
       </div>
       <Sheet onOpenChange={setMobileOpen} open={mobileOpen}>
         <SheetContent
-          className="left-0 w-[min(88vw,248px)] border-r border-l-0 p-0"
+          className="left-0 w-[min(88vw,var(--layout-sidebar))] border-r border-l-0 p-0"
           closeLabel={t("navigation.closeMenu")}
         >
           <SheetTitle className="sr-only">

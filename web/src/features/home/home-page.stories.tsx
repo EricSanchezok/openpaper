@@ -83,6 +83,21 @@ export const SidebarCollapsed: Story = {
   },
 };
 
+export const AccountMenuOpen: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "Open account menu" }),
+    );
+    const body = within(document.body);
+    const menu = await body.findByRole("menu");
+    await expect(within(menu).getByText(actor.email)).toBeVisible();
+    await expect(
+      body.getByRole("menuitemradio", { name: "System" }),
+    ).toBeVisible();
+  },
+};
+
 export const Conversation: Story = {
   args: { initialConversationId: homeConversations[0]!.id },
   play: async ({ canvasElement }) => {
@@ -138,9 +153,7 @@ export const Empty: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(
-      await canvas.findByText(/Start with a question/),
-    ).toBeVisible();
+    await expect(await canvas.findByText(/Ask across a paper/)).toBeVisible();
     await expect(canvas.queryByText("Recent papers")).not.toBeInTheDocument();
     await expect(
       canvas.queryByText("No recent projects"),
@@ -182,7 +195,7 @@ export const EmptySimplifiedChinese: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText(/从一个问题开始/)).toBeVisible();
+    await expect(await canvas.findByText(/从一篇论文/)).toBeVisible();
     await expect(canvas.queryByText("最近论文")).not.toBeInTheDocument();
   },
 };

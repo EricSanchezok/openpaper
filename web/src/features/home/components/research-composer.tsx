@@ -289,8 +289,10 @@ export function ResearchComposer({
   return (
     <form
       className={cn(
-        "border-line-strong bg-surface flex w-full flex-col gap-3 rounded-[var(--radius-xl)] border px-4 pt-4 pb-2 shadow-[0_4px_12px_-4px_var(--color-elevation-shadow)]",
-        compact ? "max-w-[720px]" : "max-w-[680px]",
+        "border-line-strong bg-surface flex w-full flex-col rounded-[var(--radius-xl)] border px-4 shadow-[0_4px_12px_-4px_var(--color-elevation-shadow)]",
+        compact
+          ? "max-w-[720px] gap-3 pt-4 pb-2"
+          : "max-w-[760px] gap-4 pt-4 pb-3",
       )}
       onSubmit={form.handleSubmit(submit)}
     >
@@ -300,7 +302,10 @@ export function ResearchComposer({
             ? t("composer.followUpPlaceholder")
             : t("composer.placeholder")
         }
-        className="placeholder:text-muted max-h-32 min-h-[22px] w-full resize-none bg-transparent py-0 text-sm leading-[22px] outline-none"
+        className={cn(
+          "placeholder:text-muted max-h-32 w-full resize-none bg-transparent py-0 text-sm outline-none",
+          compact ? "min-h-[22px] leading-[22px]" : "min-h-7 leading-7",
+        )}
         disabled={busy || unavailable}
         onKeyDown={(event) => {
           if (event.key === "@") setPickerOpen(true);

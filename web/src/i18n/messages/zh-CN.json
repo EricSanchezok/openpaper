@@ -50,7 +50,7 @@
     "hero": {
       "title": "你正在研究什么？",
       "description": "基于你的研究资料提问。",
-      "emptyDescription": "从一个问题开始；最近使用的论文和项目会随着研究逐渐显示在这里。"
+      "emptyDescription": "从一篇论文、一个项目或整个资料库开始提问。"
     },
     "composer": {
       "placeholder": "问任何问题",

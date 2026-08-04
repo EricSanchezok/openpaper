@@ -50,7 +50,7 @@
     "hero": {
       "title": "What are you working on?",
       "description": "Ask across your research.",
-      "emptyDescription": "Start with a question. Recent papers and projects will appear here as your workspace grows."
+      "emptyDescription": "Ask across a paper, project, or your entire library."
     },
     "composer": {
       "placeholder": "Ask anything",
