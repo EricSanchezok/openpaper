@@ -99,6 +99,11 @@ migrations. Run it only when exercising uploads, parsing, background work, or
 Zotero synchronization. Flower is separately available on
 `127.0.0.1:7307` with `./scripts/start_flower.sh`.
 
+For object storage, Jobs uses the same isolated remote dev S3 bucket as Server,
+with matching values in the two ignored `.env` files. Scholens does not start
+MinIO. Never use the production bucket or production workload credentials in
+the local Jobs profile.
+
 Run an opt-in real MinerU check with a local PDF:
 
 ```bash

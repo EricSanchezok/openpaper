@@ -37,8 +37,11 @@ Shared local infrastructure uses ports outside all product blocks:
 | PostgreSQL     | `127.0.0.1:55432`          | 5432           |
 | RabbitMQ       | `amqp://127.0.0.1:55672`   | 5672           |
 | Redis          | `redis://127.0.0.1:56379`  | 6379           |
-| MinIO API      | `http://127.0.0.1:59000`   | 9000           |
-| MinIO console  | `http://127.0.0.1:59001`   | 9001           |
+
+Ports `59000/59001` are reserved for projects that explicitly choose local
+MinIO. Scholens does not start or consume MinIO in its default local workflow;
+it uses an isolated remote dev S3 bucket instead. This project-specific choice
+does not require Scholight or Account Center to use the same provider.
 
 The PostgreSQL database is shared with Account Center and Scholight, but schema
 ownership is not: sanchezcloud-identity migrates only `auth.*`; Scholens migrates
@@ -85,11 +88,12 @@ client build context is the safer operational boundary.
 | `DATABASE_URL`                                                                           | server                                                 |
 | `DEEPSEEK_API_KEY`                                                                       | server, jobs                                           |
 | `MINERU_API_TOKEN`                                                                       | jobs                                                   |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME` | server + jobs                                          |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME` | server + jobs; isolated remote dev S3                  |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                             | server + jobs                                          |
 | `CELERY_API_URL`                                                                         | server                                                 |
 | `WEBHOOK_BASE_URL`                                                                       | jobs                                                   |
 | `AUTH_JWT_SECRET` (32+ bytes)                                                            | server                                                 |
+| `AUTH_ALIYUN_DM_ACCESS_KEY_ID`, `AUTH_ALIYUN_DM_ACCESS_KEY_SECRET`, `AUTH_ALIYUN_DM_ACCOUNT_NAME` | server; verification/reset mail                       |
 | `CLIENT_DOMAIN`                                                                          | server canonical URL (`http://127.0.0.1:7300`)         |
 | `CLIENT_ALLOWED_ORIGINS`                                                                 | server (`http://127.0.0.1:7300,http://127.0.0.1:7303`) |
 | `NEXT_PUBLIC_API_URL`                                                                    | web + legacy client                                    |
@@ -118,10 +122,12 @@ Unless `AUTH_DATABASE_URL` is explicitly set, both sanchezcloud-identity and Sch
   [`deploy/production/runtime.env.example`](./deploy/production/runtime.env.example).
 - Scholens and Scholight deliberately use different JWT secrets and
   `client_id` values even though they share `auth.users`.
-- Both products may use the same Aliyun DirectMail account, while keeping their
-  sender alias and action URLs product-specific.
-- Local object storage uses MinIO through `AWS_ENDPOINT_URL_S3` and path-style
-  addressing. Do not point local credentials at the production S3 bucket.
+- Products may use the same Aliyun DirectMail account, while keeping sender
+  aliases and action URLs product-specific. Scholens local authentication sends
+  real mail through Aliyun; there is no Mailpit profile.
+- Scholens local development uses a dedicated remote dev S3 bucket with
+  least-privilege development credentials. Leave `AWS_ENDPOINT_URL_S3` empty
+  for AWS S3 and never point local credentials at a production bucket.
 - Remote model/search providers (DeepSeek, MinerU, MOSS Voice, Scholight MCP,
   and user-configured MCP connectors) are opt-in. Use them only when the feature
   under test requires them and never commit their credentials.

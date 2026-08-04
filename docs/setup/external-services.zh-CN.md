@@ -4,9 +4,10 @@
 
 ## 1. S3 兼容对象存储
 
-日常本地开发使用 `http://127.0.0.1:59000` 的 MinIO，不需要 AWS 凭证，
-也不得连接生产 Bucket。下面的 AWS 步骤只用于明确获批的远程集成测试，并且
-必须创建与生产隔离的开发 Bucket 和最小权限凭证。
+Scholens 日常本地开发直接使用与生产完全隔离的远程 dev S3 Bucket；不启动
+MinIO，也不另建 `remote-integration` profile。`local` 描述应用运行位置，而不是
+要求每个外部依赖都运行在本机。Scholight 等项目可以按自身条件继续使用 MinIO，
+但不得与 Scholens 混用 Bucket、凭证或端口归属。
 
 ### 创建开发 Bucket
 
@@ -64,6 +65,8 @@
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_REGION=ap-southeast-1
+AWS_ENDPOINT_URL_S3=
+AWS_S3_ADDRESSING_STYLE=virtual
 S3_BUCKET_NAME=scholens-dev-<aws-account-id>-<region>
 CLOUDFLARE_BUCKET_NAME=scholens-dev-<aws-account-id>-<region>.s3.<region>.amazonaws.com
 ```
@@ -73,9 +76,33 @@ CLOUDFLARE_BUCKET_NAME=scholens-dev-<aws-account-id>-<region>.s3.<region>.amazon
 boto3 生成的签名主机，不能直接替换成 CDN 域名。生产部署不要创建长期 Access
 Key；为 EC2/ECS 工作负载绑定 IAM Role。
 
+`server/.env` 与 `jobs/.env` 必须配置同一个 dev Bucket。日常启动不得自动创建
+Bucket、写入生产 Bucket 或探测生产凭证；涉及真实文件的测试完成后，按开发
+Bucket 的保留策略清理数据。
+
 官方资料：[创建 Bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html)、[S3 IAM 策略示例](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security_iam_id-based-policy-examples.html)、[Access Key 管理](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html)。
 
-## 2. MinerU
+## 2. Aliyun DirectMail
+
+Scholens 本地注册、重置密码与修改邮箱流程直接使用 Aliyun DirectMail，不配置
+Mailpit。可以复用 Scholight 所在的 Aliyun DirectMail 账号，但发信地址必须已在
+控制台验证，发件人别名和回调 URL 必须保持 Scholens 专属。
+
+把凭据只写入忽略的 `server/.env`：
+
+```dotenv
+AUTH_ALIYUN_DM_ACCESS_KEY_ID=
+AUTH_ALIYUN_DM_ACCESS_KEY_SECRET=
+AUTH_ALIYUN_DM_ACCOUNT_NAME=
+AUTH_ALIYUN_DM_FROM_ALIAS=Scholens
+AUTH_ALIYUN_DM_REPLY_TO_ADDRESS=true
+AUTH_PUBLIC_WEB_URL=http://127.0.0.1:7300
+```
+
+前端显示“请检查邮箱”不代表供应商已经接受邮件；调试时还要查看 Server 日志中的
+DirectMail 请求结果。不要把密钥写入 `web/.env.local`、截图、Issue 或 Git。
+
+## 3. MinerU
 
 1. 打开 [MinerU](https://mineru.net/) 并注册或登录。
 2. 进入 [API Token 页面](https://mineru.net/apiManage/token) 创建 Token。
@@ -92,7 +119,7 @@ Scholens Jobs 会给 MinerU 提交一个短期 S3 签名 URL，轮询解析结�
 
 MinerU 的提交、轮询和结果下载共享一个 600 秒 deadline。网络连续失败 4 次后会进入较慢退避，而不是立即结束；deadline 到期且本地文本质量合格时，论文先以 `text_only` 可用。运行中的 MinerU task checkpoint 会继续保留，后台恢复任务取得完整结果后会自动替换正文、页码映射和全文索引，并将解析质量升级为 `full`。
 
-## 3. MOSS Voice
+## 4. MOSS Voice
 
 1. 打开 [MOSS 平台](https://platform.mosi.cn/) 并注册或登录。
 2. 在控制台进入 API Key 管理，创建名为 `scholens-development` 的 Key。
@@ -110,7 +137,7 @@ Scholens 调用 `POST /v1/audio/speech` 创建异步语音任务，并轮询任�
 
 官方资料：[MOSS Voice 文档](https://platform.mosi.cn/docs/getting-started/overview/)。
 
-## 4. DeepSeek
+## 5. DeepSeek
 
 在 [DeepSeek 开放平台](https://platform.deepseek.com/) 创建 API Key，并写入 `server/.env` 与 `jobs/.env`：
 

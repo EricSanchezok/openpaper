@@ -67,6 +67,13 @@ role as documented in [`../DEVELOPMENT.md`](../DEVELOPMENT.md).
 The local broker is `pyamqp://guest@127.0.0.1:55672//` when the Jobs profile is
 enabled.
 
+The ordinary Scholens local environment uses an isolated remote dev S3 bucket
+and Aliyun DirectMail for real verification and password-reset messages. It
+does not require Mailpit or MinIO. Keep both providers' credentials in the
+ignored `server/.env`; Jobs receives the same dev S3 settings through its own
+ignored `jobs/.env`. Production RDS, S3, and mail resources must never be used
+by local startup.
+
 ## API Documentation
 
 FastAPI automatically generates API documentation. Once the application is running, you can access:

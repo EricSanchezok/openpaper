@@ -37,14 +37,18 @@ For new `web/` product work, also complete
   the public API contract deliberately instead.
 - Local development owns the `7300-7399` host-port block: Web `7300`, Server
   `7301`, Jobs `7302`, legacy client `7303`, Storybook `7306`, and Flower
-  `7307`. Shared infrastructure uses PostgreSQL `55432`, RabbitMQ `55672`,
-  Redis `56379`, and MinIO `59000/59001`, all on `127.0.0.1`.
+  `7307`. Scholens local infrastructure uses PostgreSQL `55432`, RabbitMQ
+  `55672`, and Redis `56379`, all on `127.0.0.1`. Ports `59000/59001` remain
+  reserved for projects that explicitly choose local MinIO; Scholens does not
+  start or consume MinIO by default.
 - Local entrypoints must use fixed ports, bind to loopback, and fail on a
   conflict. Never add port auto-increment, install dependencies, or apply
   migrations as a side effect of a daily startup command.
 - `server` local startup must retain its guard against any database other than
   `127.0.0.1:55432/sanchezcloud`. RDS and production object storage are outside
-  local-development scope; MinIO is selected with `AWS_ENDPOINT_URL_S3`.
+  local-development scope. Scholens local development uses its isolated remote
+  dev S3 bucket and product-specific Aliyun DirectMail settings; neither may
+  reuse production resources.
 - Remote model and search providers are opt-in for the feature being tested.
   Keep their credentials in ignored service-local environment files.
 
@@ -117,7 +121,9 @@ smaller relevant subset, but the final handoff must state exactly what ran.
   work merely because it is present.
 - Architecture changes require an ADR under `web/docs/decisions/` or the
   appropriate service-level architecture documentation.
-- Documentation must change in the same commit as the behavior that invalidates
-  it.
+- Every code, configuration, or workflow change requires an explicit
+  documentation-impact check. Documentation must change in the same commit as
+  the behavior that invalidates it; if no documentation changes are needed,
+  state that in the handoff.
 - Keep upstream copyright, license, provenance, migration, and evaluation
   references unless their removal has been explicitly validated.
