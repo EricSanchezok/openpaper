@@ -136,6 +136,16 @@ export const Empty: Story = {
   parameters: {
     msw: { handlers: [...authHandlers.success, ...homeHandlers.empty] },
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText(/Start with a question/),
+    ).toBeVisible();
+    await expect(canvas.queryByText("Recent papers")).not.toBeInTheDocument();
+    await expect(
+      canvas.queryByText("No recent projects"),
+    ).not.toBeInTheDocument();
+  },
 };
 
 export const Error: Story = {
@@ -162,5 +172,17 @@ export const SimplifiedChinese: Story = {
         name: "你正在研究什么？",
       }),
     ).toBeVisible();
+  },
+};
+
+export const EmptySimplifiedChinese: Story = {
+  globals: { locale: "zh-CN" },
+  parameters: {
+    msw: { handlers: [...authHandlers.success, ...homeHandlers.empty] },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText(/从一个问题开始/)).toBeVisible();
+    await expect(canvas.queryByText("最近论文")).not.toBeInTheDocument();
   },
 };

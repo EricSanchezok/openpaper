@@ -51,6 +51,7 @@ function SidebarControl({
   active,
   href,
   disabled,
+  disabledHint,
   onSelect,
 }: {
   collapsed: boolean;
@@ -59,12 +60,15 @@ function SidebarControl({
   active?: boolean;
   href?: string;
   disabled?: boolean;
+  disabledHint?: string;
   onSelect?: () => void;
 }) {
+  const accessibleLabel =
+    disabled && disabledHint ? `${label}. ${disabledHint}` : label;
   const control = href ? (
     <Link
       aria-current={active ? "page" : undefined}
-      aria-label={collapsed ? label : undefined}
+      aria-label={collapsed ? accessibleLabel : undefined}
       className={cn(
         "hover:bg-hover flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] text-[13px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
         collapsed ? "w-11 justify-center" : "w-full px-2.5",
@@ -79,7 +83,7 @@ function SidebarControl({
   ) : (
     <button
       aria-disabled={disabled || undefined}
-      aria-label={collapsed ? label : undefined}
+      aria-label={disabled || collapsed ? accessibleLabel : undefined}
       className={cn(
         "flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] text-[13px] font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
         collapsed ? "w-11 justify-center" : "w-full px-2.5",
@@ -93,11 +97,13 @@ function SidebarControl({
     </button>
   );
 
-  if (!collapsed) return control;
+  if (!collapsed && !disabled) return control;
   return (
     <Tooltip>
       <TooltipTrigger asChild>{control}</TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
+      <TooltipContent side="right">
+        {disabled && disabledHint ? `${label} · ${disabledHint}` : label}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -105,53 +111,45 @@ function SidebarControl({
 function ConversationGroup({
   title,
   items,
-  emptyLabel,
   activeConversationId,
   onSelect,
 }: {
   title: string;
   items: ConversationSummary[];
-  emptyLabel: string;
   activeConversationId?: string;
   onSelect?: () => void;
 }) {
+  if (items.length === 0) return null;
+
   return (
     <section className="grid gap-0.5">
       <div className="text-secondary flex h-7 items-center px-2 text-xs font-medium">
         {title}
       </div>
-      {items.length === 0 ? (
-        <p className="text-secondary px-2 py-1 text-xs leading-5">
-          {emptyLabel}
-        </p>
-      ) : (
-        items.map((conversation) => (
-          <Link
-            aria-current={
-              activeConversationId === conversation.id ? "page" : undefined
-            }
-            className={cn(
-              "hover:bg-hover flex h-9 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-2 text-[13px] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
-              activeConversationId === conversation.id && "bg-pressed",
-            )}
-            href={`/?conversation=${conversation.id}`}
-            key={conversation.id}
-            onClick={onSelect}
-          >
-            {conversation.pinned_at && (
-              <Icon glyph={ChatBubbleEmpty} size={20} tone="secondary" />
-            )}
-            <span className="min-w-0 flex-1 truncate">
-              {conversation.title}
+      {items.map((conversation) => (
+        <Link
+          aria-current={
+            activeConversationId === conversation.id ? "page" : undefined
+          }
+          className={cn(
+            "hover:bg-hover flex h-9 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-2 text-[13px] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            activeConversationId === conversation.id && "bg-pressed",
+          )}
+          href={`/?conversation=${conversation.id}`}
+          key={conversation.id}
+          onClick={onSelect}
+        >
+          {conversation.pinned_at && (
+            <Icon glyph={ChatBubbleEmpty} size={20} tone="secondary" />
+          )}
+          <span className="min-w-0 flex-1 truncate">{conversation.title}</span>
+          {conversation.scope_label && (
+            <span className="text-secondary max-w-[4.5rem] truncate text-[11px]">
+              {conversation.scope_label}
             </span>
-            {conversation.scope_label && (
-              <span className="text-secondary max-w-[4.5rem] truncate text-[11px]">
-                {conversation.scope_label}
-              </span>
-            )}
-          </Link>
-        ))
-      )}
+          )}
+        </Link>
+      ))}
     </section>
   );
 }
@@ -314,34 +312,39 @@ function Sidebar({
           <SidebarControl
             collapsed={collapsed}
             disabled
+            disabledHint={t("navigation.comingSoon")}
             glyph={BookStack}
-            label={`${t("navigation.library")} · ${t("navigation.comingSoon")}`}
+            label={t("navigation.library")}
           />
           <SidebarControl
             collapsed={collapsed}
             disabled
+            disabledHint={t("navigation.comingSoon")}
             glyph={Folder}
-            label={`${t("navigation.projects")} · ${t("navigation.comingSoon")}`}
+            label={t("navigation.projects")}
           />
         </nav>
         {!collapsed && (
           <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
             <ConversationGroup
               activeConversationId={activeConversationId}
-              emptyLabel={t("sidebar.noPinned")}
               items={pinned}
               onSelect={onSelect}
               title={t("sidebar.pinned")}
             />
-            <div className="mt-2">
+            <div className={pinned.length > 0 ? "mt-2" : undefined}>
               <ConversationGroup
                 activeConversationId={activeConversationId}
-                emptyLabel={t("sidebar.noRecent")}
                 items={recent}
                 onSelect={onSelect}
                 title={t("sidebar.recent")}
               />
             </div>
+            {pinned.length === 0 && recent.length === 0 && (
+              <p className="text-secondary px-2 py-1 text-xs leading-5">
+                {t("sidebar.empty")}
+              </p>
+            )}
           </div>
         )}
         {collapsed && <div className="flex-1" />}
@@ -379,7 +382,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   return (
-    <div className="bg-canvas flex h-screen min-h-[36rem] overflow-hidden">
+    <div className="bg-canvas flex h-screen min-h-[36rem] overflow-hidden antialiased">
       <div className="hidden lg:block">
         <Sidebar
           activeConversationId={activeConversationId}

@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowUp, AtSign, Folder, Page, Xmark } from "iconoir-react";
+import { ArrowUp, AtSign, Folder, Xmark } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -289,7 +289,7 @@ export function ResearchComposer({
   return (
     <form
       className={cn(
-        "border-line-strong bg-surface flex w-full flex-col gap-2 rounded-[var(--radius-xl)] border px-4 pt-3 pb-2 shadow-[0_4px_12px_var(--color-elevation-shadow)]",
+        "border-line-strong bg-surface flex w-full flex-col gap-3 rounded-[var(--radius-xl)] border px-4 pt-4 pb-2 shadow-[0_4px_12px_-4px_var(--color-elevation-shadow)]",
         compact ? "max-w-[720px]" : "max-w-[680px]",
       )}
       onSubmit={form.handleSubmit(submit)}
@@ -300,7 +300,7 @@ export function ResearchComposer({
             ? t("composer.followUpPlaceholder")
             : t("composer.placeholder")
         }
-        className="placeholder:text-muted max-h-32 min-h-9 w-full resize-none bg-transparent py-1 text-sm leading-6 outline-none"
+        className="placeholder:text-muted max-h-32 min-h-[22px] w-full resize-none bg-transparent py-0 text-sm leading-[22px] outline-none"
         disabled={busy || unavailable}
         onKeyDown={(event) => {
           if (event.key === "@") setPickerOpen(true);
@@ -317,17 +317,11 @@ export function ResearchComposer({
         rows={1}
         {...form.register("message")}
       />
-      {context.kind === "library" || selectionCount > 0 ? (
+      {context.kind === "selection" && selectionCount > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           <span className="bg-subtle text-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs">
-            <Icon
-              glyph={context.kind === "library" ? Page : Folder}
-              size={16}
-              tone="secondary"
-            />
-            {context.kind === "library"
-              ? t("context.librarySelected")
-              : t("context.selectionSummary", { count: selectionCount })}
+            <Icon glyph={Folder} size={16} tone="secondary" />
+            {t("context.selectionSummary", { count: selectionCount })}
           </span>
         </div>
       ) : null}

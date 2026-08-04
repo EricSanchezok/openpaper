@@ -29,13 +29,12 @@
       "expand": "Expand sidebar",
       "openMenu": "Open navigation",
       "closeMenu": "Close navigation",
-      "comingSoon": "Coming in the next page slice"
+      "comingSoon": "Not available yet"
     },
     "sidebar": {
       "pinned": "Pinned",
       "recent": "Recent",
-      "noPinned": "No pinned conversations",
-      "noRecent": "Start a conversation to see it here",
+      "empty": "Your conversations will appear here.",
       "conversationContext": "Research context"
     },
     "account": {
@@ -50,7 +49,8 @@
     },
     "hero": {
       "title": "What are you working on?",
-      "description": "Ask across your research."
+      "description": "Ask across your research.",
+      "emptyDescription": "Start with a question. Recent papers and projects will appear here as your workspace grows."
     },
     "composer": {
       "placeholder": "Ask anything",

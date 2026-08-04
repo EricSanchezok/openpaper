@@ -1,11 +1,12 @@
 "use client";
 
-import { Folder, Page } from "iconoir-react";
+import { Folder } from "iconoir-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { Button, Skeleton } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
+import { cn } from "@/lib/utilities/cn";
 import {
   ResearchComposer,
   type ResearchContext,
@@ -107,8 +108,7 @@ function RecentSection({
   title,
   loading,
   error,
-  emptyTitle,
-  emptyDescription,
+  kind,
   onRetry,
   children,
   className,
@@ -116,60 +116,45 @@ function RecentSection({
   title: string;
   loading?: boolean;
   error?: boolean;
-  emptyTitle: string;
-  emptyDescription: string;
+  kind: "papers" | "projects";
   onRetry: () => void;
   children?: React.ReactNode;
   className?: string;
 }) {
   const t = useTranslations("Home.recents");
+
+  if (!loading && !error && !children) return null;
+
   return (
     <section className={className}>
-      <div className="mb-3 flex h-6 items-center justify-between">
+      <div className="mb-3 flex h-6 items-center">
         <h2 className="text-base font-medium">{title}</h2>
-        <button
-          aria-disabled
-          className="text-secondary cursor-not-allowed text-xs"
-          title={t("viewAll")}
-          type="button"
-        >
-          {t("viewAll")}
-        </button>
       </div>
       {loading ? (
-        <div aria-label={title} className="grid gap-3" role="status">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
+        <div
+          aria-label={title}
+          className={cn("grid gap-3", kind === "papers" && "sm:grid-cols-2")}
+          role="status"
+        >
+          {Array.from({ length: kind === "papers" ? 2 : 3 }).map((_, index) => (
+            <Skeleton
+              className={kind === "papers" ? "h-[262px]" : "h-[72px]"}
+              key={index}
+            />
+          ))}
         </div>
       ) : error ? (
         <div
-          className="border-line bg-surface grid min-h-40 place-items-center rounded-[var(--radius-md)] border p-6 text-center"
+          className="border-line bg-surface flex min-h-[72px] items-center justify-between gap-4 rounded-[var(--radius-md)] border px-3 py-3"
           role="alert"
         >
-          <div>
-            <p className="text-sm font-medium">{t("loadError")}</p>
-            <Button
-              className="mt-3"
-              onClick={onRetry}
-              size="sm"
-              variant="secondary"
-            >
-              {t("retry")}
-            </Button>
-          </div>
+          <p className="text-sm font-medium">{t("loadError")}</p>
+          <Button onClick={onRetry} size="sm" variant="secondary">
+            {t("retry")}
+          </Button>
         </div>
-      ) : children ? (
-        children
       ) : (
-        <div className="border-line bg-surface grid min-h-40 place-items-center rounded-[var(--radius-md)] border p-6 text-center">
-          <div>
-            <span className="bg-subtle mx-auto grid size-10 place-items-center rounded-[var(--radius-md)]">
-              <Icon glyph={Page} size={20} tone="secondary" />
-            </span>
-            <p className="mt-3 text-sm font-medium">{emptyTitle}</p>
-            <p className="text-muted mt-1 text-xs">{emptyDescription}</p>
-          </div>
-        </div>
+        children
       )}
     </section>
   );
@@ -219,15 +204,30 @@ export function HomeDashboard({
         new Date(left.updated_at).getTime(),
     )
     .slice(0, 3);
+  const showPapers = papersLoading || papersError || recentPapers.length > 0;
+  const showProjects =
+    projectsLoading || projectsError || recentProjects.length > 0;
+  const emptyWorkspace = !showPapers && !showProjects;
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-4 py-8 sm:px-8 lg:px-16 lg:py-16">
+    <div
+      className={cn(
+        "mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-4 sm:px-8 lg:px-16",
+        emptyWorkspace
+          ? "py-12 sm:py-16 lg:pt-[clamp(8rem,20vh,13rem)] lg:pb-16"
+          : "py-8 lg:py-16",
+      )}
+    >
       <section className="mx-auto flex w-full max-w-[720px] flex-col items-center gap-5 text-center">
         <div>
-          <h1 className="text-[clamp(1.75rem,4vw,2.25rem)] leading-tight font-medium tracking-[-0.025em]">
+          <h1 className="text-[clamp(1.875rem,4vw,2.25rem)] leading-tight font-medium tracking-[-0.02em] text-balance [&:lang(zh-CN)]:leading-[1.28] [&:lang(zh-CN)]:tracking-normal">
             {t("hero.title")}
           </h1>
-          <p className="text-secondary mt-3 text-sm">{t("hero.description")}</p>
+          <p className="text-secondary mx-auto mt-3 max-w-[36rem] text-sm leading-[1.6] text-pretty">
+            {emptyWorkspace
+              ? t("hero.emptyDescription")
+              : t("hero.description")}
+          </p>
         </div>
         <ResearchComposer
           context={context}
@@ -239,42 +239,51 @@ export function HomeDashboard({
           reasoningLevel={reasoningLevel}
         />
       </section>
-      <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,600px)_minmax(280px,340px)] lg:gap-5">
-        <RecentSection
-          className="min-w-0"
-          emptyDescription={t("recents.noPapersDescription")}
-          emptyTitle={t("recents.noPapersTitle")}
-          error={papersError}
-          loading={papersLoading}
-          onRetry={onRetryPapers}
-          title={t("recents.papers")}
+      {!emptyWorkspace && (
+        <div
+          className={cn(
+            "mt-12 grid w-full gap-8 lg:mx-auto",
+            showPapers &&
+              showProjects &&
+              "lg:grid-cols-[minmax(0,600px)_minmax(280px,340px)] lg:gap-5",
+            showPapers && !showProjects && "lg:max-w-[600px]",
+            !showPapers && showProjects && "lg:max-w-[340px]",
+          )}
         >
-          {recentPapers.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {recentPapers.map((paper) => (
-                <PaperCard key={paper.document.document_id} paper={paper} />
-              ))}
-            </div>
-          ) : undefined}
-        </RecentSection>
-        <RecentSection
-          className="min-w-0"
-          emptyDescription={t("recents.noProjectsDescription")}
-          emptyTitle={t("recents.noProjectsTitle")}
-          error={projectsError}
-          loading={projectsLoading}
-          onRetry={onRetryProjects}
-          title={t("recents.projects")}
-        >
-          {recentProjects.length > 0 ? (
-            <div className="grid gap-2">
-              {recentProjects.map((project) => (
-                <ProjectRow key={project.id} project={project} />
-              ))}
-            </div>
-          ) : undefined}
-        </RecentSection>
-      </div>
+          <RecentSection
+            className="min-w-0"
+            error={papersError}
+            kind="papers"
+            loading={papersLoading}
+            onRetry={onRetryPapers}
+            title={t("recents.papers")}
+          >
+            {recentPapers.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {recentPapers.map((paper) => (
+                  <PaperCard key={paper.document.document_id} paper={paper} />
+                ))}
+              </div>
+            ) : undefined}
+          </RecentSection>
+          <RecentSection
+            className="min-w-0"
+            error={projectsError}
+            kind="projects"
+            loading={projectsLoading}
+            onRetry={onRetryProjects}
+            title={t("recents.projects")}
+          >
+            {recentProjects.length > 0 ? (
+              <div className="grid gap-2">
+                {recentProjects.map((project) => (
+                  <ProjectRow key={project.id} project={project} />
+                ))}
+              </div>
+            ) : undefined}
+          </RecentSection>
+        </div>
+      )}
     </div>
   );
 }

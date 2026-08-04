@@ -79,6 +79,42 @@ test("renders the authenticated Home shell and primary data", async ({
   expect(accessibility.violations).toEqual([]);
 });
 
+test("renders an intentional first-run Home without empty card shells", async ({
+  page,
+}) => {
+  await page.unroute(`${apiPattern}/conversations**`);
+  await page.unroute(`${apiPattern}/library/papers`);
+  await page.unroute(`${apiPattern}/projects**`);
+  await page.route(`${apiPattern}/conversations**`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null }),
+    }),
+  );
+  await page.route(`${apiPattern}/library/papers`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null }),
+    }),
+  );
+  await page.route(`${apiPattern}/projects**`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null }),
+    }),
+  );
+
+  await page.goto("/");
+  await expect(page.getByText(/Start with a question/)).toBeVisible();
+  await expect(page.getByText("Recent papers", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Recent projects", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByText("Your conversations will appear here."),
+  ).toBeVisible();
+});
+
 test("opens the context picker and changes its searchable selection", async ({
   page,
 }) => {
@@ -101,6 +137,21 @@ test("fits the Home shell at 390px without horizontal scrolling", async ({
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("keeps the Home composition contained on a 2560px desktop", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "What are you working on?" }),
   ).toBeVisible();
   expect(
     await page.evaluate(

@@ -18,6 +18,9 @@ the deliberately deferred boundaries.
 - Desktop and mobile compose one `AppShell`. The desktop sidebar is 248 px when
   expanded and 64 px when collapsed; narrow screens expose the same navigation
   through a Sheet.
+- Deferred destinations retain their product names in the visible navigation;
+  availability is disclosed through the disabled control and its tooltip, not
+  implementation-plan copy.
 
 ## Data and streaming
 
@@ -41,6 +44,15 @@ conversation list are invalidated.
 | Context      | entire library and selected project/paper sources, including search                  |
 | Conversation | history, processing, reasoning, content, references, complete, cancelled, and error  |
 | Presentation | English, Simplified Chinese, Light, Dark, 1440 px, 390 px, and 320 px overflow check |
+
+When both recent-paper and recent-project queries settle empty, Home uses a
+focused first-run composition instead of preserving empty card silhouettes.
+When only one collection has data, only that section is rendered and centered.
+Loading and recoverable errors remain visible per collection. The populated
+state continues to follow the canonical two-paper/three-project Figma layout.
+
+The visual acceptance pass also includes a 2560 px wide viewport so the
+first-run composition remains intentional on large desktop displays.
 
 Storybook is the isolated state catalog. Playwright covers authenticated route
 composition, the context interaction, accessibility, locale selection, and

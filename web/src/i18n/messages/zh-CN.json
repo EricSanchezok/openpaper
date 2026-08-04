@@ -29,13 +29,12 @@
       "expand": "展开侧栏",
       "openMenu": "打开导航",
       "closeMenu": "关闭导航",
-      "comingSoon": "将在下一页面切片中实现"
+      "comingSoon": "尚未开放"
     },
     "sidebar": {
       "pinned": "置顶",
       "recent": "最近",
-      "noPinned": "暂无置顶对话",
-      "noRecent": "开始一次对话后会显示在这里",
+      "empty": "对话会显示在这里。",
       "conversationContext": "研究上下文"
     },
     "account": {
@@ -50,7 +49,8 @@
     },
     "hero": {
       "title": "你正在研究什么？",
-      "description": "基于你的研究资料提问。"
+      "description": "基于你的研究资料提问。",
+      "emptyDescription": "从一个问题开始；最近使用的论文和项目会随着研究逐渐显示在这里。"
     },
     "composer": {
       "placeholder": "问任何问题",
