@@ -1605,6 +1605,216 @@
         "title": "ConversationScopeType",
         "type": "string"
       },
+      "ConversationStreamCompleteEvent": {
+        "properties": {
+          "artifacts": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue-Output"
+              },
+              "type": "object"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue-Output"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace"
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "complete",
+            "default": "complete",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id"
+        ],
+        "title": "ConversationStreamCompleteEvent",
+        "type": "object"
+      },
+      "ConversationStreamContentDeltaEvent": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "type": {
+            "const": "content_delta",
+            "default": "content_delta",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta"
+        ],
+        "title": "ConversationStreamContentDeltaEvent",
+        "type": "object"
+      },
+      "ConversationStreamErrorEvent": {
+        "properties": {
+          "error": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "title": "Error",
+            "type": "object"
+          },
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ConversationStreamErrorEvent",
+        "type": "object"
+      },
+      "ConversationStreamEventSchema": {
+        "description": "Public schema for the JSON payload carried by each SSE event.",
+        "discriminator": {
+          "mapping": {
+            "complete": "#/components/schemas/ConversationStreamCompleteEvent",
+            "content_delta": "#/components/schemas/ConversationStreamContentDeltaEvent",
+            "error": "#/components/schemas/ConversationStreamErrorEvent",
+            "reasoning": "#/components/schemas/ConversationStreamReasoningEvent",
+            "references": "#/components/schemas/ConversationStreamReferencesEvent",
+            "start": "#/components/schemas/ConversationStreamStartEvent",
+            "status": "#/components/schemas/ConversationStreamStatusEvent"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ConversationStreamStartEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamStatusEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamReasoningEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamContentDeltaEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamReferencesEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamCompleteEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamErrorEvent"
+          }
+        ],
+        "title": "ConversationStreamEventSchema"
+      },
+      "ConversationStreamReasoningEvent": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "type": {
+            "const": "reasoning",
+            "default": "reasoning",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta"
+        ],
+        "title": "ConversationStreamReasoningEvent",
+        "type": "object"
+      },
+      "ConversationStreamReferencesEvent": {
+        "properties": {
+          "references": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "title": "References",
+            "type": "object"
+          },
+          "type": {
+            "const": "references",
+            "default": "references",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "references"
+        ],
+        "title": "ConversationStreamReferencesEvent",
+        "type": "object"
+      },
+      "ConversationStreamStartEvent": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "start",
+            "default": "start",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "turn_id"
+        ],
+        "title": "ConversationStreamStartEvent",
+        "type": "object"
+      },
+      "ConversationStreamStatusEvent": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "status",
+            "default": "status",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ConversationStreamStatusEvent",
+        "type": "object"
+      },
       "ConversationSummaryResponse": {
         "properties": {
           "archived_at": {
@@ -8570,11 +8780,14 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationStreamEventSchema",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Standard SSE stream of typed conversation events."
           },
           "422": {
             "content": {

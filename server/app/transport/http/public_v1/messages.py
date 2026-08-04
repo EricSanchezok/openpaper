@@ -7,6 +7,7 @@ from app.bootstrap.execution import (
 from app.modules.conversations.application.chat import ConversationChat
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
+    ConversationStreamEventSchema,
 )
 from app.shared.application import (
     Actor,
@@ -28,6 +29,10 @@ from fastapi.responses import StreamingResponse
 message_router = APIRouter()
 
 
+class ConversationEventStreamResponse(StreamingResponse):
+    media_type = "text/event-stream"
+
+
 @message_router.get("/capabilities")
 def get_chat_capabilities(
     chat: ConversationChat = Depends(get_conversation_chat),
@@ -35,7 +40,23 @@ def get_chat_capabilities(
     return chat.capabilities()
 
 
-@message_router.post("/{conversation_id}/messages")
+@message_router.post(
+    "/{conversation_id}/messages",
+    response_class=ConversationEventStreamResponse,
+    responses={
+        200: {
+            "description": "Standard SSE stream of typed conversation events.",
+            "model": ConversationStreamEventSchema,
+            "content": {
+                "text/event-stream": {
+                    "schema": {
+                        "$ref": "#/components/schemas/ConversationStreamEventSchema"
+                    }
+                }
+            },
+        }
+    },
+)
 async def create_conversation_message(
     conversation_id: uuid.UUID,
     message: ConversationMessageRequest,
@@ -44,7 +65,7 @@ async def create_conversation_message(
     current_user: Actor = Depends(get_required_user),
     request_operation: OperationContext = Depends(get_required_operation),
     operation_factory: OperationContextFactory = Depends(get_operation_context_factory),
-) -> StreamingResponse:
+) -> ConversationEventStreamResponse:
     if not isinstance(request_operation.origin, HttpOrigin):
         raise RuntimeError("conversation_http_origin_missing")
     operation = operation_factory.root(
@@ -68,4 +89,4 @@ async def create_conversation_message(
         request=message,
         client_ip=http_client_ip(http_request),
     )
-    return StreamingResponse(stream, media_type="text/event-stream")
+    return ConversationEventStreamResponse(stream)

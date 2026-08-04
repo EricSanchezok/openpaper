@@ -33,10 +33,15 @@ const preview: Preview = {
           formats={formats}
           locale={locale}
           messages={messages[locale]}
+          now={new Date("2026-08-04T10:00:00Z")}
           timeZone="UTC"
         >
           <QueryProvider>
-            <div className="bg-canvas text-foreground min-h-screen p-6">
+            <div
+              className={`bg-canvas text-foreground min-h-screen ${
+                context.parameters.layout === "fullscreen" ? "" : "p-6"
+              }`}
+            >
               <Story />
             </div>
           </QueryProvider>

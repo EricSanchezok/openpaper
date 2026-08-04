@@ -1,6 +1,6 @@
 import json
 import uuid
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from app.shared.application.context_budget import (
     estimate_tokens,
@@ -11,7 +11,61 @@ from app.shared.domain import JsonValue
 from app.modules.papers.application.contracts.citation import CitationResult
 from app.modules.papers.application.contracts.extraction import ToolCall, ToolCallResult
 from app.tooling.contracts import ToolOutcome, ToolSourceCandidate
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
+
+
+class ConversationStreamStartEvent(BaseModel):
+    type: Literal["start"] = "start"
+    conversation_id: uuid.UUID
+    turn_id: uuid.UUID
+
+
+class ConversationStreamStatusEvent(BaseModel):
+    type: Literal["status"] = "status"
+    message: str
+
+
+class ConversationStreamReasoningEvent(BaseModel):
+    type: Literal["reasoning"] = "reasoning"
+    delta: str
+
+
+class ConversationStreamContentDeltaEvent(BaseModel):
+    type: Literal["content_delta"] = "content_delta"
+    delta: str
+
+
+class ConversationStreamReferencesEvent(BaseModel):
+    type: Literal["references"] = "references"
+    references: dict[str, JsonValue]
+
+
+class ConversationStreamCompleteEvent(BaseModel):
+    type: Literal["complete"] = "complete"
+    turn_id: uuid.UUID
+    trace: dict[str, JsonValue] | None = None
+    artifacts: list[dict[str, JsonValue]] = Field(default_factory=list)
+
+
+class ConversationStreamErrorEvent(BaseModel):
+    type: Literal["error"] = "error"
+    error: dict[str, JsonValue]
+
+
+ConversationStreamEvent = Annotated[
+    ConversationStreamStartEvent
+    | ConversationStreamStatusEvent
+    | ConversationStreamReasoningEvent
+    | ConversationStreamContentDeltaEvent
+    | ConversationStreamReferencesEvent
+    | ConversationStreamCompleteEvent
+    | ConversationStreamErrorEvent,
+    Field(discriminator="type"),
+]
+
+
+class ConversationStreamEventSchema(RootModel[ConversationStreamEvent]):
+    """Public schema for the JSON payload carried by each SSE event."""
 
 
 def _serialize_tool_result(value: Any) -> str:

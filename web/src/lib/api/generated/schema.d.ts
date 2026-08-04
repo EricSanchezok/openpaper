@@ -2123,6 +2123,104 @@ export interface components {
          * @enum {string}
          */
         ConversationScopeType: "global" | "project" | "paper";
+        /** ConversationStreamCompleteEvent */
+        ConversationStreamCompleteEvent: {
+            /** Artifacts */
+            artifacts?: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            }[];
+            /** Trace */
+            trace?: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            } | null;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "complete";
+        };
+        /** ConversationStreamContentDeltaEvent */
+        ConversationStreamContentDeltaEvent: {
+            /** Delta */
+            delta: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "content_delta";
+        };
+        /** ConversationStreamErrorEvent */
+        ConversationStreamErrorEvent: {
+            /** Error */
+            error: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+        };
+        /**
+         * ConversationStreamEventSchema
+         * @description Public schema for the JSON payload carried by each SSE event.
+         */
+        ConversationStreamEventSchema: components["schemas"]["ConversationStreamStartEvent"] | components["schemas"]["ConversationStreamStatusEvent"] | components["schemas"]["ConversationStreamReasoningEvent"] | components["schemas"]["ConversationStreamContentDeltaEvent"] | components["schemas"]["ConversationStreamReferencesEvent"] | components["schemas"]["ConversationStreamCompleteEvent"] | components["schemas"]["ConversationStreamErrorEvent"];
+        /** ConversationStreamReasoningEvent */
+        ConversationStreamReasoningEvent: {
+            /** Delta */
+            delta: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "reasoning";
+        };
+        /** ConversationStreamReferencesEvent */
+        ConversationStreamReferencesEvent: {
+            /** References */
+            references: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "references";
+        };
+        /** ConversationStreamStartEvent */
+        ConversationStreamStartEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "start";
+        };
+        /** ConversationStreamStatusEvent */
+        ConversationStreamStatusEvent: {
+            /** Message */
+            message: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "status";
+        };
         /** ConversationSummaryResponse */
         ConversationSummaryResponse: {
             /** Archived At */
@@ -4936,13 +5034,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Standard SSE stream of typed conversation events. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/event-stream": components["schemas"]["ConversationStreamEventSchema"];
                 };
             };
             /** @description Validation Error */

@@ -112,6 +112,28 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     )
 
 
+def test_conversation_messages_expose_a_typed_standard_sse_contract() -> None:
+    response = app.openapi()["paths"][
+        "/api/v1/conversations/{conversation_id}/messages"
+    ]["post"]["responses"]["200"]
+
+    assert response["content"]["text/event-stream"]["schema"]["$ref"] == (
+        "#/components/schemas/ConversationStreamEventSchema"
+    )
+    event_schema = app.openapi()["components"]["schemas"][
+        "ConversationStreamEventSchema"
+    ]["oneOf"]
+    assert {item["$ref"].rsplit("/", maxsplit=1)[-1] for item in event_schema} == {
+        "ConversationStreamStartEvent",
+        "ConversationStreamStatusEvent",
+        "ConversationStreamReasoningEvent",
+        "ConversationStreamContentDeltaEvent",
+        "ConversationStreamReferencesEvent",
+        "ConversationStreamCompleteEvent",
+        "ConversationStreamErrorEvent",
+    }
+
+
 def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
     db = MagicMock(spec=Session)
     conversation = Conversation(

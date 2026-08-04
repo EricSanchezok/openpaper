@@ -1,0 +1,345 @@
+"use client";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import * as React from "react";
+
+import { AsyncFeedback, LoadingState } from "@/components/feedback";
+import { useToast } from "@/components/ui/toast";
+import { useAuthSession, type Actor } from "@/features/authentication";
+import { AppShell } from "./components/app-shell";
+import {
+  ConversationView,
+  type LiveTurn,
+} from "./components/conversation-view";
+import { HomeDashboard } from "./components/home-dashboard";
+import {
+  createConversation,
+  streamConversationMessage,
+  updateConversationContext,
+  type ConversationStreamEvent,
+} from "./api/conversations";
+import { homeKeys } from "./api/keys";
+import { homeQueries } from "./api/queries";
+import type {
+  ReasoningLevel,
+  ResearchContext,
+} from "./components/research-composer";
+
+function sameContext(left: ResearchContext, right: ResearchContext) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "library" || right.kind === "library") return true;
+  return (
+    [...(left.project_ids ?? [])].sort().join(",") ===
+      [...(right.project_ids ?? [])].sort().join(",") &&
+    [...(left.document_ids ?? [])].sort().join(",") ===
+      [...(right.document_ids ?? [])].sort().join(",")
+  );
+}
+
+export function HomeWorkspace({
+  actor,
+  initialConversationId,
+}: {
+  actor: Actor;
+  initialConversationId?: string;
+}) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const t = useTranslations("Home");
+  const { signOut } = useAuthSession();
+  const [pendingConversationId, setPendingConversationId] =
+    React.useState<string>();
+  const [collapsed, setCollapsed] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
+  const [contextOverrides, setContextOverrides] = React.useState<
+    Record<string, ResearchContext>
+  >({});
+  const [reasoningLevel, setReasoningLevel] =
+    React.useState<ReasoningLevel>("standard");
+  const [liveTurn, setLiveTurn] = React.useState<LiveTurn | null>(null);
+  const [liveTurnConversationId, setLiveTurnConversationId] =
+    React.useState<string>();
+  const streamController = React.useRef<AbortController | null>(null);
+
+  const activeConversationId = initialConversationId ?? pendingConversationId;
+
+  const conversationsQuery = useQuery(homeQueries.conversations());
+  const papersQuery = useQuery(homeQueries.papers());
+  const projectsQuery = useQuery(homeQueries.projects());
+  const conversationQuery = useQuery({
+    ...homeQueries.conversation(activeConversationId ?? ""),
+    enabled: Boolean(activeConversationId),
+  });
+  const messagesQuery = useQuery({
+    ...homeQueries.messages(activeConversationId ?? ""),
+    enabled: Boolean(activeConversationId),
+  });
+
+  React.useEffect(() => () => streamController.current?.abort(), []);
+
+  const conversations = conversationsQuery.data?.items ?? [];
+  const papers = papersQuery.data?.items ?? [];
+  const projects = projectsQuery.data?.items ?? [];
+  const contextKey = activeConversationId ?? "new";
+  const context =
+    contextOverrides[contextKey] ??
+    conversationQuery.data?.paper_context ??
+    ({ kind: "library" } satisfies ResearchContext);
+
+  function handleContextChange(nextContext: ResearchContext) {
+    setContextOverrides((current) => ({
+      ...current,
+      [contextKey]: nextContext,
+    }));
+  }
+
+  function applyStreamEvent(event: ConversationStreamEvent) {
+    if (event.type === "status") {
+      setLiveTurn((current) => {
+        if (!current || current.statuses.at(-1) === event.message)
+          return current;
+        return { ...current, statuses: [...current.statuses, event.message] };
+      });
+    }
+    if (event.type === "reasoning") {
+      setLiveTurn((current) =>
+        current
+          ? { ...current, reasoning: current.reasoning + event.delta }
+          : current,
+      );
+    }
+    if (event.type === "content_delta") {
+      setLiveTurn((current) =>
+        current
+          ? { ...current, content: current.content + event.delta }
+          : current,
+      );
+    }
+    if (event.type === "references") {
+      setLiveTurn((current) =>
+        current
+          ? {
+              ...current,
+              references: event.references as Record<string, unknown>,
+            }
+          : current,
+      );
+    }
+    if (event.type === "error") {
+      setLiveTurn((current) =>
+        current ? { ...current, state: "error" } : current,
+      );
+    }
+    if (event.type === "complete") {
+      setLiveTurn((current) =>
+        current ? { ...current, state: "complete" } : current,
+      );
+    }
+  }
+
+  async function sendMessage(message: string) {
+    if (streamController.current) return;
+    let conversationId = activeConversationId;
+    try {
+      if (!conversationId) {
+        const conversation = await createConversation({
+          scope_type: "global",
+          title: message.slice(0, 240),
+          paper_context: context,
+        });
+        conversationId = conversation.id;
+        setPendingConversationId(conversation.id);
+        setContextOverrides((current) => ({
+          ...current,
+          [conversation.id]: context,
+        }));
+        queryClient.setQueryData(
+          homeKeys.conversation(conversation.id),
+          conversation,
+        );
+        router.replace(`/?conversation=${conversation.id}`, { scroll: false });
+      } else if (
+        conversationQuery.data &&
+        !sameContext(context, conversationQuery.data.paper_context)
+      ) {
+        await updateConversationContext(conversationId, context);
+      }
+
+      const controller = new AbortController();
+      streamController.current = controller;
+      setLiveTurnConversationId(conversationId);
+      setLiveTurn({
+        userMessage: message,
+        content: "",
+        statuses: [],
+        reasoning: "",
+        references: null,
+        state: "streaming",
+      });
+      let failed = false;
+      await streamConversationMessage({
+        conversationId,
+        message: {
+          turn_id: crypto.randomUUID(),
+          user_query: message,
+          reasoning_level: reasoningLevel,
+        },
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.type === "error") failed = true;
+          applyStreamEvent(event);
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: homeKeys.conversations() }),
+        queryClient.invalidateQueries({
+          queryKey: homeKeys.messages(conversationId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: homeKeys.conversation(conversationId),
+        }),
+      ]);
+      if (!failed) setLiveTurn(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setLiveTurn((current) =>
+          current ? { ...current, state: "cancelled" } : current,
+        );
+        if (conversationId) {
+          await Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: homeKeys.messages(conversationId),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: homeKeys.conversation(conversationId),
+            }),
+          ]);
+        }
+      } else if (activeConversationId || conversationId) {
+        setLiveTurn((current) =>
+          current ? { ...current, state: "error" } : current,
+        );
+      } else {
+        toast.notify({
+          title: t("conversation.error"),
+          description: t("conversation.retryHint"),
+        });
+      }
+    } finally {
+      streamController.current = null;
+      setPendingConversationId(undefined);
+    }
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+      router.replace("/login");
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
+  return (
+    <AppShell
+      activeConversationId={activeConversationId}
+      actor={actor}
+      collapsed={collapsed}
+      conversations={conversations}
+      onCollapsedChange={setCollapsed}
+      onSignOut={handleSignOut}
+      signingOut={signingOut}
+    >
+      {activeConversationId ? (
+        <ConversationView
+          canSend={conversationQuery.data?.capabilities.send === true}
+          context={context}
+          error={conversationQuery.isError || messagesQuery.isError}
+          liveTurn={
+            liveTurnConversationId === activeConversationId ? liveTurn : null
+          }
+          loading={conversationQuery.isPending || messagesQuery.isPending}
+          messages={messagesQuery.data?.items ?? []}
+          onContextChange={handleContextChange}
+          onReasoningLevelChange={setReasoningLevel}
+          onRetry={() => {
+            void conversationQuery.refetch();
+            void messagesQuery.refetch();
+          }}
+          onStop={() => streamController.current?.abort()}
+          onSubmit={sendMessage}
+          papers={papers}
+          projects={projects}
+          reasoningLevel={reasoningLevel}
+          readOnlyReason={conversationQuery.data?.read_only_reason}
+          title={conversationQuery.data?.title}
+        />
+      ) : (
+        <HomeDashboard
+          context={context}
+          onContextChange={handleContextChange}
+          onReasoningLevelChange={setReasoningLevel}
+          onRetryPapers={() => void papersQuery.refetch()}
+          onRetryProjects={() => void projectsQuery.refetch()}
+          onSubmit={sendMessage}
+          papers={papers}
+          papersError={papersQuery.isError}
+          papersLoading={papersQuery.isPending}
+          projects={projects}
+          projectsError={projectsQuery.isError}
+          projectsLoading={projectsQuery.isPending}
+          reasoningLevel={reasoningLevel}
+        />
+      )}
+    </AppShell>
+  );
+}
+
+export function HomePage({ conversationId }: { conversationId?: string }) {
+  const router = useRouter();
+  const t = useTranslations("Home.session");
+  const session = useAuthSession();
+
+  React.useEffect(() => {
+    if (session.status === "anonymous") {
+      const returnTo = conversationId
+        ? `/?conversation=${encodeURIComponent(conversationId)}`
+        : "/";
+      router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+    }
+  }, [conversationId, router, session.status]);
+
+  if (session.status === "bootstrapping" || session.status === "anonymous") {
+    return (
+      <main className="grid min-h-screen place-items-center p-6">
+        <div className="w-full max-w-sm">
+          <LoadingState label={t("checking")} />
+        </div>
+      </main>
+    );
+  }
+  if (session.status === "unavailable") {
+    return (
+      <main className="grid min-h-screen place-items-center p-6">
+        <AsyncFeedback
+          action={{ label: t("retry"), onClick: session.retryBootstrap }}
+          description={t("unavailableDescription")}
+          state="offline"
+          title={t("unavailableTitle")}
+        />
+      </main>
+    );
+  }
+  if (!session.actor) return null;
+  return (
+    <HomeWorkspace
+      actor={session.actor}
+      initialConversationId={conversationId}
+    />
+  );
+}

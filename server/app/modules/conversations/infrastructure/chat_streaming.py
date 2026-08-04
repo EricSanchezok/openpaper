@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
+from typing import cast
 from uuid import uuid4
 
 from app.database.product_analytics import track_event
+from app.modules.conversations.application.contracts.messages import (
+    ConversationStreamErrorEvent,
+    ConversationStreamEvent,
+)
 from app.shared.application import ErrorEnvelope
-from app.shared.domain import AppError, FailureKind
+from app.shared.domain import AppError, FailureKind, JsonValue
 from scholens_observability import add_counter, current_context, log_event
 from scholens_observability import (
     DiagnosticSnapshotRecorder,
@@ -20,10 +25,30 @@ from scholens_observability import (
 logger = logging.getLogger(__name__)
 
 
+def encode_conversation_sse(event: ConversationStreamEvent) -> str:
+    """Serialize one typed conversation event using the standard SSE wire format."""
+    payload = event.model_dump(mode="json")
+    return (
+        f"event: {event.type}\n"
+        f"data: {json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
+    )
+
+
+def _decode_conversation_sse(event: str) -> dict[str, object] | None:
+    data = "\n".join(
+        line.removeprefix("data: ")
+        for line in event.splitlines()
+        if line.startswith("data: ")
+    )
+    if not data:
+        return None
+    payload = json.loads(data)
+    return payload if isinstance(payload, dict) else None
+
+
 async def stream_with_stable_error(
     source: AsyncIterator[str],
     *,
-    delimiter: str,
     event_name: str,
     user_id: int,
     properties: dict[str, object],
@@ -35,10 +60,7 @@ async def stream_with_stable_error(
     try:
         async for event in source:
             try:
-                serialized = (
-                    event[: -len(delimiter)] if event.endswith(delimiter) else event
-                )
-                payload = json.loads(serialized)
+                payload = _decode_conversation_sse(event)
                 completed = (
                     isinstance(payload, dict) and payload.get("type") == "complete"
                 )
@@ -128,4 +150,8 @@ async def stream_with_stable_error(
             retryable=error.retryable,
             diagnostic_id=public_error.diagnostic_id,
         )
-        yield f"{json.dumps({'type': 'error', 'error': public_error.to_dict()})}{delimiter}"
+        yield encode_conversation_sse(
+            ConversationStreamErrorEvent(
+                error=cast(dict[str, JsonValue], public_error.to_dict()),
+            )
+        )

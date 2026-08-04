@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 
@@ -7,6 +8,8 @@ import { themeInitializationScript } from "@/design-system/theme/theme-script";
 import { localeDirection, type AppLocale } from "@/i18n/config";
 import { formats } from "@/i18n/formats";
 import "@/styles/globals.css";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Metadata");
@@ -32,11 +35,12 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: themeInitializationScript }}
         />
       </head>
-      <body>
+      <body className={geist.variable}>
         <NextIntlClientProvider
           formats={formats}
           locale={locale}
           messages={messages}
+          now={new Date()}
           timeZone="UTC"
         >
           <Providers>{children}</Providers>

@@ -1,4 +1,3 @@
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -18,6 +17,12 @@ from app.llm.conversation_agent import ConversationAgentRuntime
 from app.llm.token_credits import llm_usage_context
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
+    ConversationStreamCompleteEvent,
+    ConversationStreamContentDeltaEvent,
+    ConversationStreamReasoningEvent,
+    ConversationStreamReferencesEvent,
+    ConversationStreamStartEvent,
+    ConversationStreamStatusEvent,
     ToolRunState,
 )
 from app.shared.application import (
@@ -28,6 +33,7 @@ from app.shared.application import (
     OperationInitiator,
 )
 from app.modules.conversations.infrastructure.chat_streaming import (
+    encode_conversation_sse,
     stream_with_stable_error,
 )
 from dotenv import load_dotenv
@@ -40,7 +46,6 @@ logger = logging.getLogger(__name__)
 
 logger.setLevel(logging.INFO)
 
-END_DELIMITER = "END_OF_STREAM"
 MAX_REASONING_TRACE_CHARS = 100_000
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 _JSON_OBJECT_LIST = TypeAdapter(list[dict[str, JsonValue]])
@@ -88,15 +93,8 @@ async def _stream_chat_chunks(
         if chunk_type == "artifact":
             if artifacts is not None and isinstance(chunk_content, dict):
                 artifacts.append(chunk_content)
-            try:
-                yield f"{json.dumps({'type': 'artifact', 'content': chunk_content})}{END_DELIMITER}"
-            except (TypeError, ValueError) as json_error:
-                raise AppError(
-                    code="stream_serialization_failed",
-                    message="A response artifact could not be serialized.",
-                    kind=FailureKind.INTERNAL,
-                    retryable=False,
-                ) from json_error
+            # Artifacts are persisted and delivered with the terminal event so
+            # the public stream remains a small, stable event union.
             continue
 
         if chunk_type == "reasoning":
@@ -109,7 +107,9 @@ async def _stream_chat_chunks(
                 )
                 if remaining > 0:
                     reasoning_chunks.append(reasoning_content[:remaining])
-            yield f"{json.dumps({'type': 'reasoning', 'content': reasoning_content})}{END_DELIMITER}"
+            yield encode_conversation_sse(
+                ConversationStreamReasoningEvent(delta=reasoning_content)
+            )
             continue
 
         if chunk_type == "content":
@@ -118,8 +118,9 @@ async def _stream_chat_chunks(
             )
             content_chunks.append(text_content)
             try:
-                json_response = json.dumps({"type": "content", "content": text_content})
-                yield f"{json_response}{END_DELIMITER}"
+                yield encode_conversation_sse(
+                    ConversationStreamContentDeltaEvent(delta=text_content)
+                )
             except (TypeError, ValueError) as json_error:
                 logger.warning(
                     "conversation.stream.content_repaired",
@@ -128,18 +129,21 @@ async def _stream_chat_chunks(
                 safe_content = (
                     str(chunk_content).encode("utf-8", errors="replace").decode("utf-8")
                 )
-                json_response = json.dumps({"type": "content", "content": safe_content})
-                yield f"{json_response}{END_DELIMITER}"
+                yield encode_conversation_sse(
+                    ConversationStreamContentDeltaEvent(delta=safe_content)
+                )
 
         elif chunk_type == "references":
             references_container["references"] = (
                 chunk_content if isinstance(chunk_content, dict) else None
             )
             try:
-                json_response = json.dumps(
-                    {"type": "references", "content": chunk_content}
-                )
-                yield f"{json_response}{END_DELIMITER}"
+                if isinstance(chunk_content, dict):
+                    yield encode_conversation_sse(
+                        ConversationStreamReferencesEvent(
+                            references=_JSON_OBJECT.validate_python(chunk_content)
+                        )
+                    )
             except (TypeError, ValueError) as json_error:
                 raise AppError(
                     code="stream_serialization_failed",
@@ -152,7 +156,9 @@ async def _stream_chat_chunks(
                 chunk_content if isinstance(chunk_content, str) else str(chunk_content)
             )
             _append_status(status_messages, status_content)
-            yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
+            yield encode_conversation_sse(
+                ConversationStreamStatusEvent(message=status_content)
+            )
         elif chunk_type == "error":
             raise AppError(
                 code="agent_runtime_failed",
@@ -251,24 +257,31 @@ async def stream_conversation_agent(
         )
     )
 
+    start_event = encode_conversation_sse(
+        ConversationStreamStartEvent(
+            conversation_id=conversation_id,
+            turn_id=request.turn_id,
+        )
+    )
+
     if turn_start.assistant is not None:
         persisted = turn_start.assistant
 
         async def replay_response() -> AsyncGenerator[str, None]:
-            yield (
-                f"{json.dumps({'type': 'content', 'content': persisted.content})}"
-                f"{END_DELIMITER}"
+            yield start_event
+            yield encode_conversation_sse(
+                ConversationStreamContentDeltaEvent(delta=persisted.content)
             )
             if persisted.references is not None:
-                yield (
-                    f"{json.dumps({'type': 'references', 'content': persisted.references})}"
-                    f"{END_DELIMITER}"
+                yield encode_conversation_sse(
+                    ConversationStreamReferencesEvent(references=persisted.references)
                 )
-            if persisted.trace is not None:
-                yield (
-                    f"{json.dumps({'type': 'trace', 'content': persisted.trace})}"
-                    f"{END_DELIMITER}"
+            yield encode_conversation_sse(
+                ConversationStreamCompleteEvent(
+                    turn_id=request.turn_id,
+                    trace=persisted.trace,
                 )
+            )
 
         return replay_response()
 
@@ -304,6 +317,7 @@ async def stream_conversation_agent(
     }
 
     async def run_response_generator() -> AsyncGenerator[str, None]:
+        yield start_event
         content_chunks: list[str] = []
         artifacts_collected: list[dict[str, object]] = []
         status_messages: list[str] = []
@@ -337,7 +351,9 @@ async def stream_conversation_agent(
                 elif chunk_type == "status":
                     status_content = str(chunk_content)
                     _append_status(status_messages, status_content)
-                    yield f"{json.dumps({'type': 'status', 'content': status_content})}{END_DELIMITER}"
+                    yield encode_conversation_sse(
+                        ConversationStreamStatusEvent(message=status_content)
+                    )
                 else:
                     logger.warning(
                         "conversation.runtime.unknown_chunk",
@@ -373,16 +389,14 @@ async def stream_conversation_agent(
                 "this is an error, please contact support."
             )
             content_chunks.append(no_results_message)
-            yield (
-                f"{json.dumps({'type': 'content', 'content': no_results_message})}"
-                f"{END_DELIMITER}"
+            yield encode_conversation_sse(
+                ConversationStreamContentDeltaEvent(delta=no_results_message)
             )
         else:
             assert tool_state is not None
             diagnostic_context["stage"] = "final_answer"
-            yield (
-                f"{json.dumps({'type': 'status', 'content': 'Generating response...'})}"
-                f"{END_DELIMITER}"
+            yield encode_conversation_sse(
+                ConversationStreamStatusEvent(message="Generating response...")
             )
 
             chat_generator = runtime.stream_answer(
@@ -425,11 +439,6 @@ async def stream_conversation_agent(
         if reasoning_chunks:
             assistant_trace = assistant_trace or {}
             assistant_trace["reasoning_content"] = "".join(reasoning_chunks)
-
-        # Surface the trajectory live so the just-answered message can show
-        # it immediately (it's also persisted for reload below).
-        if assistant_trace:
-            yield f"{json.dumps({'type': 'trace', 'content': assistant_trace})}{END_DELIMITER}"
 
         answer_operation = operation_factory.resume(
             correlation_id=turn_start.correlation_id,
@@ -520,9 +529,16 @@ async def stream_conversation_agent(
             },
             user_id=str(current_user.id),
         )
-        yield (
-            f"{json.dumps({'type': 'complete', 'content': {'turn_id': str(request.turn_id)}})}"
-            f"{END_DELIMITER}"
+        yield encode_conversation_sse(
+            ConversationStreamCompleteEvent(
+                turn_id=request.turn_id,
+                trace=(
+                    _JSON_OBJECT.validate_python(assistant_trace)
+                    if assistant_trace is not None
+                    else None
+                ),
+                artifacts=_JSON_OBJECT_LIST.validate_python(artifacts_collected),
+            )
         )
 
     async def response_generator() -> AsyncGenerator[str, None]:
@@ -533,7 +549,6 @@ async def stream_conversation_agent(
             ):
                 async for event in stream_with_stable_error(
                     run_response_generator(),
-                    delimiter=END_DELIMITER,
                     event_name="conversation_chat_message_error",
                     user_id=current_user.id,
                     properties={

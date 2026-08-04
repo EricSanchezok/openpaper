@@ -19,6 +19,103 @@
     "eyebrow": "Web foundation · smoke route",
     "description": "The independent Next.js, token, theme, query, component, and internationalization foundation is running. Product routes intentionally begin later."
   },
+  "Home": {
+    "navigation": {
+      "newChat": "New chat",
+      "library": "Library",
+      "projects": "Projects",
+      "settings": "Settings",
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar",
+      "openMenu": "Open navigation",
+      "closeMenu": "Close navigation",
+      "comingSoon": "Coming in the next page slice"
+    },
+    "sidebar": {
+      "pinned": "Pinned",
+      "recent": "Recent",
+      "noPinned": "No pinned conversations",
+      "noRecent": "Start a conversation to see it here",
+      "conversationContext": "Research context"
+    },
+    "account": {
+      "openMenu": "Open account menu",
+      "settings": "Account settings",
+      "appearance": "Appearance",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…"
+    },
+    "hero": {
+      "title": "What are you working on?",
+      "description": "Ask across your research."
+    },
+    "composer": {
+      "placeholder": "Ask anything",
+      "followUpPlaceholder": "Ask a follow-up",
+      "submit": "Ask Scholens",
+      "stop": "Stop response",
+      "addContext": "Add context",
+      "standard": "Standard",
+      "deep": "Deep",
+      "standardDescription": "Fast, balanced reasoning",
+      "deepDescription": "More thorough reasoning"
+    },
+    "context": {
+      "title": "Add context",
+      "entireLibrary": "Entire library",
+      "search": "Search projects and papers",
+      "projects": "Projects",
+      "papers": "Papers",
+      "selected": "{count, plural, one {# selected} other {# selected}}",
+      "clear": "Clear",
+      "done": "Done",
+      "close": "Close context picker",
+      "librarySelected": "Entire library",
+      "selectionSummary": "{count, plural, one {# source} other {# sources}}",
+      "noMatches": "No matching research found"
+    },
+    "recents": {
+      "papers": "Recent papers",
+      "projects": "Recent projects",
+      "viewAll": "View all",
+      "opened": "Opened {relative}",
+      "updated": "Updated {relative}",
+      "paperCount": "{count, plural, one {# paper} other {# papers}}",
+      "conversationCount": "{count, plural, one {# conversation} other {# conversations}}",
+      "noPapersTitle": "Your reading desk is ready",
+      "noPapersDescription": "Papers you open will appear here.",
+      "noProjectsTitle": "No recent projects",
+      "noProjectsDescription": "Projects will appear here after you create or join one.",
+      "loadError": "Could not load recent research",
+      "retry": "Try again"
+    },
+    "conversation": {
+      "assistant": "Scholens",
+      "process": "Research process",
+      "reasoning": "Reasoning",
+      "sources": "Sources",
+      "loading": "Loading conversation",
+      "empty": "Ask a question to begin this conversation.",
+      "working": "Working across your research…",
+      "cancelled": "Response stopped. You can ask again.",
+      "error": "The response could not be completed.",
+      "retry": "Try again",
+      "retryHint": "Your message was saved. Send a new message when you are ready.",
+      "readOnly": "You can read this conversation, but you no longer have permission to continue it.",
+      "readOnlyReason": "This conversation is read-only because its research context is no longer available.",
+      "reference": "Source {number}",
+      "unknownSource": "Research source"
+    },
+    "session": {
+      "checking": "Opening your research workspace",
+      "unavailableTitle": "Your session could not be checked",
+      "unavailableDescription": "The workspace is still here. Retry the session check when the server is available.",
+      "retry": "Retry session check"
+    }
+  },
   "AsyncFeedback": {
     "loading": "Loading",
     "retrying": "Trying again",

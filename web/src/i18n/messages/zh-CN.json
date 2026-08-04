@@ -19,6 +19,103 @@
     "eyebrow": "前端基础 · 验证页面",
     "description": "独立的 Next.js、设计令牌、主题、查询、组件和多语言基础已经运行。具体产品页面将在后续开始开发。"
   },
+  "Home": {
+    "navigation": {
+      "newChat": "新对话",
+      "library": "资料库",
+      "projects": "项目",
+      "settings": "设置",
+      "collapse": "收起侧栏",
+      "expand": "展开侧栏",
+      "openMenu": "打开导航",
+      "closeMenu": "关闭导航",
+      "comingSoon": "将在下一页面切片中实现"
+    },
+    "sidebar": {
+      "pinned": "置顶",
+      "recent": "最近",
+      "noPinned": "暂无置顶对话",
+      "noRecent": "开始一次对话后会显示在这里",
+      "conversationContext": "研究上下文"
+    },
+    "account": {
+      "openMenu": "打开账号菜单",
+      "settings": "账号设置",
+      "appearance": "外观",
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统",
+      "signOut": "退出登录",
+      "signingOut": "正在退出…"
+    },
+    "hero": {
+      "title": "你正在研究什么？",
+      "description": "基于你的研究资料提问。"
+    },
+    "composer": {
+      "placeholder": "问任何问题",
+      "followUpPlaceholder": "继续追问",
+      "submit": "询问 Scholens",
+      "stop": "停止生成",
+      "addContext": "添加上下文",
+      "standard": "标准",
+      "deep": "深入",
+      "standardDescription": "快速、均衡的推理",
+      "deepDescription": "更充分地分析复杂问题"
+    },
+    "context": {
+      "title": "添加上下文",
+      "entireLibrary": "整个资料库",
+      "search": "搜索项目和论文",
+      "projects": "项目",
+      "papers": "论文",
+      "selected": "已选择 {count} 项",
+      "clear": "清除",
+      "done": "完成",
+      "close": "关闭上下文选择器",
+      "librarySelected": "整个资料库",
+      "selectionSummary": "{count} 个来源",
+      "noMatches": "没有匹配的研究资料"
+    },
+    "recents": {
+      "papers": "最近论文",
+      "projects": "最近项目",
+      "viewAll": "查看全部",
+      "opened": "{relative}打开",
+      "updated": "{relative}更新",
+      "paperCount": "{count} 篇论文",
+      "conversationCount": "{count} 个对话",
+      "noPapersTitle": "你的阅读桌已经准备好了",
+      "noPapersDescription": "打开过的论文会显示在这里。",
+      "noProjectsTitle": "暂无最近项目",
+      "noProjectsDescription": "创建或加入项目后会显示在这里。",
+      "loadError": "无法加载最近研究",
+      "retry": "重试"
+    },
+    "conversation": {
+      "assistant": "Scholens",
+      "process": "研究过程",
+      "reasoning": "推理",
+      "sources": "来源",
+      "loading": "正在加载对话",
+      "empty": "提出一个问题以开始这次对话。",
+      "working": "正在检索你的研究资料…",
+      "cancelled": "已停止生成，你可以重新提问。",
+      "error": "未能完成这次回答。",
+      "retry": "重试",
+      "retryHint": "你的消息已经保存，准备好后可以发送新消息。",
+      "readOnly": "你可以阅读此对话，但已没有权限继续发送消息。",
+      "readOnlyReason": "此对话的研究上下文已不可用，因此当前为只读状态。",
+      "reference": "来源 {number}",
+      "unknownSource": "研究来源"
+    },
+    "session": {
+      "checking": "正在打开研究工作台",
+      "unavailableTitle": "无法检查登录状态",
+      "unavailableDescription": "研究工作台仍在这里。服务恢复后请重试状态检查。",
+      "retry": "重试状态检查"
+    }
+  },
   "AsyncFeedback": {
     "loading": "正在加载",
     "retrying": "正在重试",

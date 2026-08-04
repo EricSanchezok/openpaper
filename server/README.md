@@ -85,6 +85,13 @@ Public application routes are under `/api/v1`; provider webhooks are under
 `/webhooks/v1`. `/internal/v1` is reserved for authenticated worker traffic and
 is intentionally not routed by the production edge proxy.
 
+Conversation message creation streams standard Server-Sent Events at
+`POST /api/v1/conversations/{conversation_id}/messages`. Consumers must handle
+the typed `start`, `status`, `reasoning`, `content_delta`, `references`,
+`complete`, and `error` events and treat `complete` or `error` as terminal.
+There is no private delimiter. Clients may abort the request, but must not
+automatically retry this non-idempotent operation.
+
 # Migrations
 
 This project uses Alembic for database migrations. Commands are run through the
