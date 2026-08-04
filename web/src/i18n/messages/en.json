@@ -12,8 +12,8 @@
     }
   },
   "Metadata": {
-    "title": "Scholens Web Foundation",
-    "description": "Scholens next-generation web foundation smoke test"
+    "title": "Scholens",
+    "description": "Read, organize, and ask across your research with Scholens."
   },
   "FoundationSmoke": {
     "eyebrow": "Web foundation · smoke route",
@@ -63,16 +63,23 @@
     "signIn": {
       "state": "Sign in",
       "title": "Welcome back",
-      "description": "Sign in to continue to your papers and projects.",
+      "description": "Where papers become working knowledge.",
       "submit": "Sign in",
       "submitting": "Signing in…"
     },
     "register": {
       "state": "Create account",
       "title": "Create your account",
-      "description": "Keep your papers, projects, and annotations in one place.",
+      "description": "Where papers become working knowledge.",
       "submit": "Create account",
       "submitting": "Creating account…"
+    },
+    "passwordGuidance": {
+      "minimum": "{minimum} characters minimum",
+      "progress": "{count} of {minimum} characters",
+      "confirm": "Enter the same password again",
+      "matches": "Passwords match",
+      "mismatch": "Passwords do not match"
     },
     "checkInbox": {
       "state": "Check inbox",
@@ -120,7 +127,9 @@
       "retry": "Retry session check"
     },
     "validation": {
+      "displayNameMaximum": "Keep your display name under 120 characters",
       "email": "Enter a valid email address",
+      "passwordConfirmationRequired": "Confirm your password",
       "passwordRequired": "Enter your password",
       "passwordMinimum": "Use at least 12 characters",
       "passwordMismatch": "Passwords do not match",

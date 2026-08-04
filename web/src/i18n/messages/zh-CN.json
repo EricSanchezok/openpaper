@@ -12,8 +12,8 @@
     }
   },
   "Metadata": {
-    "title": "Scholens 前端基础",
-    "description": "Scholens 新一代前端基础验证页面"
+    "title": "Scholens",
+    "description": "使用 Scholens 阅读、组织论文，并基于研究资料提问。"
   },
   "FoundationSmoke": {
     "eyebrow": "前端基础 · 验证页面",
@@ -63,16 +63,23 @@
     "signIn": {
       "state": "登录",
       "title": "欢迎回来",
-      "description": "登录后继续管理论文和项目。",
+      "description": "让论文沉淀为可用的研究知识。",
       "submit": "登录",
       "submitting": "正在登录…"
     },
     "register": {
       "state": "创建账号",
       "title": "创建你的账号",
-      "description": "在一个地方管理论文、项目和标注。",
+      "description": "让论文沉淀为可用的研究知识。",
       "submit": "创建账号",
       "submitting": "正在创建账号…"
+    },
+    "passwordGuidance": {
+      "minimum": "至少 {minimum} 个字符",
+      "progress": "已输入 {count}/{minimum} 个字符",
+      "confirm": "再次输入相同密码",
+      "matches": "两次密码一致",
+      "mismatch": "两次输入的密码不一致"
     },
     "checkInbox": {
       "state": "检查邮箱",
@@ -120,7 +127,9 @@
       "retry": "重试状态检查"
     },
     "validation": {
+      "displayNameMaximum": "显示名称不能超过 120 个字符",
       "email": "请输入有效的邮箱地址",
+      "passwordConfirmationRequired": "请再次输入密码",
       "passwordRequired": "请输入密码",
       "passwordMinimum": "密码至少需要 12 个字符",
       "passwordMismatch": "两次输入的密码不一致",

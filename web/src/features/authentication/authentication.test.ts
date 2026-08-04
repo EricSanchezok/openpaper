@@ -18,7 +18,9 @@ import { safeReturnTo, validatedReturnTo } from "./return-to";
 import { publishAuthEvent, subscribeToAuthEvents } from "./auth-channel";
 
 const messages = {
+  displayNameMaximum: "display-name-maximum",
   email: "email",
+  passwordConfirmationRequired: "confirmation-required",
   passwordRequired: "required",
   passwordMinimum: "minimum",
   passwordMismatch: "mismatch",
@@ -85,6 +87,23 @@ describe("authentication domain foundation", () => {
       confirmPassword: "twelve-chars!",
     });
     expect(result).not.toHaveProperty("confirmPassword");
+  });
+
+  it("requires password confirmation and reports a mismatch separately", () => {
+    const schemas = createAuthSchemas(messages);
+    const missing = schemas.register.safeParse({
+      email: "eric@example.com",
+      password: "twelve-chars!",
+      confirmPassword: "",
+    });
+    const mismatch = schemas.register.safeParse({
+      email: "eric@example.com",
+      password: "twelve-chars!",
+      confirmPassword: "different-pass",
+    });
+
+    expect(missing.error?.issues[0]?.message).toBe("confirmation-required");
+    expect(mismatch.error?.issues[0]?.message).toBe("mismatch");
   });
 
   it("coalesces concurrent refresh calls", async () => {
