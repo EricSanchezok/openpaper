@@ -63,6 +63,14 @@ Use semantic Tailwind names exposed by `src/styles/globals.css`, for example
 role instead of writing hex, RGB, HSL, or a primitive palette value at the call
 site.
 
+Interactive descendants inherit the state of their shared control. In
+particular, an icon inside a disabled button resolves to the shared disabled
+icon role even when its enabled state is inverse. Composite controls may
+suppress a native child's outline only when the containing control exposes an
+equivalent focus-visible state using semantic control or focus tokens.
+Global border and focus fallbacks live in the CSS base cascade layer so
+component utilities can override them without specificity escalation.
+
 Allowed raw-color exceptions are limited to source images, PDF content, and
 third-party brand marks that must preserve their identity. The surrounding UI
 still uses semantic tokens.

@@ -50,7 +50,10 @@ conversation list are invalidated.
 When both recent-paper and recent-project queries settle empty, Home uses a
 focused first-run composition instead of preserving empty card silhouettes.
 Its 760 px composer is positioned as the primary task rather than at the top of
-the available canvas. The account menu aligns to the expanded sidebar content
+the available canvas. Its textarea delegates focus presentation to the rounded
+composer boundary, so native rectangular outlines never split the composition.
+The account trigger sits against the sidebar's bottom safe-area inset without a
+redundant disclosure arrow. Its menu aligns to the expanded sidebar content
 edge and opens to the right of the collapsed rail.
 When only one collection has data, only that section is rendered and centered.
 Loading and recoverable errors remain visible per collection. The populated

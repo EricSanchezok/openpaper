@@ -113,6 +113,25 @@ test("renders an intentional first-run Home without empty card shells", async ({
   await expect(
     page.getByText("Your conversations will appear here."),
   ).toBeVisible();
+
+  const composer = page.getByRole("textbox", { name: "Ask anything" });
+  const submit = page.getByRole("button", { name: "Ask Scholens" });
+  await composer.click();
+  await expect
+    .poll(() =>
+      composer.evaluate((element) => getComputedStyle(element).outlineStyle),
+    )
+    .toBe("none");
+  await expect
+    .poll(() =>
+      submit.evaluate((element) => {
+        const icon = element.querySelector("svg");
+        return icon
+          ? getComputedStyle(icon).color === getComputedStyle(element).color
+          : false;
+      }),
+    )
+    .toBe(true);
 });
 
 test("opens the context picker and changes its searchable selection", async ({
@@ -137,6 +156,7 @@ test("keeps sidebar controls vertically anchored while collapsing", async ({
   const collapse = page.getByRole("button", { name: "Collapse sidebar" });
   const newChat = page.getByRole("link", { name: "New chat" });
   const account = page.getByRole("button", { name: "Open account menu" });
+  await expect(account.locator("svg")).toHaveCount(0);
   const before = {
     newChat: await newChat.evaluate((element) =>
       element.getBoundingClientRect().toJSON(),

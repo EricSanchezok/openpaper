@@ -39,8 +39,15 @@
   --color-state-info-bg: var(--color-info-bg);
 }
 
-* {
-  border-color: var(--color-border-default);
+@layer base {
+  * {
+    border-color: var(--color-border-default);
+  }
+
+  :focus-visible {
+    outline: var(--focus-width) solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
 }
 
 html {
@@ -75,9 +82,4 @@ body {
 ::selection {
   background: var(--color-selection-bg);
   color: var(--color-selection-foreground);
-}
-
-:focus-visible {
-  outline: var(--focus-width) solid var(--color-focus-ring);
-  outline-offset: 2px;
 }

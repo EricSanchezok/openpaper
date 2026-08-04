@@ -86,9 +86,11 @@ export const SidebarCollapsed: Story = {
 export const AccountMenuOpen: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(
-      await canvas.findByRole("button", { name: "Open account menu" }),
-    );
+    const trigger = await canvas.findByRole("button", {
+      name: "Open account menu",
+    });
+    await expect(trigger.querySelector("svg")).toBeNull();
+    await userEvent.click(trigger);
     const body = within(document.body);
     const menu = await body.findByRole("menu");
     await expect(within(menu).getByText(actor.email)).toBeVisible();

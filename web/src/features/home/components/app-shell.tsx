@@ -7,7 +7,6 @@ import {
   Folder,
   LogOut,
   Menu,
-  NavArrowDown,
   Settings,
   SidebarCollapse,
   SidebarExpand,
@@ -186,17 +185,14 @@ function AccountMenu({
             {initial}
           </span>
           {!collapsed && (
-            <>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-[13px] leading-5 font-medium">
-                  {name}
-                </span>
-                <span className="text-secondary block truncate text-[11px] leading-4">
-                  {actor.email}
-                </span>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate text-[13px] leading-5 font-medium">
+                {name}
               </span>
-              <Icon glyph={NavArrowDown} size={16} tone="secondary" />
-            </>
+              <span className="text-secondary block truncate text-[11px] leading-4">
+                {actor.email}
+              </span>
+            </span>
           )}
         </button>
       </DropdownMenuTrigger>
@@ -286,7 +282,7 @@ function Sidebar({
     <TooltipProvider delayDuration={250}>
       <aside
         className={cn(
-          "border-line bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r px-3 py-3 transition-[width] duration-200 ease-out motion-reduce:transition-none",
+          "border-line bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r px-3 pt-3 pb-[max(var(--space-2),env(safe-area-inset-bottom))] transition-[width] duration-200 ease-out motion-reduce:transition-none",
           collapsed ? "w-[72px]" : "w-[var(--layout-sidebar)]",
         )}
       >
