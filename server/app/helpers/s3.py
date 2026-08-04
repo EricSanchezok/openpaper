@@ -11,7 +11,7 @@ import os
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 import boto3
 from botocore.config import Config
@@ -30,6 +30,16 @@ S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 DOCUMENT_PREFIX = "documents"
 RESEARCH_PREFIX = "research"
 DEFAULT_SIGNED_URL_TTL_SECONDS = 900
+
+
+def _s3_addressing_style() -> Literal["auto", "virtual", "path"]:
+    value = os.environ.get("AWS_S3_ADDRESSING_STYLE", "virtual")
+    if value not in {"auto", "virtual", "path"}:
+        raise ValueError("AWS_S3_ADDRESSING_STYLE must be auto, virtual, or path")
+    return cast(Literal["auto", "virtual", "path"], value)
+
+
+AWS_S3_ADDRESSING_STYLE = _s3_addressing_style()
 
 
 def document_source_key(sha256: str) -> str:
@@ -64,7 +74,7 @@ class S3Service:
             region_name=AWS_REGION,
             config=Config(
                 signature_version="s3v4",
-                s3={"addressing_style": "virtual"},
+                s3={"addressing_style": AWS_S3_ADDRESSING_STYLE},
             ),
         )
         self.bucket_name = S3_BUCKET_NAME or ""

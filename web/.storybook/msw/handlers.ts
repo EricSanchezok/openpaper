@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 
-const apiUrl = "http://localhost:8000/api/v1/foundation-check";
+const apiUrl = "http://127.0.0.1:7301/api/v1/foundation-check";
 
 export const foundationHandler = http.get(apiUrl, async ({ request }) => {
   const scenario = new URL(request.url).searchParams.get("scenario") ?? "";

@@ -43,7 +43,9 @@ class AuthRuntimeSettings(BaseSettings):
     )
 
     database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/sanchezcloud"
+        "DATABASE_URL",
+        "postgresql://scholens_app:replace-with-local-runtime-password@"
+        "127.0.0.1:55432/sanchezcloud",
     )
     jwt_secret: str = _DEVELOPMENT_JWT_SECRET
     jwt_access_token_ttl_minutes: int = 15
@@ -58,7 +60,7 @@ class AuthRuntimeSettings(BaseSettings):
     aliyun_dm_account_name: str = ""
     aliyun_dm_from_alias: str = "Scholens"
     aliyun_dm_reply_to_address: bool = True
-    public_web_url: str = "http://localhost:3000"
+    public_web_url: str = "http://127.0.0.1:7300"
 
 
 settings = AuthRuntimeSettings()

@@ -21,7 +21,7 @@ export default function FoundationSmokePage() {
           </p>
         </div>
         <Button asChild>
-          <a href="http://localhost:6006">
+          <a href="http://127.0.0.1:7306">
             {common("actions.openStorybook")}
             <Icon glyph={ArrowRight} size={16} tone="inverse" />
           </a>

@@ -56,7 +56,7 @@ SEED_DATA_DIR = EVALS_DIR / "seed_data"
 MANIFEST_PATH = EVALS_DIR / "data_table_eval_manifest.json"
 RESULTS_PATH = EVALS_DIR / "results" / "eval_data_table.json"
 
-SERVER_BASE_URL = os.getenv("EVAL_SERVER_BASE_URL", "http://localhost:8000")
+SERVER_BASE_URL = os.getenv("EVAL_SERVER_BASE_URL", "http://127.0.0.1:7301")
 POLL_INTERVAL_SECONDS = 10
 JOB_TIMEOUT_SECONDS = 15 * 60
 

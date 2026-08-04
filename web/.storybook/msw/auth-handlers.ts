@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 
-const api = "http://localhost:8000/api/v1";
+const api = "http://127.0.0.1:7301/api/v1";
 const error = (code: string, status: number, message = code) =>
   HttpResponse.json(
     {

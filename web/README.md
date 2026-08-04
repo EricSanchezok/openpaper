@@ -9,8 +9,8 @@ lifecycle at `/login`; Home, Library, Projects, and Reader remain unimplemented.
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
-pnpm dev                 # http://localhost:3000
-pnpm storybook           # http://localhost:6006, no API required
+pnpm dev                 # http://127.0.0.1:7300
+pnpm storybook           # http://127.0.0.1:7306, no API required
 pnpm test
 pnpm test:storybook
 pnpm test:e2e
@@ -21,7 +21,8 @@ Authentication modes are available at `/login`, `?mode=register`,
 `?mode=forgot`, `?mode=verify&token=...`, and `?mode=reset&token=...`. Review
 the isolated states under `Features/Authentication/Lifecycle` in Storybook.
 
-The legacy comparison client remains available at `http://localhost:3001`.
+Both commands use fixed loopback ports and fail on a conflict. The legacy
+comparison client remains available at `http://127.0.0.1:7303`.
 
 ## Boundaries
 

@@ -7,10 +7,10 @@
   },
   "scripts": {
     "predev": "node scripts/sync-pdf-worker.mjs",
-    "dev": "next dev --port 3001",
+    "dev": "next dev --hostname 127.0.0.1 --port 7303",
     "prebuild": "node scripts/sync-pdf-worker.mjs && node scripts/generate-blog-metadata.mjs",
     "build": "next build",
-    "start": "next start --port 3001",
+    "start": "next start --hostname 127.0.0.1 --port 7303",
     "start:standalone": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test",

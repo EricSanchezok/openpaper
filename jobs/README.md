@@ -89,8 +89,15 @@ uv run pytest -q
 Start the local stack:
 
 ```bash
-uv run start
+uv run --frozen --no-sync start
 ```
+
+This optional profile starts RabbitMQ on `127.0.0.1:55672`, Redis on
+`127.0.0.1:56379`, the worker, one Beat scheduler, and the Jobs API on
+`127.0.0.1:7302`. It does not install dependencies or apply database
+migrations. Run it only when exercising uploads, parsing, background work, or
+Zotero synchronization. Flower is separately available on
+`127.0.0.1:7307` with `./scripts/start_flower.sh`.
 
 Run an opt-in real MinerU check with a local PDF:
 

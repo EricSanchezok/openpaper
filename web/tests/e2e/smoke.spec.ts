@@ -24,8 +24,7 @@ test("locale cookie selects the active interface dictionary", async ({
     {
       name: "scholens-locale",
       value: "zh-CN",
-      domain: "localhost",
-      path: "/",
+      url: "http://127.0.0.1:7300",
     },
   ]);
   await page.goto("/");

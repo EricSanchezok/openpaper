@@ -111,7 +111,7 @@ describe("authentication domain foundation", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     const response = await authenticatedFetch(
-      "http://localhost:8000/api/v1/projects",
+      "http://127.0.0.1:7301/api/v1/projects",
     );
     expect(response.status).toBe(204);
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -127,7 +127,7 @@ describe("authentication domain foundation", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(null, { status: 401 }));
     const response = await authenticatedFetch(
-      "http://localhost:8000/api/v1/auth/login",
+      "http://127.0.0.1:7301/api/v1/auth/login",
       { method: "POST" },
     );
     expect(response.status).toBe(401);

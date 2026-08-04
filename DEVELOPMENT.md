@@ -13,17 +13,37 @@ PostgreSQL, and Docker (RabbitMQ + Redis for jobs). Avoid odd-numbered Node
 releases; the frontend dependency graph follows the active/LTS Node support
 window enforced in `client/package.json`.
 
-## Ports
+## Local development contract
 
-| Service           | Port        | Start                            |
-| ----------------- | ----------- | -------------------------------- |
-| Web (canonical)   | 3000        | `pnpm dev` in `web/`             |
-| Legacy client     | 3001        | `corepack yarn dev` in `client/` |
-| Storybook         | 6006        | `pnpm storybook` in `web/`       |
-| Server            | 8000        | `uv run start` in `server/`      |
-| Jobs API          | 8001        | `uv run start` in `jobs/`        |
-| RabbitMQ / Redis  | 5672 / 6379 | Docker via `jobs` `uv run start` |
-| Flower (optional) | 5555        | `jobs/./scripts/start_flower.sh` |
+Scholens owns the `7300-7399` host-port block. Local services bind only to
+`127.0.0.1`, use the fixed ports below, and fail when a port is occupied. Do not
+add automatic port fallback or borrow a port from Account Center (`7100-7199`)
+or Scholight (`7200-7299`). Container-internal production ports are not part of
+this host-port contract.
+
+| Service           | Host port | Start                            |
+| ----------------- | --------- | -------------------------------- |
+| Web (canonical)   | 7300      | `pnpm dev` in `web/`             |
+| Server API        | 7301      | `uv run --frozen --no-sync start` in `server/` |
+| Jobs API          | 7302      | `uv run --frozen --no-sync start` in `jobs/`   |
+| Legacy client     | 7303      | `corepack yarn dev` in `client/` |
+| Storybook         | 7306      | `pnpm storybook` in `web/`       |
+| Flower (optional) | 7307      | `./scripts/start_flower.sh`      |
+
+Shared local infrastructure uses ports outside all product blocks:
+
+| Infrastructure | Host endpoint              | Container port |
+| -------------- | -------------------------- | -------------- |
+| PostgreSQL     | `127.0.0.1:55432`          | 5432           |
+| RabbitMQ       | `amqp://127.0.0.1:55672`   | 5672           |
+| Redis          | `redis://127.0.0.1:56379`  | 6379           |
+| MinIO API      | `http://127.0.0.1:59000`   | 9000           |
+| MinIO console  | `http://127.0.0.1:59001`   | 9001           |
+
+The PostgreSQL database is shared with Account Center and Scholight, but schema
+ownership is not: sanchezcloud-identity migrates only `auth.*`; Scholens migrates
+only `scholens.*`. Local product startup must never connect to RDS, and no daily
+startup command may install dependencies or apply migrations.
 
 ## Environment files
 
@@ -55,8 +75,8 @@ client build context is the safer operational boundary.
 
 **Must match across server and jobs:** `CELERY_BROKER_URL`, S3/AWS bucket vars,
 `DEEPSEEK_*`, and `JOBS_WEBHOOK_SIGNING_SECRET`. Server needs
-`CELERY_API_URL=http://localhost:8001`; jobs needs
-`WEBHOOK_BASE_URL=http://localhost:8000`.
+`CELERY_API_URL=http://127.0.0.1:7302`; jobs needs
+`WEBHOOK_BASE_URL=http://127.0.0.1:7301`.
 
 ### Required for a minimal local stack
 
@@ -70,8 +90,8 @@ client build context is the safer operational boundary.
 | `CELERY_API_URL`                                                                         | server                                                 |
 | `WEBHOOK_BASE_URL`                                                                       | jobs                                                   |
 | `AUTH_JWT_SECRET` (32+ bytes)                                                            | server                                                 |
-| `CLIENT_DOMAIN`                                                                          | server canonical URL (`http://localhost:3000`)         |
-| `CLIENT_ALLOWED_ORIGINS`                                                                 | server (`http://localhost:3000,http://localhost:3001`) |
+| `CLIENT_DOMAIN`                                                                          | server canonical URL (`http://127.0.0.1:7300`)         |
+| `CLIENT_ALLOWED_ORIGINS`                                                                 | server (`http://127.0.0.1:7300,http://127.0.0.1:7303`) |
 | `NEXT_PUBLIC_API_URL`                                                                    | web + legacy client                                    |
 
 MOSS Voice is required only for audio overviews. Zotero, Stripe, email, PostHog,
@@ -85,73 +105,85 @@ Settings; their encrypted API keys use `CONNECTOR_CREDENTIAL_ENCRYPTION_KEY`.
 
 **Jobs tip:** set `ZOTERO_SYNC_INTERVAL_SECONDS=60` in `jobs/.env` when testing Celery Beat locally.
 
-### Which account database is used?
+### Local and remote dependency policy
 
 `sanchezcloud-identity` is embedded in the Scholens API; it is not a separate service.
 Unless `AUTH_DATABASE_URL` is explicitly set, both sanchezcloud-identity and Scholens use
 `DATABASE_URL`.
 
-- To share local accounts with Scholight, point `DATABASE_URL` at the same local
-  `sanchezcloud` database containing the `auth` schema.
-- To use AWS RDS, use the dedicated least-privilege Scholens roles and TLS
-  settings documented in
+- Local development always uses the shared `sanchezcloud` database at
+  `127.0.0.1:55432`. The Server start command rejects every other database endpoint,
+  including RDS and the ordinary local port `5432`.
+- RDS settings belong only in deployment-managed production environments; see
   [`deploy/production/runtime.env.example`](./deploy/production/runtime.env.example).
 - Scholens and Scholight deliberately use different JWT secrets and
   `client_id` values even though they share `auth.users`.
 - Both products may use the same Aliyun DirectMail account, while keeping their
   sender alias and action URLs product-specific.
+- Local object storage uses MinIO through `AWS_ENDPOINT_URL_S3` and path-style
+  addressing. Do not point local credentials at the production S3 bucket.
+- Remote model/search providers (DeepSeek, MinerU, MOSS Voice, Scholight MCP,
+  and user-configured MCP connectors) are opt-in. Use them only when the feature
+  under test requires them and never commit their credentials.
 
 ## First-time setup
 
 ```bash
 git clone <your-scholens-fork-url> scholens && cd scholens
 
-# Server
-touch server/.env
+# Install dependencies (first time or after lockfile changes)
 cd server && uv sync
-# Provision auth/scholens schemas with separate owners. Apply sanchezcloud-identity from
-# its own repository first, then apply only Scholens's migration:
-uv run --env-file .env --project ../../sanchezcloud-identity sanchezcloud-identity migrate
-psql postgresql://postgres:postgres@127.0.0.1:5432/sanchezcloud \
-  -c 'CREATE SCHEMA IF NOT EXISTS scholens AUTHORIZATION scholens_migrator'
-uv run python -m app.scripts.migrate_product
+cd ../jobs && uv sync
+cd ../client && corepack yarn install
+cd ../web && corepack enable && pnpm install --frozen-lockfile
 
-# Jobs
+# Create private runtime files by copying only each service's section from
+# .env.example; do not copy the complete catalog into browser runtimes.
 cd ..
-touch jobs/.env
-cd jobs && uv sync
+touch server/.env jobs/.env web/.env.local client/.env.local
 
-# Client
-cd ..
-touch client/.env.local
-cd client && corepack yarn install
-
-# New web foundation
-cd ..
-touch web/.env.local
-cd web && corepack enable && pnpm install --frozen-lockfile
+# Provision identity from sanchezcloud-identity first. Then provision the local
+# product owner/role and apply Scholens migrations explicitly with the migrator.
+cd server
+DATABASE_URL='postgresql+psycopg2://scholens_migrator:<local-password>@127.0.0.1:55432/sanchezcloud' \
+  uv run python -m app.scripts.migrate_product
 ```
 
-`scholens_migrator` is the local product migration role. If `DATABASE_URL` uses
-a different role, substitute it in this one-time administrator command.
-Alembic intentionally refuses to migrate a `scholens` schema owned by another
-role.
+Create roles and schemas with a local database administrator following the
+[sanchezcloud-identity handbook](https://github.com/EricSanchezok/sanchezcloud-identity/blob/main/docs/guides/local-development.md).
+`scholens_migrator` owns and migrates the product schema; `scholens_app` is the
+runtime role and must not own schemas. Alembic intentionally refuses to migrate
+a `scholens` schema owned by another role. Never use the server's daily runtime
+command as a migration shortcut.
 
 ## Start locally (daily)
 
-Use separate terminals, in this order:
+The default profile is Server + Web. Add Jobs only for uploads, parsing,
+background processing, or Zotero synchronization. The legacy client,
+Storybook, and Flower are opt-in profiles.
 
-| #   | Directory | Command                                                                                    |
-| --- | --------- | ------------------------------------------------------------------------------------------ |
-| 1   | `jobs/`   | `uv run start` — Docker RabbitMQ/Redis, Celery worker, Celery Beat (Zotero sync), jobs API |
-| 2   | `server/` | `uv run start` — loads `.env`, applies Scholens migrations, starts API                     |
-| 3   | `web/`    | `pnpm dev` — canonical web foundation on port 3000                                         |
-| 4   | `client/` | `corepack yarn dev` — legacy comparison UI on port 3001                                    |
+Use separate terminals:
 
-Check: [localhost:8000/docs](http://localhost:8000/docs),
-[localhost:3000](http://localhost:3000), [localhost:3001](http://localhost:3001),
-and confirm the worker log shows `celery@... ready`. Storybook is optional at
-[localhost:6006](http://localhost:6006).
+| Profile | Directory | Command                                                                   |
+| ------- | --------- | ------------------------------------------------------------------------- |
+| Default | `server/` | `uv run --frozen --no-sync start` — validate local PostgreSQL; API 7301   |
+| Default | `web/`    | `pnpm dev` — canonical web on 7300                                        |
+| Jobs    | `jobs/`   | `uv run --frozen --no-sync start` — broker, worker, Beat, and API 7302   |
+| Legacy  | `client/` | `corepack yarn dev` — comparison UI on 7303                              |
+| UI      | `web/`    | `pnpm storybook` — isolated components on 7306, no Server required        |
+| Observe | `jobs/`   | `./scripts/start_flower.sh` — Flower on 7307 after RabbitMQ is available |
+
+Check: [127.0.0.1:7301/docs](http://127.0.0.1:7301/docs),
+[127.0.0.1:7300](http://127.0.0.1:7300), and, when enabled,
+[127.0.0.1:7302](http://127.0.0.1:7302),
+[127.0.0.1:7303](http://127.0.0.1:7303), and
+[127.0.0.1:7306](http://127.0.0.1:7306). Confirm the worker log shows
+`celery@... ready` when using the Jobs profile.
+
+If any registered port is occupied, stop the conflicting process or change the
+other project's contract deliberately in all affected repositories. Do not
+silently select a random port, because callback URLs, CORS, cookies, tests, and
+service-to-service URLs rely on these stable endpoints.
 
 Before adding replacement-frontend product code, read the
 [`web/docs` engineering handbook](./web/docs/README.md). It defines dependency

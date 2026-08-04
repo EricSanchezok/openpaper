@@ -146,8 +146,7 @@ test("uses the Simplified Chinese authentication dictionary", async ({
     {
       name: "scholens-locale",
       value: "zh-CN",
-      domain: "localhost",
-      path: "/",
+      url: "http://127.0.0.1:7300",
     },
   ]);
   await page.goto("/login");

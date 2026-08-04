@@ -2,7 +2,11 @@
 
 本文档用于本地开发环境。生产环境应使用独立资源、最小权限角色和密钥托管服务，不要复用开发凭证。
 
-## 1. AWS S3
+## 1. S3 兼容对象存储
+
+日常本地开发使用 `http://127.0.0.1:59000` 的 MinIO，不需要 AWS 凭证，
+也不得连接生产 Bucket。下面的 AWS 步骤只用于明确获批的远程集成测试，并且
+必须创建与生产隔离的开发 Bucket 和最小权限凭证。
 
 ### 创建开发 Bucket
 
@@ -18,7 +22,7 @@
     "AllowedHeaders": ["*"],
     "AllowedMethods": ["GET", "HEAD"],
     "AllowedOrigins": [
-      "http://localhost:3000",
+      "http://127.0.0.1:7300",
       "https://scholens.sanchezcloud.net"
     ],
     "ExposeHeaders": [

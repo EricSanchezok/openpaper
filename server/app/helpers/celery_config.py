@@ -11,9 +11,9 @@ environment variable in deployed environments.
 
 import os
 
-DEFAULT_CELERY_BROKER_URL = "pyamqp://guest@localhost:5672//"
-DEFAULT_WEBHOOK_BASE_URL = "http://localhost:8000"
-DEFAULT_CELERY_API_URL = "http://localhost:8001"
+DEFAULT_CELERY_BROKER_URL = "pyamqp://guest@127.0.0.1:55672//"
+DEFAULT_WEBHOOK_BASE_URL = "http://127.0.0.1:7301"
+DEFAULT_CELERY_API_URL = "http://127.0.0.1:7302"
 
 
 def get_celery_broker_url(override: str | None = None) -> str:

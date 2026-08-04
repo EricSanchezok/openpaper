@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'fs'
 import { join } from 'path'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:7303";
 
     // Static pages
     const staticPages = [

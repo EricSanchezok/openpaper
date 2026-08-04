@@ -24,9 +24,10 @@ source .venv/bin/activate
 
 2. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
 
-3. Set up environment variables from the repository-level catalog
+3. Set up environment variables from the repository-level catalog. Copy only
+   the Server section; the root file is not itself a runtime file.
 ```bash
-cp ../.env.example .env
+touch .env
 ```
 
 At minimum, point `DATABASE_URL` at a `sanchezcloud` database with migrated
@@ -50,22 +51,28 @@ second capability map or provider-specific tool wrappers.
 1. Start the jobs service (RabbitMQ + Celery worker) in a separate terminal:
 ```bash
 cd ../jobs
-uv run start
+uv run --frozen --no-sync start
 ```
 
 2. Start the API server:
 ```bash
-uv run start
+uv run --frozen --no-sync start
 ```
 
-Optional: set `CELERY_BROKER_URL=pyamqp://guest@localhost:5672//` in `.env` if you use a non-default broker.
+The command binds to `127.0.0.1:7301`, rejects any `DATABASE_URL` other than
+the shared local PostgreSQL at `127.0.0.1:55432/sanchezcloud`, and does not run
+migrations. Apply product migrations explicitly with the `scholens_migrator`
+role as documented in [`../DEVELOPMENT.md`](../DEVELOPMENT.md).
+
+The local broker is `pyamqp://guest@127.0.0.1:55672//` when the Jobs profile is
+enabled.
 
 ## API Documentation
 
 FastAPI automatically generates API documentation. Once the application is running, you can access:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Swagger UI: `http://127.0.0.1:7301/docs`
+- ReDoc: `http://127.0.0.1:7301/redoc`
 
 Public application routes are under `/api/v1`; provider webhooks are under
 `/webhooks/v1`. `/internal/v1` is reserved for authenticated worker traffic and

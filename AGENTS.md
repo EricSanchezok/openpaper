@@ -35,6 +35,18 @@ For new `web/` product work, also complete
   `docs/architecture/data-ownership.md`.
 - Do not create compatibility layers between the old and new frontends. Evolve
   the public API contract deliberately instead.
+- Local development owns the `7300-7399` host-port block: Web `7300`, Server
+  `7301`, Jobs `7302`, legacy client `7303`, Storybook `7306`, and Flower
+  `7307`. Shared infrastructure uses PostgreSQL `55432`, RabbitMQ `55672`,
+  Redis `56379`, and MinIO `59000/59001`, all on `127.0.0.1`.
+- Local entrypoints must use fixed ports, bind to loopback, and fail on a
+  conflict. Never add port auto-increment, install dependencies, or apply
+  migrations as a side effect of a daily startup command.
+- `server` local startup must retain its guard against any database other than
+  `127.0.0.1:55432/sanchezcloud`. RDS and production object storage are outside
+  local-development scope; MinIO is selected with `AWS_ENDPOINT_URL_S3`.
+- Remote model and search providers are opt-in for the feature being tested.
+  Keep their credentials in ignored service-local environment files.
 
 ## Replacement frontend rules
 
