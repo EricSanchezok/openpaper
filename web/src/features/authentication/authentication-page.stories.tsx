@@ -147,10 +147,12 @@ export const RegisterPasswordGuidance: Story = {
     await expect(canvas.getByText("5 of 12 characters")).toBeVisible();
 
     await userEvent.type(confirmation, "different-pass");
+    await userEvent.tab();
     await expect(canvas.getByText("Passwords do not match")).toBeVisible();
 
     await userEvent.clear(password);
     await userEvent.type(password, "different-pass");
+    await expect(canvas.getByText("Password requirement met")).toBeVisible();
     await expect(canvas.getByText("Passwords match")).toBeVisible();
   },
 };

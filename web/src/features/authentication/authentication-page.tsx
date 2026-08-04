@@ -281,6 +281,13 @@ function RegisterFlow({ returnTo }: { returnTo?: string }) {
   });
   const confirmationMismatch =
     confirmation.length > 0 && confirmation !== password;
+  const showConfirmationMismatch =
+    confirmationMismatch &&
+    (Boolean(form.formState.touchedFields.confirmPassword) ||
+      form.formState.submitCount > 0);
+  const showConfirmationGuidance =
+    (confirmation.length > 0 && confirmation === password) ||
+    showConfirmationMismatch;
   const submit = form.handleSubmit(async (values) => {
     setProblem(undefined);
     try {
@@ -375,23 +382,23 @@ function RegisterFlow({ returnTo }: { returnTo?: string }) {
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
               minLength={minimumPasswordLength}
-              placeholder={t("fields.passwordMinimum")}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("password")}
             />
           </FieldControl>
-          <FieldDescription>
-            <PasswordLengthGuidance password={password} />
-          </FieldDescription>
           {form.formState.errors.password ? (
             <FieldMessage>
               {form.formState.errors.password.message}
             </FieldMessage>
-          ) : null}
+          ) : (
+            <FieldDescription>
+              <PasswordLengthGuidance password={password} />
+            </FieldDescription>
+          )}
         </Field>
         <Field
           invalid={
-            confirmationMismatch ||
+            showConfirmationMismatch ||
             Boolean(form.formState.errors.confirmPassword)
           }
         >
@@ -401,18 +408,21 @@ function RegisterFlow({ returnTo }: { returnTo?: string }) {
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
               minLength={minimumPasswordLength}
-              placeholder={t("fields.confirmPassword")}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("confirmPassword")}
             />
           </FieldControl>
-          <FieldDescription>
-            <PasswordMatchGuidance
-              confirmation={confirmation}
-              password={password}
-            />
-          </FieldDescription>
-          {form.formState.errors.confirmPassword ? (
+          {showConfirmationGuidance ? (
+            <FieldDescription>
+              <PasswordMatchGuidance
+                confirmation={confirmation}
+                password={password}
+                showMismatch={showConfirmationMismatch}
+              />
+            </FieldDescription>
+          ) : null}
+          {form.formState.errors.confirmPassword &&
+          confirmation.length === 0 ? (
             <FieldMessage>
               {form.formState.errors.confirmPassword.message}
             </FieldMessage>
@@ -616,6 +626,13 @@ function ResetFlow({ token, returnTo }: { token?: string; returnTo?: string }) {
   });
   const confirmationMismatch =
     confirmation.length > 0 && confirmation !== newPassword;
+  const showConfirmationMismatch =
+    confirmationMismatch &&
+    (Boolean(form.formState.touchedFields.confirmPassword) ||
+      form.formState.submitCount > 0);
+  const showConfirmationGuidance =
+    (confirmation.length > 0 && confirmation === newPassword) ||
+    showConfirmationMismatch;
   const submit = form.handleSubmit(async (values) => {
     setProblem(undefined);
     try {
@@ -686,23 +703,23 @@ function ResetFlow({ token, returnTo }: { token?: string; returnTo?: string }) {
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
               minLength={minimumPasswordLength}
-              placeholder={t("fields.passwordMinimum")}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("newPassword")}
             />
           </FieldControl>
-          <FieldDescription>
-            <PasswordLengthGuidance password={newPassword} />
-          </FieldDescription>
           {form.formState.errors.newPassword ? (
             <FieldMessage>
               {form.formState.errors.newPassword.message}
             </FieldMessage>
-          ) : null}
+          ) : (
+            <FieldDescription>
+              <PasswordLengthGuidance password={newPassword} />
+            </FieldDescription>
+          )}
         </Field>
         <Field
           invalid={
-            confirmationMismatch ||
+            showConfirmationMismatch ||
             Boolean(form.formState.errors.confirmPassword)
           }
         >
@@ -712,18 +729,21 @@ function ResetFlow({ token, returnTo }: { token?: string; returnTo?: string }) {
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
               minLength={minimumPasswordLength}
-              placeholder={t("fields.confirmPassword")}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("confirmPassword")}
             />
           </FieldControl>
-          <FieldDescription>
-            <PasswordMatchGuidance
-              confirmation={confirmation}
-              password={newPassword}
-            />
-          </FieldDescription>
-          {form.formState.errors.confirmPassword ? (
+          {showConfirmationGuidance ? (
+            <FieldDescription>
+              <PasswordMatchGuidance
+                confirmation={confirmation}
+                password={newPassword}
+                showMismatch={showConfirmationMismatch}
+              />
+            </FieldDescription>
+          ) : null}
+          {form.formState.errors.confirmPassword &&
+          confirmation.length === 0 ? (
             <FieldMessage>
               {form.formState.errors.confirmPassword.message}
             </FieldMessage>

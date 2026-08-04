@@ -57,8 +57,7 @@
       "password": "Password",
       "passwordPlaceholder": "Password",
       "newPassword": "New password",
-      "confirmPassword": "Confirm password",
-      "passwordMinimum": "At least 12 characters"
+      "confirmPassword": "Confirm password"
     },
     "signIn": {
       "state": "Sign in",
@@ -77,7 +76,7 @@
     "passwordGuidance": {
       "minimum": "{minimum} characters minimum",
       "progress": "{count} of {minimum} characters",
-      "confirm": "Enter the same password again",
+      "complete": "Password requirement met",
       "matches": "Passwords match",
       "mismatch": "Passwords do not match"
     },

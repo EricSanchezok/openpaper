@@ -12,7 +12,9 @@ export function PasswordLengthGuidance({ password }: { password: string }) {
   const message =
     length === 0
       ? t("minimum", { minimum: minimumPasswordLength })
-      : t("progress", { count: length, minimum: minimumPasswordLength });
+      : complete
+        ? t("complete")
+        : t("progress", { count: length, minimum: minimumPasswordLength });
 
   return (
     <span
@@ -36,28 +38,27 @@ export function PasswordLengthGuidance({ password }: { password: string }) {
 export function PasswordMatchGuidance({
   confirmation,
   password,
+  showMismatch = false,
 }: {
   confirmation: string;
   password: string;
+  showMismatch?: boolean;
 }) {
   const t = useTranslations("Authentication.passwordGuidance");
   const hasConfirmation = confirmation.length > 0;
   const matches = hasConfirmation && confirmation === password;
-  const message = !hasConfirmation
-    ? t("confirm")
-    : matches
-      ? t("matches")
-      : t("mismatch");
+
+  if (!hasConfirmation || (!matches && !showMismatch)) return null;
+
+  const message = matches ? t("matches") : t("mismatch");
 
   return (
     <span
       aria-live="polite"
       className={
-        hasConfirmation
-          ? matches
-            ? "text-success inline-flex items-center gap-1.5"
-            : "text-danger inline-flex items-center gap-1.5"
-          : "inline-flex items-center gap-1.5"
+        matches
+          ? "text-success inline-flex items-center gap-1.5"
+          : "text-danger inline-flex items-center gap-1.5"
       }
     >
       <Icon glyph={matches ? CheckCircle : Circle} size={16} tone="secondary" />
