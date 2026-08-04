@@ -21,22 +21,22 @@ add automatic port fallback or borrow a port from Account Center (`7100-7199`)
 or Scholight (`7200-7299`). Container-internal production ports are not part of
 this host-port contract.
 
-| Service           | Host port | Start                            |
-| ----------------- | --------- | -------------------------------- |
-| Web (canonical)   | 7300      | `pnpm dev` in `web/`             |
+| Service           | Host port | Start                                          |
+| ----------------- | --------- | ---------------------------------------------- |
+| Web (canonical)   | 7300      | `pnpm dev` in `web/`                           |
 | Server API        | 7301      | `uv run --frozen --no-sync start` in `server/` |
 | Jobs API          | 7302      | `uv run --frozen --no-sync start` in `jobs/`   |
-| Legacy client     | 7303      | `corepack yarn dev` in `client/` |
-| Storybook         | 7306      | `pnpm storybook` in `web/`       |
-| Flower (optional) | 7307      | `./scripts/start_flower.sh`      |
+| Legacy client     | 7303      | `corepack yarn dev` in `client/`               |
+| Storybook         | 7306      | `pnpm storybook` in `web/`                     |
+| Flower (optional) | 7307      | `./scripts/start_flower.sh`                    |
 
 Shared local infrastructure uses ports outside all product blocks:
 
-| Infrastructure | Host endpoint              | Container port |
-| -------------- | -------------------------- | -------------- |
-| PostgreSQL     | `127.0.0.1:55432`          | 5432           |
-| RabbitMQ       | `amqp://127.0.0.1:55672`   | 5672           |
-| Redis          | `redis://127.0.0.1:56379`  | 6379           |
+| Infrastructure | Host endpoint             | Container port |
+| -------------- | ------------------------- | -------------- |
+| PostgreSQL     | `127.0.0.1:55432`         | 5432           |
+| RabbitMQ       | `amqp://127.0.0.1:55672`  | 5672           |
+| Redis          | `redis://127.0.0.1:56379` | 6379           |
 
 Ports `59000/59001` are reserved for projects that explicitly choose local
 MinIO. Scholens does not start or consume MinIO in its default local workflow;
@@ -83,20 +83,20 @@ client build context is the safer operational boundary.
 
 ### Required for a minimal local stack
 
-| Variable                                                                                 | Where                                                  |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `DATABASE_URL`                                                                           | server                                                 |
-| `DEEPSEEK_API_KEY`                                                                       | server, jobs                                           |
-| `MINERU_API_TOKEN`                                                                       | jobs                                                   |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME` | server + jobs; isolated remote dev S3                  |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                             | server + jobs                                          |
-| `CELERY_API_URL`                                                                         | server                                                 |
-| `WEBHOOK_BASE_URL`                                                                       | jobs                                                   |
-| `AUTH_JWT_SECRET` (32+ bytes)                                                            | server                                                 |
-| `AUTH_ALIYUN_DM_ACCESS_KEY_ID`, `AUTH_ALIYUN_DM_ACCESS_KEY_SECRET`, `AUTH_ALIYUN_DM_ACCOUNT_NAME` | server; verification/reset mail                       |
-| `CLIENT_DOMAIN`                                                                          | server canonical URL (`http://127.0.0.1:7300`)         |
-| `CLIENT_ALLOWED_ORIGINS`                                                                 | server (`http://127.0.0.1:7300,http://127.0.0.1:7303`) |
-| `NEXT_PUBLIC_API_URL`                                                                    | web + legacy client                                    |
+| Variable                                                                                          | Where                                                  |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `DATABASE_URL`                                                                                    | server                                                 |
+| `DEEPSEEK_API_KEY`                                                                                | server, jobs                                           |
+| `MINERU_API_TOKEN`                                                                                | jobs                                                   |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `CLOUDFLARE_BUCKET_NAME`          | server + jobs; isolated remote dev S3                  |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`                                                      | server + jobs                                          |
+| `CELERY_API_URL`                                                                                  | server                                                 |
+| `WEBHOOK_BASE_URL`                                                                                | jobs                                                   |
+| `AUTH_JWT_SECRET` (32+ bytes)                                                                     | server                                                 |
+| `AUTH_ALIYUN_DM_ACCESS_KEY_ID`, `AUTH_ALIYUN_DM_ACCESS_KEY_SECRET`, `AUTH_ALIYUN_DM_ACCOUNT_NAME` | server; verification/reset mail                        |
+| `CLIENT_DOMAIN`                                                                                   | server canonical URL (`http://127.0.0.1:7300`)         |
+| `CLIENT_ALLOWED_ORIGINS`                                                                          | server (`http://127.0.0.1:7300,http://127.0.0.1:7303`) |
+| `NEXT_PUBLIC_API_URL`                                                                             | web + legacy client                                    |
 
 MOSS Voice is required only for audio overviews. Zotero, Stripe, email, PostHog,
 and admin variables are grouped in the root `.env.example`.
@@ -170,13 +170,13 @@ Storybook, and Flower are opt-in profiles.
 
 Use separate terminals:
 
-| Profile | Directory | Command                                                                   |
-| ------- | --------- | ------------------------------------------------------------------------- |
-| Default | `server/` | `uv run --frozen --no-sync start` — validate local PostgreSQL; API 7301   |
-| Default | `web/`    | `pnpm dev` — canonical web on 7300                                        |
+| Profile | Directory | Command                                                                  |
+| ------- | --------- | ------------------------------------------------------------------------ |
+| Default | `server/` | `uv run --frozen --no-sync start` — validate local PostgreSQL; API 7301  |
+| Default | `web/`    | `pnpm dev` — canonical web on 7300                                       |
 | Jobs    | `jobs/`   | `uv run --frozen --no-sync start` — broker, worker, Beat, and API 7302   |
 | Legacy  | `client/` | `corepack yarn dev` — comparison UI on 7303                              |
-| UI      | `web/`    | `pnpm storybook` — isolated components on 7306, no Server required        |
+| UI      | `web/`    | `pnpm storybook` — isolated components on 7306, no Server required       |
 | Observe | `jobs/`   | `./scripts/start_flower.sh` — Flower on 7307 after RabbitMQ is available |
 
 Check: [127.0.0.1:7301/docs](http://127.0.0.1:7301/docs),
@@ -195,6 +195,11 @@ Before adding replacement-frontend product code, read the
 [`web/docs` engineering handbook](./web/docs/README.md). It defines dependency
 direction, feature slices, component intake, Figma/token synchronization, API
 generation, testing responsibilities, and the required new-feature checklist.
+The mandatory
+[`frontend change governance`](./web/docs/frontend-governance.md) also defines
+how to add, modify, and delete pages, modules, components, tokens, themes, and
+their Figma/Storybook acceptance evidence. Run `pnpm design:check` after any
+styling, token, theme, adapter, component-state, or Storybook-global change.
 
 ## Reset only the local product schema
 

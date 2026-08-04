@@ -21,6 +21,9 @@ Always read the documents relevant to the task before editing:
 
 For new `web/` product work, also complete
 [`web/docs/new-feature-checklist.md`](./web/docs/new-feature-checklist.md).
+Every addition, modification, or deletion of a Web page, module, component,
+token, theme, or Storybook state must follow
+[`web/docs/frontend-governance.md`](./web/docs/frontend-governance.md).
 
 ## Repository boundaries
 
@@ -69,6 +72,9 @@ The canonical rules live in [`web/docs`](./web/docs/README.md). In particular:
   do not handwrite duplicate DTOs;
 - every reusable component needs isolated Storybook coverage, interaction
   states, keyboard behavior, narrow-content coverage, and Light/Dark review.
+- Tailwind aliases are generated from the design-system adapter. Do not add
+  manual `@theme` mappings, page-local raw colors, primitive palette variables,
+  `dark:` appearance patches, or repeated typography/elevation recipes.
 - interface copy follows `web/docs/internationalization.md`; UI locale and
   Reader content translation are separate product concepts.
 
@@ -80,8 +86,9 @@ responsive behavior, accessibility, runtime contracts, and component APIs.
 
 Do not edit generated files directly. Change their source and regenerate them.
 
-- Design tokens: edit `web/src/design-system/tokens/`, then run
-  `pnpm tokens:build` from `web/`.
+- Design tokens: edit `web/src/design-system/tokens/` and semantic utility names
+  in `web/src/design-system/adapters/`, then run `pnpm tokens:build` from
+  `web/`.
 - Frontend API types: update the FastAPI contract and public snapshot, then run
   `pnpm api:generate` from `web/`.
 - Commit source and generated outputs together.
@@ -96,6 +103,7 @@ pnpm tokens:check
 pnpm api:check
 pnpm i18n:check
 pnpm architecture:check
+pnpm design:check
 pnpm docs:check
 pnpm lint
 pnpm format:check

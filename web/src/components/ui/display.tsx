@@ -58,7 +58,7 @@ export function Progress({
   return (
     <ProgressPrimitive.Root
       className={cn(
-        "bg-action-secondary h-1.5 overflow-hidden rounded-full",
+        "bg-secondary-action h-1.5 overflow-hidden rounded-full",
         className,
       )}
       value={percentage}
@@ -80,7 +80,7 @@ export function Skeleton({
     <div
       aria-hidden
       className={cn(
-        "bg-action-secondary animate-pulse rounded-[var(--radius-md)]",
+        "bg-secondary-action animate-pulse rounded-[var(--radius-md)]",
         className,
       )}
       {...props}

@@ -51,4 +51,8 @@
   --color-warning-bg: #fbf3db;
   --color-warning-border: #7a5a12;
   --color-warning-text: #7a5a12;
+  --elevation-modal: 0px 20px 60px 0px rgba(0, 0, 0, 0.4);
+  --elevation-overlay: 0px 12px 36px 0px rgba(0, 0, 0, 0.4);
+  --elevation-panel: 0px 0px 48px 0px rgba(0, 0, 0, 0.4);
+  --elevation-raised: 0px 4px 12px -4px rgba(0, 0, 0, 0.4);
 }

@@ -38,7 +38,7 @@ export const PopoverContent = React.forwardRef<
     <PopoverPrimitive.Content
       align={align}
       className={cn(
-        "border-line bg-elevated text-foreground z-50 w-72 rounded-[var(--radius-lg)] border p-3 shadow-[0_12px_36px_var(--color-elevation-shadow)]",
+        "border-line bg-elevated text-foreground shadow-overlay z-50 w-72 rounded-[var(--radius-lg)] border p-3",
         className,
       )}
       ref={ref}

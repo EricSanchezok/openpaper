@@ -19,6 +19,7 @@
     "tokens:check": "node scripts/check-generated.mjs tokens",
     "i18n:check": "node scripts/check-messages.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
+    "design:check": "node scripts/check-design-system.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "api:generate": "openapi-typescript ../server/openapi/public-v1.json -o src/lib/api/generated/schema.d.ts",
     "api:check": "node scripts/check-generated.mjs api",

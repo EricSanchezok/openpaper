@@ -1,0 +1,47 @@
+{
+  "colors": {
+    "canvas": "color.bg.canvas",
+    "sidebar": "color.bg.sidebar",
+    "surface": "color.bg.surface",
+    "subtle": "color.bg.subtle",
+    "hover": "color.bg.hover",
+    "pressed": "color.bg.pressed",
+    "elevated": "color.bg.elevated",
+    "foreground": "color.text.primary",
+    "secondary": "color.text.secondary",
+    "muted": "color.text.muted",
+    "tertiary": "color.text.tertiary",
+    "inverse": "color.text.inverse",
+    "disabled": "color.text.disabled",
+    "ui-icon-primary": "color.icon.primary",
+    "ui-icon-secondary": "color.icon.secondary",
+    "ui-icon-inverse": "color.icon.inverse",
+    "ui-icon-disabled": "color.icon.disabled",
+    "line": "color.border.default",
+    "line-subtle": "color.border.subtle",
+    "line-strong": "color.border.strong",
+    "control": "color.border.control",
+    "primary": "color.action.primary",
+    "primary-hover": "color.action.primary-hover",
+    "primary-foreground": "color.action.primary-foreground",
+    "secondary-action": "color.action.secondary",
+    "danger": "color.danger.text",
+    "state-danger-bg": "color.danger.bg",
+    "success": "color.success.text",
+    "state-success-bg": "color.success.bg",
+    "warning": "color.warning.text",
+    "state-warning-bg": "color.warning.bg",
+    "info": "color.info.text",
+    "state-info-bg": "color.info.bg"
+  },
+  "fontSizes": {
+    "ui": "type.ui",
+    "caption": "type.caption"
+  },
+  "shadows": {
+    "overlay": "elevation.overlay",
+    "modal": "elevation.modal",
+    "panel": "elevation.panel",
+    "raised": "elevation.raised"
+  }
+}

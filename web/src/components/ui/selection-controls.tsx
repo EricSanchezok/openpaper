@@ -52,7 +52,7 @@ export const Switch = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SwitchPrimitive.Root
     className={cn(
-      "bg-action-secondary data-[state=checked]:bg-primary h-6 w-11 rounded-full p-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-[var(--opacity-disabled)]",
+      "bg-secondary-action data-[state=checked]:bg-primary h-6 w-11 rounded-full p-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-[var(--opacity-disabled)]",
       className,
     )}
     ref={ref}

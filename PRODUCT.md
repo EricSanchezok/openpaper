@@ -44,6 +44,12 @@ when the agent intentionally works beyond that initial context. Tool activity,
 sources, citations, progress, and errors should use a consistent interaction
 language across all conversational surfaces.
 
+That consistency includes the surrounding interface. New pages may have
+different information architecture and density, but they should not invent an
+independent visual or interaction dialect. Shared actions, context, progress,
+feedback, and account behavior should remain recognizable so the product grows
+as one system rather than a collection of separately themed tools.
+
 Access control remains an invariant. Contextual flexibility must never allow an
 agent to reach information the current user is not permitted to access.
 

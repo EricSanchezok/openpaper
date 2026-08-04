@@ -73,7 +73,7 @@ function ProcessDisclosure({
     <div className="bg-subtle rounded-[var(--radius-md)] p-3">
       <button
         aria-expanded={open}
-        className="flex w-full items-center gap-2 text-left text-[13px] font-medium"
+        className="text-ui flex w-full items-center gap-2 text-left font-medium"
         onClick={() => setOpen((value) => !value)}
         type="button"
       >
@@ -128,7 +128,7 @@ function Sources({ references }: { references: unknown }) {
   const sources = references.sources ?? [];
   return (
     <section className="mt-5">
-      <div className="mb-2 flex items-center gap-2 text-[13px] font-medium">
+      <div className="text-ui mb-2 flex items-center gap-2 font-medium">
         {t("sources")}
         <span className="text-muted text-xs font-normal">{sources.length}</span>
       </div>
@@ -148,7 +148,7 @@ function Sources({ references }: { references: unknown }) {
                 <span className="block truncate text-xs font-medium">
                   {title}
                 </span>
-                <span className="text-muted mt-0.5 line-clamp-1 block text-[11px]">
+                <span className="text-caption text-muted mt-0.5 line-clamp-1 block">
                   {content}
                 </span>
               </span>
@@ -285,7 +285,7 @@ export function ConversationView({
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-4 sm:px-8">
-      <header className="border-line sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-[color-mix(in_srgb,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:h-16">
+      <header className="border-line sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-[color-mix(in_oklab,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:h-16">
         <h1 className="truncate text-sm font-medium">
           {title || t("assistant")}
         </h1>

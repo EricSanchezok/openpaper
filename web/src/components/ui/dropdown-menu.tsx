@@ -20,7 +20,7 @@ export const DropdownMenuContent = React.forwardRef<
   <DropdownPrimitive.Portal>
     <DropdownPrimitive.Content
       className={cn(
-        "border-line bg-elevated z-50 min-w-48 rounded-[var(--radius-lg)] border p-1 shadow-[0_12px_36px_var(--color-elevation-shadow)]",
+        "border-line bg-elevated shadow-overlay z-50 min-w-48 rounded-[var(--radius-lg)] border p-1",
         className,
       )}
       ref={ref}

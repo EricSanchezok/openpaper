@@ -5,7 +5,8 @@ Use this checklist for every new route or substantial product capability.
 ## Before implementation
 
 - [ ] Define the user outcome, entry point, exit point, and permissions.
-- [ ] Identify canonical Figma frames and all relevant intermediate states.
+- [ ] Record node-specific links to canonical Figma frames and all relevant
+      intermediate states; move obsolete alternatives out of the active set.
 - [ ] List populated, loading, slow, empty, partial, error, offline, retrying,
       unauthorized, and quota-limited behavior.
 - [ ] Confirm the public OpenAPI contract exists; do not infer DTOs from old
@@ -13,6 +14,8 @@ Use this checklist for every new route or substantial product capability.
 - [ ] Decide which state belongs to the URL, TanStack Query, a form, local state,
       or an existing focused Context.
 - [ ] Search existing UI, feedback, and product components before creating one.
+- [ ] Choose the owning layer using `frontend-governance.md`; list any existing
+      components or tokens that will change and their consumers.
 - [ ] Identify user-visible copy, named formats, and every locale-sensitive
       behavior; keep Reader translation separate from interface locale.
 
@@ -48,6 +51,8 @@ Use this checklist for every new route or substantial product capability.
 ## Verification
 
 - [ ] Add deterministic Default and state stories.
+- [ ] Map each canonical Figma state to a Storybook story ID or document the
+      intentional responsive/accessibility/runtime difference.
 - [ ] Add interaction tests for real behavior, not only rendering.
 - [ ] Add MSW success/slow/empty/error/offline/401 scenarios where relevant.
 - [ ] Run Storybook axe checks and perform a keyboard pass.
@@ -65,3 +70,5 @@ Use this checklist for every new route or substantial product capability.
    silently?
 5. Is a new abstraction solving an observed repeated behavior rather than a
    hypothetical future one?
+6. Could the new page, module, component, messages, queries, stories, fixtures,
+   tests, docs, and Figma mapping be deleted as one owned slice?

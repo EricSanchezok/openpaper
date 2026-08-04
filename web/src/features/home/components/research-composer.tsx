@@ -97,7 +97,7 @@ function ContextPicker({
       >
         <h2 className="text-base font-medium">{t("title")}</h2>
         <div className="bg-subtle flex items-center justify-between rounded-[var(--radius-md)] px-3 py-2.5">
-          <label className="text-[13px] font-medium" htmlFor="entire-library">
+          <label className="text-ui font-medium" htmlFor="entire-library">
             {t("entireLibrary")}
           </label>
           <Switch
@@ -145,7 +145,7 @@ function ContextPicker({
                       }
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium">
+                      <span className="text-ui block truncate font-medium">
                         {project.title}
                       </span>
                       <span className="text-secondary mt-1 block text-xs">
@@ -189,7 +189,7 @@ function ContextPicker({
                       }
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium">
+                      <span className="text-ui block truncate font-medium">
                         {title}
                       </span>
                       <span className="text-secondary mt-1 block truncate text-xs">
@@ -210,7 +210,7 @@ function ContextPicker({
           )}
         </div>
         <div className="border-line flex items-center gap-3 border-t pt-3">
-          <span className="min-w-0 flex-1 text-[13px] font-medium">
+          <span className="text-ui min-w-0 flex-1 font-medium">
             {context.kind === "library"
               ? t("librarySelected")
               : t("selected", { count: selectionCount })}
@@ -289,7 +289,7 @@ export function ResearchComposer({
   return (
     <form
       className={cn(
-        "border-line bg-surface focus-within:border-control flex w-full flex-col rounded-[var(--radius-xl)] border px-4 shadow-[0_4px_12px_-4px_var(--color-elevation-shadow)] transition-colors",
+        "border-line bg-surface focus-within:border-control shadow-raised flex w-full flex-col rounded-[var(--radius-xl)] border px-4 transition-colors",
         compact
           ? "max-w-[720px] gap-3 pt-4 pb-2"
           : "max-w-[760px] gap-4 pt-4 pb-3",

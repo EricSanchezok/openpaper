@@ -69,7 +69,7 @@ function SidebarControl({
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? accessibleLabel : undefined}
       className={cn(
-        "hover:bg-hover flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] text-[13px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+        "text-ui hover:bg-hover flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
         collapsed ? "w-11 justify-center" : "w-full px-2.5",
         active && "bg-pressed",
       )}
@@ -84,7 +84,7 @@ function SidebarControl({
       aria-disabled={disabled || undefined}
       aria-label={disabled || collapsed ? accessibleLabel : undefined}
       className={cn(
-        "flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] text-[13px] font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+        "text-ui flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
         collapsed ? "w-11 justify-center" : "w-full px-2.5",
         disabled ? "text-muted cursor-not-allowed" : "hover:bg-hover",
       )}
@@ -131,7 +131,7 @@ function ConversationGroup({
             activeConversationId === conversation.id ? "page" : undefined
           }
           className={cn(
-            "hover:bg-hover flex h-9 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-2 text-[13px] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            "text-ui hover:bg-hover flex h-9 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
             activeConversationId === conversation.id && "bg-pressed",
           )}
           href={`/?conversation=${conversation.id}`}
@@ -143,7 +143,7 @@ function ConversationGroup({
           )}
           <span className="min-w-0 flex-1 truncate">{conversation.title}</span>
           {conversation.scope_label && (
-            <span className="text-secondary max-w-[4.5rem] truncate text-[11px]">
+            <span className="text-caption text-secondary max-w-[4.5rem] truncate">
               {conversation.scope_label}
             </span>
           )}
@@ -186,10 +186,10 @@ function AccountMenu({
           </span>
           {!collapsed && (
             <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[13px] leading-5 font-medium">
+              <span className="text-ui block truncate leading-5 font-medium">
                 {name}
               </span>
-              <span className="text-secondary block truncate text-[11px] leading-4">
+              <span className="text-caption text-secondary block truncate leading-4">
                 {actor.email}
               </span>
             </span>
@@ -199,7 +199,7 @@ function AccountMenu({
       <DropdownMenuContent
         align={collapsed ? "end" : "start"}
         className={cn(
-          "shadow-[0_10px_28px_-10px_var(--color-elevation-shadow)]",
+          "shadow-overlay",
           collapsed ? "w-64" : "w-[var(--radix-dropdown-menu-trigger-width)]",
         )}
         side={collapsed ? "right" : "top"}
@@ -213,7 +213,7 @@ function AccountMenu({
             <span className="text-foreground block truncate text-sm leading-5">
               {name}
             </span>
-            <span className="text-secondary block truncate text-[11px] leading-4 font-normal">
+            <span className="text-caption text-secondary block truncate leading-4 font-normal">
               {actor.email}
             </span>
           </span>

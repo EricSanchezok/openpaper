@@ -1,0 +1,44 @@
+{
+  "elevation": {
+    "overlay": {
+      "$type": "shadow",
+      "$value": {
+        "color": "{color.elevation.shadow}",
+        "offsetX": { "value": 0, "unit": "px" },
+        "offsetY": { "value": 12, "unit": "px" },
+        "blur": { "value": 36, "unit": "px" },
+        "spread": { "value": 0, "unit": "px" }
+      }
+    },
+    "modal": {
+      "$type": "shadow",
+      "$value": {
+        "color": "{color.elevation.shadow}",
+        "offsetX": { "value": 0, "unit": "px" },
+        "offsetY": { "value": 20, "unit": "px" },
+        "blur": { "value": 60, "unit": "px" },
+        "spread": { "value": 0, "unit": "px" }
+      }
+    },
+    "panel": {
+      "$type": "shadow",
+      "$value": {
+        "color": "{color.elevation.shadow}",
+        "offsetX": { "value": 0, "unit": "px" },
+        "offsetY": { "value": 0, "unit": "px" },
+        "blur": { "value": 48, "unit": "px" },
+        "spread": { "value": 0, "unit": "px" }
+      }
+    },
+    "raised": {
+      "$type": "shadow",
+      "$value": {
+        "color": "{color.elevation.shadow}",
+        "offsetX": { "value": 0, "unit": "px" },
+        "offsetY": { "value": 4, "unit": "px" },
+        "blur": { "value": 12, "unit": "px" },
+        "spread": { "value": -4, "unit": "px" }
+      }
+    }
+  }
+}

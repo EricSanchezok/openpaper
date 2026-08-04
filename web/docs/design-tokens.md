@@ -21,7 +21,11 @@ src/design-system/tokens/
 ├── themes/default.json
 ├── semantic/light.json
 ├── semantic/dark.json
+├── effects.json
 └── dimensions.json
+
+src/design-system/adapters/
+└── tailwind.json
 ```
 
 Figma is used to explore and validate visual intent. After initial calibration,
@@ -35,6 +39,9 @@ files under `src/design-system/generated` by hand.
   theme changes this layer rather than component styles.
 - **Semantic tokens** describe purpose: canvas, surface, text, border, action,
   focus, selection, feedback, annotation, and elevation.
+- **Composite effects** assemble semantic colors and geometry into reusable
+  elevation recipes.
+- **Framework adapters** expose stable utility names; they do not own values.
 - **Component styles** consume semantic tokens only.
 
 Do not alias semantic tokens to other semantic tokens. Both Light and Dark map
@@ -47,21 +54,28 @@ directly to the theme palette so the graph remains inspectable.
    one component.
 2. Update the relevant DTCG source using `$type`, `$value`, and references.
 3. Run `pnpm tokens:build`.
-4. Inspect Light and Dark stories, focus, disabled, feedback, overlay, and long
+4. Run `pnpm design:check` to validate appearance parity, references, adapter
+   aliases, and forbidden styling shortcuts.
+5. Inspect Light and Dark stories, focus, disabled, feedback, overlay, and long
    content in Storybook.
-5. Run `pnpm tokens:check`, tests, and builds.
-6. Commit the DTCG source and generated output together.
+6. Run `pnpm tokens:check`, tests, and builds.
+7. Commit the DTCG source and generated output together.
 
 `tokens:check` regenerates into a temporary directory and fails if committed
 outputs drift. Manual edits to generated CSS or metadata therefore fail CI.
 
 ## Using tokens in components
 
-Use semantic Tailwind names exposed by `src/styles/globals.css`, for example
+Use semantic Tailwind names generated from the adapter, for example
 `bg-canvas`, `bg-surface`, `text-foreground`, `text-muted`, `border-line`, and
-`bg-primary`. If a necessary semantic role does not exist, add and document the
-role instead of writing hex, RGB, HSL, or a primitive palette value at the call
-site.
+`bg-primary`, plus `text-ui`, `text-caption`, and `shadow-overlay`. If a
+necessary semantic role does not exist, add and document the role instead of
+writing hex, RGB, HSL, a primitive palette value, or a repeated arbitrary
+recipe at the call site.
+
+The Tailwind `@theme` adapter is appended to generated `dimensions.css`. Add or
+rename an alias in `src/design-system/adapters/tailwind.json`; never recreate an
+`@theme` table in global CSS.
 
 Interactive descendants inherit the state of their shared control. In
 particular, an icon inside a disabled button resolves to the shared disabled

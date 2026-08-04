@@ -9,8 +9,22 @@ const outputDirectory = process.env.SCHOLENS_TOKEN_OUTPUT_DIR
   ? path.resolve(process.env.SCHOLENS_TOKEN_OUTPUT_DIR)
   : path.join(root, "src/design-system/generated");
 const tokenDirectory = path.join(root, "src/design-system/tokens");
+const adapterDirectory = path.join(root, "src/design-system/adapters");
 
 const formatValue = (value) => {
+  if (
+    typeof value === "object" &&
+    value &&
+    "color" in value &&
+    "offsetX" in value &&
+    "offsetY" in value &&
+    "blur" in value &&
+    "spread" in value
+  ) {
+    return [value.offsetX, value.offsetY, value.blur, value.spread, value.color]
+      .map(formatValue)
+      .join(" ");
+  }
   if (
     typeof value === "object" &&
     value &&
@@ -73,6 +87,7 @@ await build({
     "touch",
     "border",
     "focus",
+    "type",
     "opacity",
   ],
 });
@@ -84,9 +99,10 @@ for (const appearance of ["light", "dark"]) {
       "primitives.json",
       "themes/default.json",
       `semantic/${appearance}.json`,
+      "effects.json",
     ],
     selector: `[data-theme=\"default\"][data-color-scheme=\"${appearance}\"]`,
-    prefixes: ["color"],
+    prefixes: ["color", "elevation"],
   });
 }
 
@@ -100,3 +116,25 @@ const metadata =
   `export type ColorSchemePreference = (typeof colorSchemePreferences)[number];\n`;
 
 await fs.writeFile(path.join(outputDirectory, "theme-metadata.ts"), metadata);
+
+const tailwindAliases = JSON.parse(
+  await fs.readFile(path.join(adapterDirectory, "tailwind.json"), "utf8"),
+);
+const tailwindLines = [
+  ...Object.entries(tailwindAliases.colors).map(
+    ([name, token]) =>
+      `  --color-${name}: var(--${token.replaceAll(".", "-")});`,
+  ),
+  ...Object.entries(tailwindAliases.fontSizes).map(
+    ([name, token]) =>
+      `  --text-${name}: var(--${token.replaceAll(".", "-")});`,
+  ),
+  ...Object.entries(tailwindAliases.shadows).map(
+    ([name, token]) =>
+      `  --shadow-${name}: var(--${token.replaceAll(".", "-")});`,
+  ),
+].sort();
+await fs.appendFile(
+  path.join(outputDirectory, "dimensions.css"),
+  `@theme inline {\n${tailwindLines.join("\n")}\n}\n`,
+);

@@ -67,6 +67,7 @@ const packageJson = JSON.parse(
 );
 const expectedScripts = {
   dev: "next dev --hostname 127.0.0.1 --port 7300",
+  "design:check": "node scripts/check-design-system.mjs",
   start: "next start --hostname 127.0.0.1 --port 7300",
   storybook: "storybook dev -p 7306 --host 127.0.0.1 --exact-port --no-open",
 };
