@@ -20,7 +20,7 @@ src/app
       -> src/design-system
       -> src/lib
 
-src/components/feedback -> src/components/ui + src/design-system
+src/components/feedback -> src/components/ui + src/design-system + src/lib/utilities
 src/components/ui       -> src/design-system + src/lib/utilities
 src/design-system       -> framework packages only
 src/lib                 -> framework/client libraries only

@@ -19,6 +19,8 @@ component assertion in Playwright.
 pnpm tokens:check
 pnpm api:check
 pnpm i18n:check
+pnpm architecture:check
+pnpm docs:check
 pnpm lint
 pnpm format:check
 pnpm typecheck

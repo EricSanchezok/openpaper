@@ -18,6 +18,8 @@
     "tokens:build": "node scripts/build-tokens.mjs",
     "tokens:check": "node scripts/check-generated.mjs tokens",
     "i18n:check": "node scripts/check-messages.mjs",
+    "architecture:check": "node scripts/check-architecture.mjs",
+    "docs:check": "node scripts/check-docs.mjs",
     "api:generate": "openapi-typescript ../server/openapi/public-v1.json -o src/lib/api/generated/schema.d.ts",
     "api:check": "node scripts/check-generated.mjs api",
     "storybook": "storybook dev -p 7306 --host 127.0.0.1 --exact-port --no-open",
