@@ -129,6 +129,10 @@ const preview: Preview = {
           styles: { width: "480px", height: "900px" },
         },
         mobile: { name: "Mobile", styles: { width: "390px", height: "844px" } },
+        largeMobile: {
+          name: "Large Mobile",
+          styles: { width: "430px", height: "932px" },
+        },
         smallMobile: {
           name: "Small Mobile",
           styles: { width: "320px", height: "568px" },

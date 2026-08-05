@@ -19,6 +19,7 @@ import {
   type ReasoningLevel,
   type ResearchContext,
 } from "./research-composer";
+import { MessageContent } from "./message-content";
 
 type Message =
   components["schemas"]["app__modules__conversations__application__contracts__conversations__MessageResponse"];
@@ -132,11 +133,11 @@ function ActivityDisclosure({
   }
 
   return (
-    <div className="text-secondary text-sm" data-state={state}>
+    <div className="text-secondary text-base lg:text-sm" data-state={state}>
       {hasHistory ? (
         <button
           aria-expanded={open}
-          className="hover:text-foreground focus-visible:text-foreground flex min-h-8 w-full items-center gap-2 rounded-[var(--radius-sm)] text-left transition-colors motion-reduce:transition-none"
+          className="hover:text-foreground focus-visible:text-foreground flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-sm)] text-left transition-colors motion-reduce:transition-none lg:min-h-8"
           onClick={toggle}
           type="button"
         >
@@ -160,7 +161,7 @@ function ActivityDisclosure({
       ) : (
         <p
           aria-live="polite"
-          className="flex min-h-8 items-center"
+          className="flex min-h-11 items-center lg:min-h-8"
           role="status"
         >
           <span className="activity-copy-enter" key={summary}>
@@ -185,16 +186,16 @@ function ActivityDisclosure({
                 tone="secondary"
               />
               <span className="min-w-0 flex-1">
-                <span className="text-foreground block text-xs font-medium">
+                <span className="text-foreground block text-sm font-medium lg:text-xs">
                   {activityLabel(activity, t)}
                 </span>
                 {activity.subject && (
-                  <span className="text-muted mt-0.5 block text-xs leading-5 break-words">
+                  <span className="text-muted mt-0.5 block text-sm leading-5 break-words lg:text-xs">
                     {activity.subject}
                   </span>
                 )}
                 {Boolean(activity.source_count || activity.artifact_count) && (
-                  <span className="text-muted mt-0.5 block text-xs">
+                  <span className="text-muted mt-0.5 block text-sm lg:text-xs">
                     {t("activity.results", {
                       sources: activity.source_count ?? 0,
                       artifacts: activity.artifact_count ?? 0,
@@ -220,7 +221,7 @@ function Sources({ references }: { references: unknown }) {
   const sources = references.sources;
   return (
     <section className="mt-5">
-      <div className="text-ui mb-2 flex items-center gap-2 font-medium">
+      <div className="lg:text-ui mb-2 flex items-center gap-2 text-base font-medium">
         {t("sources")}
         <span className="text-muted text-xs font-normal">{sources.length}</span>
       </div>
@@ -247,7 +248,7 @@ function Sources({ references }: { references: unknown }) {
           );
           return source.kind === "external" ? (
             <a
-              className="border-line hover:bg-hover flex items-center gap-2 rounded-[var(--radius-md)] border p-2"
+              className="border-line hover:bg-hover flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border p-2.5 lg:min-h-0 lg:p-2"
               href={source.url}
               key={`${source.key}-${source.url}`}
               rel="noreferrer"
@@ -257,7 +258,7 @@ function Sources({ references }: { references: unknown }) {
             </a>
           ) : (
             <div
-              className="border-line flex items-center gap-2 rounded-[var(--radius-md)] border p-2"
+              className="border-line flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border p-2.5 lg:min-h-0 lg:p-2"
               key={`${source.key}-${index}`}
             >
               {row}
@@ -294,11 +295,7 @@ function AssistantMessage({
         sourceTotal={sourceTotal}
         state={state}
       />
-      {content && (
-        <p className="max-w-[72ch] text-sm leading-7 whitespace-pre-wrap">
-          {content}
-        </p>
-      )}
+      {content && <MessageContent content={content} />}
       <Sources references={references} />
     </article>
   );
@@ -310,7 +307,7 @@ function MessageHistory({ messages }: { messages: Message[] }) {
       {messages.map((message) =>
         message.role === "user" ? (
           <div className="flex justify-end" key={message.id}>
-            <p className="bg-subtle max-w-[80%] rounded-[var(--radius-lg)] px-4 py-3 text-sm leading-6">
+            <p className="bg-subtle max-w-[86%] rounded-[var(--radius-xl)] px-4 py-3 text-base leading-6 lg:max-w-[80%] lg:rounded-[var(--radius-lg)] lg:text-sm">
               {message.content}
             </p>
           </div>
@@ -409,15 +406,15 @@ export function ConversationView({
 
   return (
     <div
-      className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-4 sm:px-8"
+      className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-5 sm:px-8"
       ref={rootRef}
     >
-      <header className="border-line sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-[color-mix(in_oklab,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:h-16">
+      <header className="border-line sticky top-0 z-10 hidden h-16 shrink-0 items-center border-b bg-[color-mix(in_oklab,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:flex">
         <h1 className="truncate text-sm font-medium">
           {title || t("assistant")}
         </h1>
       </header>
-      <div className="flex-1 py-8 pb-40">
+      <div className="flex-1 pt-6 pb-44 lg:py-8 lg:pb-40">
         {loading ? (
           <p className="text-muted py-12 text-center text-sm" role="status">
             {t("loading")}
@@ -441,12 +438,12 @@ export function ConversationView({
         ) : visibleMessages.length === 0 && !liveTurn ? (
           <p className="text-muted py-12 text-center text-sm">{t("empty")}</p>
         ) : (
-          <div className="grid gap-8">
+          <div className="grid gap-9 lg:gap-8">
             <MessageHistory messages={visibleMessages} />
             {liveTurn && (
               <>
                 <div className="flex justify-end">
-                  <p className="bg-subtle max-w-[80%] rounded-[var(--radius-lg)] px-4 py-3 text-sm leading-6">
+                  <p className="bg-subtle max-w-[86%] rounded-[var(--radius-xl)] px-4 py-3 text-base leading-6 lg:max-w-[80%] lg:rounded-[var(--radius-lg)] lg:text-sm">
                     {liveTurn.userMessage}
                   </p>
                 </div>
@@ -477,7 +474,7 @@ export function ConversationView({
           {readOnlyReason ? t("readOnlyReason") : t("readOnly")}
         </div>
       )}
-      <div className="pointer-events-none sticky bottom-0 z-20 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_72%,transparent)] px-4 pt-10 pb-6">
+      <div className="pointer-events-none sticky bottom-0 z-20 -mx-5 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-3 pt-6 pb-[max(var(--space-3),env(safe-area-inset-bottom))] sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
         <div className="pointer-events-auto w-full max-w-[720px]">
           <ResearchComposer
             busy={liveTurn?.state === "streaming"}

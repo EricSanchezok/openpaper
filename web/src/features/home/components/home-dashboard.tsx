@@ -212,18 +212,18 @@ export function HomeDashboard({
   return (
     <div
       className={cn(
-        "mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-4 sm:px-8 lg:px-16",
+        "mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-5 sm:px-8 lg:px-16",
         emptyWorkspace
-          ? "py-12 sm:py-16 lg:pt-[clamp(12rem,28vh,18rem)] lg:pb-16"
-          : "py-8 lg:py-16",
+          ? "pt-[clamp(5rem,16vh,8rem)] pb-8 sm:py-16 lg:pt-[clamp(12rem,28vh,18rem)] lg:pb-16"
+          : "py-7 lg:py-16",
       )}
     >
-      <section className="mx-auto flex w-full max-w-[800px] flex-col items-center gap-6 text-center">
+      <section className="mx-auto flex w-full max-w-[800px] flex-col items-center gap-7 text-center lg:gap-6">
         <div>
           <h1 className="text-[clamp(1.875rem,4vw,2.25rem)] leading-tight font-medium tracking-[-0.02em] text-balance [&:lang(zh-CN)]:leading-[1.28] [&:lang(zh-CN)]:tracking-normal">
             {t("hero.title")}
           </h1>
-          <p className="text-secondary mx-auto mt-2 max-w-[40rem] text-sm leading-[1.6] text-pretty">
+          <p className="text-secondary mx-auto mt-2 max-w-[40rem] text-base leading-[1.6] text-pretty lg:text-sm">
             {emptyWorkspace
               ? t("hero.emptyDescription")
               : t("hero.description")}
@@ -242,7 +242,7 @@ export function HomeDashboard({
       {!emptyWorkspace && (
         <div
           className={cn(
-            "mt-12 grid w-full gap-8 lg:mx-auto",
+            "mt-10 grid w-full gap-8 lg:mx-auto lg:mt-12",
             showPapers &&
               showProjects &&
               "lg:grid-cols-[minmax(0,600px)_minmax(280px,340px)] lg:gap-5",

@@ -34,6 +34,11 @@ Use this checklist for every new route or substantial product capability.
 - [ ] Reuse Radix/UI primitives without copying their behavior into product code.
 - [ ] Cover keyboard, focus-visible, disabled, loading, validation, destructive,
       long-content, and narrow states as applicable.
+- [ ] For phone support, define the mobile composition explicitly instead of
+      shrinking desktop panels. Share domain state and actions; allow navigation,
+      disclosure, and page composition to change for touch and single-column use.
+- [ ] Handle dynamic viewport height, virtual-keyboard layout, and top/bottom
+      safe-area insets for any sticky or fixed mobile controls.
 - [ ] Use Async Feedback presentation appropriate to the surface; domain copy
       remains feature-owned.
 - [ ] Verify Light and Dark. Do not patch appearance with call-site raw colors.
@@ -57,6 +62,9 @@ Use this checklist for every new route or substantial product capability.
 - [ ] Add MSW success/slow/empty/error/offline/401 scenarios where relevant.
 - [ ] Run Storybook axe checks and perform a keyboard pass.
 - [ ] Add Playwright coverage only for route integration or a critical journey.
+- [ ] Review the primary phone composition at 390 x 844 and 430 x 932; use
+      320 x 568 as an overflow/minimum-usability check and verify one real iOS
+      Safari or Android Chrome device before release.
 - [ ] Run the complete CI command set from `docs/testing.md`.
 - [ ] Update the handbook or add an ADR if the implementation changes an
       architectural rule.

@@ -185,6 +185,100 @@ export const Mobile: Story = {
   globals: { viewport: { value: "mobile", isRotated: false } },
 };
 
+export const MobileEmpty: Story = {
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  parameters: {
+    msw: { handlers: [...authHandlers.success, ...homeHandlers.empty] },
+  },
+};
+
+export const MobileComposerExpanded: Story = {
+  ...MobileEmpty,
+  play: async ({ canvasElement }) => {
+    const composer = await within(canvasElement).findByRole("textbox", {
+      name: "问任何问题",
+    });
+    await userEvent.type(
+      composer,
+      "比较这三篇论文的核心方法{Shift>}{Enter}{/Shift}并说明它们在推理成本和准确率上的差异",
+    );
+    await expect(composer).toHaveValue(
+      "比较这三篇论文的核心方法\n并说明它们在推理成本和准确率上的差异",
+    );
+  },
+};
+
+export const MobileConversation: Story = {
+  args: { initialConversationId: homeConversations[0]!.id },
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole("button", { name: "打开导航" }),
+    ).toBeVisible();
+    await expect(
+      await canvas.findByRole("textbox", { name: "继续追问" }),
+    ).toBeVisible();
+  },
+};
+
+export const MobileConversationLarge: Story = {
+  ...MobileConversation,
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "largeMobile", isRotated: false },
+  },
+};
+
+export const MobileNavigationOpen: Story = {
+  args: { initialConversationId: homeConversations[0]!.id },
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "打开导航" }),
+    );
+    const body = within(document.body);
+    const dialog = await body.findByRole("dialog");
+    const navigation = within(dialog);
+    await expect(dialog).toBeVisible();
+    await expect(
+      navigation.getByRole("searchbox", { name: "搜索对话" }),
+    ).toBeVisible();
+    await expect(navigation.getByText(actor.email)).toBeVisible();
+  },
+};
+
+export const MobileProcessing: Story = {
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  parameters: {
+    msw: { handlers: [...authHandlers.success, ...homeHandlers.processing] },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const composer = await canvas.findByRole("textbox", { name: "问任何问题" });
+    await userEvent.type(composer, "比较选中的论文");
+    await userEvent.click(
+      canvas.getByRole("button", { name: "询问 Scholens" }),
+    );
+    await waitFor(() =>
+      expect(canvas.getByText("正在检索你的研究资料…")).toBeVisible(),
+    );
+  },
+};
+
 export const SimplifiedChinese: Story = {
   globals: { locale: "zh-CN" },
   play: async ({ canvasElement }) => {

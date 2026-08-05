@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  SearchField,
   Sheet,
   SheetContent,
   SheetTitle,
@@ -42,6 +43,10 @@ import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
 
 type ConversationSummary = components["schemas"]["ConversationSummaryResponse"];
+
+function actorName(actor: Actor) {
+  return actor.display_name?.trim() || actor.email.split("@")[0] || actor.email;
+}
 
 function SidebarControl({
   collapsed,
@@ -156,18 +161,19 @@ function ConversationGroup({
 function AccountMenu({
   actor,
   collapsed,
+  mobile = false,
   signingOut,
   onSignOut,
 }: {
   actor: Actor;
   collapsed: boolean;
+  mobile?: boolean;
   signingOut: boolean;
   onSignOut: () => Promise<void>;
 }) {
   const t = useTranslations("Home");
   const { preference, setColorSchemePreference } = useTheme();
-  const name =
-    actor.display_name?.trim() || actor.email.split("@")[0] || actor.email;
+  const name = actorName(actor);
   const initial = name.slice(0, 1).toUpperCase();
 
   return (
@@ -176,24 +182,45 @@ function AccountMenu({
         <button
           aria-label={t("account.openMenu")}
           className={cn(
-            "hover:bg-hover flex h-14 items-center rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
-            collapsed ? "ml-auto w-11 justify-center" : "w-full gap-2.5",
+            "hover:bg-hover flex items-center rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            mobile ? "h-[72px] w-full gap-3" : "h-14",
+            collapsed
+              ? "ml-auto w-11 justify-center"
+              : !mobile && "w-full gap-2.5",
           )}
           type="button"
         >
-          <span className="bg-pressed grid size-7 shrink-0 place-items-center rounded-full text-xs font-medium">
+          <span
+            className={cn(
+              "bg-pressed grid shrink-0 place-items-center rounded-full font-medium",
+              mobile ? "size-10 text-sm" : "size-7 text-xs",
+            )}
+          >
             {initial}
           </span>
           {!collapsed && (
             <span className="min-w-0 flex-1 text-left">
-              <span className="text-ui block truncate leading-5 font-medium">
+              <span
+                className={cn(
+                  "block truncate leading-5 font-medium",
+                  mobile ? "text-base" : "text-ui",
+                )}
+              >
                 {name}
               </span>
-              <span className="text-caption text-secondary block truncate leading-4">
+              <span
+                className={cn(
+                  "text-secondary block truncate",
+                  mobile
+                    ? "mt-0.5 text-sm leading-5"
+                    : "text-caption leading-4",
+                )}
+              >
                 {actor.email}
               </span>
             </span>
           )}
+          {mobile && <Icon glyph={Settings} size={24} tone="secondary" />}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -252,6 +279,182 @@ function AccountMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function MobileNavigationRow({
+  glyph,
+  label,
+  href,
+  disabled,
+  onSelect,
+}: {
+  glyph: IconGlyph;
+  label: string;
+  href?: string;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
+  const className = cn(
+    "flex min-h-12 w-full items-center gap-3 rounded-[var(--radius-lg)] px-3 text-base font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+    disabled
+      ? "text-muted cursor-not-allowed"
+      : "hover:bg-hover active:bg-pressed",
+  );
+  if (href) {
+    return (
+      <Link className={className} href={href as Route} onClick={onSelect}>
+        <Icon glyph={glyph} size={24} tone="secondary" />
+        <span>{label}</span>
+      </Link>
+    );
+  }
+  return (
+    <button
+      className={className}
+      disabled={disabled}
+      onClick={onSelect}
+      type="button"
+    >
+      <Icon glyph={glyph} size={24} tone="secondary" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function MobileConversationGroup({
+  activeConversationId,
+  items,
+  onSelect,
+  title,
+}: {
+  activeConversationId?: string;
+  items: ConversationSummary[];
+  onSelect: () => void;
+  title: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="grid gap-1">
+      <h2 className="text-secondary px-3 pt-3 pb-1 text-sm font-medium">
+        {title}
+      </h2>
+      {items.map((conversation) => (
+        <Link
+          aria-current={
+            activeConversationId === conversation.id ? "page" : undefined
+          }
+          className={cn(
+            "hover:bg-hover flex min-h-12 min-w-0 items-center rounded-[var(--radius-lg)] px-3 text-base focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            activeConversationId === conversation.id && "bg-pressed",
+          )}
+          href={`/?conversation=${conversation.id}`}
+          key={conversation.id}
+          onClick={onSelect}
+        >
+          <span className="min-w-0 flex-1 truncate">{conversation.title}</span>
+          {conversation.scope_label && (
+            <span className="text-secondary ml-3 max-w-20 truncate text-sm">
+              {conversation.scope_label}
+            </span>
+          )}
+        </Link>
+      ))}
+    </section>
+  );
+}
+
+function MobileNavigation({
+  actor,
+  conversations,
+  activeConversationId,
+  signingOut,
+  onSignOut,
+  onSelect,
+}: {
+  actor: Actor;
+  conversations: ConversationSummary[];
+  activeConversationId?: string;
+  signingOut: boolean;
+  onSignOut: () => Promise<void>;
+  onSelect: () => void;
+}) {
+  const t = useTranslations("Home");
+  const [query, setQuery] = React.useState("");
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matching = normalizedQuery
+    ? conversations.filter((conversation) =>
+        conversation.title.toLocaleLowerCase().includes(normalizedQuery),
+      )
+    : conversations;
+  const pinned = matching.filter((item) => item.pinned_at).slice(0, 3);
+  const recent = matching.filter((item) => !item.pinned_at).slice(0, 12);
+
+  return (
+    <aside className="bg-sidebar flex h-full flex-col overflow-hidden pt-[env(safe-area-inset-top)]">
+      <div className="flex h-16 shrink-0 items-center px-5 pr-16">
+        <Link className="text-xl font-semibold tracking-[-0.015em]" href="/">
+          Scholens
+        </Link>
+      </div>
+      <div className="grid shrink-0 gap-1 px-3">
+        <MobileNavigationRow
+          glyph={ChatPlusIn}
+          href="/"
+          label={t("navigation.newChat")}
+          onSelect={onSelect}
+        />
+        <MobileNavigationRow
+          disabled
+          glyph={BookStack}
+          label={t("navigation.library")}
+          onSelect={onSelect}
+        />
+        <MobileNavigationRow
+          disabled
+          glyph={Folder}
+          label={t("navigation.projects")}
+          onSelect={onSelect}
+        />
+      </div>
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3">
+        {conversations.length > 3 && (
+          <SearchField
+            aria-label={t("navigation.searchConversations")}
+            className="bg-subtle rounded-[var(--radius-lg)] border-transparent text-base"
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder={t("navigation.searchConversations")}
+            value={query}
+          />
+        )}
+        <MobileConversationGroup
+          activeConversationId={activeConversationId}
+          items={pinned}
+          onSelect={onSelect}
+          title={t("sidebar.pinned")}
+        />
+        <MobileConversationGroup
+          activeConversationId={activeConversationId}
+          items={recent}
+          onSelect={onSelect}
+          title={t("sidebar.recent")}
+        />
+        {matching.length === 0 && (
+          <p className="text-secondary px-3 py-8 text-center text-sm">
+            {normalizedQuery ? t("sidebar.noMatches") : t("sidebar.empty")}
+          </p>
+        )}
+      </div>
+      <div className="border-line shrink-0 border-t px-3 pb-[max(var(--space-2),env(safe-area-inset-bottom))]">
+        <AccountMenu
+          actor={actor}
+          collapsed={false}
+          mobile
+          onSignOut={onSignOut}
+          signingOut={signingOut}
+        />
+      </div>
+    </aside>
   );
 }
 
@@ -395,9 +598,13 @@ export function AppShell({
 }) {
   const t = useTranslations("Home");
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const mobileSheetRef = React.useRef<HTMLDivElement>(null);
+  const activeTitle = conversations.find(
+    (conversation) => conversation.id === activeConversationId,
+  )?.title;
 
   return (
-    <div className="bg-canvas flex h-screen min-h-[36rem] overflow-hidden antialiased">
+    <div className="bg-canvas flex h-dvh min-h-0 overflow-hidden antialiased lg:h-screen lg:min-h-[36rem]">
       <div className="hidden lg:block">
         <Sidebar
           activeConversationId={activeConversationId}
@@ -411,18 +618,22 @@ export function AppShell({
       </div>
       <Sheet onOpenChange={setMobileOpen} open={mobileOpen}>
         <SheetContent
-          className="left-0 w-[min(88vw,var(--layout-sidebar))] border-r border-l-0 p-0"
+          className="left-0 w-full border-0 p-0 focus:outline-none sm:w-[min(92vw,28rem)] sm:border-r"
           closeLabel={t("navigation.closeMenu")}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            mobileSheetRef.current?.focus();
+          }}
+          ref={mobileSheetRef}
+          tabIndex={-1}
         >
           <SheetTitle className="sr-only">
             {t("navigation.openMenu")}
           </SheetTitle>
-          <Sidebar
+          <MobileNavigation
             activeConversationId={activeConversationId}
             actor={actor}
-            collapsed={false}
             conversations={conversations}
-            onCollapsedChange={() => setMobileOpen(false)}
             onSelect={() => setMobileOpen(false)}
             onSignOut={onSignOut}
             signingOut={signingOut}
@@ -430,18 +641,26 @@ export function AppShell({
         </SheetContent>
       </Sheet>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-line flex h-14 shrink-0 items-center justify-between border-b px-3 lg:hidden">
-          <IconButton
-            label={t("navigation.openMenu")}
-            onClick={() => setMobileOpen(true)}
-            variant="ghost"
-          >
-            <Icon glyph={Menu} size={20} />
-          </IconButton>
-          <Link className="text-sm font-semibold" href="/">
-            Scholens
-          </Link>
-          <span aria-hidden className="size-11" />
+        <header className="border-line shrink-0 border-b pt-[env(safe-area-inset-top)] lg:hidden">
+          <div className="flex h-16 items-center justify-between px-3">
+            <IconButton
+              label={t("navigation.openMenu")}
+              onClick={() => setMobileOpen(true)}
+              variant="ghost"
+            >
+              <Icon glyph={Menu} size={24} />
+            </IconButton>
+            <span className="min-w-0 flex-1 truncate px-3 text-center text-base font-semibold">
+              {activeTitle || "Scholens"}
+            </span>
+            <Link
+              aria-label={t("navigation.newChat")}
+              className="hover:bg-hover active:bg-pressed grid size-11 place-items-center rounded-[var(--radius-md)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+              href="/"
+            >
+              <Icon glyph={ChatPlusIn} size={24} />
+            </Link>
+          </div>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
       </div>

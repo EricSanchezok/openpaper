@@ -15,9 +15,12 @@ the deliberately deferred boundaries.
 - Conversations, papers, projects, and message history are server state owned
   by TanStack Query. Composer input uses React Hook Form and Zod. Sidebar,
   picker, and in-progress stream state remain local.
-- Desktop and mobile compose one `AppShell`. The desktop sidebar is 264 px when
-  expanded and 72 px when collapsed; narrow screens expose the same navigation
-  through a Sheet.
+- Desktop and mobile share one navigation model, actor state, conversation
+  state, and `AppShell` boundary, but use device-appropriate compositions. The
+  desktop sidebar is 264 px when expanded and 72 px when collapsed. Phones use
+  a full-width navigation hub with touch-sized destinations, conversation
+  search, and the account trigger anchored above the bottom safe area; they do
+  not render the desktop Sidebar inside a narrow drawer.
 - Collapsing the desktop sidebar changes only its horizontal geometry. The top
   control, navigation rows, and account trigger retain their vertical anchors.
 - Deferred destinations retain their product names in the visible navigation;
@@ -48,7 +51,7 @@ never overwritten by title generation.
 | Surface      | Deterministic coverage                                                                |
 | ------------ | ------------------------------------------------------------------------------------- |
 | Home data    | populated, loading/slow, empty, and recoverable error                                 |
-| Navigation   | expanded, collapsed, mobile drawer, active conversation                               |
+| Navigation   | expanded, collapsed, mobile navigation hub, search, active conversation               |
 | Context      | entire library and selected project/paper sources, including search                   |
 | Conversation | direct answer, tool activity, partial failure, references, complete, cancelled, error |
 | Presentation | English, Simplified Chinese, Light, Dark, 1440 px, 390 px, and 320 px overflow check  |
@@ -72,6 +75,22 @@ state. `Conversation View / Narrow Long Subject` and
 runtime overflow, locale, and appearance coverage. Optimistic and persisted
 messages are reconciled by `turn_id`; the isolated deduplication state guards
 against showing the same user message twice while a stream is active.
+
+On phones, the shell uses a 64 px content bar plus platform safe-area insets.
+The bar owns the active conversation title and new-chat action, so the
+conversation view does not repeat a second title row. Conversation content uses
+a larger reading scale, touch-sized activity disclosure and source rows, and a
+safe-area-aware bottom composer. Markdown is rendered as semantic headings,
+lists, links, code, and horizontally scrollable tables; raw HTML is not
+accepted. The same messages, stream reducer, context state, and submission
+logic are used by desktop and mobile.
+
+The mobile visual baseline is represented by `Home / Workspace / Mobile Empty`,
+`Mobile Composer Expanded`, `Mobile Conversation`, `Mobile Conversation Large`,
+`Mobile Navigation Open`, and `Mobile Processing`, plus
+`Conversation View / Mobile Research Answer` in Light and Dark. The acceptance
+set covers 390 x 844 and 430 x 932; 320 x 568 is an overflow and
+minimum-usability check rather than the primary aesthetic target.
 
 When both recent-paper and recent-project queries settle empty, Home uses a
 focused first-run composition instead of preserving empty card silhouettes.

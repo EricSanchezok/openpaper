@@ -29,12 +29,14 @@
       "expand": "Expand sidebar",
       "openMenu": "Open navigation",
       "closeMenu": "Close navigation",
+      "searchConversations": "Search conversations",
       "comingSoon": "Not available yet"
     },
     "sidebar": {
       "pinned": "Pinned",
       "recent": "Recent",
       "empty": "Your conversations will appear here.",
+      "noMatches": "No matching conversations",
       "conversationContext": "Research context"
     },
     "account": {

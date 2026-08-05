@@ -34,6 +34,47 @@ const directMessages: Message[] = [
   },
 ];
 
+const mobileResearchMessages: Message[] = [
+  {
+    id: "41000000-0000-4000-8000-000000000011",
+    turn_id: "51000000-0000-4000-8000-000000000011",
+    role: "user",
+    content: "帮我调研一下思维链压缩技术",
+    references: null,
+    artifacts: null,
+    trace: null,
+    scope: null,
+    sequence: 1,
+  },
+  {
+    id: "41000000-0000-4000-8000-000000000012",
+    turn_id: "51000000-0000-4000-8000-000000000011",
+    role: "assistant",
+    content: `# 思维链压缩技术调研
+
+思维链压缩关注如何在保留复杂推理能力的同时，减少中间推理步骤、延迟和推理成本。它并不是简单删除文字，而是尝试保留对最终答案真正有贡献的信息。
+
+## 主要研究方向
+
+1. **短推理轨迹训练**：使用质量筛选或蒸馏，让模型学习更短但仍然可靠的推理路径。
+2. **隐式推理表示**：把部分自然语言推理转移到隐藏状态，减少生成 token 的数量。
+3. **动态推理预算**：根据问题难度决定推理深度，避免简单问题使用固定的长链路。
+
+## 评估时需要注意
+
+- 不能只比较输出长度，还要检查答案正确率和校准程度。
+- 对数学、代码和开放式研究问题应分别评估。
+- 压缩后的推理过程仍需保留必要的可验证证据。
+
+下一步可以从推理长度、准确率、延迟和成本四个维度建立统一的实验表。`,
+    references: null,
+    artifacts: null,
+    trace: null,
+    scope: null,
+    sequence: 2,
+  },
+];
+
 const searchActivity = {
   id: "search-1",
   sequence: 1,
@@ -89,7 +130,7 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <main className="h-screen overflow-y-auto">
+      <main className="h-dvh overflow-y-auto">
         <Story />
       </main>
     ),
@@ -106,6 +147,33 @@ export const DirectAnswer: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText(/Today is Wednesday/)).toBeVisible();
     await expect(canvas.queryByText(/Completed ·/)).not.toBeInTheDocument();
+  },
+};
+
+export const MobileResearchAnswer: Story = {
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  args: {
+    messages: mobileResearchMessages,
+    title: "思维链压缩技术调研",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole("heading", { name: "思维链压缩技术调研" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("主要研究方向")).toBeVisible();
+  },
+};
+
+export const MobileResearchAnswerDark: Story = {
+  ...MobileResearchAnswer,
+  globals: {
+    appearance: "dark",
+    locale: "zh-CN",
+    viewport: { value: "largeMobile", isRotated: false },
   },
 };
 

@@ -289,10 +289,10 @@ export function ResearchComposer({
   return (
     <form
       className={cn(
-        "border-line bg-surface focus-within:border-control shadow-raised flex w-full flex-col rounded-[var(--radius-xl)] border px-4 transition-colors",
+        "border-line bg-surface focus-within:border-control shadow-raised flex w-full flex-col rounded-[var(--radius-xl)] border px-3 transition-colors lg:px-4",
         compact
-          ? "max-w-[720px] gap-3 pt-4 pb-2"
-          : "max-w-[760px] gap-4 pt-4 pb-3",
+          ? "max-w-[720px] gap-2.5 pt-3 pb-2 lg:gap-3 lg:pt-4"
+          : "max-w-[760px] gap-3 pt-4 pb-2.5 lg:gap-4 lg:pb-3",
       )}
       onSubmit={form.handleSubmit(submit)}
     >
@@ -303,8 +303,10 @@ export function ResearchComposer({
             : t("composer.placeholder")
         }
         className={cn(
-          "placeholder:text-muted max-h-32 w-full resize-none bg-transparent py-0 text-sm outline-none focus-visible:outline-none",
-          compact ? "min-h-[22px] leading-[22px]" : "min-h-7 leading-7",
+          "placeholder:text-muted [field-sizing:content] max-h-32 w-full resize-none overflow-y-auto bg-transparent py-0 text-base leading-6 outline-none focus-visible:outline-none lg:text-sm",
+          compact
+            ? "min-h-6 lg:min-h-[22px] lg:leading-[22px]"
+            : "min-h-7 lg:leading-7",
         )}
         data-focus-delegate
         disabled={busy || unavailable}
@@ -325,7 +327,7 @@ export function ResearchComposer({
       />
       {context.kind === "selection" && selectionCount > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          <span className="bg-subtle text-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs">
+          <span className="bg-subtle text-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm lg:text-xs">
             <Icon glyph={Folder} size={16} tone="secondary" />
             {t("context.selectionSummary", { count: selectionCount })}
           </span>
@@ -344,14 +346,14 @@ export function ResearchComposer({
           />
           <div
             aria-label={t("composer.deepDescription")}
-            className="border-line bg-surface flex h-8 items-center rounded-[var(--radius-sm)] border p-1"
+            className="border-line bg-surface flex h-11 items-center overflow-hidden rounded-[var(--radius-md)] border lg:h-8 lg:rounded-[var(--radius-sm)] lg:p-1"
             role="group"
           >
             {(["standard", "deep"] as const).map((level) => (
               <button
                 aria-pressed={reasoningLevel === level}
                 className={cn(
-                  "text-secondary h-6 rounded-[var(--radius-xs)] px-2 text-xs font-medium",
+                  "text-secondary h-11 rounded-[var(--radius-sm)] px-3 text-sm font-medium lg:h-6 lg:rounded-[var(--radius-xs)] lg:px-2 lg:text-xs",
                   reasoningLevel === level && "bg-subtle text-foreground",
                 )}
                 disabled={unavailable}
