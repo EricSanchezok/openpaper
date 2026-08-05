@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowUp, AtSign, Folder, Xmark } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 
 import {
   Button,
@@ -27,6 +27,14 @@ export type ResearchContext =
   | components["schemas"]["LibraryPaperContext"]
   | components["schemas"]["SelectedPaperContext"];
 export type ReasoningLevel = components["schemas"]["ReasoningLevel"];
+
+export function useResearchComposerForm() {
+  return useForm<ComposerValues>({
+    defaultValues: { message: "" },
+    mode: "onChange",
+    resolver: zodResolver(composerSchema),
+  });
+}
 
 function ContextPicker({
   context,
@@ -285,6 +293,7 @@ function ReasoningSelector({
 }
 
 export function ResearchComposer({
+  form,
   context,
   papers,
   projects,
@@ -297,6 +306,7 @@ export function ResearchComposer({
   onStop,
   unavailable,
 }: {
+  form?: UseFormReturn<ComposerValues>;
   context: ResearchContext;
   papers: LibraryPaper[];
   projects: Project[];
@@ -311,11 +321,8 @@ export function ResearchComposer({
 }) {
   const t = useTranslations("Home");
   const [pickerOpen, setPickerOpen] = React.useState(false);
-  const form = useForm<ComposerValues>({
-    defaultValues: { message: "" },
-    mode: "onChange",
-    resolver: zodResolver(composerSchema),
-  });
+  const internalForm = useResearchComposerForm();
+  const composerForm = form ?? internalForm;
   const selectionCount =
     context.kind === "selection"
       ? (context.project_ids?.length ?? 0) + (context.document_ids?.length ?? 0)
@@ -323,18 +330,18 @@ export function ResearchComposer({
 
   async function submit(values: ComposerValues) {
     await onSubmit(values.message.trim());
-    form.reset();
+    composerForm.reset();
   }
 
   return (
     <form
       className={cn(
-        "border-line bg-surface focus-within:border-control shadow-raised grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[var(--radius-xl)] border p-2.5 transition-colors lg:px-4",
+        "border-line bg-surface focus-within:border-control shadow-composer lg:shadow-raised grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[var(--radius-xl)] border p-2.5 transition-colors lg:px-4",
         compact
           ? "max-w-[720px] lg:gap-3 lg:pt-4 lg:pb-2"
           : "max-w-[760px] lg:gap-4 lg:pt-4 lg:pb-3",
       )}
-      onSubmit={form.handleSubmit(submit)}
+      onSubmit={composerForm.handleSubmit(submit)}
     >
       <textarea
         aria-label={
@@ -354,7 +361,7 @@ export function ResearchComposer({
           if (event.key === "@") setPickerOpen(true);
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            void form.handleSubmit(submit)();
+            void composerForm.handleSubmit(submit)();
           }
         }}
         placeholder={
@@ -363,7 +370,7 @@ export function ResearchComposer({
             : t("composer.placeholder")
         }
         rows={1}
-        {...form.register("message")}
+        {...composerForm.register("message")}
       />
       {context.kind === "selection" && selectionCount > 0 ? (
         <div className="col-span-3 row-start-2 flex flex-wrap gap-1.5">
@@ -402,7 +409,7 @@ export function ResearchComposer({
       ) : (
         <IconButton
           className="col-start-3 row-start-1 size-12 lg:row-start-3 lg:size-11"
-          disabled={!form.formState.isValid || busy || unavailable}
+          disabled={!composerForm.formState.isValid || busy || unavailable}
           label={t("composer.submit")}
           type="submit"
         >

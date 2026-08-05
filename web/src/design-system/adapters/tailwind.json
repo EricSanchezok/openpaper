@@ -42,6 +42,7 @@
     "overlay": "elevation.overlay",
     "modal": "elevation.modal",
     "panel": "elevation.panel",
-    "raised": "elevation.raised"
+    "raised": "elevation.raised",
+    "composer": "elevation.composer"
   }
 }

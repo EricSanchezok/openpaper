@@ -14,6 +14,8 @@ import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
 import type { ConversationActivity, LiveTurn } from "../conversation-state";
+import type { ComposerValues } from "../schemas";
+import type { UseFormReturn } from "react-hook-form";
 import {
   ResearchComposer,
   type ReasoningLevel,
@@ -346,6 +348,8 @@ export function ConversationView({
   onRetry,
   canSend,
   readOnlyReason,
+  composerForm,
+  showComposer = true,
 }: {
   title?: string;
   messages: Message[];
@@ -363,6 +367,8 @@ export function ConversationView({
   onRetry: () => void;
   canSend: boolean;
   readOnlyReason?: string | null;
+  composerForm?: UseFormReturn<ComposerValues>;
+  showComposer?: boolean;
 }) {
   const t = useTranslations("Home.conversation");
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -474,23 +480,26 @@ export function ConversationView({
           {readOnlyReason ? t("readOnlyReason") : t("readOnly")}
         </div>
       )}
-      <div className="pointer-events-none sticky bottom-0 z-20 -mx-3 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-3 pt-5 pb-3 sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
-        <div className="pointer-events-auto w-full max-w-[720px]">
-          <ResearchComposer
-            busy={liveTurn?.state === "streaming"}
-            compact
-            context={context}
-            onContextChange={onContextChange}
-            onReasoningLevelChange={onReasoningLevelChange}
-            onStop={onStop}
-            onSubmit={onSubmit}
-            papers={papers}
-            projects={projects}
-            reasoningLevel={reasoningLevel}
-            unavailable={loading || error || !canSend}
-          />
+      {showComposer && (
+        <div className="pointer-events-none sticky bottom-0 z-20 -mx-3 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-3 pt-5 pb-3 sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
+          <div className="pointer-events-auto w-full max-w-[720px]">
+            <ResearchComposer
+              busy={liveTurn?.state === "streaming"}
+              compact
+              context={context}
+              form={composerForm}
+              onContextChange={onContextChange}
+              onReasoningLevelChange={onReasoningLevelChange}
+              onStop={onStop}
+              onSubmit={onSubmit}
+              papers={papers}
+              projects={projects}
+              reasoningLevel={reasoningLevel}
+              unavailable={loading || error || !canSend}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

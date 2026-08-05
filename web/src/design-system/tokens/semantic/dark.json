@@ -57,7 +57,8 @@
       "backdrop": { "$type": "color", "$value": "{palette.overlay.40}" }
     },
     "elevation": {
-      "shadow": { "$type": "color", "$value": "{palette.overlay.40}" }
+      "shadow": { "$type": "color", "$value": "{palette.overlay.40}" },
+      "composer": { "$type": "color", "$value": "{palette.overlay.40}" }
     },
     "annotation": {
       "bg": { "$type": "color", "$value": "{palette.status.warning.strong}" },

@@ -37,6 +37,7 @@
       }
     },
     "overlay": {
+      "12": { "$type": "color", "$value": "#0000001f" },
       "40": { "$type": "color", "$value": "#00000066" }
     }
   }

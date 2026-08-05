@@ -12,6 +12,8 @@ import {
   type ResearchContext,
   type ReasoningLevel,
 } from "./research-composer";
+import type { ComposerValues } from "../schemas";
+import type { UseFormReturn } from "react-hook-form";
 
 type LibraryPaper = components["schemas"]["LibraryPaperResponse"];
 type Project = components["schemas"]["ProjectResponse"];
@@ -174,6 +176,8 @@ export function HomeDashboard({
   onSubmit,
   onRetryPapers,
   onRetryProjects,
+  composerForm,
+  showComposer = true,
 }: {
   papers: LibraryPaper[];
   projects: Project[];
@@ -188,6 +192,8 @@ export function HomeDashboard({
   onSubmit: (message: string) => Promise<void>;
   onRetryPapers: () => void;
   onRetryProjects: () => void;
+  composerForm?: UseFormReturn<ComposerValues>;
+  showComposer?: boolean;
 }) {
   const t = useTranslations("Home");
   const recentPapers = [...papers]
@@ -240,15 +246,18 @@ export function HomeDashboard({
               : t("hero.description")}
           </p>
         </div>
-        <ResearchComposer
-          context={context}
-          onContextChange={onContextChange}
-          onReasoningLevelChange={onReasoningLevelChange}
-          onSubmit={onSubmit}
-          papers={papers}
-          projects={projects}
-          reasoningLevel={reasoningLevel}
-        />
+        {showComposer && (
+          <ResearchComposer
+            context={context}
+            form={composerForm}
+            onContextChange={onContextChange}
+            onReasoningLevelChange={onReasoningLevelChange}
+            onSubmit={onSubmit}
+            papers={papers}
+            projects={projects}
+            reasoningLevel={reasoningLevel}
+          />
+        )}
       </section>
       {!emptyWorkspace && (
         <div

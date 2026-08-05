@@ -64,6 +64,7 @@
   --color-ui-icon-primary: var(--color-icon-primary);
   --color-ui-icon-secondary: var(--color-icon-secondary);
   --color-warning: var(--color-warning-text);
+  --shadow-composer: var(--elevation-composer);
   --shadow-modal: var(--elevation-modal);
   --shadow-overlay: var(--elevation-overlay);
   --shadow-panel: var(--elevation-panel);

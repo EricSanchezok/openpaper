@@ -462,7 +462,7 @@ function MobileTabBar() {
   return (
     <nav
       aria-label={t("primary")}
-      className="border-line bg-canvas grid shrink-0 grid-cols-3 border-t px-2 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="grid h-14 shrink-0 grid-cols-3 lg:hidden"
     >
       <Link
         aria-current="page"
@@ -491,6 +491,19 @@ function MobileTabBar() {
         <span>{t("projects")}</span>
       </button>
     </nav>
+  );
+}
+
+function MobileBottomDock({ composer }: { composer: React.ReactNode }) {
+  return (
+    <div className="bg-canvas relative z-30 grid shrink-0 gap-1 pr-[calc(var(--space-2)+env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[calc(var(--space-2)+env(safe-area-inset-left))] lg:hidden">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute right-0 bottom-full left-0 h-5 bg-[linear-gradient(to_top,var(--color-bg-canvas),transparent)]"
+      />
+      <div className="min-w-0">{composer}</div>
+      <MobileTabBar />
+    </div>
   );
 }
 
@@ -623,6 +636,7 @@ export function AppShell({
   onCollapsedChange,
   onReasoningLevelChange,
   onSignOut,
+  mobileComposer,
   children,
 }: {
   actor: Actor;
@@ -634,6 +648,7 @@ export function AppShell({
   onCollapsedChange: (collapsed: boolean) => void;
   onReasoningLevelChange: (level: ReasoningLevel) => void;
   onSignOut: () => Promise<void>;
+  mobileComposer?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const t = useTranslations("Home");
@@ -702,7 +717,7 @@ export function AppShell({
           </div>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
-        <MobileTabBar />
+        {mobileComposer && <MobileBottomDock composer={mobileComposer} />}
       </div>
     </div>
   );

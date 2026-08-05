@@ -39,6 +39,16 @@
         "blur": { "value": 12, "unit": "px" },
         "spread": { "value": -4, "unit": "px" }
       }
+    },
+    "composer": {
+      "$type": "shadow",
+      "$value": {
+        "color": "{color.elevation.composer}",
+        "offsetX": { "value": 0, "unit": "px" },
+        "offsetY": { "value": 6, "unit": "px" },
+        "blur": { "value": 20, "unit": "px" },
+        "spread": { "value": -10, "unit": "px" }
+      }
     }
   }
 }

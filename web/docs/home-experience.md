@@ -13,8 +13,9 @@ the deliberately deferred boundaries.
 - The selected conversation is shareable navigation state and therefore lives
   in `?conversation=<uuid>`. A refresh restores that conversation.
 - Conversations, papers, projects, and message history are server state owned
-  by TanStack Query. Composer input uses React Hook Form and Zod. Sidebar,
-  picker, and in-progress stream state remain local.
+  by TanStack Query. Composer input uses React Hook Form and Zod; its form state
+  is owned by `HomeWorkspace` so responsive composition changes never discard
+  an unsent draft. Sidebar, picker, and in-progress stream state remain local.
 - Desktop and mobile share one navigation model, actor state, conversation
   state, and `AppShell` boundary, but use device-appropriate compositions. The
   desktop sidebar is 264 px when expanded and 72 px when collapsed. Phones use
@@ -83,10 +84,15 @@ On phones, the shell uses a 64 px content bar plus platform safe-area insets.
 The bar owns navigation, the current reasoning-strength selector, and the
 new-chat action. The selector exposes only Standard and Deep; model selection
 is not part of the Scholens product surface. Conversation content uses a larger
-reading scale, touch-sized activity disclosure and source rows, and a bottom
-composer above the primary navigation. The composer starts as a single-line
-input row, grows with the user's text, and keeps context and submit controls in
-the thumb zone without repeating reasoning controls inside the input surface.
+reading scale and touch-sized activity disclosure and source rows. A single
+`MobileBottomDock` owns the Composer, primary navigation, horizontal safe-area
+gutters, bottom safe area, and stacking layer. The Composer and navigation are
+separated by 4 px inside the Dock rather than behaving as independent floating
+surfaces; a non-layout 20 px fade softens the transition from scrolling content.
+Only one real Composer is mounted at a time. The composer starts as a
+single-line input row, grows with the user's text, and keeps context and submit
+controls in the thumb zone without repeating reasoning controls inside the
+input surface.
 Markdown is rendered as semantic headings, lists, links, code, and
 horizontally scrollable tables; raw HTML is not accepted. The same messages,
 stream reducer, context state, and submission logic are used by desktop and

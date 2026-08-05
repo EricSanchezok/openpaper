@@ -25,6 +25,7 @@
   --color-danger-bg: #fff2f0;
   --color-danger-border: #963e38;
   --color-danger-text: #963e38;
+  --color-elevation-composer: rgba(0, 0, 0, 0.12);
   --color-elevation-shadow: rgba(0, 0, 0, 0.4);
   --color-focus-ring: #20201e;
   --color-icon-disabled: #a2a29c;
@@ -51,6 +52,7 @@
   --color-warning-bg: #fbf3db;
   --color-warning-border: #7a5a12;
   --color-warning-text: #7a5a12;
+  --elevation-composer: 0px 6px 20px -10px rgba(0, 0, 0, 0.12);
   --elevation-modal: 0px 20px 60px 0px rgba(0, 0, 0, 0.4);
   --elevation-overlay: 0px 12px 36px 0px rgba(0, 0, 0, 0.4);
   --elevation-panel: 0px 0px 48px 0px rgba(0, 0, 0, 0.4);

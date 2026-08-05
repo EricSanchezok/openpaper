@@ -68,7 +68,11 @@ outputs drift. Manual edits to generated CSS or metadata therefore fail CI.
 
 Use semantic Tailwind names generated from the adapter, for example
 `bg-canvas`, `bg-surface`, `text-foreground`, `text-muted`, `border-line`, and
-`bg-primary`, plus `text-ui`, `text-caption`, and `shadow-overlay`. If a
+`bg-primary`, plus `text-ui`, `text-caption`, `shadow-overlay`, and
+`shadow-composer`. `elevation.composer` is the mobile input-surface lift: it
+uses the shared 0/6/20/-10 geometry with a 12% black Light shadow and the
+existing 40% overlay in Dark. Desktop Composer surfaces retain
+`elevation.raised`. If a
 necessary semantic role does not exist, add and document the role instead of
 writing hex, RGB, HSL, a primitive palette value, or a repeated arbitrary
 recipe at the call site.

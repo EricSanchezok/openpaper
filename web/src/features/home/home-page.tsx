@@ -16,6 +16,7 @@ import {
   type LiveTurn,
 } from "./conversation-state";
 import { HomeDashboard } from "./components/home-dashboard";
+import { useDesktopLayout } from "./hooks/use-desktop-layout";
 import {
   createConversation,
   streamConversationMessage,
@@ -24,9 +25,11 @@ import {
 } from "./api/conversations";
 import { homeKeys } from "./api/keys";
 import { homeQueries } from "./api/queries";
-import type {
-  ReasoningLevel,
-  ResearchContext,
+import {
+  ResearchComposer,
+  useResearchComposerForm,
+  type ReasoningLevel,
+  type ResearchContext,
 } from "./components/research-composer";
 
 function sameContext(left: ResearchContext, right: ResearchContext) {
@@ -66,6 +69,8 @@ export function HomeWorkspace({
   const [liveTurnConversationId, setLiveTurnConversationId] =
     React.useState<string>();
   const streamController = React.useRef<AbortController | null>(null);
+  const composerForm = useResearchComposerForm();
+  const isDesktop = useDesktopLayout();
 
   const activeConversationId = initialConversationId ?? pendingConversationId;
 
@@ -203,6 +208,33 @@ export function HomeWorkspace({
     }
   }
 
+  const conversationBusy = liveTurn?.state === "streaming";
+  const conversationUnavailable =
+    conversationQuery.isPending ||
+    conversationQuery.isError ||
+    messagesQuery.isError ||
+    conversationQuery.data?.capabilities.send !== true;
+  const mobileComposer = !isDesktop ? (
+    <ResearchComposer
+      busy={activeConversationId ? conversationBusy : undefined}
+      compact={Boolean(activeConversationId)}
+      context={context}
+      form={composerForm}
+      onContextChange={handleContextChange}
+      onReasoningLevelChange={setReasoningLevel}
+      onStop={
+        activeConversationId
+          ? () => streamController.current?.abort()
+          : undefined
+      }
+      onSubmit={sendMessage}
+      papers={papers}
+      projects={projects}
+      reasoningLevel={reasoningLevel}
+      unavailable={activeConversationId ? conversationUnavailable : undefined}
+    />
+  ) : undefined;
+
   return (
     <AppShell
       activeConversationId={activeConversationId}
@@ -214,10 +246,12 @@ export function HomeWorkspace({
       onSignOut={handleSignOut}
       reasoningLevel={reasoningLevel}
       signingOut={signingOut}
+      mobileComposer={mobileComposer}
     >
       {activeConversationId ? (
         <ConversationView
           canSend={conversationQuery.data?.capabilities.send === true}
+          composerForm={composerForm}
           context={context}
           error={conversationQuery.isError || messagesQuery.isError}
           liveTurn={
@@ -237,10 +271,12 @@ export function HomeWorkspace({
           projects={projects}
           reasoningLevel={reasoningLevel}
           readOnlyReason={conversationQuery.data?.read_only_reason}
+          showComposer={isDesktop}
           title={conversationQuery.data?.title}
         />
       ) : (
         <HomeDashboard
+          composerForm={composerForm}
           context={context}
           onContextChange={handleContextChange}
           onReasoningLevelChange={setReasoningLevel}
@@ -254,6 +290,7 @@ export function HomeWorkspace({
           projectsError={projectsQuery.isError}
           projectsLoading={projectsQuery.isPending}
           reasoningLevel={reasoningLevel}
+          showComposer={isDesktop}
         />
       )}
     </AppShell>
