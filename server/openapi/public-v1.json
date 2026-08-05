@@ -1279,19 +1279,6 @@
         "title": "ConversationActivity",
         "type": "object"
       },
-      "ConversationAutoTitleResponse": {
-        "properties": {
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "title": "ConversationAutoTitleResponse",
-        "type": "object"
-      },
       "ConversationCapabilitiesResponse": {
         "properties": {
           "archive": {
@@ -9001,51 +8988,6 @@
           }
         ],
         "summary": "Move Conversation"
-      }
-    },
-    "/api/v1/conversations/{conversation_id}/title": {
-      "post": {
-        "operationId": "auto_title_conversation_api_v1_conversations__conversation_id__title_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "conversation_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Conversation Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationAutoTitleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Auto Title Conversation"
       }
     },
     "/api/v1/conversations/{conversation_id}/tool-permissions": {

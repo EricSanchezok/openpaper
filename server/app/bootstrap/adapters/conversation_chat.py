@@ -16,9 +16,11 @@ from app.helpers.ai_limits import (
     release_concurrency,
 )
 from app.llm.conversation_agent import ScholensConversationAgent
-from app.llm.conversation_operations import conversation_operations
+from app.llm.conversation_titles import conversation_title_generator
 from app.llm.token_credits import llm_usage_context
-from app.modules.conversations.application.contracts.answer_packet import ReferenceBundle
+from app.modules.conversations.application.contracts.answer_packet import (
+    ReferenceBundle,
+)
 from app.modules.conversations.application.contracts.messages import (
     ConversationActivity,
     ConversationMessageRequest,
@@ -41,11 +43,8 @@ from app.shared.application import (
     OperationInitiator,
 )
 from app.shared.domain import AppError, FailureKind, JsonValue
-from dotenv import load_dotenv
 from pydantic import TypeAdapter
 from scholens_observability import DiagnosticSnapshotRecorder
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
@@ -288,7 +287,7 @@ async def stream_conversation_agent(
             )
         )
         try:
-            new_title = conversation_operations.generate_title(history)
+            new_title = conversation_title_generator.generate_title(history)
             if new_title is not None:
                 title_operation = operation_factory.resume(
                     correlation_id=turn_start.correlation_id,
@@ -298,11 +297,13 @@ async def stream_conversation_agent(
                     credential=operation.credential,
                 )
                 executor.command(
-                    lambda capabilities: capabilities.conversations.apply_generated_title(
-                        actor=current_user,
-                        operation=title_operation,
-                        conversation_id=conversation_id,
-                        title=new_title,
+                    lambda capabilities: (
+                        capabilities.conversations.apply_generated_title(
+                            actor=current_user,
+                            operation=title_operation,
+                            conversation_id=conversation_id,
+                            title=new_title,
+                        )
                     )
                 )
         except Exception:
@@ -318,9 +319,7 @@ async def stream_conversation_agent(
                 "has_user_references": bool(request.user_references),
                 "has_references": references is not None,
                 "reasoning_level": request.reasoning_level.value,
-                "time_taken": (
-                    datetime.now(timezone.utc) - started_at
-                ).total_seconds(),
+                "time_taken": (datetime.now(timezone.utc) - started_at).total_seconds(),
                 "type": conversation_scope.scope_type.value,
                 "project_id": str(project_id) if project_id is not None else None,
                 "num_context_papers": sum(

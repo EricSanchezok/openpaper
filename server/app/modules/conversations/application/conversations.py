@@ -9,7 +9,6 @@ from uuid import UUID
 from app.modules.operation_journal.application import OperationJournal
 from app.modules.operation_journal.domain import OperationAction, ResourceRef
 from app.modules.conversations.application.contracts.conversations import (
-    ConversationAutoTitleResponse,
     ConversationCreateRequest,
     ConversationDetailResponse,
     ConversationListResponse,
@@ -261,7 +260,7 @@ class Conversations:
         operation: OperationContext,
         conversation_id: UUID,
         title: str,
-    ) -> ConversationAutoTitleResponse:
+    ) -> None:
         if self._gateway.update_title(
             user_id=actor.id,
             conversation_id=conversation_id,
@@ -273,7 +272,6 @@ class Conversations:
                 action=CONVERSATION_TITLE_UPDATED,
                 resources=(ResourceRef("conversation", str(conversation_id)),),
             )
-        return ConversationAutoTitleResponse(title=title)
 
     def delete(
         self,

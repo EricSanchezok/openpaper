@@ -17,7 +17,6 @@ from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.bootstrap.workflows.billing import BillingWorkflow
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.bootstrap.workflows.pdf_postprocess import PdfPostprocessWorkflow
-from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
 from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.discovery import PaperDiscoveryWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
@@ -104,19 +103,6 @@ def create_conversation_chat(
             operation_factory,
             diagnostic_recorder,
         )
-    )
-
-
-def create_conversation_title_workflow(
-    executor: ApplicationExecutor[ApplicationCapabilities],
-    operation_factory: OperationContextFactory,
-) -> ConversationTitleWorkflow:
-    from app.llm.conversation_operations import conversation_operations
-
-    return ConversationTitleWorkflow(
-        executor=executor,
-        generator=conversation_operations,
-        operation_factory=operation_factory,
     )
 
 
@@ -402,13 +388,6 @@ def get_operation_context_factory(request: Request) -> OperationContextFactory:
 
 def get_conversation_chat(request: Request) -> ConversationChat:
     return cast(ConversationChat, request.app.state.conversation_chat)
-
-
-def get_conversation_title_workflow(request: Request) -> ConversationTitleWorkflow:
-    return cast(
-        ConversationTitleWorkflow,
-        request.app.state.conversation_title_workflow,
-    )
 
 
 def get_citation_workflow(request: Request) -> CitationWorkflow:

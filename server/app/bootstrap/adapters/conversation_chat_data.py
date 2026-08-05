@@ -32,10 +32,7 @@ from app.modules.conversations.infrastructure.message_repository import (
     message_repository,
 )
 from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.papers.infrastructure.access import (
-    accessible_document_condition,
-    get_document_access,
-)
+from app.modules.papers.infrastructure.access import accessible_document_condition
 from app.modules.papers.application.contracts.search import (
     LibraryPaperCollection,
     SelectedPaperCollection,
@@ -167,41 +164,6 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             papers=papers,
             projects=projects,
             available_document_count=available_document_count,
-        )
-
-    def context_contains_document(
-        self,
-        *,
-        actor: Actor,
-        scope: ConversationChatScope,
-        document_id: uuid.UUID,
-    ) -> bool:
-        if scope.document_id == document_id:
-            return True
-        context = scope.paper_context
-        if context.kind == "library":
-            return (
-                get_document_access(
-                    self._session,
-                    document_id=document_id,
-                    user_id=actor.id,
-                )
-                is not None
-            )
-        if document_id in context.document_ids:
-            return True
-        if not context.project_ids:
-            return False
-        return (
-            self._session.scalar(
-                select(ProjectPaper.document_id)
-                .where(
-                    ProjectPaper.document_id == document_id,
-                    ProjectPaper.project_id.in_(context.project_ids),
-                )
-                .limit(1)
-            )
-            is not None
         )
 
     def history(

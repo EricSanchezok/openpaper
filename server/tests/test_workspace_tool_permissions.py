@@ -186,26 +186,6 @@ def test_every_business_tool_must_declare_exactly_one_permission(
         )
 
 
-def test_control_tool_cannot_require_permission_or_execute_a_handler() -> None:
-    with pytest.raises(ValueError, match="cannot require workspace permission"):
-        ToolDefinition(
-            name="finish",
-            description="Finish",
-            input_model=RequiredInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=WorkspacePermission.READ,
-        )
-    with pytest.raises(ValueError, match="cannot define handlers"):
-        ToolDefinition(
-            name="finish",
-            description="Finish",
-            input_model=RequiredInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=None,
-            handler=_handler,
-        )
-
-
 def test_handler_shape_must_match_execution_kind() -> None:
     with pytest.raises(ValueError, match="exactly one handler"):
         ToolDefinition(
@@ -226,7 +206,7 @@ def test_handler_shape_must_match_execution_kind() -> None:
         )
 
 
-def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> None:
+def test_catalog_combines_profile_and_permissions() -> None:
     definitions = [
         ToolDefinition(
             name="read_tool",
@@ -244,20 +224,13 @@ def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> 
             required_permission=WorkspacePermission.WRITE,
             handler=_handler,
         ),
-        ToolDefinition(
-            name="finish",
-            description="Finish",
-            input_model=RequiredInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=None,
-        ),
     ]
     catalog = ToolCatalog(
         definitions,
         [
             ToolProfile(
                 name="conversation",
-                tool_names=frozenset({"read_tool", "write_tool", "finish"}),
+                tool_names=frozenset({"read_tool", "write_tool"}),
             ),
             ToolProfile(name="mcp", tool_names=frozenset({"read_tool"})),
         ],
@@ -269,12 +242,11 @@ def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> 
     )
     assert [
         definition.name for definition in catalog.definitions_for(conversation_access)
-    ] == ["finish", "write_tool"]
+    ] == ["write_tool"]
     assert [
         declaration["name"]
         for declaration in catalog.provider_declarations(conversation_access)
-    ] == ["finish", "write_tool"]
-    assert catalog.is_available(conversation_access, "finish")
+    ] == ["write_tool"]
     assert not catalog.is_available(conversation_access, "read_tool")
 
     mcp_access = ToolAccess(
@@ -284,7 +256,6 @@ def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> 
     assert [definition.name for definition in catalog.definitions_for(mcp_access)] == [
         "read_tool"
     ]
-    assert not catalog.is_available(mcp_access, "finish")
 
 
 class _UntouchableExecutor:

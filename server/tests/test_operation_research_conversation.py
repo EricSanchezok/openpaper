@@ -270,14 +270,13 @@ def test_auto_title_only_journals_an_applied_title() -> None:
     service = _conversations(gateway=gateway, journal=journal)
     conversation_id = uuid4()
 
-    response = service.apply_generated_title(
+    service.apply_generated_title(
         actor=_actor(),
         operation=_operation(),
         conversation_id=conversation_id,
         title="Same title",
     )
 
-    assert response.title == "Same title"
     journal.append.assert_not_called()
 
 

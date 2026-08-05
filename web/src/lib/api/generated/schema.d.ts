@@ -418,23 +418,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/conversations/{conversation_id}/title": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Auto Title Conversation */
-        post: operations["auto_title_conversation_api_v1_conversations__conversation_id__title_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conversations/{conversation_id}/tool-permissions": {
         parameters: {
             query?: never;
@@ -2012,11 +1995,6 @@ export interface components {
             subject?: string | null;
             /** Tool Name */
             tool_name: string;
-        };
-        /** ConversationAutoTitleResponse */
-        ConversationAutoTitleResponse: {
-            /** Title */
-            title: string;
         };
         /** ConversationCapabilitiesResponse */
         ConversationCapabilitiesResponse: {
@@ -5116,37 +5094,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationSummaryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    auto_title_conversation_api_v1_conversations__conversation_id__title_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationAutoTitleResponse"];
                 };
             };
             /** @description Validation Error */

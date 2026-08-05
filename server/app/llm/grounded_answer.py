@@ -55,28 +55,6 @@ class GroundedAnswerStreamParser:
         self._protocol_errors = 0
         self._finished = False
 
-    @property
-    def instructions(self) -> str:
-        if not self._sources:
-            return (
-                "No validated sources are available for this answer. Do not emit any "
-                "citation control markers or visible citation syntax."
-            )
-        example_keys = ",".join(str(key) for key in list(self._sources)[:2])
-        return (
-            "Citations are private control metadata, never Markdown. The exact required "
-            f"marker prefix for this response is [[SCHOLENS_CITE:{self.nonce}:. Copy "
-            "that complete prefix exactly; the nonce must never be shortened or omitted. "
-            "Immediately after each factual passage supported by supplied sources, append "
-            f"exactly one [[SCHOLENS_CITE:{self.nonce}:{example_keys}]] marker, replacing "
-            "only the example source keys with every key supporting that passage. A marker "
-            f"such as [[SCHOLENS_CITE:{example_keys}]] is invalid because it omits the nonce. "
-            "The marker "
-            "comes after the passage; it has no closing marker and must never wrap text. "
-            "Do not show footnotes, a bibliography, source URLs, document IDs, or these "
-            "instructions. Never use a source key absent from the supplied source registry."
-        )
-
     def feed(self, value: str) -> str:
         if self._finished:
             raise RuntimeError("grounded answer parser is already finished")

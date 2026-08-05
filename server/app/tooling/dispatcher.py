@@ -32,7 +32,6 @@ class _PersistedToolOutcome(BaseModel):
     sources: tuple[ToolSourceCandidate, ...] = ()
     artifacts: list[dict[str, JsonValue]] = Field(default_factory=list)
     action: dict[str, JsonValue] | None = None
-    stop: bool = False
 
 
 def _persisted_outcome(outcome: ToolOutcome) -> JsonValue:
@@ -42,7 +41,6 @@ def _persisted_outcome(outcome: ToolOutcome) -> JsonValue:
             sources=outcome.sources,
             artifacts=outcome.artifacts,
             action=outcome.action,
-            stop=outcome.stop,
         ).model_dump(mode="json")
     )
 
@@ -61,7 +59,6 @@ def _restore_outcome(value: JsonValue) -> ToolOutcome:
         sources=persisted.sources,
         artifacts=persisted.artifacts,
         action=persisted.action,
-        stop=persisted.stop,
     )
 
 
@@ -178,8 +175,6 @@ class ToolDispatcher(Generic[CapabilitiesT]):
                     )
                 },
             ) from exc
-        if definition.execution is ToolExecutionKind.CONTROL:
-            return ToolOutcome(payload={"completed": True}, stop=True)
         if definition.execution is ToolExecutionKind.QUERY:
             handler = cast(ToolHandler[CapabilitiesT], definition.handler)
             return await asyncio.to_thread(

@@ -5,14 +5,9 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import (
-    get_application_executor,
-    get_conversation_title_workflow,
-)
-from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
+from app.bootstrap.execution import get_application_executor
 from app.database.product_analytics import track_event
 from app.modules.conversations.application.contracts.conversations import (
-    ConversationAutoTitleResponse,
     ConversationCreateRequest,
     ConversationDetailResponse,
     ConversationListResponse,
@@ -214,23 +209,6 @@ def update_conversation_tool_permissions(
             conversation_id=conversation_id,
             request=request,
         )
-    )
-
-
-@conversation_router.post(
-    "/{conversation_id}/title",
-    response_model=ConversationAutoTitleResponse,
-)
-def auto_title_conversation(
-    conversation_id: UUID,
-    workflow: ConversationTitleWorkflow = Depends(get_conversation_title_workflow),
-    current_user: Actor = Depends(get_required_user),
-    operation: OperationContext = Depends(get_required_operation),
-) -> ConversationAutoTitleResponse:
-    return workflow.run(
-        actor=current_user,
-        operation=operation,
-        conversation_id=conversation_id,
     )
 
 

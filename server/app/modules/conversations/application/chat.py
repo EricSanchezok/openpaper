@@ -123,14 +123,6 @@ class ConversationChatDataGateway(Protocol):
         scope: ConversationChatScope,
     ) -> ConversationContextSnapshot: ...
 
-    def context_contains_document(
-        self,
-        *,
-        actor: Actor,
-        scope: ConversationChatScope,
-        document_id: UUID,
-    ) -> bool: ...
-
     def mentions(
         self,
         *,
@@ -206,19 +198,6 @@ class ConversationChatData:
         scope: ConversationChatScope,
     ) -> ConversationContextSnapshot:
         return self._gateway.context(actor=actor, scope=scope)
-
-    def context_contains_document(
-        self,
-        *,
-        actor: Actor,
-        scope: ConversationChatScope,
-        document_id: UUID,
-    ) -> bool:
-        return self._gateway.context_contains_document(
-            actor=actor,
-            scope=scope,
-            document_id=document_id,
-        )
 
     def mentions(
         self,

@@ -169,7 +169,3 @@ class MessageResponse(BaseModel):
 class ConversationMessagesResponse(BaseModel):
     items: list[MessageResponse]
     next_cursor: str | None = None
-
-
-class ConversationAutoTitleResponse(BaseModel):
-    title: str

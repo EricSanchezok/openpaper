@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -19,6 +19,7 @@ import openai
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.product_analytics import track_event
 from app.llm.answer_packet import AnswerPacketBuilder
+from app.llm.conversation_state import ConversationAgentState
 from app.llm.errors import classify_llm_error
 from app.llm.grounded_answer import (
     GroundedAnswerStreamParser,
@@ -39,14 +40,12 @@ from app.modules.conversations.application.contracts.messages import (
     ConversationCitationSummary,
     ConversationMessageRequest,
     ConversationTrace,
-    ToolRunState,
 )
 from app.modules.integrations.connectors.infrastructure.mcp import (
     ConnectorToolResolver,
     ResolvedConnectorToolSet,
 )
 from app.modules.papers.application.contracts.citation import CitationResult
-from app.modules.papers.application.contracts.extraction import ToolCall
 from app.shared.application import (
     Actor,
     ApplicationExecutor,
@@ -83,7 +82,12 @@ from pydantic_ai import (
     Tool,
     UsageLimits,
 )
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, UserPromptPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    UserPromptPart,
+)
 from pydantic_ai.messages import TextPart as HistoryTextPart
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -154,10 +158,9 @@ def _activity_category(
 
 
 @dataclass(slots=True)
-class ConversationAgentDependencies:
+class _ConversationAgentDependencies:
     actor: Actor
     executor: ApplicationExecutor[ApplicationCapabilities]
-    operation_factory: OperationContextFactory
     request_operation: OperationContext
     conversation_scope: ConversationChatScope
     conversation_id: uuid.UUID
@@ -165,15 +168,13 @@ class ConversationAgentDependencies:
     client_ip: str
     correlation_id: uuid.UUID
     user_operation_id: uuid.UUID
-    catalog: ToolCatalog[ApplicationCapabilities]
-    dispatcher: ToolDispatcher[ApplicationCapabilities]
     connector_set: ResolvedConnectorToolSet
     tool_access: ToolAccess
     context_payload: dict[str, JsonValue]
     direct_sources: list[DocumentSourceCandidate]
     user_materials: list[str]
     document_source_texts: dict[uuid.UUID, tuple[str, ...]]
-    tool_state: ToolRunState = field(default_factory=ToolRunState)
+    agent_state: ConversationAgentState = field(default_factory=ConversationAgentState)
     activities: dict[str, ConversationActivity] = field(default_factory=dict)
     call_signatures: set[str] = field(default_factory=set)
     reported_source_keys: set[int] = field(default_factory=set)
@@ -290,10 +291,9 @@ class ScholensConversationAgent:
             )
             for paper in context_snapshot.papers
         }
-        deps = ConversationAgentDependencies(
+        deps = _ConversationAgentDependencies(
             actor=actor,
             executor=executor,
-            operation_factory=self._operation_factory,
             request_operation=request_operation,
             conversation_scope=conversation_scope,
             conversation_id=conversation_id,
@@ -301,8 +301,6 @@ class ScholensConversationAgent:
             client_ip=client_ip,
             correlation_id=correlation_id,
             user_operation_id=user_operation_id,
-            catalog=self._catalog,
-            dispatcher=self._dispatcher,
             connector_set=connector_set,
             tool_access=tool_access,
             context_payload=context_payload,
@@ -311,7 +309,9 @@ class ScholensConversationAgent:
             document_source_texts=document_source_texts,
         )
         initial_packet = self._answer_packet(deps)
-        deps.reported_source_keys.update(source.key for source in initial_packet.sources)
+        deps.reported_source_keys.update(
+            source.key for source in initial_packet.sources
+        )
         nonce = secrets.token_hex(16)
         now = self._clock.now().astimezone(ZoneInfo(request.time_zone))
         instructions = self._instructions(
@@ -323,9 +323,9 @@ class ScholensConversationAgent:
         )
         tools = self._tools(deps)
         model = self._model_factory(request.reasoning_level)
-        agent: Agent[ConversationAgentDependencies, str] = Agent(
+        agent: Agent[_ConversationAgentDependencies, str] = Agent(
             model,
-            deps_type=ConversationAgentDependencies,
+            deps_type=_ConversationAgentDependencies,
             tools=tools,
             instructions=instructions,
             end_strategy="exhaustive",
@@ -434,7 +434,7 @@ class ScholensConversationAgent:
                             yield {
                                 "type": "complete",
                                 "trace": trace,
-                                "artifacts": self._artifacts(deps.tool_state),
+                                "artifacts": self._artifacts(deps.agent_state),
                             }
         except BaseException as exc:
             if isinstance(
@@ -464,7 +464,7 @@ class ScholensConversationAgent:
                 },
             )
 
-    def _tools(self, deps: ConversationAgentDependencies) -> list[Tool[Any]]:
+    def _tools(self, deps: _ConversationAgentDependencies) -> list[Tool[Any]]:
         tools: list[Tool[Any]] = []
         for definition in self._catalog.definitions_for(deps.tool_access):
             tools.append(
@@ -482,7 +482,9 @@ class ScholensConversationAgent:
                 Tool.from_schema(
                     self._tool_function(str(declaration["name"])),
                     name=str(declaration["name"]),
-                    description=str(declaration.get("description") or "Use connector tool."),
+                    description=str(
+                        declaration.get("description") or "Use connector tool."
+                    ),
                     json_schema=cast(dict[str, Any], declaration["parameters"]),
                     takes_ctx=True,
                     sequential=True,
@@ -492,7 +494,7 @@ class ScholensConversationAgent:
 
     def _tool_function(self, name: str) -> Any:
         async def execute(
-            ctx: RunContext[ConversationAgentDependencies],
+            ctx: RunContext[_ConversationAgentDependencies],
             **arguments: Any,
         ) -> JsonValue:
             deps = ctx.deps
@@ -524,7 +526,7 @@ class ScholensConversationAgent:
             try:
                 context = ToolExecutionContext(
                     actor=deps.actor,
-                    operation=deps.operation_factory.resume(
+                    operation=self._operation_factory.resume(
                         correlation_id=deps.correlation_id,
                         causation_id=deps.user_operation_id,
                         initiated_by=OperationInitiator.AGENT,
@@ -549,32 +551,28 @@ class ScholensConversationAgent:
                         ),
                     )
                 else:
-                    outcome = await deps.dispatcher.dispatch(
+                    outcome = await self._dispatcher.dispatch(
                         name=name,
                         raw_arguments=arguments,
                         context=context,
                         access=deps.tool_access,
                     )
-                tool_call = ToolCall(id=call_id, name=name, args=arguments)
-                deps.tool_state.add_tool_call(tool_call)
                 payload: JsonValue = outcome.payload
                 for artifact_payload in outcome.artifacts:
                     artifact = CitationResult.model_validate(artifact_payload)
-                    deps.tool_state.add_artifact(artifact)
+                    deps.agent_state.add_artifact(artifact)
                     payload = _citation_artifact_summary(artifact)
-                deps.tool_state.add_tool_outcome(
-                    tool_call,
+                result_index = deps.agent_state.add_tool_outcome(
+                    arguments,
                     ToolOutcome(
                         payload=_bounded_json(payload),
                         sources=outcome.sources,
                         artifacts=outcome.artifacts,
                         action=outcome.action,
-                        stop=False,
                     ),
                 )
                 self._load_document_source_texts(deps, outcome)
                 packet = self._answer_packet(deps)
-                result_index = len(deps.tool_state.tool_call_results) - 1
                 materials = [
                     item
                     for item in packet.materials
@@ -621,7 +619,7 @@ class ScholensConversationAgent:
                     }
                 )
             except AppError as exc:
-                self._record_tool_error(deps, call_id, name, arguments, exc.code)
+                self._record_tool_error(deps, call_id)
                 return {
                     "error": {
                         "code": exc.code,
@@ -633,9 +631,6 @@ class ScholensConversationAgent:
                 self._record_tool_error(
                     deps,
                     call_id,
-                    name,
-                    arguments,
-                    "tool_execution_failed",
                 )
                 return {
                     "error": {
@@ -648,7 +643,7 @@ class ScholensConversationAgent:
 
     def _running_activity(
         self,
-        deps: ConversationAgentDependencies,
+        deps: _ConversationAgentDependencies,
         event: FunctionToolCallEvent,
     ) -> ConversationActivity:
         part = event.part
@@ -668,7 +663,7 @@ class ScholensConversationAgent:
 
     def _activity(
         self,
-        deps: ConversationAgentDependencies,
+        deps: _ConversationAgentDependencies,
         *,
         call_id: str,
         name: str,
@@ -679,11 +674,9 @@ class ScholensConversationAgent:
             return existing
         subject: str | None = None
         if not deps.connector_set.has_tool(name):
-            definition = deps.catalog.definition_for(deps.tool_access, name)
+            definition = self._catalog.definition_for(deps.tool_access, name)
             field_name = definition.activity_subject_field
-            raw_subject = (
-                arguments.get(field_name) if field_name is not None else None
-            )
+            raw_subject = arguments.get(field_name) if field_name is not None else None
             if isinstance(raw_subject, str) and raw_subject.strip():
                 subject = raw_subject.strip()[:240]
         provider = deps.connector_set.provider_for(name)
@@ -696,7 +689,7 @@ class ScholensConversationAgent:
                     name=name,
                     connector_set=deps.connector_set,
                     access=deps.tool_access,
-                    catalog=deps.catalog,
+                    catalog=self._catalog,
                 ),
             ),
             state="running",
@@ -709,7 +702,7 @@ class ScholensConversationAgent:
 
     @staticmethod
     def _finish_activity(
-        deps: ConversationAgentDependencies,
+        deps: _ConversationAgentDependencies,
         call_id: str,
         *,
         succeeded: bool,
@@ -729,20 +722,15 @@ class ScholensConversationAgent:
 
     def _record_tool_error(
         self,
-        deps: ConversationAgentDependencies,
+        deps: _ConversationAgentDependencies,
         call_id: str,
-        name: str,
-        arguments: dict[str, Any],
-        code: str,
     ) -> None:
-        tool_call = ToolCall(id=call_id, name=name, args=arguments)
-        deps.tool_state.add_tool_call(tool_call)
-        deps.tool_state.add_tool_error(tool_call, {"error": {"code": code}})
+        deps.agent_state.add_tool_error()
         self._finish_activity(deps, call_id, succeeded=False)
 
     def _load_document_source_texts(
         self,
-        deps: ConversationAgentDependencies,
+        deps: _ConversationAgentDependencies,
         outcome: ToolOutcome,
     ) -> None:
         missing_ids = {
@@ -753,6 +741,7 @@ class ScholensConversationAgent:
         }
         for document_id in missing_ids:
             try:
+
                 def read_paper(capabilities: ApplicationCapabilities) -> Any:
                     return capabilities.paper_content.read(
                         actor=deps.actor,
@@ -769,10 +758,10 @@ class ScholensConversationAgent:
             )
 
     @staticmethod
-    def _answer_packet(deps: ConversationAgentDependencies) -> AnswerPacket:
+    def _answer_packet(deps: _ConversationAgentDependencies) -> AnswerPacket:
         return AnswerPacketBuilder().build(
             context=deps.context_payload,
-            tool_state=deps.tool_state,
+            agent_state=deps.agent_state,
             direct_sources=deps.direct_sources,
             user_materials=deps.user_materials,
             document_source_texts=deps.document_source_texts,
@@ -789,8 +778,12 @@ class ScholensConversationAgent:
                 {
                     "origin": {
                         "scope_type": scope.scope_type.value,
-                        "project_id": str(scope.project_id) if scope.project_id else None,
-                        "document_id": str(scope.document_id) if scope.document_id else None,
+                        "project_id": str(scope.project_id)
+                        if scope.project_id
+                        else None,
+                        "document_id": str(scope.document_id)
+                        if scope.document_id
+                        else None,
                     },
                     "papers": [
                         {
@@ -909,7 +902,7 @@ Initial server-validated answer material:
 """.strip()
 
     @staticmethod
-    def _artifacts(tool_state: ToolRunState) -> list[dict[str, JsonValue]]:
+    def _artifacts(agent_state: ConversationAgentState) -> list[dict[str, JsonValue]]:
         return [
             cast(
                 dict[str, JsonValue],
@@ -926,13 +919,13 @@ Initial server-validated answer material:
                     }
                 ),
             )
-            for artifact in tool_state.artifacts
+            for artifact in agent_state.artifacts
         ]
 
     @staticmethod
     def _trace(
         *,
-        deps: ConversationAgentDependencies,
+        deps: _ConversationAgentDependencies,
         packet: AnswerPacket,
         references: ReferenceBundle | None,
         parser: GroundedAnswerStreamParser,
@@ -992,4 +985,4 @@ Initial server-validated answer material:
         )
 
 
-__all__ = ["ConversationAgentDependencies", "ScholensConversationAgent"]
+__all__ = ["ScholensConversationAgent"]
