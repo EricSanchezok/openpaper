@@ -28,6 +28,60 @@ export type ResearchContext =
   | components["schemas"]["SelectedPaperContext"];
 export type ReasoningLevel = components["schemas"]["ReasoningLevel"];
 
+export type ResearchContextDisplay =
+  | { kind: "library" }
+  | { kind: "project"; title: string }
+  | { kind: "paper"; title: string }
+  | { kind: "papers"; count: number }
+  | { kind: "items"; count: number }
+  | { kind: "empty" };
+
+export function getResearchContextDisplay(
+  context: ResearchContext,
+  papers: ReadonlyArray<{
+    document: {
+      document_id: string;
+      original_filename: string;
+      title?: string | null;
+    };
+    metadata_overrides?: { title?: string | null } | null;
+  }>,
+  projects: ReadonlyArray<{ id: string; title: string }>,
+): ResearchContextDisplay {
+  if (context.kind === "library") return { kind: "library" };
+
+  const projectIds = context.project_ids ?? [];
+  const documentIds = context.document_ids ?? [];
+  const total = projectIds.length + documentIds.length;
+  if (total === 0) return { kind: "empty" };
+
+  if (projectIds.length === 1 && documentIds.length === 0) {
+    const project = projects.find((item) => item.id === projectIds[0]);
+    if (project) return { kind: "project", title: project.title };
+  }
+
+  if (documentIds.length === 1 && projectIds.length === 0) {
+    const paper = papers.find(
+      (item) => item.document.document_id === documentIds[0],
+    );
+    if (paper) {
+      return {
+        kind: "paper",
+        title:
+          paper.metadata_overrides?.title ??
+          paper.document.title ??
+          paper.document.original_filename,
+      };
+    }
+  }
+
+  if (projectIds.length === 0 && documentIds.length > 1) {
+    return { kind: "papers", count: documentIds.length };
+  }
+
+  return { kind: "items", count: total };
+}
+
 export function useResearchComposerForm() {
   return useForm<ComposerValues>({
     defaultValues: { message: "" },
@@ -54,6 +108,7 @@ function ContextPicker({
   disabled?: boolean;
 }) {
   const t = useTranslations("Home.context");
+  const librarySwitchId = React.useId();
   const [query, setQuery] = React.useState("");
   const selectedProjects =
     context.kind === "selection" ? (context.project_ids ?? []) : [];
@@ -69,6 +124,16 @@ function ContextPicker({
       .includes(normalizedQuery),
   );
   const selectionCount = selectedProjects.length + selectedDocuments.length;
+  const display = getResearchContextDisplay(context, papers, projects);
+  const displayLabel =
+    display.kind === "project" || display.kind === "paper"
+      ? display.title
+      : display.kind === "papers" || display.kind === "items"
+        ? t(display.kind === "papers" ? "scopePapers" : "scopeItems", {
+            count: display.count,
+          })
+        : t(display.kind === "library" ? "scopeLibrary" : "scopeEmpty");
+  const accessibleLabel = t("scopeAccessible", { scope: displayLabel });
 
   function updateSelection(
     field: "project_ids" | "document_ids",
@@ -88,14 +153,15 @@ function ContextPicker({
   return (
     <Popover onOpenChange={onOpenChange} open={open}>
       <PopoverTrigger asChild>
-        <IconButton
-          className="size-12 rounded-full lg:size-9"
+        <button
+          aria-label={accessibleLabel}
+          className="border-line bg-surface hover:bg-hover flex h-12 max-w-[min(9.5rem,36.25vw)] items-center gap-1.5 rounded-full border px-3 font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none lg:size-9 lg:justify-center lg:p-0"
           disabled={disabled}
-          label={t("title")}
-          variant="secondary"
+          type="button"
         >
           <Icon glyph={AtSign} size={20} />
-        </IconButton>
+          <span className="truncate lg:hidden">{displayLabel}</span>
+        </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
@@ -105,12 +171,12 @@ function ContextPicker({
       >
         <h2 className="text-base font-medium">{t("title")}</h2>
         <div className="bg-subtle flex items-center justify-between rounded-[var(--radius-md)] px-3 py-2.5">
-          <label className="text-ui font-medium" htmlFor="entire-library">
+          <label className="text-ui font-medium" htmlFor={librarySwitchId}>
             {t("entireLibrary")}
           </label>
           <Switch
             checked={context.kind === "library"}
-            id="entire-library"
+            id={librarySwitchId}
             onCheckedChange={(checked) =>
               onChange(
                 checked
@@ -350,12 +416,13 @@ export function ResearchComposer({
             : t("composer.placeholder")
         }
         className={cn(
-          "placeholder:text-muted col-start-2 row-start-1 [field-sizing:content] max-h-32 min-h-12 w-full resize-none self-center overflow-y-auto bg-transparent py-3 text-[17px] leading-6 outline-none focus-visible:outline-none lg:col-span-3 lg:col-start-1 lg:py-0 lg:text-sm",
+          "placeholder:text-muted col-start-2 row-start-1 [field-sizing:content] max-h-24 min-h-12 w-full resize-none self-center overflow-y-auto bg-transparent py-3 text-[17px] leading-6 outline-none focus-visible:outline-none lg:col-span-3 lg:col-start-1 lg:max-h-32 lg:py-0 lg:text-sm",
           compact
             ? "lg:min-h-[22px] lg:leading-[22px]"
             : "lg:min-h-7 lg:leading-7",
         )}
         data-focus-delegate
+        data-mobile-composer-input
         disabled={busy || unavailable}
         onKeyDown={(event) => {
           if (event.key === "@") setPickerOpen(true);
@@ -373,7 +440,7 @@ export function ResearchComposer({
         {...composerForm.register("message")}
       />
       {context.kind === "selection" && selectionCount > 0 ? (
-        <div className="col-span-3 row-start-2 flex flex-wrap gap-1.5">
+        <div className="col-span-3 row-start-2 hidden flex-wrap gap-1.5 lg:flex">
           <span className="bg-subtle text-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm lg:text-xs">
             <Icon glyph={Folder} size={16} tone="secondary" />
             {t("context.selectionSummary", { count: selectionCount })}

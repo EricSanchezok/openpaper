@@ -81,6 +81,11 @@
       "close": "Close context picker",
       "librarySelected": "Entire library",
       "selectionSummary": "{count, plural, one {# source} other {# sources}}",
+      "scopeLibrary": "Library",
+      "scopePapers": "{count, plural, one {# paper} other {# papers}}",
+      "scopeItems": "{count, plural, one {# item} other {# items}}",
+      "scopeEmpty": "Select scope",
+      "scopeAccessible": "Research scope: {scope}",
       "noMatches": "No matching research found"
     },
     "recents": {

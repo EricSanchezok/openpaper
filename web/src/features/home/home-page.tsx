@@ -46,9 +46,11 @@ function sameContext(left: ResearchContext, right: ResearchContext) {
 export function HomeWorkspace({
   actor,
   initialConversationId,
+  mobileKeyboardOverride,
 }: {
   actor: Actor;
   initialConversationId?: string;
+  mobileKeyboardOverride?: { open: boolean; viewportHeight?: number };
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -247,6 +249,7 @@ export function HomeWorkspace({
       reasoningLevel={reasoningLevel}
       signingOut={signingOut}
       mobileComposer={mobileComposer}
+      mobileKeyboardOverride={mobileKeyboardOverride}
     >
       {activeConversationId ? (
         <ConversationView

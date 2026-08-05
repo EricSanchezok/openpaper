@@ -65,7 +65,7 @@ export const ContextPicker: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(
-      await canvas.findByRole("button", { name: "Add context" }),
+      await canvas.findByRole("button", { name: "Research scope: Library" }),
     );
     const body = within(document.body);
     await expect(
@@ -250,6 +250,28 @@ export const MobileConversationLarge: Story = {
   globals: {
     locale: "zh-CN",
     viewport: { value: "largeMobile", isRotated: false },
+  },
+};
+
+export const MobileKeyboardOpen: Story = {
+  args: {
+    mobileKeyboardOverride: { open: true, viewportHeight: 548 },
+  },
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  parameters: {
+    msw: { handlers: [...authHandlers.success, ...homeHandlers.empty] },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole("textbox", { name: "问任何问题" }),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByRole("navigation", { name: "主导航" }),
+    ).not.toBeInTheDocument();
   },
 };
 

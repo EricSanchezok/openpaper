@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 import {
   homeConversations,
+  homeMessages,
   homePapers,
   homeProjects,
 } from "../../src/features/home/api/fixtures";
@@ -157,7 +158,7 @@ test("opens the context picker and changes its searchable selection", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Add context" }).click();
+  await page.getByRole("button", { name: "Research scope: Library" }).click();
   await expect(
     page.getByRole("heading", { name: "Add context" }),
   ).toBeVisible();
@@ -222,6 +223,20 @@ test("fits the Home shell at 390px without horizontal scrolling", async ({
       name: "Library. Not available yet",
     }),
   ).toBeDisabled();
+  const dock = page.getByTestId("mobile-bottom-dock");
+  await expect(dock.getByRole("textbox", { name: "Ask anything" })).toHaveCount(
+    1,
+  );
+  await expect(dock.getByRole("navigation")).toHaveCount(1);
+  await expect(
+    dock.getByRole("button", { name: "Research scope: Library" }),
+  ).toBeVisible();
+  const touchTargets = dock.locator("button:visible, a:visible");
+  for (let index = 0; index < (await touchTargets.count()); index += 1) {
+    const box = await touchTargets.nth(index).boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(48);
+    expect(box?.width).toBeGreaterThanOrEqual(48);
+  }
 
   await page
     .getByRole("button", { name: "Reasoning strength: Standard" })
@@ -250,6 +265,83 @@ test("fits the Home shell at 390px without horizontal scrolling", async ({
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("keeps the unified mobile Dock contained at 320px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/");
+
+  const dock = page.getByTestId("mobile-bottom-dock");
+  const composer = dock.getByRole("textbox", { name: "Ask anything" });
+  await expect(composer).toBeVisible();
+  await expect(dock.getByTestId("mobile-tab-bar")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  const [dockBox, composerBox] = await Promise.all([
+    dock.boundingBox(),
+    composer.boundingBox(),
+  ]);
+  expect(dockBox?.y).toBeGreaterThan(0);
+  expect(composerBox?.y).toBeGreaterThanOrEqual(dockBox?.y ?? 0);
+});
+
+test("keeps conversation scrolling independent from the mobile Dock", async ({
+  page,
+}) => {
+  const conversation = homeConversations[0]!;
+  const messages = Array.from({ length: 6 }).flatMap((_, index) =>
+    homeMessages.map((message) => ({
+      ...message,
+      id: `${message.id.slice(0, -1)}${index}`,
+      turn_id: `${message.turn_id.slice(0, -1)}${index}`,
+      sequence: message.sequence + index * 2,
+    })),
+  );
+  await page.route(`${apiPattern}/conversations/${conversation.id}`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...conversation,
+        paper_context: { kind: "library" },
+        tool_permissions: [],
+      }),
+    }),
+  );
+  await page.route(
+    `${apiPattern}/conversations/${conversation.id}/messages**`,
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ items: messages, next_cursor: null }),
+      }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/?conversation=${conversation.id}`);
+
+  const main = page.locator("main");
+  const dock = page.getByTestId("mobile-bottom-dock");
+  await expect(
+    page.getByRole("textbox", { name: "Ask a follow-up" }),
+  ).toBeVisible();
+  const dockBefore = await dock.boundingBox();
+  expect(
+    await main.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  await main.evaluate((element) => element.scrollTo({ top: 240 }));
+  const [dockAfter, mainAfter] = await Promise.all([
+    dock.boundingBox(),
+    main.boundingBox(),
+  ]);
+  expect(dockAfter?.y).toBe(dockBefore?.y);
+  expect((mainAfter?.y ?? 0) + (mainAfter?.height ?? 0)).toBeLessThanOrEqual(
+    dockAfter?.y ?? 0,
+  );
 });
 
 test("keeps the Home composition contained on a 2560px desktop", async ({

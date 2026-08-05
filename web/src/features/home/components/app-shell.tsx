@@ -44,6 +44,7 @@ import type { Actor } from "@/features/authentication";
 import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
 import type { ReasoningLevel } from "./research-composer";
+import { useMobileKeyboard } from "../hooks/use-mobile-keyboard";
 
 type ConversationSummary = components["schemas"]["ConversationSummaryResponse"];
 
@@ -463,6 +464,7 @@ function MobileTabBar() {
     <nav
       aria-label={t("primary")}
       className="grid h-14 shrink-0 grid-cols-3 lg:hidden"
+      data-testid="mobile-tab-bar"
     >
       <Link
         aria-current="page"
@@ -494,15 +496,31 @@ function MobileTabBar() {
   );
 }
 
-function MobileBottomDock({ composer }: { composer: React.ReactNode }) {
+function MobileBottomDock({
+  composer,
+  keyboardOpen,
+  ref,
+}: {
+  composer: React.ReactNode;
+  keyboardOpen: boolean;
+  ref: React.Ref<HTMLDivElement>;
+}) {
   return (
-    <div className="bg-canvas relative z-30 grid shrink-0 gap-1 pr-[calc(var(--space-2)+env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[calc(var(--space-2)+env(safe-area-inset-left))] lg:hidden">
+    <div
+      className={cn(
+        "bg-canvas relative z-30 grid shrink-0 gap-1 pr-[calc(var(--space-2)+env(safe-area-inset-right))] pl-[calc(var(--space-2)+env(safe-area-inset-left))] lg:hidden",
+        !keyboardOpen && "pb-[env(safe-area-inset-bottom)]",
+      )}
+      data-keyboard-open={keyboardOpen || undefined}
+      data-testid="mobile-bottom-dock"
+      ref={ref}
+    >
       <div
         aria-hidden="true"
         className="pointer-events-none absolute right-0 bottom-full left-0 h-5 bg-[linear-gradient(to_top,var(--color-bg-canvas),transparent)]"
       />
       <div className="min-w-0">{composer}</div>
-      <MobileTabBar />
+      {!keyboardOpen && <MobileTabBar />}
     </div>
   );
 }
@@ -637,6 +655,7 @@ export function AppShell({
   onReasoningLevelChange,
   onSignOut,
   mobileComposer,
+  mobileKeyboardOverride,
   children,
 }: {
   actor: Actor;
@@ -649,14 +668,28 @@ export function AppShell({
   onReasoningLevelChange: (level: ReasoningLevel) => void;
   onSignOut: () => Promise<void>;
   mobileComposer?: React.ReactNode;
+  mobileKeyboardOverride?: { open: boolean; viewportHeight?: number };
   children: React.ReactNode;
 }) {
   const t = useTranslations("Home");
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const mobileSheetRef = React.useRef<HTMLDivElement>(null);
+  const mobileDockRef = React.useRef<HTMLDivElement>(null);
+  const mobileKeyboard = useMobileKeyboard(
+    mobileDockRef,
+    Boolean(mobileComposer),
+  );
+  const effectiveMobileKeyboard = mobileKeyboardOverride ?? mobileKeyboard;
 
   return (
-    <div className="bg-canvas flex h-dvh min-h-0 overflow-hidden antialiased lg:h-screen lg:min-h-[36rem]">
+    <div
+      className="bg-canvas flex h-dvh min-h-0 overflow-hidden antialiased lg:h-screen lg:min-h-[36rem]"
+      style={
+        effectiveMobileKeyboard.viewportHeight
+          ? { height: `${effectiveMobileKeyboard.viewportHeight}px` }
+          : undefined
+      }
+    >
       <div className="hidden lg:block">
         <Sidebar
           activeConversationId={activeConversationId}
@@ -716,8 +749,16 @@ export function AppShell({
             </Link>
           </div>
         </header>
-        <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
-        {mobileComposer && <MobileBottomDock composer={mobileComposer} />}
+        <main className="min-h-0 flex-1 overflow-y-auto" tabIndex={0}>
+          {children}
+        </main>
+        {mobileComposer && (
+          <MobileBottomDock
+            composer={mobileComposer}
+            keyboardOpen={effectiveMobileKeyboard.open}
+            ref={mobileDockRef}
+          />
+        )}
       </div>
     </div>
   );

@@ -8,23 +8,24 @@ p1_count: 2
 timestamp: 2026-08-05T13-25-12Z
 slug: web-src-features-home-components-app-shell-tsx
 ---
+
 # Scholens mobile bottom dock critique
 
 ## Design Health Score
 
-| # | Heuristic | Score | Key issue |
-|---|---|---:|---|
-| 1 | Visibility of System Status | 3 | Activity states are clear, but the current research scope is hidden by the context icon. |
-| 2 | Match System / Real World | 3 | Research language is natural; the context icon still requires interpretation. |
-| 3 | User Control and Freedom | 3 | Stop, retry, clear context and new chat exist; failed-send draft recovery is unclear. |
-| 4 | Consistency and Standards | 3 | Tokens and controls are consistent, but the bottom area mixes floating-card and fixed-navigation materials. |
-| 5 | Error Prevention | 3 | Invalid and busy states are guarded; a failed send may still clear the draft. |
-| 6 | Recognition Rather Than Recall | 2 | Navigation labels are visible, but the default library scope must be remembered. |
-| 7 | Flexibility and Efficiency | 2 | Keyboard and context shortcuts exist; mobile scope switching is not explicit enough. |
-| 8 | Aesthetic and Minimalist Design | 2 | The reading view is restrained, but the border, strong shadow and tab divider over-segment the bottom area. |
-| 9 | Error Recovery | 2 | Retry UI exists; composer draft preservation needs stronger behavior. |
-| 10 | Help and Documentation | 1 | The interface does not explain the context icon or unavailable destinations. |
-| **Total** | | **24/40** | **Acceptable; the bottom structure needs convergence before release.** |
+| #         | Heuristic                       |     Score | Key issue                                                                                                   |
+| --------- | ------------------------------- | --------: | ----------------------------------------------------------------------------------------------------------- |
+| 1         | Visibility of System Status     |         3 | Activity states are clear, but the current research scope is hidden by the context icon.                    |
+| 2         | Match System / Real World       |         3 | Research language is natural; the context icon still requires interpretation.                               |
+| 3         | User Control and Freedom        |         3 | Stop, retry, clear context and new chat exist; failed-send draft recovery is unclear.                       |
+| 4         | Consistency and Standards       |         3 | Tokens and controls are consistent, but the bottom area mixes floating-card and fixed-navigation materials. |
+| 5         | Error Prevention                |         3 | Invalid and busy states are guarded; a failed send may still clear the draft.                               |
+| 6         | Recognition Rather Than Recall  |         2 | Navigation labels are visible, but the default library scope must be remembered.                            |
+| 7         | Flexibility and Efficiency      |         2 | Keyboard and context shortcuts exist; mobile scope switching is not explicit enough.                        |
+| 8         | Aesthetic and Minimalist Design |         2 | The reading view is restrained, but the border, strong shadow and tab divider over-segment the bottom area. |
+| 9         | Error Recovery                  |         2 | Retry UI exists; composer draft preservation needs stronger behavior.                                       |
+| 10        | Help and Documentation          |         1 | The interface does not explain the context icon or unavailable destinations.                                |
+| **Total** |                                 | **24/40** | **Acceptable; the bottom structure needs convergence before release.**                                      |
 
 ## Design Specificity Verdict
 
@@ -142,3 +143,26 @@ Suggested command: `$impeccable clarify`.
    strength at the moment a user prepares a question?
 3. If the composer is a stable daily-use base, should it visually behave like a
    raised dialog?
+
+## Resolution — 2026-08-05
+
+Resolved in the unified mobile Dock implementation:
+
+- `AppShell` now owns one `MobileBottomDock` containing the single mounted
+  Composer and primary navigation. Conversation and empty states no longer
+  create separate sticky Composer layers.
+- The tab divider and independent safe-area consumption were removed. The Dock
+  owns its safe areas once, uses the approved 8 px content gutter, a 4 px
+  internal gap, and a non-layout 20 px top fade.
+- `elevation.composer` replaces the shared raised-card shadow on phones: 12%
+  black in Light and the existing 40% overlay in Dark. Desktop retains
+  `elevation.raised`.
+- The context control announces and displays the active scope, truncating only
+  its visible copy. The full scope remains in its accessible name.
+- Soft-keyboard handling hides navigation and removes bottom safe-area padding;
+  hardware keyboards do not change the Dock composition.
+
+The earlier 16/12 px gutter suggestion was superseded by the approved 8 px
+product contract after reviewing 320 px thumb targets and available input
+width. The underlying issue—one shared geometry rather than mismatched local
+padding—is resolved.

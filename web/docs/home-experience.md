@@ -73,6 +73,26 @@ The Figma conversation-state frames and Storybook stories map one-to-one:
 | Cancelled                  | `Conversation View / Cancelled`               |
 | Error                      | `Conversation View / Error`                   |
 
+The mobile Dock acceptance inventory extends that mapping:
+
+| Figma `20 — Home / Mobile` target | Storybook acceptance state                  |
+| --------------------------------- | ------------------------------------------- |
+| Empty + Dock                      | `Workspace / Mobile Empty`                  |
+| Conversation + Dock               | `Workspace / Mobile Conversation`           |
+| Keyboard Open                     | `Workspace / Mobile Keyboard Open`          |
+| Library scope                     | `Research Composer / Library Scope`         |
+| Multiple-paper scope              | `Research Composer / Multiple Papers Scope` |
+| Long project scope at 320 px      | `Research Composer / Long Project Scope`    |
+| Multiline input                   | `Research Composer / Multiline Input`       |
+| Streaming / Stop                  | `Research Composer / Streaming Stop`        |
+| 430 px Dark English               | `Research Composer / Dark English Large`    |
+
+The executable states are complete. Writing the corresponding active frames,
+Variables, and archived predecessor frames to Figma is temporarily blocked by
+the expired Figma connector authorization. Until it is reauthorized, the DTCG
+tokens and Storybook states above are the implementation evidence; the older
+mobile Figma frames must not be treated as the current Dock contract.
+
 The former heavy process card is archived in Figma and is not a supported Web
 state. `Conversation View / Narrow Long Subject` and
 `Conversation View / Simplified Chinese Dark` supplement the Figma mapping with
@@ -93,6 +113,20 @@ Only one real Composer is mounted at a time. The composer starts as a
 single-line input row, grows with the user's text, and keeps context and submit
 controls in the thumb zone without repeating reasoning controls inside the
 input surface.
+The mobile scope trigger is a dynamic pill. It names the entire library, a
+single project or paper, multiple papers, a mixed item count, or the empty
+selection; visible titles may truncate, while the accessible name always
+contains the full scope. The separate selected-source chip remains desktop-only.
+Every scope, send, stop, and navigation target remains at least 48 px.
+
+While the Composer is focused, the shell combines `visualViewport` occlusion
+with the layout viewport to distinguish a soft keyboard from a hardware
+keyboard. A soft keyboard hides the three-item navigation, removes the Dock's
+bottom safe-area padding, and constrains the shell to the visible viewport so
+the Composer stays above the keyboard. Closing it restores navigation and the
+safe area without changing the message scroll position. Browsers without
+`visualViewport` fall back to hiding navigation while the mobile Composer is
+focused.
 Markdown is rendered as semantic headings, lists, links, code, and
 horizontally scrollable tables; raw HTML is not accepted. The same messages,
 stream reducer, context state, and submission logic are used by desktop and
