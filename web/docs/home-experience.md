@@ -18,9 +18,12 @@ the deliberately deferred boundaries.
 - Desktop and mobile share one navigation model, actor state, conversation
   state, and `AppShell` boundary, but use device-appropriate compositions. The
   desktop sidebar is 264 px when expanded and 72 px when collapsed. Phones use
-  a full-width navigation hub with touch-sized destinations, conversation
-  search, and the account trigger anchored above the bottom safe area; they do
-  not render the desktop Sidebar inside a narrow drawer.
+  a persistent bottom bar for Ask, Library, and Projects. Their full-width
+  navigation hub is reserved for conversation search, pinned/recent history,
+  and the account trigger anchored above the bottom safe area; it does not
+  repeat the primary destinations or render the desktop Sidebar inside a
+  narrow drawer. The hub closes with a directional collapse control rather
+  than a dismiss-style X.
 - Collapsing the desktop sidebar changes only its horizontal geometry. The top
   control, navigation rows, and account trigger retain their vertical anchors.
 - Deferred destinations retain their product names in the visible navigation;
@@ -51,7 +54,7 @@ never overwritten by title generation.
 | Surface      | Deterministic coverage                                                                |
 | ------------ | ------------------------------------------------------------------------------------- |
 | Home data    | populated, loading/slow, empty, and recoverable error                                 |
-| Navigation   | expanded, collapsed, mobile navigation hub, search, active conversation               |
+| Navigation   | expanded, collapsed, mobile bottom bar and history hub, search, active conversation   |
 | Context      | entire library and selected project/paper sources, including search                   |
 | Conversation | direct answer, tool activity, partial failure, references, complete, cancelled, error |
 | Presentation | English, Simplified Chinese, Light, Dark, 1440 px, 390 px, and 320 px overflow check  |
@@ -80,10 +83,13 @@ On phones, the shell uses a 64 px content bar plus platform safe-area insets.
 The bar owns the active conversation title and new-chat action, so the
 conversation view does not repeat a second title row. Conversation content uses
 a larger reading scale, touch-sized activity disclosure and source rows, and a
-safe-area-aware bottom composer. Markdown is rendered as semantic headings,
-lists, links, code, and horizontally scrollable tables; raw HTML is not
-accepted. The same messages, stream reducer, context state, and submission
-logic are used by desktop and mobile.
+bottom composer above the primary navigation. The composer starts as a
+single-line input row, grows with the user's text, keeps context and submit
+controls in the thumb zone, and places reasoning strength in a separate row.
+Markdown is rendered as semantic headings, lists, links, code, and
+horizontally scrollable tables; raw HTML is not accepted. The same messages,
+stream reducer, context state, and submission logic are used by desktop and
+mobile.
 
 The mobile visual baseline is represented by `Home / Workspace / Mobile Empty`,
 `Mobile Composer Expanded`, `Mobile Conversation`, `Mobile Conversation Large`,
@@ -94,9 +100,12 @@ minimum-usability check rather than the primary aesthetic target.
 
 When both recent-paper and recent-project queries settle empty, Home uses a
 focused first-run composition instead of preserving empty card silhouettes.
-Its 760 px composer is positioned as the primary task rather than at the top of
-the available canvas. Its textarea delegates focus presentation to the rounded
-composer boundary, so native rectangular outlines never split the composition.
+On phones, its composer sits at the bottom of the usable canvas immediately
+above primary navigation; the research prompt remains in the available reading
+area rather than pulling the input toward screen center. On desktop, the 760 px
+composer retains the centered Figma composition. Its textarea delegates focus
+presentation to the rounded composer boundary, so native rectangular outlines
+never split the composition.
 The account trigger sits against the sidebar's bottom safe-area inset without a
 redundant disclosure arrow. Its menu aligns to the expanded sidebar content
 edge and opens to the right of the collapsed rail.

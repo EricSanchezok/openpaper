@@ -22,8 +22,10 @@
   "Home": {
     "navigation": {
       "newChat": "New chat",
+      "ask": "Ask",
       "library": "Library",
       "projects": "Projects",
+      "primary": "Primary navigation",
       "settings": "Settings",
       "collapse": "Collapse sidebar",
       "expand": "Expand sidebar",

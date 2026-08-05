@@ -212,14 +212,25 @@ export function HomeDashboard({
   return (
     <div
       className={cn(
-        "mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-5 sm:px-8 lg:px-16",
+        "mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-3 sm:px-8 lg:px-16",
         emptyWorkspace
-          ? "pt-[clamp(5rem,16vh,8rem)] pb-8 sm:py-16 lg:pt-[clamp(12rem,28vh,18rem)] lg:pb-16"
+          ? "pb-3 lg:pt-[clamp(12rem,28vh,18rem)] lg:pb-16"
           : "py-7 lg:py-16",
       )}
     >
-      <section className="mx-auto flex w-full max-w-[800px] flex-col items-center gap-7 text-center lg:gap-6">
-        <div>
+      <section
+        className={cn(
+          "mx-auto flex w-full max-w-[800px] flex-col items-center gap-7 text-center lg:gap-6",
+          emptyWorkspace &&
+            "min-h-full flex-1 justify-between gap-0 lg:min-h-0 lg:flex-none lg:justify-start lg:gap-6",
+        )}
+      >
+        <div
+          className={cn(
+            emptyWorkspace &&
+              "flex flex-1 flex-col justify-center pb-[10vh] lg:block lg:pb-0",
+          )}
+        >
           <h1 className="text-[clamp(1.875rem,4vw,2.25rem)] leading-tight font-medium tracking-[-0.02em] text-balance [&:lang(zh-CN)]:leading-[1.28] [&:lang(zh-CN)]:tracking-normal">
             {t("hero.title")}
           </h1>

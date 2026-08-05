@@ -40,9 +40,7 @@ export const Default: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
-      await canvas.findByRole("heading", {
-        name: "What are you working on?",
-      }),
+      await canvas.findByRole("heading", { level: 1 }),
     ).toBeVisible();
     await expect(
       await canvas.findByText("Attention Is All You Need"),
@@ -50,8 +48,12 @@ export const Default: Story = {
     await expect(
       await canvas.findByText("Thesis literature review"),
     ).toBeVisible();
-    const composer = canvas.getByRole("textbox", { name: "Ask anything" });
-    const submit = canvas.getByRole("button", { name: "Ask Scholens" });
+    const composer = canvas.getByRole("textbox", {
+      name: /Ask anything|问任何问题/,
+    });
+    const submit = canvas.getByRole("button", {
+      name: /Ask Scholens|询问 Scholens/,
+    });
     await expect(submit).toBeDisabled();
     await userEvent.click(composer);
     await expect(composer).toHaveAttribute("data-focus-delegate");
@@ -193,6 +195,18 @@ export const MobileEmpty: Story = {
   parameters: {
     msw: { handlers: [...authHandlers.success, ...homeHandlers.empty] },
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const primaryNavigation = await canvas.findByRole("navigation", {
+      name: "主导航",
+    });
+    await expect(
+      within(primaryNavigation).getByRole("link", { name: "问答" }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      canvas.getByRole("textbox", { name: "问任何问题" }),
+    ).toBeVisible();
+  },
 };
 
 export const MobileComposerExpanded: Story = {
@@ -254,6 +268,12 @@ export const MobileNavigationOpen: Story = {
     await expect(
       navigation.getByRole("searchbox", { name: "搜索对话" }),
     ).toBeVisible();
+    await expect(
+      navigation.getByRole("button", { name: "关闭导航" }),
+    ).toBeVisible();
+    await expect(
+      navigation.queryByRole("link", { name: "新对话" }),
+    ).not.toBeInTheDocument();
     await expect(navigation.getByText(actor.email)).toBeVisible();
   },
 };

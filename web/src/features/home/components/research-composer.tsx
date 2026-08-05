@@ -81,12 +81,12 @@ function ContextPicker({
     <Popover onOpenChange={onOpenChange} open={open}>
       <PopoverTrigger asChild>
         <IconButton
-          className="size-9 rounded-full"
+          className="size-12 rounded-full lg:size-9"
           disabled={disabled}
           label={t("title")}
           variant="secondary"
         >
-          <Icon glyph={AtSign} size={16} />
+          <Icon glyph={AtSign} size={20} />
         </IconButton>
       </PopoverTrigger>
       <PopoverContent
@@ -244,6 +244,46 @@ function ContextPicker({
   );
 }
 
+function ReasoningSelector({
+  className,
+  disabled,
+  onChange,
+  value,
+}: {
+  className?: string;
+  disabled?: boolean;
+  onChange: (level: ReasoningLevel) => void;
+  value: ReasoningLevel;
+}) {
+  const t = useTranslations("Home");
+  return (
+    <div
+      aria-label={t("composer.deepDescription")}
+      className={cn(
+        "border-line bg-surface flex h-11 items-center overflow-hidden rounded-[var(--radius-md)] border lg:h-8 lg:rounded-[var(--radius-sm)] lg:p-1",
+        className,
+      )}
+      role="group"
+    >
+      {(["standard", "deep"] as const).map((level) => (
+        <button
+          aria-pressed={value === level}
+          className={cn(
+            "text-secondary h-11 rounded-[var(--radius-sm)] px-3 text-sm font-medium lg:h-6 lg:rounded-[var(--radius-xs)] lg:px-2 lg:text-xs",
+            value === level && "bg-subtle text-foreground",
+          )}
+          disabled={disabled}
+          key={level}
+          onClick={() => onChange(level)}
+          type="button"
+        >
+          {t(`composer.${level}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function ResearchComposer({
   context,
   papers,
@@ -289,13 +329,19 @@ export function ResearchComposer({
   return (
     <form
       className={cn(
-        "border-line bg-surface focus-within:border-control shadow-raised flex w-full flex-col rounded-[var(--radius-xl)] border px-3 transition-colors lg:px-4",
+        "border-line bg-surface focus-within:border-control shadow-raised grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[var(--radius-xl)] border p-2.5 transition-colors lg:px-4",
         compact
-          ? "max-w-[720px] gap-2.5 pt-3 pb-2 lg:gap-3 lg:pt-4"
-          : "max-w-[760px] gap-3 pt-4 pb-2.5 lg:gap-4 lg:pb-3",
+          ? "max-w-[720px] lg:gap-3 lg:pt-4 lg:pb-2"
+          : "max-w-[760px] lg:gap-4 lg:pt-4 lg:pb-3",
       )}
       onSubmit={form.handleSubmit(submit)}
     >
+      <ReasoningSelector
+        className="col-span-3 row-start-1 justify-self-start lg:hidden"
+        disabled={unavailable}
+        onChange={onReasoningLevelChange}
+        value={reasoningLevel}
+      />
       <textarea
         aria-label={
           compact
@@ -303,10 +349,10 @@ export function ResearchComposer({
             : t("composer.placeholder")
         }
         className={cn(
-          "placeholder:text-muted [field-sizing:content] max-h-32 w-full resize-none overflow-y-auto bg-transparent py-0 text-base leading-6 outline-none focus-visible:outline-none lg:text-sm",
+          "placeholder:text-muted col-start-2 row-start-2 [field-sizing:content] max-h-32 min-h-12 w-full resize-none self-center overflow-y-auto bg-transparent py-3 text-[17px] leading-6 outline-none focus-visible:outline-none lg:col-span-3 lg:col-start-1 lg:row-start-1 lg:py-0 lg:text-sm",
           compact
-            ? "min-h-6 lg:min-h-[22px] lg:leading-[22px]"
-            : "min-h-7 lg:leading-7",
+            ? "lg:min-h-[22px] lg:leading-[22px]"
+            : "lg:min-h-7 lg:leading-7",
         )}
         data-focus-delegate
         disabled={busy || unavailable}
@@ -326,66 +372,49 @@ export function ResearchComposer({
         {...form.register("message")}
       />
       {context.kind === "selection" && selectionCount > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="col-span-3 row-start-3 flex flex-wrap gap-1.5 lg:row-start-2">
           <span className="bg-subtle text-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm lg:text-xs">
             <Icon glyph={Folder} size={16} tone="secondary" />
             {t("context.selectionSummary", { count: selectionCount })}
           </span>
         </div>
       ) : null}
-      <div className="flex min-h-11 items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <ContextPicker
-            context={context}
-            onChange={onContextChange}
-            onOpenChange={setPickerOpen}
-            open={pickerOpen}
-            papers={papers}
-            projects={projects}
-            disabled={unavailable}
-          />
-          <div
-            aria-label={t("composer.deepDescription")}
-            className="border-line bg-surface flex h-11 items-center overflow-hidden rounded-[var(--radius-md)] border lg:h-8 lg:rounded-[var(--radius-sm)] lg:p-1"
-            role="group"
-          >
-            {(["standard", "deep"] as const).map((level) => (
-              <button
-                aria-pressed={reasoningLevel === level}
-                className={cn(
-                  "text-secondary h-11 rounded-[var(--radius-sm)] px-3 text-sm font-medium lg:h-6 lg:rounded-[var(--radius-xs)] lg:px-2 lg:text-xs",
-                  reasoningLevel === level && "bg-subtle text-foreground",
-                )}
-                disabled={unavailable}
-                key={level}
-                onClick={() => onReasoningLevelChange(level)}
-                type="button"
-              >
-                {t(`composer.${level}`)}
-              </button>
-            ))}
-          </div>
-        </div>
-        {busy && onStop ? (
-          <IconButton
-            className="size-11"
-            label={t("composer.stop")}
-            onClick={onStop}
-            variant="secondary"
-          >
-            <Icon glyph={Xmark} size={20} />
-          </IconButton>
-        ) : (
-          <IconButton
-            className="size-11"
-            disabled={!form.formState.isValid || busy || unavailable}
-            label={t("composer.submit")}
-            type="submit"
-          >
-            <Icon glyph={ArrowUp} size={20} tone="inverse" />
-          </IconButton>
-        )}
+      <div className="col-start-1 row-start-2 lg:row-start-3">
+        <ContextPicker
+          context={context}
+          disabled={unavailable}
+          onChange={onContextChange}
+          onOpenChange={setPickerOpen}
+          open={pickerOpen}
+          papers={papers}
+          projects={projects}
+        />
       </div>
+      <ReasoningSelector
+        className="hidden lg:col-start-2 lg:row-start-3 lg:flex lg:justify-self-start"
+        disabled={unavailable}
+        onChange={onReasoningLevelChange}
+        value={reasoningLevel}
+      />
+      {busy && onStop ? (
+        <IconButton
+          className="col-start-3 row-start-2 size-12 lg:row-start-3 lg:size-11"
+          label={t("composer.stop")}
+          onClick={onStop}
+          variant="secondary"
+        >
+          <Icon glyph={Xmark} size={20} />
+        </IconButton>
+      ) : (
+        <IconButton
+          className="col-start-3 row-start-2 size-12 lg:row-start-3 lg:size-11"
+          disabled={!form.formState.isValid || busy || unavailable}
+          label={t("composer.submit")}
+          type="submit"
+        >
+          <Icon glyph={ArrowUp} size={24} tone="inverse" />
+        </IconButton>
+      )}
     </form>
   );
 }

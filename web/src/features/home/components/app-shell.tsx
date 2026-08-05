@@ -7,6 +7,7 @@ import {
   Folder,
   LogOut,
   Menu,
+  NavArrowRight,
   Settings,
   SidebarCollapse,
   SidebarExpand,
@@ -282,46 +283,6 @@ function AccountMenu({
   );
 }
 
-function MobileNavigationRow({
-  glyph,
-  label,
-  href,
-  disabled,
-  onSelect,
-}: {
-  glyph: IconGlyph;
-  label: string;
-  href?: string;
-  disabled?: boolean;
-  onSelect: () => void;
-}) {
-  const className = cn(
-    "flex min-h-12 w-full items-center gap-3 rounded-[var(--radius-lg)] px-3 text-base font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
-    disabled
-      ? "text-muted cursor-not-allowed"
-      : "hover:bg-hover active:bg-pressed",
-  );
-  if (href) {
-    return (
-      <Link className={className} href={href as Route} onClick={onSelect}>
-        <Icon glyph={glyph} size={24} tone="secondary" />
-        <span>{label}</span>
-      </Link>
-    );
-  }
-  return (
-    <button
-      className={className}
-      disabled={disabled}
-      onClick={onSelect}
-      type="button"
-    >
-      <Icon glyph={glyph} size={24} tone="secondary" />
-      <span>{label}</span>
-    </button>
-  );
-}
-
 function MobileConversationGroup({
   activeConversationId,
   items,
@@ -397,36 +358,14 @@ function MobileNavigation({
           Scholens
         </Link>
       </div>
-      <div className="grid shrink-0 gap-1 px-3">
-        <MobileNavigationRow
-          glyph={ChatPlusIn}
-          href="/"
-          label={t("navigation.newChat")}
-          onSelect={onSelect}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3">
+        <SearchField
+          aria-label={t("navigation.searchConversations")}
+          className="bg-subtle h-12 rounded-[var(--radius-lg)] border-transparent text-base"
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder={t("navigation.searchConversations")}
+          value={query}
         />
-        <MobileNavigationRow
-          disabled
-          glyph={BookStack}
-          label={t("navigation.library")}
-          onSelect={onSelect}
-        />
-        <MobileNavigationRow
-          disabled
-          glyph={Folder}
-          label={t("navigation.projects")}
-          onSelect={onSelect}
-        />
-      </div>
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3">
-        {conversations.length > 3 && (
-          <SearchField
-            aria-label={t("navigation.searchConversations")}
-            className="bg-subtle rounded-[var(--radius-lg)] border-transparent text-base"
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            placeholder={t("navigation.searchConversations")}
-            value={query}
-          />
-        )}
         <MobileConversationGroup
           activeConversationId={activeConversationId}
           items={pinned}
@@ -455,6 +394,46 @@ function MobileNavigation({
         />
       </div>
     </aside>
+  );
+}
+
+function MobileTabBar() {
+  const t = useTranslations("Home.navigation");
+  const itemClassName =
+    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none";
+
+  return (
+    <nav
+      aria-label={t("primary")}
+      className="border-line bg-canvas grid shrink-0 grid-cols-3 border-t px-2 pb-[env(safe-area-inset-bottom)] lg:hidden"
+    >
+      <Link
+        aria-current="page"
+        className={cn(itemClassName, "text-foreground")}
+        href="/"
+      >
+        <Icon glyph={ChatBubbleEmpty} size={24} />
+        <span>{t("ask")}</span>
+      </Link>
+      <button
+        aria-label={`${t("library")}. ${t("comingSoon")}`}
+        className={cn(itemClassName, "text-muted")}
+        disabled
+        type="button"
+      >
+        <Icon glyph={BookStack} size={24} tone="secondary" />
+        <span>{t("library")}</span>
+      </button>
+      <button
+        aria-label={`${t("projects")}. ${t("comingSoon")}`}
+        className={cn(itemClassName, "text-muted")}
+        disabled
+        type="button"
+      >
+        <Icon glyph={Folder} size={24} tone="secondary" />
+        <span>{t("projects")}</span>
+      </button>
+    </nav>
   );
 }
 
@@ -619,6 +598,7 @@ export function AppShell({
       <Sheet onOpenChange={setMobileOpen} open={mobileOpen}>
         <SheetContent
           className="left-0 w-full border-0 p-0 focus:outline-none sm:w-[min(92vw,28rem)] sm:border-r"
+          closeGlyph={NavArrowRight}
           closeLabel={t("navigation.closeMenu")}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
@@ -663,6 +643,7 @@ export function AppShell({
           </div>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+        <MobileTabBar />
       </div>
     </div>
   );

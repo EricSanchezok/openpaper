@@ -406,7 +406,7 @@ export function ConversationView({
 
   return (
     <div
-      className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-5 sm:px-8"
+      className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-3 sm:px-8"
       ref={rootRef}
     >
       <header className="border-line sticky top-0 z-10 hidden h-16 shrink-0 items-center border-b bg-[color-mix(in_oklab,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:flex">
@@ -414,7 +414,7 @@ export function ConversationView({
           {title || t("assistant")}
         </h1>
       </header>
-      <div className="flex-1 pt-6 pb-44 lg:py-8 lg:pb-40">
+      <div className="flex-1 pt-6 pb-10 lg:py-8 lg:pb-40">
         {loading ? (
           <p className="text-muted py-12 text-center text-sm" role="status">
             {t("loading")}
@@ -474,7 +474,7 @@ export function ConversationView({
           {readOnlyReason ? t("readOnlyReason") : t("readOnly")}
         </div>
       )}
-      <div className="pointer-events-none sticky bottom-0 z-20 -mx-5 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-3 pt-6 pb-[max(var(--space-3),env(safe-area-inset-bottom))] sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
+      <div className="pointer-events-none sticky bottom-0 z-20 -mx-3 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-3 pt-5 pb-3 sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
         <div className="pointer-events-auto w-full max-w-[720px]">
           <ResearchComposer
             busy={liveTurn?.state === "streaming"}

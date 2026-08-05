@@ -211,6 +211,27 @@ test("fits the Home shell at 390px without horizontal scrolling", async ({
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
   ).toBeVisible();
+  const primaryNavigation = page.getByRole("navigation", {
+    name: "Primary navigation",
+  });
+  await expect(
+    primaryNavigation.getByRole("link", { name: "Ask" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    primaryNavigation.getByRole("button", {
+      name: "Library. Not available yet",
+    }),
+  ).toBeDisabled();
+
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const navigationHub = page.getByRole("dialog");
+  await expect(
+    navigationHub.getByRole("searchbox", { name: "Search conversations" }),
+  ).toBeVisible();
+  await expect(
+    navigationHub.getByRole("link", { name: "New chat" }),
+  ).toHaveCount(0);
+  await navigationHub.getByRole("button", { name: "Close navigation" }).click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
