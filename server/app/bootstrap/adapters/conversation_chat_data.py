@@ -23,6 +23,7 @@ from app.modules.conversations.application.chat import (
     MentionScope,
     PersistedChatMessage,
 )
+from app.modules.conversations.domain import DEFAULT_CONVERSATION_TITLE
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
     ConversationTrace,
@@ -89,6 +90,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             tool_permissions=normalize_workspace_permissions(
                 conversation.tool_permissions
             ),
+            title_is_default=conversation.title == DEFAULT_CONVERSATION_TITLE,
         )
 
     def context(

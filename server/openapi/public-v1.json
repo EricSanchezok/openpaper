@@ -1398,11 +1398,17 @@
             "$ref": "#/components/schemas/ConversationScopeType"
           },
           "title": {
-            "default": "New conversation",
-            "maxLength": 240,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "tool_permissions": {
             "anyOf": [

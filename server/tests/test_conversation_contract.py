@@ -442,6 +442,7 @@ def test_paper_context_snapshot_only_loads_anchor_full_text(
                 document_ids=[anchor_id, extra_id],
             ),
             tool_permissions=frozenset(WorkspacePermission),
+            title_is_default=False,
         ),
     )
 

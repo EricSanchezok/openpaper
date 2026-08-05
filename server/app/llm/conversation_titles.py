@@ -24,8 +24,20 @@ Title:
 """.strip()
 
 
-class ConversationTitleGenerator(BaseLLMClient):
-    def generate_title(
+def should_generate_initial_title(
+    *,
+    title_is_default: bool,
+    chat_history: Sequence[HistoryMessage],
+) -> bool:
+    """Generate once, immediately after the first successful assistant reply."""
+    return (
+        title_is_default
+        and sum(message.role == "assistant" for message in chat_history) == 1
+    )
+
+
+class InitialConversationTitleGenerator(BaseLLMClient):
+    def generate(
         self,
         chat_history: Sequence[HistoryMessage],
     ) -> str | None:
@@ -48,4 +60,4 @@ class ConversationTitleGenerator(BaseLLMClient):
         return None
 
 
-conversation_title_generator = ConversationTitleGenerator()
+initial_conversation_title_generator = InitialConversationTitleGenerator()

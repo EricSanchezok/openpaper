@@ -16,7 +16,10 @@ from app.helpers.ai_limits import (
     release_concurrency,
 )
 from app.llm.conversation_agent import ScholensConversationAgent
-from app.llm.conversation_titles import conversation_title_generator
+from app.llm.conversation_titles import (
+    initial_conversation_title_generator,
+    should_generate_initial_title,
+)
 from app.llm.token_credits import llm_usage_context
 from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
@@ -287,7 +290,13 @@ async def stream_conversation_agent(
             )
         )
         try:
-            new_title = conversation_title_generator.generate_title(history)
+            if should_generate_initial_title(
+                title_is_default=conversation_scope.title_is_default,
+                chat_history=history,
+            ):
+                new_title = initial_conversation_title_generator.generate(history)
+            else:
+                new_title = None
             if new_title is not None:
                 title_operation = operation_factory.resume(
                     correlation_id=turn_start.correlation_id,
@@ -298,7 +307,7 @@ async def stream_conversation_agent(
                 )
                 executor.command(
                     lambda capabilities: (
-                        capabilities.conversations.apply_generated_title(
+                        capabilities.conversations.apply_initial_generated_title(
                             actor=current_user,
                             operation=title_operation,
                             conversation_id=conversation_id,

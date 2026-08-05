@@ -106,7 +106,7 @@ class ConversationGateway(Protocol):
         request: ConversationToolPermissionsRequest,
     ) -> ConversationChange[ConversationToolPermissionsResponse]: ...
 
-    def update_title(
+    def apply_initial_generated_title(
         self,
         *,
         user_id: int,
@@ -253,7 +253,7 @@ class Conversations:
             )
         return result.value
 
-    def apply_generated_title(
+    def apply_initial_generated_title(
         self,
         *,
         actor: Actor,
@@ -261,7 +261,7 @@ class Conversations:
         conversation_id: UUID,
         title: str,
     ) -> None:
-        if self._gateway.update_title(
+        if self._gateway.apply_initial_generated_title(
             user_id=actor.id,
             conversation_id=conversation_id,
             title=title,

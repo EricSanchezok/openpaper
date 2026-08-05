@@ -17,6 +17,7 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationUpdateRequest,
     LibraryPaperContext,
 )
+from app.modules.conversations.domain import DEFAULT_CONVERSATION_TITLE
 from app.modules.conversations.application.conversations import (
     ConversationChange,
     Conversations,
@@ -265,12 +266,12 @@ def test_conversation_repository_same_tool_permissions_are_noop() -> None:
 
 def test_auto_title_only_journals_an_applied_title() -> None:
     gateway = MagicMock()
-    gateway.update_title.return_value = False
+    gateway.apply_initial_generated_title.return_value = False
     journal = MagicMock(spec=OperationJournal)
     service = _conversations(gateway=gateway, journal=journal)
     conversation_id = uuid4()
 
-    service.apply_generated_title(
+    service.apply_initial_generated_title(
         actor=_actor(),
         operation=_operation(),
         conversation_id=conversation_id,
@@ -278,6 +279,50 @@ def test_auto_title_only_journals_an_applied_title() -> None:
     )
 
     journal.append.assert_not_called()
+
+
+def test_generated_title_only_replaces_the_default_title() -> None:
+    conversation = Conversation(
+        id=uuid4(),
+        title=DEFAULT_CONVERSATION_TITLE,
+        user_id=7,
+        scope_type=ConversationScopeType.GLOBAL.value,
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = conversation
+
+    changed = conversation_repository.apply_initial_generated_title(
+        db,
+        conversation_id=conversation.id,
+        user_id=7,
+        title="Reasoning systems",
+    )
+
+    assert changed is True
+    assert conversation.title == "Reasoning systems"
+    db.flush.assert_called_once_with()
+
+
+def test_generated_title_never_overwrites_a_user_title() -> None:
+    conversation = Conversation(
+        id=uuid4(),
+        title="My research notes",
+        user_id=7,
+        scope_type=ConversationScopeType.GLOBAL.value,
+    )
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = conversation
+
+    changed = conversation_repository.apply_initial_generated_title(
+        db,
+        conversation_id=conversation.id,
+        user_id=7,
+        title="Generated replacement",
+    )
+
+    assert changed is False
+    assert conversation.title == "My research notes"
+    db.flush.assert_not_called()
 
 
 def test_created_resource_ref_uses_canonical_uuid() -> None:

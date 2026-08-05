@@ -134,6 +134,25 @@ test("renders an intentional first-run Home without empty card shells", async ({
     .toBe(true);
 });
 
+test("lets the Server generate the initial conversation title", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const creation = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().endsWith("/api/v1/conversations"),
+  );
+
+  await page.getByRole("textbox", { name: "Ask anything" }).fill("Study RAG");
+  await page.getByRole("button", { name: "Ask Scholens" }).click();
+
+  expect((await creation).postDataJSON()).toEqual({
+    scope_type: "global",
+    paper_context: { kind: "library" },
+  });
+});
+
 test("opens the context picker and changes its searchable selection", async ({
   page,
 }) => {

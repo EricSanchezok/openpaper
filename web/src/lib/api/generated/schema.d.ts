@@ -2046,11 +2046,8 @@ export interface components {
             /** Scope Id */
             scope_id?: string | null;
             scope_type: components["schemas"]["ConversationScopeType"];
-            /**
-             * Title
-             * @default New conversation
-             */
-            title: string;
+            /** Title */
+            title?: string | null;
             /** Tool Permissions */
             tool_permissions?: components["schemas"]["WorkspacePermission"][] | null;
         };

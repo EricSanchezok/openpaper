@@ -119,6 +119,10 @@ the turn correlation. Jobs persist only their origin operation and correlation
 UUIDs, then callbacks resume a new SYSTEM operation after signature and owner
 verification.
 
+A Conversation title is generated once, after its first successful assistant
+reply. Later turns never invoke the title model or rewrite the Sidebar title;
+an explicit user title always wins over a concurrent generated title.
+
 ## Canonical tool catalog
 
 Every model-visible research workspace tool is defined once in

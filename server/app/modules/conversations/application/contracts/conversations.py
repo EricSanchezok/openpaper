@@ -63,7 +63,11 @@ class ConversationCreateRequest(BaseModel):
 
     scope_type: ConversationScopeType
     scope_id: UUID | None = None
-    title: str = Field(default="New conversation", min_length=1, max_length=240)
+    title: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=240,
+    )
     paper_context: PaperContext | None = None
     tool_permissions: OrderedWorkspacePermissions | None = None
 

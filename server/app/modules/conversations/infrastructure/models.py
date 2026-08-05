@@ -19,9 +19,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.modules.conversations.domain import DEFAULT_CONVERSATION_TITLE
 from app.shared.domain import JsonValue
-from app.shared.infrastructure.persistence import Base
 from app.shared.domain.enums import ConversationScopeType
+from app.shared.infrastructure.persistence import Base
 
 if TYPE_CHECKING:
     from app.modules.papers.infrastructure.models import Document
@@ -165,7 +166,7 @@ class Conversation(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     title: Mapped[str] = mapped_column(
-        String(240), nullable=False, default="New conversation"
+        String(240), nullable=False, default=DEFAULT_CONVERSATION_TITLE
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger,

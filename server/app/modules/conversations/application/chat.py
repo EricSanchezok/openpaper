@@ -52,6 +52,7 @@ class ConversationChatScope:
     document_id: UUID | None
     paper_context: PaperCollection
     tool_permissions: frozenset[WorkspacePermission]
+    title_is_default: bool
 
 
 @dataclass(frozen=True, slots=True)

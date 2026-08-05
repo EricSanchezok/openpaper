@@ -39,6 +39,9 @@ payloads are not product UI. `complete` and `error` are terminal. The user may
 abort an active stream; the Web app never automatically retries message creation.
 After completion, only the active conversation, its messages, and the
 conversation list are invalidated.
+The Server replaces the default Sidebar title once after the first successful
+assistant reply. Follow-up turns do not regenerate it, and user renames are
+never overwritten by title generation.
 
 ## State coverage
 

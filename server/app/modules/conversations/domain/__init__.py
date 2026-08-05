@@ -8,10 +8,13 @@ from .access import (
     require_conversation_continuable,
 )
 
+DEFAULT_CONVERSATION_TITLE = "New conversation"
+
 __all__ = [
     "ConversationAccessDecision",
     "ConversationAccessFacts",
     "ConversationReadOnlyReason",
+    "DEFAULT_CONVERSATION_TITLE",
     "evaluate_conversation_access",
     "require_conversation_continuable",
 ]

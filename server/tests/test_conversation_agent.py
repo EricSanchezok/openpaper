@@ -151,6 +151,7 @@ def _scope() -> ConversationChatScope:
         document_id=None,
         paper_context=LibraryPaperCollection(),
         tool_permissions=frozenset({WorkspacePermission.READ}),
+        title_is_default=True,
     )
 
 
@@ -440,6 +441,7 @@ async def test_unauthorized_tool_is_not_exposed_or_dispatched() -> None:
             document_id=None,
             paper_context=LibraryPaperCollection(),
             tool_permissions=frozenset({WorkspacePermission.WRITE}),
+            title_is_default=False,
         ),
     )
 

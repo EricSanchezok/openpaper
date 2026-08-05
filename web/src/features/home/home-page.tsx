@@ -110,7 +110,6 @@ export function HomeWorkspace({
       if (!conversationId) {
         const conversation = await createConversation({
           scope_type: "global",
-          title: message.slice(0, 240),
           paper_context: context,
         });
         conversationId = conversation.id;
