@@ -210,7 +210,9 @@ export function HomeWorkspace({
       collapsed={collapsed}
       conversations={conversations}
       onCollapsedChange={setCollapsed}
+      onReasoningLevelChange={setReasoningLevel}
       onSignOut={handleSignOut}
+      reasoningLevel={reasoningLevel}
       signingOut={signingOut}
     >
       {activeConversationId ? (

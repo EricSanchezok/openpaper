@@ -206,6 +206,9 @@ export const MobileEmpty: Story = {
     await expect(
       canvas.getByRole("textbox", { name: "问任何问题" }),
     ).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "思考强度：标准" }),
+    ).toBeVisible();
   },
 };
 
@@ -247,6 +250,24 @@ export const MobileConversationLarge: Story = {
   globals: {
     locale: "zh-CN",
     viewport: { value: "largeMobile", isRotated: false },
+  },
+};
+
+export const MobileReasoningMenuOpen: Story = {
+  ...MobileEmpty,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "思考强度：标准" }),
+    );
+    const body = within(document.body);
+    await expect(
+      await body.findByRole("menuitemradio", { name: /标准/ }),
+    ).toBeVisible();
+    await expect(
+      body.getByRole("menuitemradio", { name: /深入/ }),
+    ).toBeVisible();
+    await expect(body.queryByText("选择模型")).not.toBeInTheDocument();
   },
 };
 

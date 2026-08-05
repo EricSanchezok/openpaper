@@ -336,12 +336,6 @@ export function ResearchComposer({
       )}
       onSubmit={form.handleSubmit(submit)}
     >
-      <ReasoningSelector
-        className="col-span-3 row-start-1 justify-self-start lg:hidden"
-        disabled={unavailable}
-        onChange={onReasoningLevelChange}
-        value={reasoningLevel}
-      />
       <textarea
         aria-label={
           compact
@@ -349,7 +343,7 @@ export function ResearchComposer({
             : t("composer.placeholder")
         }
         className={cn(
-          "placeholder:text-muted col-start-2 row-start-2 [field-sizing:content] max-h-32 min-h-12 w-full resize-none self-center overflow-y-auto bg-transparent py-3 text-[17px] leading-6 outline-none focus-visible:outline-none lg:col-span-3 lg:col-start-1 lg:row-start-1 lg:py-0 lg:text-sm",
+          "placeholder:text-muted col-start-2 row-start-1 [field-sizing:content] max-h-32 min-h-12 w-full resize-none self-center overflow-y-auto bg-transparent py-3 text-[17px] leading-6 outline-none focus-visible:outline-none lg:col-span-3 lg:col-start-1 lg:py-0 lg:text-sm",
           compact
             ? "lg:min-h-[22px] lg:leading-[22px]"
             : "lg:min-h-7 lg:leading-7",
@@ -372,14 +366,14 @@ export function ResearchComposer({
         {...form.register("message")}
       />
       {context.kind === "selection" && selectionCount > 0 ? (
-        <div className="col-span-3 row-start-3 flex flex-wrap gap-1.5 lg:row-start-2">
+        <div className="col-span-3 row-start-2 flex flex-wrap gap-1.5">
           <span className="bg-subtle text-secondary inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm lg:text-xs">
             <Icon glyph={Folder} size={16} tone="secondary" />
             {t("context.selectionSummary", { count: selectionCount })}
           </span>
         </div>
       ) : null}
-      <div className="col-start-1 row-start-2 lg:row-start-3">
+      <div className="col-start-1 row-start-1 lg:row-start-3">
         <ContextPicker
           context={context}
           disabled={unavailable}
@@ -398,7 +392,7 @@ export function ResearchComposer({
       />
       {busy && onStop ? (
         <IconButton
-          className="col-start-3 row-start-2 size-12 lg:row-start-3 lg:size-11"
+          className="col-start-3 row-start-1 size-12 lg:row-start-3 lg:size-11"
           label={t("composer.stop")}
           onClick={onStop}
           variant="secondary"
@@ -407,7 +401,7 @@ export function ResearchComposer({
         </IconButton>
       ) : (
         <IconButton
-          className="col-start-3 row-start-2 size-12 lg:row-start-3 lg:size-11"
+          className="col-start-3 row-start-1 size-12 lg:row-start-3 lg:size-11"
           disabled={!form.formState.isValid || busy || unavailable}
           label={t("composer.submit")}
           type="submit"

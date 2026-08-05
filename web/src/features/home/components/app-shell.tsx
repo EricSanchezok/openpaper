@@ -7,6 +7,7 @@ import {
   Folder,
   LogOut,
   Menu,
+  NavArrowDown,
   NavArrowRight,
   Settings,
   SidebarCollapse,
@@ -42,6 +43,7 @@ import { useTheme } from "@/design-system/theme/theme-provider";
 import type { Actor } from "@/features/authentication";
 import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
+import type { ReasoningLevel } from "./research-composer";
 
 type ConversationSummary = components["schemas"]["ConversationSummaryResponse"];
 
@@ -397,6 +399,61 @@ function MobileNavigation({
   );
 }
 
+function MobileReasoningMenu({
+  onChange,
+  value,
+}: {
+  onChange: (level: ReasoningLevel) => void;
+  value: ReasoningLevel;
+}) {
+  const t = useTranslations("Home.composer");
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-label={t("reasoningStrengthValue", {
+            value: t(value),
+          })}
+          className="hover:bg-hover active:bg-pressed ml-1 flex min-h-11 min-w-0 items-center gap-1 rounded-[var(--radius-md)] px-2.5 text-left focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+          type="button"
+        >
+          <span className="truncate text-base font-semibold">{t(value)}</span>
+          <Icon glyph={NavArrowDown} size={16} tone="secondary" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-[min(17rem,calc(100vw-1.5rem))] p-1.5"
+        sideOffset={4}
+      >
+        <DropdownMenuLabel>{t("reasoningStrength")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          onValueChange={(nextValue) => onChange(nextValue as ReasoningLevel)}
+          value={value}
+        >
+          {(["standard", "deep"] as const).map((level) => (
+            <DropdownMenuRadioItem
+              className="min-h-14 items-start py-2.5"
+              key={level}
+              value={level}
+            >
+              <span className="min-w-0">
+                <span className="text-foreground block font-medium">
+                  {t(level)}
+                </span>
+                <span className="text-secondary mt-0.5 block text-xs leading-4">
+                  {t(`${level}Description`)}
+                </span>
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function MobileTabBar() {
   const t = useTranslations("Home.navigation");
   const itemClassName =
@@ -562,7 +619,9 @@ export function AppShell({
   activeConversationId,
   collapsed,
   signingOut,
+  reasoningLevel,
   onCollapsedChange,
+  onReasoningLevelChange,
   onSignOut,
   children,
 }: {
@@ -571,16 +630,15 @@ export function AppShell({
   activeConversationId?: string;
   collapsed: boolean;
   signingOut: boolean;
+  reasoningLevel: ReasoningLevel;
   onCollapsedChange: (collapsed: boolean) => void;
+  onReasoningLevelChange: (level: ReasoningLevel) => void;
   onSignOut: () => Promise<void>;
   children: React.ReactNode;
 }) {
   const t = useTranslations("Home");
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const mobileSheetRef = React.useRef<HTMLDivElement>(null);
-  const activeTitle = conversations.find(
-    (conversation) => conversation.id === activeConversationId,
-  )?.title;
 
   return (
     <div className="bg-canvas flex h-dvh min-h-0 overflow-hidden antialiased lg:h-screen lg:min-h-[36rem]">
@@ -622,7 +680,7 @@ export function AppShell({
       </Sheet>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="border-line shrink-0 border-b pt-[env(safe-area-inset-top)] lg:hidden">
-          <div className="flex h-16 items-center justify-between px-3">
+          <div className="flex h-16 items-center px-3">
             <IconButton
               label={t("navigation.openMenu")}
               onClick={() => setMobileOpen(true)}
@@ -630,12 +688,13 @@ export function AppShell({
             >
               <Icon glyph={Menu} size={24} />
             </IconButton>
-            <span className="min-w-0 flex-1 truncate px-3 text-center text-base font-semibold">
-              {activeTitle || "Scholens"}
-            </span>
+            <MobileReasoningMenu
+              onChange={onReasoningLevelChange}
+              value={reasoningLevel}
+            />
             <Link
               aria-label={t("navigation.newChat")}
-              className="hover:bg-hover active:bg-pressed grid size-11 place-items-center rounded-[var(--radius-md)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+              className="hover:bg-hover active:bg-pressed ml-auto grid size-11 place-items-center rounded-[var(--radius-md)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
               href="/"
             >
               <Icon glyph={ChatPlusIn} size={24} />

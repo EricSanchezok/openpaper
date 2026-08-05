@@ -223,6 +223,19 @@ test("fits the Home shell at 390px without horizontal scrolling", async ({
     }),
   ).toBeDisabled();
 
+  await page
+    .getByRole("button", { name: "Reasoning strength: Standard" })
+    .click();
+  await expect(page.getByRole("menuitemradio")).toHaveCount(2);
+  await expect(
+    page.getByRole("menuitemradio", { name: /Standard/ }),
+  ).toBeVisible();
+  await expect(page.getByText("Choose model")).toHaveCount(0);
+  await page.getByRole("menuitemradio", { name: /Deep/ }).click();
+  await expect(
+    page.getByRole("button", { name: "Reasoning strength: Deep" }),
+  ).toBeVisible();
+
   await page.getByRole("button", { name: "Open navigation" }).click();
   const navigationHub = page.getByRole("dialog");
   await expect(

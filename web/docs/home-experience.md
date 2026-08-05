@@ -80,12 +80,13 @@ messages are reconciled by `turn_id`; the isolated deduplication state guards
 against showing the same user message twice while a stream is active.
 
 On phones, the shell uses a 64 px content bar plus platform safe-area insets.
-The bar owns the active conversation title and new-chat action, so the
-conversation view does not repeat a second title row. Conversation content uses
-a larger reading scale, touch-sized activity disclosure and source rows, and a
-bottom composer above the primary navigation. The composer starts as a
-single-line input row, grows with the user's text, keeps context and submit
-controls in the thumb zone, and places reasoning strength in a separate row.
+The bar owns navigation, the current reasoning-strength selector, and the
+new-chat action. The selector exposes only Standard and Deep; model selection
+is not part of the Scholens product surface. Conversation content uses a larger
+reading scale, touch-sized activity disclosure and source rows, and a bottom
+composer above the primary navigation. The composer starts as a single-line
+input row, grows with the user's text, and keeps context and submit controls in
+the thumb zone without repeating reasoning controls inside the input surface.
 Markdown is rendered as semantic headings, lists, links, code, and
 horizontally scrollable tables; raw HTML is not accepted. The same messages,
 stream reducer, context state, and submission logic are used by desktop and
@@ -93,7 +94,7 @@ mobile.
 
 The mobile visual baseline is represented by `Home / Workspace / Mobile Empty`,
 `Mobile Composer Expanded`, `Mobile Conversation`, `Mobile Conversation Large`,
-`Mobile Navigation Open`, and `Mobile Processing`, plus
+`Mobile Reasoning Menu Open`, `Mobile Navigation Open`, and `Mobile Processing`, plus
 `Conversation View / Mobile Research Answer` in Light and Dark. The acceptance
 set covers 390 x 844 and 430 x 932; 320 x 568 is an overflow and
 minimum-usability check rather than the primary aesthetic target.

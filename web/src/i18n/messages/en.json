@@ -64,6 +64,8 @@
       "addContext": "Add context",
       "standard": "Standard",
       "deep": "Deep",
+      "reasoningStrength": "Reasoning strength",
+      "reasoningStrengthValue": "Reasoning strength: {value}",
       "standardDescription": "Fast, balanced reasoning",
       "deepDescription": "More thorough reasoning"
     },

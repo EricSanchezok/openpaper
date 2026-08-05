@@ -64,6 +64,8 @@
       "addContext": "添加上下文",
       "standard": "标准",
       "deep": "深入",
+      "reasoningStrength": "思考强度",
+      "reasoningStrengthValue": "思考强度：{value}",
       "standardDescription": "快速、均衡的推理",
       "deepDescription": "更充分地分析复杂问题"
     },
