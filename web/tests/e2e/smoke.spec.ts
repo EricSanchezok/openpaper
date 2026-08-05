@@ -215,9 +215,13 @@ test("fits the Home shell at 390px without horizontal scrolling", async ({
   const primaryNavigation = page.getByRole("navigation", {
     name: "Primary navigation",
   });
+  const activeDestination = primaryNavigation.getByRole("link", {
+    name: "Ask",
+  });
+  await expect(activeDestination).toHaveAttribute("aria-current", "page");
   await expect(
-    primaryNavigation.getByRole("link", { name: "Ask" }),
-  ).toHaveAttribute("aria-current", "page");
+    activeDestination.locator("[data-selected-indicator]"),
+  ).toBeVisible();
   await expect(
     primaryNavigation.getByRole("button", {
       name: "Library. Not available yet",

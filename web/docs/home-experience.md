@@ -77,7 +77,7 @@ The mobile Dock acceptance inventory extends that mapping:
 
 | Figma `20 — Home / Mobile` target | Storybook acceptance state                  |
 | --------------------------------- | ------------------------------------------- |
-| Empty + Dock                      | `Workspace / Mobile Empty`                  |
+| Empty + Dock / Ask selected       | `Workspace / Mobile Empty`                  |
 | Conversation + Dock               | `Workspace / Mobile Conversation`           |
 | Keyboard Open                     | `Workspace / Mobile Keyboard Open`          |
 | Library scope                     | `Research Composer / Library Scope`         |
@@ -87,11 +87,19 @@ The mobile Dock acceptance inventory extends that mapping:
 | Streaming / Stop                  | `Research Composer / Streaming Stop`        |
 | 430 px Dark English               | `Research Composer / Dark English Large`    |
 
-The executable states are complete. Writing the corresponding active frames,
-Variables, and archived predecessor frames to Figma is temporarily blocked by
-the expired Figma connector authorization. Until it is reauthorized, the DTCG
-tokens and Storybook states above are the implementation evidence; the older
-mobile Figma frames must not be treated as the current Dock contract.
+The mobile acceptance set is synchronized to the active `20 — Home` Figma
+page. Its primary navigation state uses the shared action surface and inverse
+icon roles for the current destination, while inactive destinations retain the
+muted semantic role. Each future destination must supply its own
+`aria-current="page"` state when its vertical slice becomes available; Home
+does not create placeholder routes merely to demonstrate those states.
+The selected-state specimens are the node-specific
+[Ask](https://www.figma.com/design/2T5BuTPMIrM2jsVhgIVYIX/Scholens-%E2%80%94-Product-Design?node-id=882-3416),
+[Library](https://www.figma.com/design/2T5BuTPMIrM2jsVhgIVYIX/Scholens-%E2%80%94-Product-Design?node-id=882-3437),
+and
+[Projects](https://www.figma.com/design/2T5BuTPMIrM2jsVhgIVYIX/Scholens-%E2%80%94-Product-Design?node-id=882-3458)
+frames. Library and Projects document the future selected visual state only;
+their runtime destinations remain deliberately unavailable in the Home slice.
 
 The former heavy process card is archived in Figma and is not a supported Web
 state. `Conversation View / Narrow Long Subject` and
@@ -118,6 +126,10 @@ single project or paper, multiple papers, a mixed item count, or the empty
 selection; visible titles may truncate, while the accessible name always
 contains the full scope. The separate selected-source chip remains desktop-only.
 Every scope, send, stop, and navigation target remains at least 48 px.
+The current bottom-navigation destination is represented by both
+`aria-current="page"` and a filled circular icon surface, with a stronger label.
+This state is not color-only: shape, weight, and semantics remain distinguishable
+in monochrome, Dark appearance, and high-contrast environments.
 
 While the Composer is focused, the shell combines `visualViewport` occlusion
 with the layout viewport to distinguish a soft keyboard from a hardware

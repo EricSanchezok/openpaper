@@ -458,7 +458,7 @@ function MobileReasoningMenu({
 function MobileTabBar() {
   const t = useTranslations("Home.navigation");
   const itemClassName =
-    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none";
+    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none";
 
   return (
     <nav
@@ -471,8 +471,13 @@ function MobileTabBar() {
         className={cn(itemClassName, "text-foreground")}
         href="/"
       >
-        <Icon glyph={ChatBubbleEmpty} size={24} />
-        <span>{t("ask")}</span>
+        <span
+          className="bg-primary grid size-8 place-items-center rounded-full"
+          data-selected-indicator
+        >
+          <Icon glyph={ChatBubbleEmpty} size={20} tone="inverse" />
+        </span>
+        <span className="font-semibold">{t("ask")}</span>
       </Link>
       <button
         aria-label={`${t("library")}. ${t("comingSoon")}`}
@@ -480,7 +485,9 @@ function MobileTabBar() {
         disabled
         type="button"
       >
-        <Icon glyph={BookStack} size={24} tone="secondary" />
+        <span className="grid size-8 place-items-center">
+          <Icon glyph={BookStack} size={24} tone="secondary" />
+        </span>
         <span>{t("library")}</span>
       </button>
       <button
@@ -489,7 +496,9 @@ function MobileTabBar() {
         disabled
         type="button"
       >
-        <Icon glyph={Folder} size={24} tone="secondary" />
+        <span className="grid size-8 place-items-center">
+          <Icon glyph={Folder} size={24} tone="secondary" />
+        </span>
         <span>{t("projects")}</span>
       </button>
     </nav>

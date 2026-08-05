@@ -161,6 +161,10 @@ Resolved in the unified mobile Dock implementation:
   its visible copy. The full scope remains in its accessible name.
 - Soft-keyboard handling hides navigation and removes bottom safe-area padding;
   hardware keyboards do not change the Dock composition.
+- The active primary destination now has an explicit semantic and visual state:
+  `aria-current="page"`, a filled circular icon surface, inverse icon contrast,
+  and stronger label weight. Inactive destinations keep the muted role, so the
+  selected item is not communicated by color alone.
 
 The earlier 16/12 px gutter suggestion was superseded by the approved 8 px
 product contract after reviewing 320 px thumb targets and available input

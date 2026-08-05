@@ -200,9 +200,13 @@ export const MobileEmpty: Story = {
     const primaryNavigation = await canvas.findByRole("navigation", {
       name: "主导航",
     });
+    const activeDestination = within(primaryNavigation).getByRole("link", {
+      name: "问答",
+    });
+    await expect(activeDestination).toHaveAttribute("aria-current", "page");
     await expect(
-      within(primaryNavigation).getByRole("link", { name: "问答" }),
-    ).toHaveAttribute("aria-current", "page");
+      activeDestination.querySelector("[data-selected-indicator]"),
+    ).not.toBeNull();
     await expect(
       canvas.getByRole("textbox", { name: "问任何问题" }),
     ).toBeVisible();
