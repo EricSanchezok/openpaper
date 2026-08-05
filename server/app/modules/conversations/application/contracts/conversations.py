@@ -8,6 +8,7 @@ from app.modules.research.application.contracts import CitationSnapshot
 from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
 )
+from app.modules.conversations.application.contracts.messages import ConversationTrace
 from app.shared.domain import (
     JsonValue,
     WorkspacePermission,
@@ -155,11 +156,12 @@ class ConversationToolPermissionsResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     id: UUID
+    turn_id: UUID
     role: str
     content: str
     references: ReferenceBundle | None
     artifacts: list[CitationSnapshot] | None
-    trace: dict[str, JsonValue] | None
+    trace: ConversationTrace | None
     scope: list[dict[str, JsonValue]] | None
     sequence: int
 

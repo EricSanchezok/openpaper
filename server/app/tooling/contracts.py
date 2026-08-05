@@ -125,6 +125,7 @@ class ToolDefinition(Generic[CapabilitiesT]):
     required_permission: WorkspacePermission | None
     handler: ToolHandler[CapabilitiesT] | None = None
     workflow_handler: WorkflowToolHandler | None = None
+    activity_subject_field: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -133,6 +134,12 @@ class ToolDefinition(Generic[CapabilitiesT]):
             or not self.name.isidentifier()
         ):
             raise ValueError("tool names must be non-empty lowercase identifiers")
+        if self.activity_subject_field is not None:
+            properties = self.input_model.model_json_schema().get("properties", {})
+            if self.activity_subject_field not in properties:
+                raise ValueError(
+                    f"tool {self.name} activity subject field is not in its schema"
+                )
         if self.execution is ToolExecutionKind.CONTROL:
             if self.required_permission is not None:
                 raise ValueError("control tools cannot require workspace permission")

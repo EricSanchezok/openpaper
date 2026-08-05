@@ -327,8 +327,6 @@ def test_legacy_model_tool_names_cannot_reenter_runtime_code() -> None:
 def test_conversation_answer_runtime_has_one_packet_and_typed_source_path() -> None:
     runtime_files = (
         APP_ROOT / "llm" / "conversation_agent.py",
-        APP_ROOT / "llm" / "conversation_tool_loop.py",
-        APP_ROOT / "llm" / "prompts.py",
         APP_ROOT
         / "modules"
         / "conversations"
@@ -349,8 +347,10 @@ def test_conversation_answer_runtime_has_one_packet_and_typed_source_path() -> N
         assert legacy not in source
 
     agent_source = runtime_files[0].read_text(encoding="utf-8")
-    assert 'label="answer_packet"' in agent_source
-    assert agent_source.count('label="answer_packet"') == 1
+    assert "Agent(" in agent_source
+    assert "run_stream_events(" in agent_source
+    assert "ConversationToolLoop" not in agent_source
+    assert "finish_tool_use" not in agent_source
 
 
 def test_only_versioned_public_routes_are_exposed() -> None:

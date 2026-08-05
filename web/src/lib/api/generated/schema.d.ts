@@ -1983,6 +1983,36 @@ export interface components {
             /** Enabled */
             enabled: boolean;
         };
+        /**
+         * ConversationActivity
+         * @description One sanitized, user-inspectable tool lifecycle entry.
+         */
+        ConversationActivity: {
+            /** Artifact Count */
+            artifact_count?: number | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "search" | "read" | "workspace_action" | "connector";
+            /** Connector Name */
+            connector_name?: string | null;
+            /** Id */
+            id: string;
+            /** Sequence */
+            sequence: number;
+            /** Source Count */
+            source_count?: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "succeeded" | "failed";
+            /** Subject */
+            subject?: string | null;
+            /** Tool Name */
+            tool_name: string;
+        };
         /** ConversationAutoTitleResponse */
         ConversationAutoTitleResponse: {
             /** Title */
@@ -2021,6 +2051,15 @@ export interface components {
              * @default false
              */
             share: boolean;
+        };
+        /** ConversationCitationSummary */
+        ConversationCitationSummary: {
+            /** Annotation Count */
+            annotation_count: number;
+            /** Rejected Source Count */
+            rejected_source_count: number;
+            /** Source Count */
+            source_count: number;
         };
         /** ConversationCreateRequest */
         ConversationCreateRequest: {
@@ -2087,10 +2126,17 @@ export interface components {
          * @description One stable message contract for every conversation scope.
          */
         ConversationMessageRequest: {
+            /**
+             * Locale
+             * @enum {string}
+             */
+            locale: "en" | "zh-CN";
             /** Mentioned Highlight Ids */
             mentioned_highlight_ids?: string[] | null;
             /** @default standard */
             reasoning_level: components["schemas"]["ReasoningLevel"];
+            /** Time Zone */
+            time_zone: string;
             /**
              * Turn Id
              * Format: uuid
@@ -2123,16 +2169,22 @@ export interface components {
          * @enum {string}
          */
         ConversationScopeType: "global" | "project" | "paper";
+        /** ConversationStreamActivityEvent */
+        ConversationStreamActivityEvent: {
+            activity: components["schemas"]["ConversationActivity"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "activity";
+        };
         /** ConversationStreamCompleteEvent */
         ConversationStreamCompleteEvent: {
             /** Artifacts */
             artifacts?: {
                 [key: string]: components["schemas"]["JsonValue-Output"];
             }[];
-            /** Trace */
-            trace?: {
-                [key: string]: components["schemas"]["JsonValue-Output"];
-            } | null;
+            trace?: components["schemas"]["ConversationTrace"] | null;
             /**
              * Turn Id
              * Format: uuid
@@ -2170,17 +2222,7 @@ export interface components {
          * ConversationStreamEventSchema
          * @description Public schema for the JSON payload carried by each SSE event.
          */
-        ConversationStreamEventSchema: components["schemas"]["ConversationStreamStartEvent"] | components["schemas"]["ConversationStreamStatusEvent"] | components["schemas"]["ConversationStreamReasoningEvent"] | components["schemas"]["ConversationStreamContentDeltaEvent"] | components["schemas"]["ConversationStreamReferencesEvent"] | components["schemas"]["ConversationStreamCompleteEvent"] | components["schemas"]["ConversationStreamErrorEvent"];
-        /** ConversationStreamReasoningEvent */
-        ConversationStreamReasoningEvent: {
-            /** Delta */
-            delta: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "reasoning";
-        };
+        ConversationStreamEventSchema: components["schemas"]["ConversationStreamStartEvent"] | components["schemas"]["ConversationStreamActivityEvent"] | components["schemas"]["ConversationStreamContentDeltaEvent"] | components["schemas"]["ConversationStreamReferencesEvent"] | components["schemas"]["ConversationStreamCompleteEvent"] | components["schemas"]["ConversationStreamErrorEvent"];
         /** ConversationStreamReferencesEvent */
         ConversationStreamReferencesEvent: {
             /** References */
@@ -2210,16 +2252,6 @@ export interface components {
              * @enum {string}
              */
             type: "start";
-        };
-        /** ConversationStreamStatusEvent */
-        ConversationStreamStatusEvent: {
-            /** Message */
-            message: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "status";
         };
         /** ConversationSummaryResponse */
         ConversationSummaryResponse: {
@@ -2264,6 +2296,12 @@ export interface components {
         ConversationToolPermissionsResponse: {
             /** Permissions */
             permissions: components["schemas"]["WorkspacePermission"][];
+        };
+        /** ConversationTrace */
+        ConversationTrace: {
+            /** Activities */
+            activities?: components["schemas"]["ConversationActivity"][];
+            citation_summary?: components["schemas"]["ConversationCitationSummary"] | null;
         };
         /** ConversationUpdateRequest */
         ConversationUpdateRequest: {
@@ -3996,10 +4034,12 @@ export interface components {
             }[] | null;
             /** Sequence */
             sequence: number;
-            /** Trace */
-            trace: {
-                [key: string]: components["schemas"]["JsonValue-Output"];
-            } | null;
+            trace: components["schemas"]["ConversationTrace"] | null;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
         };
         /** MessageResponse */
         sanchezcloud_identity__models__auth__MessageResponse: {

@@ -44,6 +44,12 @@ when the agent intentionally works beyond that initial context. Tool activity,
 sources, citations, progress, and errors should use a consistent interaction
 language across all conversational surfaces.
 
+Ordinary questions should receive ordinary answers. Research retrieval is a
+capability the agent uses when evidence is needed, not a mandatory prelude to
+every response. When tools are used, the product may disclose a concise,
+inspectable activity history, but it must not expose model chain-of-thought,
+raw tool arguments, provider heartbeats, or internal iteration mechanics.
+
 That consistency includes the surrounding interface. New pages may have
 different information architecture and density, but they should not invent an
 independent visual or interaction dialect. Shared actions, context, progress,
@@ -53,7 +59,6 @@ as one system rather than a collection of separately themed tools.
 Access control remains an invariant. Contextual flexibility must never allow an
 agent to reach information the current user is not permitted to access.
 
-This is a product direction, not a description of the current backend and not
-an implementation specification. Concrete interfaces, field names, runtime
-structures, and tool schemas should be designed only after the active backend
-refactor has stabilized.
+Concrete event fields and tool schemas remain implementation contracts, but
+the single-agent behavior and disclosure boundary above are durable product
+requirements.

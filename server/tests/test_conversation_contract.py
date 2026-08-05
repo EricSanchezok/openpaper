@@ -29,6 +29,7 @@ from app.modules.conversations.application.contracts.conversations import (
     SelectedPaperContext,
     ConversationUpdateRequest,
 )
+from app.modules.conversations.application.contracts.messages import ConversationTrace
 from app.modules.conversations.infrastructure.presenters import serialize_messages
 from app.modules.conversations.infrastructure.message_repository import MessageCreate
 from app.shared.application import Actor
@@ -47,17 +48,31 @@ def _current_user() -> Actor:
     )
 
 
-def test_assistant_trace_serializes_as_an_object() -> None:
+def test_assistant_trace_serializes_as_a_typed_product_trace() -> None:
     message = Message(
         id=uuid.uuid4(),
+        turn_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
         role="assistant",
         content="Answer",
         references={"annotations": [], "sources": []},
         trace={
-            "citations": [],
-            "tool_calls": [{"name": "search", "status": "completed"}],
-            "status_messages": ["Searching the library"],
+            "activities": [
+                {
+                    "id": "search-1",
+                    "sequence": 1,
+                    "category": "search",
+                    "state": "succeeded",
+                    "tool_name": "search_papers",
+                    "subject": "reasoning compression",
+                    "source_count": 2,
+                }
+            ],
+            "citation_summary": {
+                "source_count": 2,
+                "annotation_count": 1,
+                "rejected_source_count": 0,
+            },
         },
         sequence=2,
     )
@@ -65,11 +80,8 @@ def test_assistant_trace_serializes_as_an_object() -> None:
 
     serialized = serialize_messages([message])
 
-    assert serialized[0].trace == {
-        "citations": [],
-        "tool_calls": [{"name": "search", "status": "completed"}],
-        "status_messages": ["Searching the library"],
-    }
+    assert serialized[0].trace == ConversationTrace.model_validate(message.trace)
+    assert serialized[0].turn_id == message.turn_id
 
 
 def test_conversation_scope_contract_is_private_and_unified() -> None:
@@ -125,8 +137,7 @@ def test_conversation_messages_expose_a_typed_standard_sse_contract() -> None:
     ]["oneOf"]
     assert {item["$ref"].rsplit("/", maxsplit=1)[-1] for item in event_schema} == {
         "ConversationStreamStartEvent",
-        "ConversationStreamStatusEvent",
-        "ConversationStreamReasoningEvent",
+        "ConversationStreamActivityEvent",
         "ConversationStreamContentDeltaEvent",
         "ConversationStreamReferencesEvent",
         "ConversationStreamCompleteEvent",

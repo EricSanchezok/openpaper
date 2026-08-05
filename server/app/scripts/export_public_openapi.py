@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,9 @@ def _install_auth_failure_responses(schema: dict[str, Any]) -> None:
 
 
 def public_openapi_schema() -> dict[str, Any]:
-    schema = app.openapi()
+    # FastAPI caches and returns the same dictionary instance. Export filtering
+    # must never mutate the live application's schema in this process.
+    schema = deepcopy(app.openapi())
     schema["paths"] = {
         path: schema["paths"][path]
         for path in sorted(schema.get("paths", {}))

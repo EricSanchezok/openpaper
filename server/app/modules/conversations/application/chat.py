@@ -10,6 +10,7 @@ from uuid import UUID
 
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
+    ConversationTrace,
 )
 from app.modules.operation_journal.application import OperationJournal
 from app.modules.operation_journal.domain import (
@@ -77,9 +78,10 @@ class ConversationContextSnapshot:
 @dataclass(frozen=True, slots=True)
 class PersistedChatMessage:
     id: UUID
+    turn_id: UUID
     content: str
     references: dict[str, JsonValue] | None
-    trace: dict[str, JsonValue] | None
+    trace: ConversationTrace | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +159,7 @@ class ConversationChatDataGateway(Protocol):
         turn_id: UUID,
         assistant_content: str,
         assistant_references: dict[str, JsonValue] | None,
-        assistant_trace: dict[str, JsonValue] | None,
+        assistant_trace: ConversationTrace | None,
         artifacts: list[dict[str, JsonValue]],
         created_operation_id: UUID,
         correlation_id: UUID,
@@ -271,7 +273,7 @@ class ConversationChatData:
         turn_id: UUID,
         assistant_content: str,
         assistant_references: dict[str, JsonValue] | None,
-        assistant_trace: dict[str, JsonValue] | None,
+        assistant_trace: ConversationTrace | None,
         artifacts: list[dict[str, JsonValue]],
     ) -> ConversationTurnCompletion:
         result = self._gateway.complete_turn(

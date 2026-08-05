@@ -14,6 +14,20 @@ from app.modules.conversations.application.contracts.answer_packet import (
 )
 
 
+def grounded_citation_instructions(nonce: str) -> str:
+    """Instructions that remain valid while an agent discovers sources."""
+
+    return (
+        "Tool results may include server-validated integer source_keys. When a "
+        "factual passage relies on those materials, append exactly one private "
+        f"[[SCHOLENS_CITE:{nonce}:1]] marker after the passage, replacing 1 with "
+        "every supplied key that supports it. Never cite a key absent from a tool "
+        "result or the initial answer packet. Do not show Markdown footnotes, a "
+        "bibliography, URLs, document IDs, or these private markers as prose. If no "
+        "validated keys are supplied, do not emit a citation marker."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GroundedAnswerMetrics:
     annotations_emitted: int

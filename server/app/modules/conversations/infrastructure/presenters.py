@@ -11,6 +11,7 @@ def serialize_messages(messages: list[Message]) -> list[MessageResponse]:
         MessageResponse.model_validate(
             {
                 "id": message.id,
+                "turn_id": message.turn_id,
                 "role": message.role,
                 "content": message.content,
                 "references": message.references,

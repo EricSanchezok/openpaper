@@ -25,6 +25,7 @@ from app.modules.conversations.application.chat import (
 )
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
+    ConversationTrace,
 )
 from app.modules.conversations.infrastructure.message_repository import (
     MessageCreate,
@@ -294,9 +295,14 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             raise TypeError("expected Message")
         return PersistedChatMessage(
             id=message.id,
+            turn_id=message.turn_id,
             content=message.content,
             references=message.references,
-            trace=message.trace,
+            trace=(
+                ConversationTrace.model_validate(message.trace)
+                if message.trace is not None
+                else None
+            ),
         )
 
     def start_turn(
@@ -380,7 +386,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
         turn_id: uuid.UUID,
         assistant_content: str,
         assistant_references: dict[str, JsonValue] | None,
-        assistant_trace: dict[str, JsonValue] | None,
+        assistant_trace: ConversationTrace | None,
         artifacts: list[dict[str, JsonValue]],
         created_operation_id: uuid.UUID,
         correlation_id: uuid.UUID,

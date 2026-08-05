@@ -31,9 +31,12 @@ contracts. It does not import from `client/` and does not define duplicate wire
 DTOs.
 
 Conversation creation and continuation use one standard SSE decoder. The
-stream accepts `start`, `status`, `reasoning`, `content_delta`, `references`,
-`complete`, and `error`. `complete` and `error` are terminal. The user may abort
-an active stream; the Web app never automatically retries message creation.
+stream accepts `start`, `activity`, `content_delta`, `references`, `complete`,
+and `error`. `activity` is an ID-addressed, sanitized tool lifecycle record;
+the interface derives localized progress copy from its category and state.
+Model reasoning, provider heartbeats, raw tool names, arguments, and return
+payloads are not product UI. `complete` and `error` are terminal. The user may
+abort an active stream; the Web app never automatically retries message creation.
 After completion, only the active conversation, its messages, and the
 conversation list are invalidated.
 
@@ -44,7 +47,7 @@ conversation list are invalidated.
 | Home data    | populated, loading/slow, empty, and recoverable error                                |
 | Navigation   | expanded, collapsed, mobile drawer, active conversation                              |
 | Context      | entire library and selected project/paper sources, including search                  |
-| Conversation | history, processing, reasoning, content, references, complete, cancelled, and error  |
+| Conversation | direct answer, tool activity, partial failure, references, complete, cancelled, error |
 | Presentation | English, Simplified Chinese, Light, Dark, 1440 px, 390 px, and 320 px overflow check |
 
 When both recent-paper and recent-project queries settle empty, Home uses a

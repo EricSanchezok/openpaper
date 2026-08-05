@@ -4,6 +4,7 @@ from uuid import UUID
 from app.helpers.postgres import sanitize_for_postgres
 from app.database.models import Conversation, Message, RoleType
 from app.shared.domain import JsonValue
+from app.modules.conversations.application.contracts.messages import ConversationTrace
 from app.shared.domain import AppError, FailureKind
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc, func, select
@@ -20,7 +21,7 @@ class MessageCreate(BaseModel):
     role: RoleType
     content: str
     references: dict[str, JsonValue] | None = None
-    trace: dict[str, JsonValue] | None = None
+    trace: ConversationTrace | None = None
     # Denormalized @-mention context snapshot: [{kind, id, title}].
     scope: list[dict[str, JsonValue]] | None = None
 

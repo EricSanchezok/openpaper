@@ -931,6 +931,7 @@ def build_workspace_tool_catalog(
             execution=ToolExecutionKind.QUERY,
             required_permission=WorkspacePermission.READ,
             handler=_search_papers,
+            activity_subject_field="query",
         ),
         ToolDefinition(
             name="get_paper",
@@ -965,6 +966,7 @@ def build_workspace_tool_catalog(
             execution=ToolExecutionKind.QUERY,
             required_permission=WorkspacePermission.READ,
             handler=_search_paper_content,
+            activity_subject_field="query",
         ),
         ToolDefinition(
             name="get_paper_content_range",
@@ -1193,25 +1195,17 @@ def build_workspace_tool_catalog(
             required_permission=WorkspacePermission.READ,
             handler=_get_job,
         ),
-        ToolDefinition(
-            name="finish_tool_use",
-            description="Finish tool use when no further operation is needed.",
-            input_model=EmptyInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=None,
-        ),
     ]
     workspace_names = frozenset(
         definition.name
         for definition in definitions
-        if definition.execution is not ToolExecutionKind.CONTROL
     )
     return ToolCatalog(
         definitions,
         [
             ToolProfile(
                 name=CONVERSATION_TOOL_PROFILE,
-                tool_names=workspace_names | {"finish_tool_use"},
+                tool_names=workspace_names,
             ),
             ToolProfile(
                 name=MCP_TOOL_PROFILE,

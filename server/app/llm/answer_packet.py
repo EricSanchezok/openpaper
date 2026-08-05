@@ -219,6 +219,31 @@ class AnswerPacketBuilder:
         )
         materials: list[AnswerMaterial] = []
 
+        # Direct context is registered first so its source keys remain stable as
+        # tool observations are appended during a single agent run.
+        for source_index, candidate in enumerate(direct_sources):
+            if isinstance(candidate, ExternalSourceCandidate):
+                registry.reject()
+                continue
+            keys = registry.add(candidate)
+            if not keys:
+                continue
+            materials.append(
+                AnswerMaterial(
+                    id=f"direct-{source_index}",
+                    content={
+                        "kind": "direct_source",
+                        "title": candidate.title,
+                        "locator": (
+                            candidate.locator
+                            if isinstance(candidate, DocumentSourceCandidate)
+                            else None
+                        ),
+                    },
+                    source_keys=keys,
+                )
+            )
+
         for observation in tool_state.observations:
             verified_candidates: list[ToolSourceCandidate] = []
             for candidate in observation.sources:
@@ -245,29 +270,6 @@ class AnswerPacketBuilder:
                         source_keys=source_keys,
                     )
                 )
-
-        for source_index, candidate in enumerate(direct_sources):
-            if isinstance(candidate, ExternalSourceCandidate):
-                registry.reject()
-                continue
-            keys = registry.add(candidate)
-            if not keys:
-                continue
-            materials.append(
-                AnswerMaterial(
-                    id=f"direct-{source_index}",
-                    content={
-                        "kind": "direct_source",
-                        "title": candidate.title,
-                        "locator": (
-                            candidate.locator
-                            if isinstance(candidate, DocumentSourceCandidate)
-                            else None
-                        ),
-                    },
-                    source_keys=keys,
-                )
-            )
 
         for material_index, content in enumerate(user_materials):
             materials.append(
