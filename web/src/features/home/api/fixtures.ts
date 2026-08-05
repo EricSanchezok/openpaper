@@ -195,6 +195,7 @@ export const homeProjects: Project[] = [
 export const homeMessages: Message[] = [
   {
     id: "40000000-0000-4000-8000-000000000001",
+    turn_id: "50000000-0000-4000-8000-000000000001",
     role: "user",
     content: "What is the paper’s central contribution?",
     references: null,
@@ -205,6 +206,7 @@ export const homeMessages: Message[] = [
   },
   {
     id: "40000000-0000-4000-8000-000000000002",
+    turn_id: "50000000-0000-4000-8000-000000000001",
     role: "assistant",
     content:
       "The paper’s central contribution is a persistent runtime for agents that continue beyond a single interaction. It treats identity, collaboration, and accumulated experience as parts of the operating model—not add-ons to a chat session.",
@@ -224,11 +226,33 @@ export const homeMessages: Message[] = [
     },
     artifacts: null,
     trace: {
-      status_messages: [
-        "Read the relevant passages",
-        "Compared claims with evidence",
-        "Grounded the response",
+      activities: [
+        {
+          id: "search-1",
+          sequence: 1,
+          category: "search",
+          state: "succeeded",
+          tool_name: "search_papers",
+          subject: "persistent agent runtime",
+          source_count: 1,
+          artifact_count: 0,
+        },
+        {
+          id: "read-2",
+          sequence: 2,
+          category: "read",
+          state: "succeeded",
+          tool_name: "get_paper_content",
+          subject: "Synergy: A Next-Generation General-Purpose Agent",
+          source_count: 1,
+          artifact_count: 0,
+        },
       ],
+      citation_summary: {
+        source_count: 1,
+        annotation_count: 1,
+        rejected_source_count: 0,
+      },
     },
     scope: null,
     sequence: 2,

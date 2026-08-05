@@ -94,12 +94,10 @@
     },
     "conversation": {
       "assistant": "Scholens",
-      "process": "Research process",
-      "reasoning": "Reasoning",
+      "assistantMessage": "Assistant response",
       "sources": "Sources",
       "loading": "Loading conversation",
       "empty": "Ask a question to begin this conversation.",
-      "working": "Working across your research…",
       "cancelled": "Response stopped. You can ask again.",
       "error": "The response could not be completed.",
       "retry": "Try again",
@@ -107,7 +105,29 @@
       "readOnly": "You can read this conversation, but you no longer have permission to continue it.",
       "readOnlyReason": "This conversation is read-only because its research context is no longer available.",
       "reference": "Source {number}",
-      "unknownSource": "Research source"
+      "unknownSource": "Research source",
+      "activity": {
+        "thinking": "Thinking…",
+        "searching": "Searching your research…",
+        "reading": "Reading relevant sources…",
+        "updatingWorkspace": "Updating your workspace…",
+        "usingConnector": "Using {connector}…",
+        "completeSummary": "Completed · {count, plural, one {# action} other {# actions}} · {sources, plural, one {# source} other {# sources}}",
+        "partialSummary": "Partially completed · {count, plural, one {# action} other {# actions}} · {sources, plural, one {# source} other {# sources}}",
+        "stopped": "Stopped",
+        "failed": "Could not complete",
+        "search": "Searched research sources",
+        "read": "Read source material",
+        "workspace_action": "Updated the workspace",
+        "connector": "Used {connector}",
+        "connectorFallback": "a connector",
+        "results": "{sources, plural, =0 {No sources} one {# source} other {# sources}} · {artifacts, plural, =0 {no artifacts} one {# artifact} other {# artifacts}}",
+        "state": {
+          "running": "In progress",
+          "succeeded": "Completed",
+          "failed": "Failed"
+        }
+      }
     },
     "session": {
       "checking": "Opening your research workspace",

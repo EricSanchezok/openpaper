@@ -94,12 +94,10 @@
     },
     "conversation": {
       "assistant": "Scholens",
-      "process": "研究过程",
-      "reasoning": "推理",
+      "assistantMessage": "助手回复",
       "sources": "来源",
       "loading": "正在加载对话",
       "empty": "提出一个问题以开始这次对话。",
-      "working": "正在检索你的研究资料…",
       "cancelled": "已停止生成，你可以重新提问。",
       "error": "未能完成这次回答。",
       "retry": "重试",
@@ -107,7 +105,29 @@
       "readOnly": "你可以阅读此对话，但已没有权限继续发送消息。",
       "readOnlyReason": "此对话的研究上下文已不可用，因此当前为只读状态。",
       "reference": "来源 {number}",
-      "unknownSource": "研究来源"
+      "unknownSource": "研究来源",
+      "activity": {
+        "thinking": "正在思考…",
+        "searching": "正在检索你的研究资料…",
+        "reading": "正在阅读相关资料…",
+        "updatingWorkspace": "正在更新你的工作区…",
+        "usingConnector": "正在使用 {connector}…",
+        "completeSummary": "已完成 · {count} 项操作 · {sources} 个来源",
+        "partialSummary": "部分完成 · {count} 项操作 · {sources} 个来源",
+        "stopped": "已停止",
+        "failed": "未能完成",
+        "search": "检索研究资料",
+        "read": "阅读相关资料",
+        "workspace_action": "更新工作区",
+        "connector": "使用 {connector}",
+        "connectorFallback": "连接器",
+        "results": "{sources} 个来源 · {artifacts} 个产物",
+        "state": {
+          "running": "进行中",
+          "succeeded": "已完成",
+          "failed": "失败"
+        }
+      }
     },
     "session": {
       "checking": "正在打开研究工作台",

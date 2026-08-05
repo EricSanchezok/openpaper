@@ -42,13 +42,33 @@ conversation list are invalidated.
 
 ## State coverage
 
-| Surface      | Deterministic coverage                                                               |
-| ------------ | ------------------------------------------------------------------------------------ |
-| Home data    | populated, loading/slow, empty, and recoverable error                                |
-| Navigation   | expanded, collapsed, mobile drawer, active conversation                              |
-| Context      | entire library and selected project/paper sources, including search                  |
+| Surface      | Deterministic coverage                                                                |
+| ------------ | ------------------------------------------------------------------------------------- |
+| Home data    | populated, loading/slow, empty, and recoverable error                                 |
+| Navigation   | expanded, collapsed, mobile drawer, active conversation                               |
+| Context      | entire library and selected project/paper sources, including search                   |
 | Conversation | direct answer, tool activity, partial failure, references, complete, cancelled, error |
-| Presentation | English, Simplified Chinese, Light, Dark, 1440 px, 390 px, and 320 px overflow check |
+| Presentation | English, Simplified Chinese, Light, Dark, 1440 px, 390 px, and 320 px overflow check  |
+
+The Figma conversation-state frames and Storybook stories map one-to-one:
+
+| Figma `20 — Home` state    | Storybook acceptance state                    |
+| -------------------------- | --------------------------------------------- |
+| Direct answer              | `Conversation View / Direct Answer`           |
+| Thinking before tools      | `Conversation View / Thinking Without Tools`  |
+| Single tool running        | `Conversation View / Single Tool Running`     |
+| Multiple tools expanded    | `Conversation View / Multiple Tools Expanded` |
+| Partial tool failure       | `Conversation View / Partial Failure`         |
+| Completed activity summary | `Conversation View / Multiple Tools Expanded` |
+| Cancelled                  | `Conversation View / Cancelled`               |
+| Error                      | `Conversation View / Error`                   |
+
+The former heavy process card is archived in Figma and is not a supported Web
+state. `Conversation View / Narrow Long Subject` and
+`Conversation View / Simplified Chinese Dark` supplement the Figma mapping with
+runtime overflow, locale, and appearance coverage. Optimistic and persisted
+messages are reconciled by `turn_id`; the isolated deduplication state guards
+against showing the same user message twice while a stream is active.
 
 When both recent-paper and recent-project queries settle empty, Home uses a
 focused first-run composition instead of preserving empty card silhouettes.

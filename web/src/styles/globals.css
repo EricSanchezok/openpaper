@@ -35,6 +35,23 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+@keyframes activity-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+.activity-copy-enter {
+  animation: activity-copy-in 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-copy-enter {
+    animation: none;
+  }
+}
+
 @utility safe-page {
   min-height: 100vh;
   min-height: 100dvh;

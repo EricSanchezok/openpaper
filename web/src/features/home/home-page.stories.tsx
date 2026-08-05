@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { authHandlers, actor } from "../../../.storybook/msw/auth-handlers";
 import { Providers } from "@/app/providers";
@@ -130,9 +130,9 @@ export const Processing: Story = {
     });
     await userEvent.type(composer, "Compare the selected papers");
     await userEvent.click(canvas.getByRole("button", { name: "Ask Scholens" }));
-    await expect(
-      await canvas.findByText("Searching the library"),
-    ).toBeVisible();
+    await waitFor(() =>
+      expect(canvas.getByText("Searching your research…")).toBeVisible(),
+    );
     await expect(
       canvas.getByRole("button", { name: "Stop response" }),
     ).toBeVisible();

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
+import type { ConversationActivity, LiveTurn } from "../conversation-state";
 import {
   ResearchComposer,
   type ReasoningLevel,
@@ -25,15 +26,6 @@ type LibraryPaper = components["schemas"]["LibraryPaperResponse"];
 type Project = components["schemas"]["ProjectResponse"];
 type ReferenceBundle = components["schemas"]["ReferenceBundle"];
 
-export type LiveTurn = {
-  userMessage: string;
-  content: string;
-  statuses: string[];
-  reasoning: string;
-  references: Record<string, unknown> | null;
-  state: "streaming" | "complete" | "cancelled" | "error";
-};
-
 function isReferenceBundle(value: unknown): value is ReferenceBundle {
   return Boolean(
     value &&
@@ -42,79 +34,180 @@ function isReferenceBundle(value: unknown): value is ReferenceBundle {
   );
 }
 
-function statusMessages(trace: Message["trace"]): string[] {
-  if (!trace) return [];
-  const value = trace.status_messages;
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
+function sourceCount(references: unknown) {
+  return isReferenceBundle(references) ? (references.sources?.length ?? 0) : 0;
 }
 
-function reasoningContent(trace: Message["trace"]) {
-  return trace && typeof trace.reasoning_content === "string"
-    ? trace.reasoning_content
-    : "";
+function activityLabel(
+  activity: ConversationActivity,
+  t: ReturnType<typeof useTranslations<"Home.conversation">>,
+) {
+  if (activity.category === "connector") {
+    return t("activity.connector", {
+      connector: activity.connector_name || t("activity.connectorFallback"),
+    });
+  }
+  return t(`activity.${activity.category}`);
 }
 
-function ProcessDisclosure({
-  statuses,
-  reasoning,
-  streaming,
+function activitySummary(
+  activities: ConversationActivity[],
+  contentStarted: boolean,
+  state: LiveTurn["state"],
+  sources: number,
+  t: ReturnType<typeof useTranslations<"Home.conversation">>,
+) {
+  if (state === "cancelled") return t("activity.stopped");
+  if (state === "error") return t("activity.failed");
+  const running = activities.findLast(
+    (activity) => activity.state === "running",
+  );
+  if (state === "streaming") {
+    if (running?.category === "search") return t("activity.searching");
+    if (running?.category === "read") return t("activity.reading");
+    if (running?.category === "workspace_action") {
+      return t("activity.updatingWorkspace");
+    }
+    if (running?.category === "connector") {
+      return t("activity.usingConnector", {
+        connector: running.connector_name || t("activity.connectorFallback"),
+      });
+    }
+    if (!contentStarted || activities.length === 0) {
+      return t("activity.thinking");
+    }
+  }
+  const failed = activities.filter(
+    (activity) => activity.state === "failed",
+  ).length;
+  return t(
+    failed > 0 ? "activity.partialSummary" : "activity.completeSummary",
+    {
+      count: activities.length,
+      sources,
+    },
+  );
+}
+
+function ActivityDisclosure({
+  activities,
+  contentStarted,
+  sourceTotal,
+  state,
+  onOpenChange,
 }: {
-  statuses: string[];
-  reasoning: string;
-  streaming?: boolean;
+  activities: ConversationActivity[];
+  contentStarted: boolean;
+  sourceTotal: number;
+  state: LiveTurn["state"];
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations("Home.conversation");
-  const [open, setOpen] = React.useState(false);
-  if (statuses.length === 0 && !reasoning) return null;
+  const [openState, setOpenState] = React.useState({
+    contentStarted,
+    open: false,
+  });
+  const open =
+    openState.contentStarted === contentStarted ? openState.open : false;
+  const hasHistory = activities.length > 0;
+  const visible =
+    hasHistory ||
+    state === "cancelled" ||
+    state === "error" ||
+    (state === "streaming" && !contentStarted);
+  const summary = activitySummary(
+    activities,
+    contentStarted,
+    state,
+    sourceTotal,
+    t,
+  );
+
+  if (!visible) return null;
+
+  function toggle() {
+    if (!hasHistory) return;
+    onOpenChange?.(!open);
+    setOpenState({ contentStarted, open: !open });
+  }
 
   return (
-    <div className="bg-subtle rounded-[var(--radius-md)] p-3">
-      <button
-        aria-expanded={open}
-        className="text-ui flex w-full items-center gap-2 text-left font-medium"
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        <Icon
-          glyph={streaming ? Page : CheckCircle}
-          size={16}
-          tone="secondary"
-        />
-        <span className="min-w-0 flex-1 truncate">
-          {statuses.at(-1) || t("process")}
-        </span>
-        <Icon
-          className={cn(
-            "transition-transform motion-reduce:transition-none",
-            open && "rotate-180",
-          )}
-          glyph={NavArrowDown}
-          size={16}
-          tone="secondary"
-        />
-      </button>
-      {open && (
-        <div className="border-line mt-3 grid gap-2 border-t pt-3">
-          {statuses.map((status, index) => (
-            <div
-              className="text-secondary flex gap-2 text-xs"
-              key={`${status}-${index}`}
-            >
-              <span className="bg-line mt-1.5 size-1.5 shrink-0 rounded-full" />
-              <span>{status}</span>
-            </div>
+    <div className="text-secondary text-sm" data-state={state}>
+      {hasHistory ? (
+        <button
+          aria-expanded={open}
+          className="hover:text-foreground focus-visible:text-foreground flex min-h-8 w-full items-center gap-2 rounded-[var(--radius-sm)] text-left transition-colors motion-reduce:transition-none"
+          onClick={toggle}
+          type="button"
+        >
+          <span
+            aria-live="polite"
+            className="activity-copy-enter min-w-0 flex-1 truncate"
+            key={summary}
+          >
+            {summary}
+          </span>
+          <Icon
+            className={cn(
+              "shrink-0 transition-transform duration-150 motion-reduce:transition-none",
+              open && "rotate-180",
+            )}
+            glyph={NavArrowDown}
+            size={16}
+            tone="secondary"
+          />
+        </button>
+      ) : (
+        <p
+          aria-live="polite"
+          className="flex min-h-8 items-center"
+          role="status"
+        >
+          <span className="activity-copy-enter" key={summary}>
+            {summary}
+          </span>
+        </p>
+      )}
+      {open && hasHistory && (
+        <ol className="border-line mt-1 grid gap-2 border-t pt-3 pb-1">
+          {activities.map((activity) => (
+            <li className="flex min-w-0 gap-2.5" key={activity.id}>
+              <Icon
+                className="mt-0.5 shrink-0"
+                glyph={
+                  activity.state === "failed"
+                    ? WarningTriangle
+                    : activity.state === "succeeded"
+                      ? CheckCircle
+                      : Page
+                }
+                size={16}
+                tone="secondary"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="text-foreground block text-xs font-medium">
+                  {activityLabel(activity, t)}
+                </span>
+                {activity.subject && (
+                  <span className="text-muted mt-0.5 block text-xs leading-5 break-words">
+                    {activity.subject}
+                  </span>
+                )}
+                {Boolean(activity.source_count || activity.artifact_count) && (
+                  <span className="text-muted mt-0.5 block text-xs">
+                    {t("activity.results", {
+                      sources: activity.source_count ?? 0,
+                      artifacts: activity.artifact_count ?? 0,
+                    })}
+                  </span>
+                )}
+              </span>
+              <span className="sr-only">
+                {t(`activity.state.${activity.state}`)}
+              </span>
+            </li>
           ))}
-          {reasoning && (
-            <details className="text-secondary text-xs">
-              <summary className="cursor-pointer font-medium">
-                {t("reasoning")}
-              </summary>
-              <p className="mt-2 whitespace-pre-wrap">{reasoning}</p>
-            </details>
-          )}
-        </div>
+        </ol>
       )}
     </div>
   );
@@ -122,10 +215,9 @@ function ProcessDisclosure({
 
 function Sources({ references }: { references: unknown }) {
   const t = useTranslations("Home.conversation");
-  if (!isReferenceBundle(references) || !references.sources?.length) {
+  if (!isReferenceBundle(references) || !references.sources?.length)
     return null;
-  }
-  const sources = references.sources ?? [];
+  const sources = references.sources;
   return (
     <section className="mt-5">
       <div className="text-ui mb-2 flex items-center gap-2 font-medium">
@@ -138,7 +230,6 @@ function Sources({ references }: { references: unknown }) {
             "title" in source && source.title
               ? source.title
               : t("reference", { number: index + 1 });
-          const content = source.reference;
           const row = (
             <>
               <span className="bg-subtle grid size-6 shrink-0 place-items-center rounded text-xs">
@@ -149,7 +240,7 @@ function Sources({ references }: { references: unknown }) {
                   {title}
                 </span>
                 <span className="text-caption text-muted mt-0.5 line-clamp-1 block">
-                  {content}
+                  {source.reference}
                 </span>
               </span>
             </>
@@ -179,39 +270,35 @@ function Sources({ references }: { references: unknown }) {
 }
 
 function AssistantMessage({
+  activities,
   content,
-  statuses,
-  reasoning,
   references,
-  streaming,
+  sourceTotal,
+  state,
+  onActivityOpenChange,
 }: {
+  activities: ConversationActivity[];
   content: string;
-  statuses: string[];
-  reasoning: string;
   references: unknown;
-  streaming?: boolean;
+  sourceTotal: number;
+  state: LiveTurn["state"];
+  onActivityOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations("Home.conversation");
   return (
-    <article className="grid gap-3">
-      <div className="flex items-center gap-2 text-xs font-medium">
-        <span className="bg-primary text-primary-foreground grid size-6 place-items-center rounded-full">
-          S
-        </span>
-        {t("assistant")}
-      </div>
-      <ProcessDisclosure
-        reasoning={reasoning}
-        statuses={statuses}
-        streaming={streaming}
+    <article aria-label={t("assistantMessage")} className="grid gap-3">
+      <ActivityDisclosure
+        activities={activities}
+        contentStarted={Boolean(content)}
+        onOpenChange={onActivityOpenChange}
+        sourceTotal={sourceTotal}
+        state={state}
       />
-      {content ? (
-        <p className="text-sm leading-7 whitespace-pre-wrap">{content}</p>
-      ) : streaming ? (
-        <p className="text-muted animate-pulse text-sm" role="status">
-          {t("working")}
+      {content && (
+        <p className="max-w-[72ch] text-sm leading-7 whitespace-pre-wrap">
+          {content}
         </p>
-      ) : null}
+      )}
       <Sources references={references} />
     </article>
   );
@@ -229,11 +316,15 @@ function MessageHistory({ messages }: { messages: Message[] }) {
           </div>
         ) : (
           <AssistantMessage
+            activities={message.trace?.activities ?? []}
             content={message.content}
             key={message.id}
-            reasoning={reasoningContent(message.trace)}
             references={message.references}
-            statuses={statusMessages(message.trace)}
+            sourceTotal={
+              message.trace?.citation_summary?.source_count ??
+              sourceCount(message.references)
+            }
+            state="complete"
           />
         ),
       )}
@@ -277,14 +368,50 @@ export function ConversationView({
   readOnlyReason?: string | null;
 }) {
   const t = useTranslations("Home.conversation");
+  const rootRef = React.useRef<HTMLDivElement>(null);
   const scrollAnchor = React.useRef<HTMLDivElement>(null);
+  const nearBottom = React.useRef(true);
+  const visibleMessages = React.useMemo(
+    () =>
+      liveTurn
+        ? messages.filter((message) => message.turn_id !== liveTurn.turnId)
+        : messages,
+    [liveTurn, messages],
+  );
+  const activitySignature = liveTurn?.activities
+    .map((activity) => `${activity.id}:${activity.state}`)
+    .join("|");
 
   React.useEffect(() => {
-    scrollAnchor.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [liveTurn?.content, liveTurn?.statuses.length, messages.length]);
+    const scrollRoot = rootRef.current?.closest("main");
+    if (!scrollRoot) return;
+    const scroller = scrollRoot;
+    function updateProximity() {
+      nearBottom.current =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <
+        120;
+    }
+    updateProximity();
+    scroller.addEventListener("scroll", updateProximity, { passive: true });
+    return () => scroller.removeEventListener("scroll", updateProximity);
+  }, []);
+
+  React.useEffect(() => {
+    if (!nearBottom.current) return;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    scrollAnchor.current?.scrollIntoView({
+      behavior: reducedMotion ? "auto" : "smooth",
+      block: "end",
+    });
+  }, [activitySignature, liveTurn?.content, visibleMessages.length]);
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-4 sm:px-8">
+    <div
+      className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-4 sm:px-8"
+      ref={rootRef}
+    >
       <header className="border-line sticky top-0 z-10 flex h-14 shrink-0 items-center border-b bg-[color-mix(in_oklab,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:h-16">
         <h1 className="truncate text-sm font-medium">
           {title || t("assistant")}
@@ -311,11 +438,11 @@ export function ConversationView({
               {t("retry")}
             </Button>
           </div>
-        ) : messages.length === 0 && !liveTurn ? (
+        ) : visibleMessages.length === 0 && !liveTurn ? (
           <p className="text-muted py-12 text-center text-sm">{t("empty")}</p>
         ) : (
           <div className="grid gap-8">
-            <MessageHistory messages={messages} />
+            <MessageHistory messages={visibleMessages} />
             {liveTurn && (
               <>
                 <div className="flex justify-end">
@@ -324,23 +451,18 @@ export function ConversationView({
                   </p>
                 </div>
                 <AssistantMessage
+                  activities={liveTurn.activities}
                   content={liveTurn.content}
-                  reasoning={liveTurn.reasoning}
+                  onActivityOpenChange={(open) => {
+                    if (open) nearBottom.current = false;
+                  }}
                   references={liveTurn.references}
-                  statuses={liveTurn.statuses}
-                  streaming={liveTurn.state === "streaming"}
+                  sourceTotal={
+                    liveTurn.trace?.citation_summary?.source_count ??
+                    sourceCount(liveTurn.references)
+                  }
+                  state={liveTurn.state}
                 />
-                {liveTurn.state !== "streaming" && (
-                  <p
-                    className={cn(
-                      "text-sm",
-                      liveTurn.state === "error" ? "text-danger" : "text-muted",
-                    )}
-                    role={liveTurn.state === "error" ? "alert" : "status"}
-                  >
-                    {liveTurn.state === "error" ? t("error") : t("cancelled")}
-                  </p>
-                )}
               </>
             )}
             <div ref={scrollAnchor} />

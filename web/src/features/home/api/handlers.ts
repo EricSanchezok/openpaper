@@ -37,34 +37,66 @@ const baseHandlers = [
     `${api}/conversations/:conversationId/context`,
     async ({ request }) => HttpResponse.json(await request.json()),
   ),
-  http.post(`${api}/conversations/:conversationId/messages`, () => {
-    const events = [
-      {
-        type: "start",
-        conversation_id: activeConversation.id,
-        turn_id: crypto.randomUUID(),
-      },
-      { type: "status", message: "Searching the library" },
-      {
-        type: "content_delta",
-        delta: "The answer is grounded in your selected research.",
-      },
-      {
-        type: "complete",
-        turn_id: crypto.randomUUID(),
-        trace: null,
-        artifacts: [],
-      },
-    ];
-    const body = events
-      .map(
-        (event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
-      )
-      .join("");
-    return new HttpResponse(body, {
-      headers: { "Content-Type": "text/event-stream" },
-    });
-  }),
+  http.post(
+    `${api}/conversations/:conversationId/messages`,
+    async ({ request }) => {
+      const requestBody = (await request.json()) as { turn_id: string };
+      const events = [
+        {
+          type: "start",
+          conversation_id: activeConversation.id,
+          turn_id: requestBody.turn_id,
+        },
+        {
+          type: "activity",
+          activity: {
+            id: "search-1",
+            sequence: 1,
+            category: "search",
+            state: "running",
+            tool_name: "search_papers",
+            subject: "selected research",
+          },
+        },
+        {
+          type: "content_delta",
+          delta: "The answer is grounded in your selected research.",
+        },
+        {
+          type: "complete",
+          turn_id: requestBody.turn_id,
+          trace: {
+            activities: [
+              {
+                id: "search-1",
+                sequence: 1,
+                category: "search",
+                state: "succeeded",
+                tool_name: "search_papers",
+                subject: "selected research",
+                source_count: 1,
+                artifact_count: 0,
+              },
+            ],
+            citation_summary: {
+              source_count: 1,
+              annotation_count: 1,
+              rejected_source_count: 0,
+            },
+          },
+          artifacts: [],
+        },
+      ];
+      const body = events
+        .map(
+          (event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+        )
+        .join("");
+      return new HttpResponse(body, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    },
+  ),
 ];
 
 export const homeHandlers = {
@@ -119,9 +151,16 @@ export const homeHandlers = {
         start(controller) {
           controller.enqueue(
             encoder.encode(
-              `event: status\ndata: ${JSON.stringify({
-                type: "status",
-                message: "Searching the library",
+              `event: activity\ndata: ${JSON.stringify({
+                type: "activity",
+                activity: {
+                  id: "search-1",
+                  sequence: 1,
+                  category: "search",
+                  state: "running",
+                  tool_name: "search_papers",
+                  subject: "selected papers",
+                },
               })}\n\n`,
             ),
           );

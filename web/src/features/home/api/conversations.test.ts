@@ -14,9 +14,18 @@ describe("conversation SSE parsing", () => {
   it("joins multiline data fields and ignores comments", () => {
     expect(
       parseConversationEventBlock(
-        ': keep-alive\nevent: status\ndata: {"type":"status",\ndata: "message":"Searching"}',
+        ': keep-alive\nevent: activity\ndata: {"type":"activity",\ndata: "activity":{"id":"search-1","sequence":1,"category":"search","state":"running","tool_name":"search_papers"}}',
       ),
-    ).toEqual({ type: "status", message: "Searching" });
+    ).toEqual({
+      type: "activity",
+      activity: {
+        id: "search-1",
+        sequence: 1,
+        category: "search",
+        state: "running",
+        tool_name: "search_papers",
+      },
+    });
   });
 
   it("ignores blocks without data", () => {

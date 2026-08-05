@@ -2,17 +2,19 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import * as React from "react";
 
 import { AsyncFeedback, LoadingState } from "@/components/feedback";
 import { useToast } from "@/components/ui/toast";
 import { useAuthSession, type Actor } from "@/features/authentication";
 import { AppShell } from "./components/app-shell";
+import { ConversationView } from "./components/conversation-view";
 import {
-  ConversationView,
+  createLiveTurn,
+  reduceLiveTurn,
   type LiveTurn,
-} from "./components/conversation-view";
+} from "./conversation-state";
 import { HomeDashboard } from "./components/home-dashboard";
 import {
   createConversation,
@@ -49,6 +51,7 @@ export function HomeWorkspace({
   const queryClient = useQueryClient();
   const toast = useToast();
   const t = useTranslations("Home");
+  const locale = useLocale() === "zh-CN" ? "zh-CN" : "en";
   const { signOut } = useAuthSession();
   const [pendingConversationId, setPendingConversationId] =
     React.useState<string>();
@@ -97,47 +100,7 @@ export function HomeWorkspace({
   }
 
   function applyStreamEvent(event: ConversationStreamEvent) {
-    if (event.type === "status") {
-      setLiveTurn((current) => {
-        if (!current || current.statuses.at(-1) === event.message)
-          return current;
-        return { ...current, statuses: [...current.statuses, event.message] };
-      });
-    }
-    if (event.type === "reasoning") {
-      setLiveTurn((current) =>
-        current
-          ? { ...current, reasoning: current.reasoning + event.delta }
-          : current,
-      );
-    }
-    if (event.type === "content_delta") {
-      setLiveTurn((current) =>
-        current
-          ? { ...current, content: current.content + event.delta }
-          : current,
-      );
-    }
-    if (event.type === "references") {
-      setLiveTurn((current) =>
-        current
-          ? {
-              ...current,
-              references: event.references as Record<string, unknown>,
-            }
-          : current,
-      );
-    }
-    if (event.type === "error") {
-      setLiveTurn((current) =>
-        current ? { ...current, state: "error" } : current,
-      );
-    }
-    if (event.type === "complete") {
-      setLiveTurn((current) =>
-        current ? { ...current, state: "complete" } : current,
-      );
-    }
+    setLiveTurn((current) => reduceLiveTurn(current, event));
   }
 
   async function sendMessage(message: string) {
@@ -169,22 +132,18 @@ export function HomeWorkspace({
       }
 
       const controller = new AbortController();
+      const turnId = crypto.randomUUID();
       streamController.current = controller;
       setLiveTurnConversationId(conversationId);
-      setLiveTurn({
-        userMessage: message,
-        content: "",
-        statuses: [],
-        reasoning: "",
-        references: null,
-        state: "streaming",
-      });
+      setLiveTurn(createLiveTurn(turnId, message));
       let failed = false;
       await streamConversationMessage({
         conversationId,
         message: {
-          turn_id: crypto.randomUUID(),
+          turn_id: turnId,
           user_query: message,
+          locale,
+          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           reasoning_level: reasoningLevel,
         },
         signal: controller.signal,
