@@ -1196,10 +1196,7 @@ def build_workspace_tool_catalog(
             handler=_get_job,
         ),
     ]
-    workspace_names = frozenset(
-        definition.name
-        for definition in definitions
-    )
+    workspace_names = frozenset(definition.name for definition in definitions)
     return ToolCatalog(
         definitions,
         [

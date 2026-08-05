@@ -19,7 +19,9 @@ from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
     ConversationTrace,
 )
-from app.modules.conversations.application.contracts.answer_packet import ReferenceBundle
+from app.modules.conversations.application.contracts.answer_packet import (
+    ReferenceBundle,
+)
 from app.modules.integrations.connectors.infrastructure.mcp import (
     ResolvedConnectorToolSet,
 )
@@ -106,7 +108,9 @@ class _Dispatcher:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.document_id = uuid4()
 
-    async def dispatch(self, *, name: str, raw_arguments: dict[str, Any], **_kwargs: Any) -> ToolOutcome:
+    async def dispatch(
+        self, *, name: str, raw_arguments: dict[str, Any], **_kwargs: Any
+    ) -> ToolOutcome:
         self.calls.append((name, raw_arguments))
         if self.fail:
             raise AppError(
@@ -224,8 +228,12 @@ async def _events(
 
 @pytest.fixture(autouse=True)
 def _disable_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.llm.conversation_agent.settle_token_usage", lambda **_kwargs: None)
-    monkeypatch.setattr("app.llm.conversation_agent.track_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "app.llm.conversation_agent.settle_token_usage", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        "app.llm.conversation_agent.track_event", lambda *_args, **_kwargs: None
+    )
 
 
 @pytest.mark.asyncio
@@ -282,9 +290,7 @@ async def test_research_tool_streams_sanitized_activity_and_references() -> None
         query="研究思维链压缩技术",
     )
 
-    activities = [
-        event["activity"] for event in events if event["type"] == "activity"
-    ]
+    activities = [event["activity"] for event in events if event["type"] == "activity"]
     assert activities == [
         ConversationActivity(
             id="search-1",
@@ -305,12 +311,11 @@ async def test_research_tool_streams_sanitized_activity_and_references() -> None
             artifact_count=0,
         ),
     ]
-    assert dispatcher.calls == [
-        ("search_papers", {"query": "reasoning compression"})
-    ]
-    assert "".join(
-        str(event["content"]) for event in events if event["type"] == "content"
-    ) == "Grounded claim"
+    assert dispatcher.calls == [("search_papers", {"query": "reasoning compression"})]
+    assert (
+        "".join(str(event["content"]) for event in events if event["type"] == "content")
+        == "Grounded claim"
+    )
     references = next(
         event["references"] for event in events if event["type"] == "references"
     )
