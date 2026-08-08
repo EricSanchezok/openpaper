@@ -5,7 +5,13 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.bootstrap.capabilities import ApplicationCapabilities
-from app.bootstrap.execution import get_application_executor
+from app.bootstrap.execution import (
+    get_application_executor,
+    get_conversation_suggestion_workflow,
+)
+from app.bootstrap.workflows.conversation_suggestions import (
+    ConversationSuggestionWorkflow,
+)
 from app.database.product_analytics import track_event
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
@@ -14,6 +20,7 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationTurnsResponse,
     ConversationMoveRequest,
     ConversationResponseVariantResponse,
+    ConversationSuggestionsResponse,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
     ConversationToolPermissionsRequest,
@@ -146,6 +153,25 @@ def select_conversation_response(
             turn_id=turn_id,
             response_id=request.response_id,
         )
+    )
+
+
+@conversation_router.post(
+    "/{conversation_id}/responses/{response_id}/suggestions",
+    response_model=ConversationSuggestionsResponse,
+)
+async def generate_conversation_suggestions(
+    conversation_id: UUID,
+    response_id: UUID,
+    workflow: ConversationSuggestionWorkflow = Depends(
+        get_conversation_suggestion_workflow
+    ),
+    current_user: Actor = Depends(get_required_user),
+) -> ConversationSuggestionsResponse:
+    return await workflow.generate(
+        actor=current_user,
+        conversation_id=conversation_id,
+        response_id=response_id,
     )
 
 

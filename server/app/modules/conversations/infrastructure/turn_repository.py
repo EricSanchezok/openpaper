@@ -334,8 +334,9 @@ class TurnRepository:
         conversation_id: UUID,
         response_id: UUID,
         user_id: int,
+        lock: bool = False,
     ) -> ConversationResponse:
-        response = db.scalar(
+        statement = (
             select(ConversationResponse)
             .options(selectinload(ConversationResponse.turn))
             .join(ConversationTurn, ConversationTurn.id == ConversationResponse.turn_id)
@@ -346,6 +347,9 @@ class TurnRepository:
                 Conversation.user_id == user_id,
             )
         )
+        if lock:
+            statement = statement.with_for_update()
+        response = db.scalar(statement)
         if response is None:
             raise AppError(
                 code="conversation_response_not_found",

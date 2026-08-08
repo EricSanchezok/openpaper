@@ -10,6 +10,7 @@ from app.bootstrap.container import (
     build_billing,
     build_citation_metadata,
     build_conversation_chat_data,
+    build_conversation_suggestions_data,
     build_conversations,
     build_identity,
     build_job_callbacks,
@@ -40,6 +41,9 @@ from app.modules.access_keys.application.access_keys import AccessKeys
 from app.modules.integrations.connectors.application import Connectors
 from app.modules.conversations.application.chat import ConversationChatData
 from app.modules.conversations.application.conversations import Conversations
+from app.modules.conversations.application.suggestions import (
+    ConversationSuggestionsData,
+)
 from app.modules.identity.application.identity import Identity
 from app.modules.identity.application.onboarding import SaveOnboarding
 from app.modules.integrations.zotero.application.zotero import Zotero
@@ -225,6 +229,10 @@ class ApplicationCapabilities:
             db=self._session,
             journal=self._journal,
         )
+
+    @cached_property
+    def conversation_suggestions(self) -> ConversationSuggestionsData:
+        return build_conversation_suggestions_data(db=self._session)
 
     @cached_property
     def paper_topics(self) -> PaperTopics:

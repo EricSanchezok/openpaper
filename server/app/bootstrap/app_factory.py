@@ -72,6 +72,7 @@ from app.bootstrap.execution import (
     create_connector_workflow,
     create_conversation_agent_runtime,
     create_conversation_chat,
+    create_conversation_suggestion_workflow,
     create_citation_workflow,
     create_job_completion_processor,
     create_mcp_transport,
@@ -232,6 +233,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         conversation_runtime,
         operation_context_factory,
         application.state.diagnostic_snapshot_recorder,
+    )
+    application.state.conversation_suggestion_workflow = (
+        create_conversation_suggestion_workflow(executor)
     )
     application.state.onboarding_finisher = create_onboarding_finisher()
     application.state.billing_workflow = create_billing_workflow(

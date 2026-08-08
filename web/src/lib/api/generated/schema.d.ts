@@ -383,6 +383,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/responses/{response_id}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Conversation Suggestions */
+        post: operations["generate_conversation_suggestions_api_v1_conversations__conversation_id__responses__response_id__suggestions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/scope": {
         parameters: {
             query?: never;
@@ -2379,6 +2396,21 @@ export interface components {
             type: "start";
             /** Variant Index */
             variant_index: number;
+        };
+        /** ConversationSuggestionsResponse */
+        ConversationSuggestionsResponse: {
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "completed" | "failed";
+            /** Suggestions */
+            suggestions: string[];
         };
         /** ConversationSummaryResponse */
         ConversationSummaryResponse: {
@@ -5183,6 +5215,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryPaperContext"] | components["schemas"]["SelectedPaperContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_conversation_suggestions_api_v1_conversations__conversation_id__responses__response_id__suggestions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                response_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSuggestionsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -31,6 +31,11 @@ The persisted conversation aggregate is `ConversationTurn` plus one or more
   therefore linear and bounded.
 - Public creation routes are `/turns` and `/turns/{turn_id}/responses`. There is
   no `/messages` write route, compatibility DTO, or dual repository.
+- Follow-up suggestions belong to one response variant and are generated only
+  for the latest selected completed response. The Server claims generation,
+  runs the model without an open database transaction, then revalidates the
+  same ownership before persisting exactly three typed suggestions. A late
+  result is discarded after the selection or latest turn changes.
 
 References and research artifacts use `response_id`; they never attach to an
 ambiguous generic message. The existing node-driven Agent harness remains the
@@ -62,5 +67,6 @@ or backward-compatible endpoint is maintained.
 
 Contract tests cover initial generation, retry success/failure/cancellation,
 concurrent and non-latest conflicts, response selection, history projection,
-and cleanup when a newer turn is created. The public OpenAPI snapshot and Web
+cleanup when a newer turn is created, suggestion idempotency, and the
+short-transaction generation boundary. The public OpenAPI snapshot and Web
 types must contain no Message creation route or Message aggregate.

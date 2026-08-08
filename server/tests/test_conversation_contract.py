@@ -119,11 +119,13 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     assert "/api/v1/conversations/{conversation_id}/scope" in paths
     assert "/api/v1/conversations/{conversation_id}/context" in paths
     assert "/api/v1/conversations/{conversation_id}/turns" in paths
-    assert (
-        "/api/v1/conversations/{conversation_id}/turns/{turn_id}/responses" in paths
-    )
+    assert "/api/v1/conversations/{conversation_id}/turns/{turn_id}/responses" in paths
     assert (
         "/api/v1/conversations/{conversation_id}/turns/{turn_id}/selected-response"
+        in paths
+    )
+    assert (
+        "/api/v1/conversations/{conversation_id}/responses/{response_id}/suggestions"
         in paths
     )
     assert "/api/v1/conversations/{conversation_id}/messages" not in paths
@@ -165,9 +167,9 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
 
 
 def test_conversation_turns_expose_a_typed_standard_sse_contract() -> None:
-    response = app.openapi()["paths"][
-        "/api/v1/conversations/{conversation_id}/turns"
-    ]["post"]["responses"]["200"]
+    response = app.openapi()["paths"]["/api/v1/conversations/{conversation_id}/turns"][
+        "post"
+    ]["responses"]["200"]
 
     assert response["content"]["text/event-stream"]["schema"]["$ref"] == (
         "#/components/schemas/ConversationStreamEventSchema"

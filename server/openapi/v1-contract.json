@@ -75,6 +75,9 @@
     "/api/v1/conversations/{conversation_id}/context": [
       "put"
     ],
+    "/api/v1/conversations/{conversation_id}/responses/{response_id}/suggestions": [
+      "post"
+    ],
     "/api/v1/conversations/{conversation_id}/scope": [
       "put"
     ],

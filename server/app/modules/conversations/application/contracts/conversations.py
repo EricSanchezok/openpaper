@@ -170,6 +170,12 @@ class ConversationResponseVariantResponse(BaseModel):
     suggestions_status: Literal["idle", "pending", "completed", "failed"]
 
 
+class ConversationSuggestionsResponse(BaseModel):
+    response_id: UUID
+    status: Literal["pending", "completed", "failed"]
+    suggestions: list[str]
+
+
 class ConversationTurnResponse(BaseModel):
     id: UUID
     user_query: str

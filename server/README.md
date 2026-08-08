@@ -113,6 +113,17 @@ instead of persisting an empty response variant. A turn owns the immutable user
 prompt and one or more generated responses; only the latest turn may be retried
 or switch its selected response. Creating the next turn prunes unselected
 variants from the prior turn, so completed history has one canonical response.
+The latest selected completed response may generate persisted follow-up
+suggestions at
+`POST /api/v1/conversations/{conversation_id}/responses/{response_id}/suggestions`.
+Generation claims the response in a short transaction, calls the model after
+that transaction closes, and rechecks latest/selected ownership before the
+result is finalized. The structured result is exactly three unique questions:
+one deepening question, one comparison or verification question, and one
+practical-application question. Only the turn query, selected final answer,
+locale, and verified reference titles enter that prompt; trace data and raw
+tool output never do. A newer turn clears the preceding suggestions, and a
+late generation result cannot restore them.
 There is no private delimiter. Clients may abort the request, but must not
 automatically retry this non-idempotent operation.
 

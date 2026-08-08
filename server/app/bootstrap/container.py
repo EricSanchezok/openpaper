@@ -105,6 +105,9 @@ from app.modules.research.infrastructure.generation import (
 )
 from app.modules.conversations.application.conversations import Conversations
 from app.modules.conversations.application.chat import ConversationChatData
+from app.modules.conversations.application.suggestions import (
+    ConversationSuggestionsData,
+)
 from app.bootstrap.adapters.conversation_lifecycle import (
     SqlAlchemyConversationGateway,
 )
@@ -450,11 +453,19 @@ def build_conversations(
         gateway=SqlAlchemyConversationGateway(db),
         turn_cursors=SignedCursorCodec(
             cursor_secret,
-            revision="conversation-messages-v1",
-            error_code="conversation_message_cursor_expired",
+            revision="conversation-turns-v1",
+            error_code="conversation_turn_cursor_expired",
         ),
         journal=journal,
     )
+
+
+def build_conversation_suggestions_data(*, db: Session) -> ConversationSuggestionsData:
+    from app.bootstrap.adapters.conversation_suggestions import (
+        SqlAlchemyConversationSuggestionGateway,
+    )
+
+    return ConversationSuggestionsData(SqlAlchemyConversationSuggestionGateway(db))
 
 
 def build_conversation_chat_data(

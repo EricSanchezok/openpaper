@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import secrets
 import time
 import uuid
@@ -15,7 +14,6 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 from zoneinfo import ZoneInfo
 
-import openai
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.product_analytics import track_event
 from app.llm.answer_packet import AnswerPacketBuilder
@@ -25,6 +23,7 @@ from app.llm.grounded_answer import (
     GroundedAnswerStreamParser,
     grounded_citation_instructions,
 )
+from app.llm.pydantic_models import build_deepseek_chat_model
 from app.llm.token_credits import settle_token_usage
 from app.modules.conversations.application.chat import (
     ChatPaperSnapshot,
@@ -62,7 +61,6 @@ from app.shared.application import (
     OperationInitiator,
 )
 from app.shared.domain import AppError, JsonValue
-from app.shared.domain.enums import ReasoningLevel
 from app.tooling import (
     DocumentSourceCandidate,
     ToolAccess,
@@ -97,8 +95,6 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.messages import TextPart as HistoryTextPart
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
-from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_graph import End
 from scholens_observability import add_counter, instrumented_span, record_histogram
 
@@ -107,7 +103,6 @@ _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 _MAX_AGENT_REQUESTS = 32
 _MAX_AGENT_TOOL_CALLS = 24
 _MAX_TOOL_RESULT_TOKENS = 80_000
-_DEEPSEEK_MAX_OUTPUT_TOKENS = 384 * 1024
 _MAX_PROGRESS_CHARS = 4_000
 
 
@@ -242,46 +237,7 @@ class ScholensConversationAgent:
         self._connector_tools = connector_tools
         self._operation_factory = operation_factory
         self._clock = clock
-        self._model_factory = model_factory or self._deepseek_model
-
-    @staticmethod
-    def _deepseek_model(reasoning_level: ReasoningLevel) -> OpenAIChatModel:
-        api_key = os.getenv("DEEPSEEK_API_KEY")
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY environment variable is required")
-        model_name = os.getenv(
-            "DEEPSEEK_DEEP_MODEL"
-            if reasoning_level is ReasoningLevel.DEEP
-            else "DEEPSEEK_STANDARD_MODEL",
-            "deepseek-v4-pro"
-            if reasoning_level is ReasoningLevel.DEEP
-            else "deepseek-v4-flash",
-        )
-        client = openai.AsyncOpenAI(
-            api_key=api_key,
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-            timeout=float(os.getenv("DEEPSEEK_REQUEST_TIMEOUT_SECONDS", "120")),
-            max_retries=int(os.getenv("DEEPSEEK_MAX_RETRIES", "2")),
-        )
-        settings = OpenAIChatModelSettings(
-            max_tokens=int(
-                os.getenv(
-                    "DEEPSEEK_MAX_OUTPUT_TOKENS",
-                    str(_DEEPSEEK_MAX_OUTPUT_TOKENS),
-                )
-            ),
-            parallel_tool_calls=False,
-            extra_body=(
-                {"thinking": {"type": "enabled"}, "reasoning_effort": "max"}
-                if reasoning_level is ReasoningLevel.DEEP
-                else {"thinking": {"type": "disabled"}}
-            ),
-        )
-        return OpenAIChatModel(
-            cast(Any, model_name),
-            provider=OpenAIProvider(openai_client=client),
-            settings=settings,
-        )
+        self._model_factory = model_factory or build_deepseek_chat_model
 
     async def stream(
         self,
@@ -504,7 +460,7 @@ class ScholensConversationAgent:
                                             )
                                             yield ConversationStreamActivityEvent(
                                                 response_id=request.response_id,
-                                                activity=activity
+                                                activity=activity,
                                             )
                                         elif isinstance(
                                             tool_event, FunctionToolResultEvent
@@ -519,7 +475,7 @@ class ScholensConversationAgent:
                                                 if updated_activity is not None:
                                                     yield ConversationStreamActivityEvent(
                                                         response_id=request.response_id,
-                                                        activity=updated_activity
+                                                        activity=updated_activity,
                                                     )
                             next_node = await agent_run.next(node)
                             if pending_final is not None:
@@ -1163,7 +1119,7 @@ Initial server-validated answer material:
                 sequence=item.sequence,
                 phase=phase,
                 content=content if content is not None else item.content,
-            )
+            ),
         )
 
     @staticmethod
@@ -1177,7 +1133,7 @@ Initial server-validated answer material:
             references=cast(
                 dict[str, JsonValue],
                 references.model_dump(mode="json"),
-            )
+            ),
         )
 
     @staticmethod

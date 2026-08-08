@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
 from app.llm.conversation_agent import ScholensConversationAgent
+from app.llm.follow_up_suggestions import FollowUpSuggestionGenerator
 from app.database.database import SessionLocal
 from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.modules.conversations.application.chat import ConversationChat
@@ -22,6 +23,9 @@ from app.bootstrap.workflows.discovery import PaperDiscoveryWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
 from app.bootstrap.workflows.translation import TranslationWorkflow
 from app.bootstrap.workflows.connectors import ConnectorWorkflow
+from app.bootstrap.workflows.conversation_suggestions import (
+    ConversationSuggestionWorkflow,
+)
 from app.bootstrap.workflows.zotero import (
     ZoteroPostprocessWorkflow,
     ZoteroWorkflow,
@@ -103,6 +107,15 @@ def create_conversation_chat(
             operation_factory,
             diagnostic_recorder,
         )
+    )
+
+
+def create_conversation_suggestion_workflow(
+    executor: ApplicationExecutor[ApplicationCapabilities],
+) -> ConversationSuggestionWorkflow:
+    return ConversationSuggestionWorkflow(
+        executor=executor,
+        generator=FollowUpSuggestionGenerator(),
     )
 
 
@@ -388,6 +401,15 @@ def get_operation_context_factory(request: Request) -> OperationContextFactory:
 
 def get_conversation_chat(request: Request) -> ConversationChat:
     return cast(ConversationChat, request.app.state.conversation_chat)
+
+
+def get_conversation_suggestion_workflow(
+    request: Request,
+) -> ConversationSuggestionWorkflow:
+    return cast(
+        ConversationSuggestionWorkflow,
+        request.app.state.conversation_suggestion_workflow,
+    )
 
 
 def get_citation_workflow(request: Request) -> CitationWorkflow:

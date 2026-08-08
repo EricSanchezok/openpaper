@@ -168,6 +168,17 @@ completed response variants and permits retry or selection. Starting a newer
 turn deletes the older turn's unselected variants and its now-stale follow-up
 suggestions; persisted history therefore remains linear and bounded.
 
+`ConversationSuggestionsData` owns the short transactional claim and finalize
+stages for follow-up suggestions. `ConversationSuggestionWorkflow` performs
+the model call between those stages, outside an application transaction. The
+finalize stage locks the conversation and persists only while the response is
+still the latest selected completed variant, preventing slow work from
+resurrecting suggestions after a selection or turn change. Inputs are limited
+to the turn query, selected final answer, locale, and verified reference
+titles; ordered worklog entries, provider output, and tool payloads are not
+suggestion context. The typed output requires exactly three unique questions
+covering deeper inquiry, comparison or verification, and practical use.
+
 `ToolDispatcher` validates arguments and executes each tool through a fresh
 `ApplicationExecutor` operation. Query tools never commit. Command tools commit
 their business change and completed invocation ledger row atomically. Workflow

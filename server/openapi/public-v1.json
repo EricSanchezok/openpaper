@@ -2154,6 +2154,38 @@
         "title": "ConversationStreamStartEvent",
         "type": "object"
       },
+      "ConversationSuggestionsResponse": {
+        "properties": {
+          "response_id": {
+            "format": "uuid",
+            "title": "Response Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "response_id",
+          "status",
+          "suggestions"
+        ],
+        "title": "ConversationSuggestionsResponse",
+        "type": "object"
+      },
       "ConversationSummaryResponse": {
         "properties": {
           "archived_at": {
@@ -9171,6 +9203,61 @@
           }
         ],
         "summary": "Update Conversation Paper Context"
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/responses/{response_id}/suggestions": {
+      "post": {
+        "operationId": "generate_conversation_suggestions_api_v1_conversations__conversation_id__responses__response_id__suggestions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "response_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Response Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSuggestionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Generate Conversation Suggestions"
       }
     },
     "/api/v1/conversations/{conversation_id}/scope": {
