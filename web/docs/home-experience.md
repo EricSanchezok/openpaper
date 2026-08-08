@@ -73,6 +73,12 @@ after completion, and never duplicates the user prompt. Version navigation is
 shown only while that turn remains latest. Exactly three persisted follow-up
 suggestions belong to the selected completed response; selecting one only
 fills and focuses the Composer so the user can edit it before sending.
+Grounded answers expose one source-count pill in the same action row. Selecting
+that pill opens the single canonical source panel: a bottom sheet on phones and
+a centered dialog on desktop. Inline citation markers open that same panel and
+highlight the corresponding source instead of introducing a second source
+list. Document and external sources share the same evidence rows; only external
+sources navigate away, and they open in a new tab.
 The Server replaces the default Sidebar title once after the first successful
 assistant reply. Follow-up turns do not regenerate it, and user renames are
 never overwritten by title generation.
@@ -105,24 +111,31 @@ The Figma conversation-state frames and Storybook stories map one-to-one:
 | Retried variants        | `Conversation View / Retried Response Versions`      |
 | Historical answer       | `Conversation View / Historical Answer Has No Retry` |
 | Suggested follow-ups    | `Conversation View / Suggested Follow Ups`           |
+| Answer sources          | `Conversation View / Answer Sources`                 |
 
 The canonical ordered-harness matrix is Figma node `893:3415`, with Desktop
 Light/Dark and Mobile Light/Dark groups. The superseded per-tool activity
 checklist is archived under `99 — Archive / Interaction States`.
 
-The phone reading surface has a second acceptance matrix at Figma node
-`898:2628`:
+The final-answer action and evidence contract is the authoritative Figma matrix
+[`906:2628`](https://www.figma.com/design/2T5BuTPMIrM2jsVhgIVYIX/Scholens-%E2%80%94-Product-Design?node-id=906-2628):
 
-| Figma `20 — Home / Mobile reading surface` | Storybook acceptance state                      |
-| ------------------------------------------ | ----------------------------------------------- |
-| Long answer                                | `Conversation View / Mobile Long Answer`        |
-| Worklog expanded                           | `Conversation View / Mobile Worklog Expanded`   |
-| Sources aggregated                         | `Conversation View / Mobile Sources Aggregated` |
-| Jump to latest                             | `Conversation View / Mobile Jump To Latest`     |
+| Figma `20 — Home / Final answer actions and sources` | Storybook acceptance state                           |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| Latest answer actions                                | `Conversation View / Latest Answer Actions`          |
+| Retried response versions                            | `Conversation View / Retried Response Versions`      |
+| Historical answer                                    | `Conversation View / Historical Answer Has No Retry` |
+| Suggested follow-ups                                 | `Conversation View / Suggested Follow Ups`           |
+| Source count and evidence panel                      | `Conversation View / Answer Sources`                 |
 
-Every row is represented in Light and Dark in Figma. Storybook keeps locale,
-appearance, and 320/390/430 px viewport controls available for the same
-executable states.
+The matrix covers mobile Light/Dark final actions, the mobile source bottom
+sheet, the desktop action row and centered source dialog, an inline selected
+citation, three editable follow-up suggestions, and pointer/touch versus
+keyboard focus acceptance. Storybook keeps locale, appearance, and 320/390/430
+px viewport controls available for the same executable states. The superseded
+phone reading surface at node `898:2628` is archived under
+`99 — Archive / Interaction States`; it is historical reference, not a current
+implementation contract.
 
 The mobile Dock acceptance inventory extends that mapping:
 

@@ -10,6 +10,7 @@ import {
   Button,
   Checkbox,
   IconButton,
+  keyboardFocusRing,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -156,7 +157,10 @@ function ContextPicker({
       <PopoverTrigger asChild>
         <button
           aria-label={accessibleLabel}
-          className="border-line bg-surface hover:bg-hover flex h-12 max-w-[min(9.5rem,36.25vw)] items-center gap-1.5 rounded-full border px-3 font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none lg:size-9 lg:justify-center lg:p-0"
+          className={cn(
+            "border-line bg-surface hover:bg-hover flex h-12 max-w-[min(9.5rem,36.25vw)] items-center gap-1.5 rounded-full border px-3 font-medium lg:size-9 lg:justify-center lg:p-0",
+            keyboardFocusRing,
+          )}
           disabled={disabled}
           type="button"
         >

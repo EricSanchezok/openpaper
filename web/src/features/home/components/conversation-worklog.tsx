@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import * as React from "react";
 
 import { Icon } from "@/design-system/icons/icon";
+import { keyboardFocusRing } from "@/components/ui";
 import { cn } from "@/lib/utilities/cn";
 import type {
   ConversationActivity,
@@ -203,7 +204,10 @@ export function ConversationWorklog({
       {hasHistory ? (
         <button
           aria-expanded={open}
-          className="hover:text-foreground focus-visible:text-foreground flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-sm)] text-left transition-colors motion-reduce:transition-none lg:min-h-8"
+          className={cn(
+            "hover:text-foreground focus-visible:text-foreground flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-sm)] text-left transition-colors motion-reduce:transition-none lg:min-h-8",
+            keyboardFocusRing,
+          )}
           onClick={toggle}
           type="button"
         >

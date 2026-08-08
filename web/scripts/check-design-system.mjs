@@ -196,6 +196,19 @@ for (const filePath of scannedFiles) {
     continue;
   }
   const contents = await readFile(filePath, "utf8");
+  const relativePath = path.relative(webRoot, filePath);
+  if (
+    relativePath.startsWith(`src${path.sep}features${path.sep}`) ||
+    relativePath.startsWith(`src${path.sep}app${path.sep}`)
+  ) {
+    const featureFocusPattern =
+      /focus(?:-visible)?:[^\s"'`]*(?:ring|border|shadow|outline-(?!none))/g;
+    for (const match of contents.matchAll(featureFocusPattern)) {
+      report(
+        `${relativePath}:${lineNumber(contents, match.index)}: focus visuals belong to components/ui; consume keyboardFocusRing or a delegated text-control surface`,
+      );
+    }
+  }
   for (const { pattern, message } of checks) {
     for (const match of contents.matchAll(pattern)) {
       report(

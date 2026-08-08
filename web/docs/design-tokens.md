@@ -88,8 +88,11 @@ suppress a native child's outline only when the containing control exposes an
 equivalent focus-visible state using semantic control or focus tokens. Mark
 that child with `data-focus-delegate`; this is the shared contract that keeps
 the global focus fallback from drawing a second, rectangular focus surface.
-Global border and focus fallbacks live in the CSS base cascade layer so
-component utilities can override them without specificity escalation.
+Ordinary interactive elements consume the shared `keyboardFocusRing` utility;
+its one-pixel semantic ring is the only approved product focus recipe. Global
+CSS owns only delegated text-control focus. It must not restore a broad native
+outline fallback that can turn composite disclosures into thick black or white
+rectangles.
 
 Disabled prominence is also semantic. If a disabled primary action disappears
 into a canvas in one appearance, adjust `color.action.disabled-*` for that

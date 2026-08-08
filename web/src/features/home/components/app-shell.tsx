@@ -29,6 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  keyboardFocusRing,
   SearchField,
   Sheet,
   SheetContent,
@@ -78,7 +79,8 @@ function SidebarControl({
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? accessibleLabel : undefined}
       className={cn(
-        "text-ui hover:bg-hover flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+        "text-ui hover:bg-hover flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] font-medium transition-colors",
+        keyboardFocusRing,
         collapsed ? "w-11 justify-center" : "w-full px-2.5",
         active && "bg-pressed",
       )}
@@ -93,7 +95,8 @@ function SidebarControl({
       aria-disabled={disabled || undefined}
       aria-label={disabled || collapsed ? accessibleLabel : undefined}
       className={cn(
-        "text-ui flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+        "text-ui flex h-11 items-center gap-2.5 rounded-[var(--radius-md)] font-medium",
+        keyboardFocusRing,
         collapsed ? "w-11 justify-center" : "w-full px-2.5",
         disabled ? "text-muted cursor-not-allowed" : "hover:bg-hover",
       )}
@@ -140,7 +143,8 @@ function ConversationGroup({
             activeConversationId === conversation.id ? "page" : undefined
           }
           className={cn(
-            "text-ui hover:bg-hover flex h-9 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            "text-ui hover:bg-hover flex h-9 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-2",
+            keyboardFocusRing,
             activeConversationId === conversation.id && "bg-pressed",
           )}
           href={`/?conversation=${conversation.id}`}
@@ -186,7 +190,8 @@ function AccountMenu({
         <button
           aria-label={t("account.openMenu")}
           className={cn(
-            "hover:bg-hover flex items-center rounded-[var(--radius-md)] px-2 focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            "hover:bg-hover flex items-center rounded-[var(--radius-md)] px-2",
+            keyboardFocusRing,
             mobile ? "h-[72px] w-full gap-3" : "h-14",
             collapsed
               ? "ml-auto w-11 justify-center"
@@ -309,7 +314,8 @@ function MobileConversationGroup({
             activeConversationId === conversation.id ? "page" : undefined
           }
           className={cn(
-            "hover:bg-hover flex min-h-12 min-w-0 items-center rounded-[var(--radius-lg)] px-3 text-base focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none",
+            "hover:bg-hover flex min-h-12 min-w-0 items-center rounded-[var(--radius-lg)] px-3 text-base",
+            keyboardFocusRing,
             activeConversationId === conversation.id && "bg-pressed",
           )}
           href={`/?conversation=${conversation.id}`}
@@ -416,7 +422,10 @@ function MobileReasoningMenu({
           aria-label={t("reasoningStrengthValue", {
             value: t(value),
           })}
-          className="hover:bg-hover active:bg-pressed ml-1 flex min-h-11 min-w-0 items-center gap-1 rounded-[var(--radius-md)] px-2.5 text-left focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+          className={cn(
+            "hover:bg-hover active:bg-pressed ml-1 flex min-h-11 min-w-0 items-center gap-1 rounded-[var(--radius-md)] px-2.5 text-left",
+            keyboardFocusRing,
+          )}
           type="button"
         >
           <span className="truncate text-base font-semibold">{t(value)}</span>
@@ -457,8 +466,10 @@ function MobileReasoningMenu({
 
 function MobileTabBar() {
   const t = useTranslations("Home.navigation");
-  const itemClassName =
-    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none";
+  const itemClassName = cn(
+    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-1 text-xs font-medium",
+    keyboardFocusRing,
+  );
 
   return (
     <nav
@@ -758,7 +769,10 @@ export function AppShell({
             />
             <Link
               aria-label={t("navigation.newChat")}
-              className="hover:bg-hover active:bg-pressed ml-auto grid size-11 place-items-center rounded-[var(--radius-md)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+              className={cn(
+                "hover:bg-hover active:bg-pressed ml-auto grid size-11 place-items-center rounded-[var(--radius-md)]",
+                keyboardFocusRing,
+              )}
               href="/"
             >
               <Icon glyph={ChatPlusIn} size={24} />

@@ -104,7 +104,14 @@ const researchTrace = {
 };
 
 const researchReferences: ReferenceBundle = {
-  annotations: [],
+  annotations: [
+    {
+      start_offset: researchContent.indexOf("思维链压缩关注"),
+      end_offset:
+        researchContent.indexOf("思维链压缩关注") + "思维链压缩".length,
+      source_keys: [1],
+    },
+  ],
   sources: homePapers.slice(0, 3).map((paper, index) => ({
     key: index + 1,
     kind: "document" as const,
@@ -310,6 +317,22 @@ export const MobileResearchAnswerDark: Story = {
     appearance: "dark",
     locale: "zh-CN",
     viewport: { value: "largeMobile", isRotated: false },
+  },
+};
+
+export const AnswerSources: Story = {
+  globals: { locale: "zh-CN" },
+  args: { turns: [researchTurn()], title: "思维链压缩技术调研" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "打开来源 1" }));
+    const page = within(canvasElement.ownerDocument.body);
+    await expect(
+      page.getByRole("dialog", { name: "引用来源 3" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(homePapers[0]!.document.title ?? "Source 1"),
+    ).toBeVisible();
   },
 };
 

@@ -5,6 +5,7 @@ export * from "./dialog";
 export * from "./display";
 export * from "./dropdown-menu";
 export * from "./field";
+export * from "./focus";
 export * from "./input";
 export * from "./scroll-area";
 export * from "./select";

@@ -3,7 +3,7 @@
 import { BookStack, Folder } from "iconoir-react";
 import { useFormatter, useTranslations } from "next-intl";
 
-import { Button, Skeleton } from "@/components/ui";
+import { Button, keyboardFocusRing, Skeleton } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
@@ -197,7 +197,8 @@ function MobileRecentLauncher({
                 aria-label={label}
                 aria-pressed={selected}
                 className={cn(
-                  "bg-subtle hover:bg-hover flex min-h-12 max-w-full items-center gap-2.5 rounded-full px-4 text-left text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] motion-reduce:transition-none",
+                  "bg-subtle hover:bg-hover flex min-h-12 max-w-full items-center gap-2.5 rounded-full px-4 text-left text-sm font-medium transition-colors motion-reduce:transition-none",
+                  keyboardFocusRing,
                   selected && "bg-pressed",
                 )}
                 key={`${item.kind}:${item.id}`}

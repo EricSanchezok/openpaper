@@ -13,6 +13,8 @@ const overlayClass =
   "fixed inset-0 z-50 bg-[var(--color-overlay-backdrop)] backdrop-blur-sm";
 const contentClass =
   "border-line bg-elevated shadow-modal fixed top-1/2 left-1/2 z-50 w-[min(92vw,36rem)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-xl)] border p-6";
+const responsiveBottomContentClass =
+  "border-line bg-elevated shadow-modal fixed inset-x-0 bottom-0 z-50 max-h-[82dvh] w-full overflow-hidden rounded-t-[var(--radius-xl)] border border-b-0 p-0 lg:top-1/2 lg:left-1/2 lg:bottom-auto lg:w-[min(92vw,36rem)] lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-[var(--radius-xl)] lg:border";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -29,28 +31,39 @@ export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     closeLabel: string;
+    placement?: "center" | "responsive-bottom";
   }
->(({ children, className, closeLabel, ...props }, ref) => (
-  <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className={overlayClass} />
-    <DialogPrimitive.Content
-      className={cn(contentClass, className)}
-      ref={ref}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close asChild>
-        <IconButton
-          className="absolute top-3 right-3"
-          label={closeLabel}
-          variant="ghost"
-        >
-          <Icon glyph={Xmark} size={20} />
-        </IconButton>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPrimitive.Portal>
-));
+>(
+  (
+    { children, className, closeLabel, placement = "center", ...props },
+    ref,
+  ) => (
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className={overlayClass} />
+      <DialogPrimitive.Content
+        className={cn(
+          placement === "responsive-bottom"
+            ? responsiveBottomContentClass
+            : contentClass,
+          className,
+        )}
+        ref={ref}
+        {...props}
+      >
+        {children}
+        <DialogPrimitive.Close asChild>
+          <IconButton
+            className="absolute top-3 right-3"
+            label={closeLabel}
+            variant="ghost"
+          >
+            <Icon glyph={Xmark} size={20} />
+          </IconButton>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  ),
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 export const AlertDialog = AlertDialogPrimitive.Root;

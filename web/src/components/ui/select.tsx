@@ -6,6 +6,7 @@ import * as React from "react";
 
 import { Icon } from "@/design-system/icons/icon";
 import { cn } from "@/lib/utilities/cn";
+import { keyboardFocusRing } from "./focus";
 
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
@@ -16,7 +17,8 @@ export const SelectTrigger = React.forwardRef<
 >(({ children, className, ...props }, ref) => (
   <SelectPrimitive.Trigger
     className={cn(
-      "border-control bg-surface hover:border-line-strong disabled:text-disabled flex h-11 w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border px-3 text-sm focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:outline-none aria-invalid:border-[var(--color-danger-border)]",
+      "border-control bg-surface hover:border-line-strong disabled:text-disabled flex h-11 w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border px-3 text-sm aria-invalid:border-[var(--color-danger-border)]",
+      keyboardFocusRing,
       className,
     )}
     ref={ref}

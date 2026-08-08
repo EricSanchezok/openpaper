@@ -38,6 +38,13 @@ actually shared.
   icon library or manually redraw a glyph inside product code.
 - Every interactive control must have default, hover, pressed, focus-visible,
   disabled, and loading behavior where applicable.
+- Keyboard focus visuals are a design-system primitive. Buttons, links, and
+  product disclosures consume `keyboardFocusRing` from `components/ui`; feature
+  code must not author its own focus border, outline, ring, or shadow. The
+  shared treatment is intentionally one semantic pixel and appears only for
+  `:focus-visible`, so pointer and touch activation never add a heavy black or
+  white rectangle. `design:check` enforces this boundary for `app/` and
+  `features/`.
 - Text controls distinguish input modality: pointer and touch focus keep the
   resting border unchanged, while keyboard navigation receives the semantic
   focus ring. Composite controls delegate that keyboard cue to their outer

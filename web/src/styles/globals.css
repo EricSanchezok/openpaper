@@ -8,11 +8,6 @@
     border-color: var(--color-border-default);
   }
 
-  :focus-visible:not([data-focus-delegate]) {
-    outline: var(--focus-width) solid var(--color-focus-ring);
-    outline-offset: 2px;
-  }
-
   [data-focus-delegate]:focus-visible {
     outline: none;
     outline-offset: 0;
@@ -22,8 +17,8 @@
   [data-focus-surface]:has(
     [data-focus-delegate="surface"][data-focus-origin="keyboard"]:focus
   ) {
-    outline: var(--focus-width) solid var(--color-focus-ring);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: 0 0 0 1px var(--color-focus-ring);
   }
 }
 

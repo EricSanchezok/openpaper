@@ -6,6 +6,7 @@ import * as React from "react";
 
 import { Icon } from "@/design-system/icons/icon";
 import { cn } from "@/lib/utilities/cn";
+import { keyboardFocusRing } from "./focus";
 
 type ToastNotice = {
   description?: string;
@@ -113,7 +114,10 @@ export const ToastClose = ({
 }) => (
   <ToastPrimitive.Close
     aria-label={label}
-    className="hover:bg-hover absolute top-1 right-1 grid size-11 place-items-center rounded-[var(--radius-md)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+    className={cn(
+      "hover:bg-hover absolute top-1 right-1 grid size-11 place-items-center rounded-[var(--radius-md)]",
+      keyboardFocusRing,
+    )}
     {...props}
   >
     <Icon glyph={Xmark} size={16} tone="secondary" />

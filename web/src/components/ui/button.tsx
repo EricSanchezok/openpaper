@@ -5,9 +5,10 @@ import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "@/lib/utilities/cn";
+import { keyboardFocusRing } from "./focus";
 
 export const buttonVariants = cva(
-  "inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-md)] border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--color-action-disabled-bg)] disabled:text-disabled disabled:[&_svg]:text-ui-icon-disabled aria-busy:cursor-wait",
+  `inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-md)] border text-sm font-medium transition-colors ${keyboardFocusRing} disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--color-action-disabled-bg)] disabled:text-disabled disabled:[&_svg]:text-ui-icon-disabled aria-busy:cursor-wait`,
   {
     variants: {
       variant: {

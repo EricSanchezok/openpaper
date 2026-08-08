@@ -5,6 +5,7 @@ import * as React from "react";
 
 import { Icon } from "@/design-system/icons/icon";
 import { cn } from "@/lib/utilities/cn";
+import { keyboardFocusRing } from "./focus";
 import { useTextControlFocus } from "./text-control-focus";
 
 const controlClass =
@@ -104,7 +105,10 @@ export const PasswordInput = React.forwardRef<
         <button
           aria-label={label}
           aria-pressed={visible}
-          className="text-ui-icon-secondary hover:bg-hover absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-[var(--radius-md)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:outline-none"
+          className={cn(
+            "text-ui-icon-secondary hover:bg-hover absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-[var(--radius-md)]",
+            keyboardFocusRing,
+          )}
           disabled={props.disabled}
           onClick={() => setVisible((value) => !value)}
           type="button"

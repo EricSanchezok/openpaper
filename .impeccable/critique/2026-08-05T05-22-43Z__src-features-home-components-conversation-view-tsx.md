@@ -157,3 +157,17 @@ tool batch. Sources collapse into one touch-sized aggregate disclosure, and a
 mobile-only `Jump to latest` control appears when the reader intentionally
 leaves the live edge. The implementation adds no second reducer, mobile DTO, or
 device-specific data branch.
+
+## Answer-action and source resolution — 2026-08-08
+
+Completed response variants now own their answer actions rather than adding a
+parallel message type. Copy uses only the selected final response; retry and
+variant navigation remain restricted to the latest turn; exactly three
+persisted suggestions fill the Composer for editing instead of sending on the
+user's behalf. References are represented by one source-count pill and one
+responsive source panel. Inline citation markers target the same panel and
+select the relevant source, so desktop and mobile no longer maintain separate
+source renderers. All disclosures and action controls consume the shared
+one-pixel keyboard-only focus primitive; pointer/touch focus stays visually
+quiet and feature code is prevented from creating local focus borders by the
+design-system gate.

@@ -5,14 +5,13 @@ import {
   NavArrowDown,
   NavArrowLeft,
   NavArrowRight,
-  Page,
   RefreshDouble,
   WarningTriangle,
 } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
-import { Button, IconButton } from "@/components/ui";
+import { Button, IconButton, keyboardFocusRing } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import type {
@@ -29,6 +28,11 @@ import {
 } from "./research-composer";
 import { MessageContent } from "./message-content";
 import { ConversationWorklog } from "./conversation-worklog";
+import {
+  ConversationSources,
+  isReferenceBundle,
+  referenceSourceCount,
+} from "./conversation-sources";
 
 export type ConversationTurn =
   components["schemas"]["ConversationTurnResponse"];
@@ -36,105 +40,6 @@ export type ConversationResponseVariant =
   components["schemas"]["ConversationResponseVariantResponse"];
 type LibraryPaper = components["schemas"]["LibraryPaperResponse"];
 type Project = components["schemas"]["ProjectResponse"];
-type ReferenceBundle = components["schemas"]["ReferenceBundle"];
-
-function isReferenceBundle(value: unknown): value is ReferenceBundle {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    Array.isArray((value as { sources?: unknown }).sources),
-  );
-}
-
-function sourceCount(references: unknown) {
-  return isReferenceBundle(references) ? (references.sources?.length ?? 0) : 0;
-}
-
-function Sources({ references }: { references: unknown }) {
-  const t = useTranslations("Home.conversation");
-  if (!isReferenceBundle(references) || !references.sources?.length)
-    return null;
-  const sources = references.sources;
-
-  function sourceRows(mobile: boolean) {
-    return sources.map((source, index) => {
-      const title =
-        "title" in source && source.title
-          ? source.title
-          : t("reference", { number: index + 1 });
-      const row = (
-        <>
-          <span className="bg-subtle grid size-6 shrink-0 place-items-center rounded text-xs">
-            {index + 1}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span
-              className={
-                mobile
-                  ? "line-clamp-2 text-sm font-medium"
-                  : "block truncate text-xs font-medium"
-              }
-            >
-              {title}
-            </span>
-            <span className="text-caption text-muted mt-0.5 line-clamp-1 block">
-              {source.reference}
-            </span>
-          </span>
-        </>
-      );
-      const className = mobile
-        ? "hover:bg-hover flex min-h-12 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-1 py-2"
-        : "border-line hover:bg-hover flex items-center gap-2 rounded-[var(--radius-md)] border p-2";
-      return source.kind === "external" ? (
-        <a
-          className={className}
-          href={source.url}
-          key={`${source.key}-${source.url}`}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {row}
-        </a>
-      ) : (
-        <div className={className} key={`${source.key}-${index}`}>
-          {row}
-        </div>
-      );
-    });
-  }
-
-  return (
-    <section className="mt-5 min-w-0">
-      <details className="group lg:hidden">
-        <summary
-          aria-label={t("showSources", { count: sources.length })}
-          className="bg-subtle hover:bg-hover flex min-h-12 w-fit cursor-pointer list-none items-center gap-2 rounded-full px-3 text-sm font-medium [&::-webkit-details-marker]:hidden"
-        >
-          <Icon glyph={Page} size={16} tone="secondary" />
-          <span>{t("sourceSummary", { count: sources.length })}</span>
-          <Icon
-            className="transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
-            glyph={NavArrowDown}
-            size={16}
-            tone="secondary"
-          />
-        </summary>
-        <div className="mt-2 grid gap-1">{sourceRows(true)}</div>
-      </details>
-      <div className="hidden lg:block">
-        <div className="text-ui mb-2 flex items-center gap-2 font-medium">
-          {t("sources")}
-          <span className="text-muted text-xs font-normal">
-            {sources.length}
-          </span>
-        </div>
-        <div className="grid gap-2">{sourceRows(false)}</div>
-      </div>
-    </section>
-  );
-}
-
 function AssistantMessage({
   entries,
   content,
@@ -172,6 +77,10 @@ function AssistantMessage({
 }) {
   const t = useTranslations("Home.conversation");
   const [copied, setCopied] = React.useState(false);
+  const [sourcesOpen, setSourcesOpen] = React.useState(false);
+  const [selectedSourceKey, setSelectedSourceKey] = React.useState<
+    number | undefined
+  >();
   const visibleContent = content || provisionalContent || "";
   const presentationState =
     content && state === "streaming" ? "complete" : state;
@@ -186,8 +95,18 @@ function AssistantMessage({
         sourceTotal={sourceTotal}
         state={presentationState}
       />
-      {visibleContent && <MessageContent content={visibleContent} />}
-      <Sources references={references} />
+      {visibleContent && (
+        <MessageContent
+          annotations={
+            isReferenceBundle(references) ? references.annotations : undefined
+          }
+          content={visibleContent}
+          onCitationOpen={(sourceKeys) => {
+            setSelectedSourceKey(sourceKeys[0]);
+            setSourcesOpen(true);
+          }}
+        />
+      )}
       {response?.status === "completed" && visibleContent && (
         <div
           className="flex min-h-10 items-center gap-1"
@@ -260,6 +179,15 @@ function AssistantMessage({
                 </div>
               );
             })()}
+          <ConversationSources
+            onOpenChange={(open) => {
+              setSourcesOpen(open);
+              if (!open) setSelectedSourceKey(undefined);
+            }}
+            open={sourcesOpen}
+            references={references}
+            selectedSourceKey={selectedSourceKey}
+          />
           <span className="sr-only" aria-live="polite">
             {copied ? t("copied") : ""}
           </span>
@@ -274,7 +202,7 @@ function AssistantMessage({
           >
             {response.suggestions.map((suggestion) => (
               <button
-                className="bg-subtle hover:bg-hover min-h-11 rounded-full px-4 py-2 text-left text-sm transition-colors"
+                className={`bg-subtle hover:bg-hover min-h-11 rounded-full px-4 py-2 text-left text-sm transition-colors ${keyboardFocusRing}`}
                 key={suggestion}
                 onClick={() => onUseSuggestion(suggestion)}
                 type="button"
@@ -338,7 +266,7 @@ function MessageHistory({
                 references={liveTurn.references}
                 sourceTotal={
                   liveTurn.trace?.citation_summary?.source_count ??
-                  sourceCount(liveTurn.references)
+                  referenceSourceCount(liveTurn.references)
                 }
                 state={liveTurn.state}
               />
@@ -360,7 +288,7 @@ function MessageHistory({
                 response={response}
                 sourceTotal={
                   response.trace?.citation_summary?.source_count ??
-                  sourceCount(response.references)
+                  referenceSourceCount(response.references)
                 }
                 state="complete"
                 failure={null}
@@ -555,7 +483,7 @@ export function ConversationView({
                   references={liveTurn.references}
                   sourceTotal={
                     liveTurn.trace?.citation_summary?.source_count ??
-                    sourceCount(liveTurn.references)
+                    referenceSourceCount(liveTurn.references)
                   }
                   state={liveTurn.state}
                   failure={liveTurn.failure}
