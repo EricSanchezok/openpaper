@@ -68,8 +68,12 @@ test("renders the authenticated Home shell and primary data", async ({
   await expect(
     page.getByRole("heading", { name: "What are you working on?" }),
   ).toBeVisible();
-  await expect(page.getByText("Attention Is All You Need")).toBeVisible();
-  await expect(page.getByText("Thesis literature review")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Attention Is All You Need" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Thesis literature review" }),
+  ).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
   await expect(page.locator("html")).toHaveAttribute(
     "data-color-scheme",

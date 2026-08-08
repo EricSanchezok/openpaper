@@ -66,4 +66,25 @@ describe("Home live Conversation state", () => {
     expect(turn?.activities[0]?.state).toBe("succeeded");
     expect(turn?.trace?.citation_summary?.source_count).toBe(3);
   });
+
+  it("retains safe diagnostics from a terminal stream error", () => {
+    const turn = reduceLiveTurn(createLiveTurn("turn-1", "Question"), {
+      type: "error",
+      error: {
+        code: "chat_stream_failed",
+        kind: "dependency_failure",
+        retryable: true,
+        diagnostic_id: "diagnostic-123",
+      },
+    });
+
+    expect(turn?.state).toBe("error");
+    expect(turn?.failure).toEqual({
+      code: "chat_stream_failed",
+      kind: "dependency_failure",
+      retryable: true,
+      correlationId: undefined,
+      diagnosticId: "diagnostic-123",
+    });
+  });
 });

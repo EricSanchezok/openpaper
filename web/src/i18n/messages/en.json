@@ -100,6 +100,10 @@
       "noPapersDescription": "Papers you open will appear here.",
       "noProjectsTitle": "No recent projects",
       "noProjectsDescription": "Projects will appear here after you create or join one.",
+      "continue": "Continue your research",
+      "loading": "Loading recent research",
+      "usePaper": "Use paper {title} as the research scope",
+      "useProject": "Use project {title} as the research scope",
       "loadError": "Could not load recent research",
       "retry": "Try again"
     },
@@ -113,6 +117,12 @@
       "error": "The response could not be completed.",
       "retry": "Try again",
       "retryHint": "Your message was saved. Send a new message when you are ready.",
+      "failure": {
+        "unavailable": "Research service is temporarily unavailable. Your message is saved; try again shortly.",
+        "rateLimited": "You’re sending requests too quickly. Your message is saved; try again shortly.",
+        "generic": "The response stopped unexpectedly. Your message is saved; try again.",
+        "diagnostic": "Diagnostic ID: {id}"
+      },
       "readOnly": "You can read this conversation, but you no longer have permission to continue it.",
       "readOnlyReason": "This conversation is read-only because its research context is no longer available.",
       "reference": "Source {number}",

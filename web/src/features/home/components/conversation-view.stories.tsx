@@ -105,6 +105,7 @@ function liveTurn(overrides: Partial<LiveTurn> = {}): LiveTurn {
     activities: [],
     trace: null,
     references: null,
+    failure: null,
     state: "streaming",
     ...overrides,
   };
@@ -264,7 +265,18 @@ export const Cancelled: Story = {
 };
 
 export const Error: Story = {
-  args: { messages: [], liveTurn: liveTurn({ state: "error" }) },
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      state: "error",
+      failure: {
+        code: "rate_limit_unavailable",
+        kind: "unavailable",
+        retryable: true,
+        diagnosticId: "diagnostic-123",
+      },
+    }),
+  },
 };
 
 export const NarrowLongSubject: Story = {

@@ -13,7 +13,11 @@ import { Button } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import { cn } from "@/lib/utilities/cn";
-import type { ConversationActivity, LiveTurn } from "../conversation-state";
+import type {
+  ConversationActivity,
+  ConversationFailure,
+  LiveTurn,
+} from "../conversation-state";
 import type { ComposerValues } from "../schemas";
 import type { UseFormReturn } from "react-hook-form";
 import {
@@ -58,10 +62,17 @@ function activitySummary(
   contentStarted: boolean,
   state: LiveTurn["state"],
   sources: number,
+  failure: ConversationFailure | null,
   t: ReturnType<typeof useTranslations<"Home.conversation">>,
 ) {
   if (state === "cancelled") return t("activity.stopped");
-  if (state === "error") return t("activity.failed");
+  if (state === "error") {
+    if (failure?.code?.endsWith("_unavailable")) {
+      return t("failure.unavailable");
+    }
+    if (failure?.kind === "rate_limited") return t("failure.rateLimited");
+    return t("failure.generic");
+  }
   const running = activities.findLast(
     (activity) => activity.state === "running",
   );
@@ -97,12 +108,14 @@ function ActivityDisclosure({
   contentStarted,
   sourceTotal,
   state,
+  failure,
   onOpenChange,
 }: {
   activities: ConversationActivity[];
   contentStarted: boolean;
   sourceTotal: number;
   state: LiveTurn["state"];
+  failure: ConversationFailure | null;
   onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations("Home.conversation");
@@ -123,6 +136,7 @@ function ActivityDisclosure({
     contentStarted,
     state,
     sourceTotal,
+    failure,
     t,
   );
 
@@ -212,6 +226,11 @@ function ActivityDisclosure({
           ))}
         </ol>
       )}
+      {state === "error" && failure?.diagnosticId && (
+        <p className="text-muted mt-1 text-xs">
+          {t("failure.diagnostic", { id: failure.diagnosticId })}
+        </p>
+      )}
     </div>
   );
 }
@@ -278,6 +297,7 @@ function AssistantMessage({
   references,
   sourceTotal,
   state,
+  failure,
   onActivityOpenChange,
 }: {
   activities: ConversationActivity[];
@@ -285,6 +305,7 @@ function AssistantMessage({
   references: unknown;
   sourceTotal: number;
   state: LiveTurn["state"];
+  failure?: ConversationFailure | null;
   onActivityOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations("Home.conversation");
@@ -296,6 +317,7 @@ function AssistantMessage({
         onOpenChange={onActivityOpenChange}
         sourceTotal={sourceTotal}
         state={state}
+        failure={failure ?? null}
       />
       {content && <MessageContent content={content} />}
       <Sources references={references} />
@@ -324,6 +346,7 @@ function MessageHistory({ messages }: { messages: Message[] }) {
               sourceCount(message.references)
             }
             state="complete"
+            failure={null}
           />
         ),
       )}
@@ -465,6 +488,7 @@ export function ConversationView({
                     sourceCount(liveTurn.references)
                   }
                   state={liveTurn.state}
+                  failure={liveTurn.failure}
                 />
               </>
             )}

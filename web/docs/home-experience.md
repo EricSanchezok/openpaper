@@ -44,6 +44,10 @@ the interface derives localized progress copy from its category and state.
 Model reasoning, provider heartbeats, raw tool names, arguments, and return
 payloads are not product UI. `complete` and `error` are terminal. The user may
 abort an active stream; the Web app never automatically retries message creation.
+Capacity dependency outages are returned as `unavailable`, not as a user quota
+exhaustion. The interface preserves the failed user message, explains that it
+was saved, and retains the public diagnostic ID without exposing provider or
+Redis details.
 After completion, only the active conversation, its messages, and the
 conversation list are invalidated.
 The Server replaces the default Sidebar title once after the first successful
@@ -75,17 +79,21 @@ The Figma conversation-state frames and Storybook stories map one-to-one:
 
 The mobile Dock acceptance inventory extends that mapping:
 
-| Figma `20 — Home / Mobile` target | Storybook acceptance state                  |
-| --------------------------------- | ------------------------------------------- |
-| Empty + Dock / Ask selected       | `Workspace / Mobile Empty`                  |
-| Conversation + Dock               | `Workspace / Mobile Conversation`           |
-| Keyboard Open                     | `Workspace / Mobile Keyboard Open`          |
-| Library scope                     | `Research Composer / Library Scope`         |
-| Multiple-paper scope              | `Research Composer / Multiple Papers Scope` |
-| Long project scope at 320 px      | `Research Composer / Long Project Scope`    |
-| Multiline input                   | `Research Composer / Multiline Input`       |
-| Streaming / Stop                  | `Research Composer / Streaming Stop`        |
-| 430 px Dark English               | `Research Composer / Dark English Large`    |
+| Figma `20 — Home / Mobile` target | Storybook acceptance state                          |
+| --------------------------------- | --------------------------------------------------- |
+| Empty + Dock / Ask selected       | `Workspace / Mobile Empty`                          |
+| Recent research launcher          | `Workspace / Mobile`                                |
+| Launcher loading                  | `Dashboard / Mobile Recents Loading`                |
+| Launcher error                    | `Dashboard / Mobile Recents Error`                  |
+| Launcher removed after submit     | `Workspace / Mobile Recents Disappear After Submit` |
+| Conversation + Dock               | `Workspace / Mobile Conversation`                   |
+| Keyboard Open                     | `Workspace / Mobile Keyboard Open`                  |
+| Library scope                     | `Research Composer / Library Scope`                 |
+| Multiple-paper scope              | `Research Composer / Multiple Papers Scope`         |
+| Long project scope at 320 px      | `Research Composer / Long Project Scope`            |
+| Multiline input                   | `Research Composer / Multiline Input`               |
+| Streaming / Stop                  | `Research Composer / Streaming Stop`                |
+| 430 px Dark English               | `Research Composer / Dark English Large`            |
 
 The mobile acceptance set is synchronized to the active `20 — Home` Figma
 page. Its primary navigation state uses the shared action surface and inverse
@@ -131,12 +139,17 @@ The current bottom-navigation destination is represented by both
 This state is not color-only: shape, weight, and semantics remain distinguishable
 in monochrome, Dark appearance, and high-contrast environments.
 
-While the Composer is focused, the shell combines `visualViewport` occlusion
-with the layout viewport to distinguish a soft keyboard from a hardware
+When the Composer receives focus, the shell freezes the pre-focus viewport
+height and compares it with `visualViewport.height` to distinguish a soft
+keyboard from a hardware keyboard. It deliberately ignores
+`visualViewport.offsetTop`: Android Chrome changes that value while panning a
+focused page, which must not remount the navigation. The offset is still
+applied as a shell translation while the keyboard is open, compensating for
+Chrome's visual-viewport pan so the Dock remains immediately above the
 keyboard. A soft keyboard hides the three-item navigation, removes the Dock's
-bottom safe-area padding, and constrains the shell to the visible viewport so
-the Composer stays above the keyboard. Closing it restores navigation and the
-safe area without changing the message scroll position. Browsers without
+bottom safe-area padding, and constrains the shell to the visible viewport.
+Navigation returns only after the visible height recovers or focus leaves the
+Composer, without changing the message scroll position. Browsers without
 `visualViewport` fall back to hiding navigation while the mobile Composer is
 focused.
 Markdown is rendered as semantic headings, lists, links, code, and
@@ -151,6 +164,12 @@ The mobile visual baseline is represented by `Home / Workspace / Mobile Empty`,
 set covers 390 x 844 and 430 x 932; 320 x 568 is an overflow and
 minimum-usability check rather than the primary aesthetic target.
 
+Figma `20 — Home` also records the phone-specific recent-content contract as
+`Home / Mobile / Recents populated` (`889:3416`), `Recents loading`
+(`889:3456`), `Recents error` (`889:3490`), and `Recents hidden after submit`
+(`889:3521`). These frames intentionally use a single compact launcher list
+instead of shrinking the desktop paper and project cards.
+
 When both recent-paper and recent-project queries settle empty, Home uses a
 focused first-run composition instead of preserving empty card silhouettes.
 On phones, its composer sits at the bottom of the usable canvas immediately
@@ -164,9 +183,14 @@ composition.
 The account trigger sits against the sidebar's bottom safe-area inset without a
 redundant disclosure arrow. Its menu aligns to the expanded sidebar content
 edge and opens to the right of the collapsed rail.
-When only one collection has data, only that section is rendered and centered.
-Loading and recoverable errors remain visible per collection. The populated
-state continues to follow the canonical two-paper/three-project Figma layout.
+On desktop, when only one collection has data, only that section is rendered
+and centered; loading and recoverable errors remain visible per collection.
+The populated desktop state continues to follow the canonical two-paper and
+three-project layout. On phones, papers and projects are merged by recent
+activity into at most three compact scope launchers above the Dock. Selecting
+one sets the research scope; it does not submit a question. Loading uses the
+same short-row footprint, and the entire launcher leaves the composition as
+soon as the first message creates a conversation.
 
 The visual acceptance pass also includes a 2560 px wide viewport so the
 first-run composition remains intentional on large desktop displays.

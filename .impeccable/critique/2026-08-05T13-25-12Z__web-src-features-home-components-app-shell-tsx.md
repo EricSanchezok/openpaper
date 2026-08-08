@@ -160,7 +160,12 @@ Resolved in the unified mobile Dock implementation:
 - The context control announces and displays the active scope, truncating only
   its visible copy. The full scope remains in its accessible name.
 - Soft-keyboard handling hides navigation and removes bottom safe-area padding;
-  hardware keyboards do not change the Dock composition.
+  hardware keyboards do not change the Dock composition. The implementation
+  now freezes the pre-focus viewport height and ignores Android Chrome's
+  scrolling `visualViewport.offsetTop` when deriving keyboard state, so
+  swiping with Gboard open cannot remount the navigation. While the keyboard
+  remains open, the same offset translates the constrained shell to compensate
+  for Chrome's visual-viewport pan and keep the Dock above Gboard.
 - The active primary destination now has an explicit semantic and visual state:
   `aria-current="page"`, a filled circular icon surface, inverse icon contrast,
   and stronger label weight. Inactive destinations keep the muted role, so the

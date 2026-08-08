@@ -42,12 +42,16 @@ export const Default: Story = {
     await expect(
       await canvas.findByRole("heading", { level: 1 }),
     ).toBeVisible();
+    const paperTitles = await canvas.findAllByText("Attention Is All You Need");
+    const projectTitles = await canvas.findAllByText(
+      "Thesis literature review",
+    );
     await expect(
-      await canvas.findByText("Attention Is All You Need"),
-    ).toBeVisible();
+      paperTitles.some((element) => element.getClientRects().length > 0),
+    ).toBe(true);
     await expect(
-      await canvas.findByText("Thesis literature review"),
-    ).toBeVisible();
+      projectTitles.some((element) => element.getClientRects().length > 0),
+    ).toBe(true);
     const composer = canvas.getByRole("textbox", {
       name: /Ask anything|问任何问题/,
     });
@@ -189,6 +193,32 @@ export const Slow: Story = {
 
 export const Mobile: Story = {
   globals: { viewport: { value: "mobile", isRotated: false } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText("Continue your research"),
+    ).toBeVisible();
+    await expect(canvas.getByText("Recent papers")).not.toBeVisible();
+    await expect(canvas.getByText("Recent projects")).not.toBeVisible();
+  },
+};
+
+export const MobileRecentsDisappearAfterSubmit: Story = {
+  globals: { viewport: { value: "mobile", isRotated: false } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText("Continue your research"),
+    ).toBeVisible();
+    const composer = canvas.getByRole("textbox", { name: "Ask anything" });
+    await userEvent.type(composer, "Summarize my recent research");
+    await userEvent.click(canvas.getByRole("button", { name: "Ask Scholens" }));
+    await waitFor(() =>
+      expect(
+        canvas.queryByText("Continue your research"),
+      ).not.toBeInTheDocument(),
+    );
+  },
 };
 
 export const MobileEmpty: Story = {

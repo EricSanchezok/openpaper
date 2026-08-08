@@ -1,6 +1,6 @@
 "use client";
 
-import { Folder } from "iconoir-react";
+import { BookStack, Folder } from "iconoir-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { Button, Skeleton } from "@/components/ui";
@@ -103,6 +103,125 @@ function ProjectRow({ project }: { project: Project }) {
         </p>
       </div>
     </article>
+  );
+}
+
+type MobileRecentItem =
+  | { kind: "paper"; id: string; title: string; updatedAt: string }
+  | { kind: "project"; id: string; title: string; updatedAt: string };
+
+function MobileRecentLauncher({
+  papers,
+  projects,
+  loading,
+  error,
+  context,
+  onContextChange,
+  onRetry,
+}: {
+  papers: LibraryPaper[];
+  projects: Project[];
+  loading: boolean;
+  error: boolean;
+  context: ResearchContext;
+  onContextChange: (context: ResearchContext) => void;
+  onRetry: () => void;
+}) {
+  const t = useTranslations("Home.recents");
+  const items: MobileRecentItem[] = [
+    ...papers.map((paper): MobileRecentItem => ({
+      kind: "paper",
+      id: paper.document.document_id,
+      title:
+        paper.metadata_overrides.title ??
+        paper.document.title ??
+        paper.document.original_filename,
+      updatedAt: paper.last_accessed_at,
+    })),
+    ...projects.map((project): MobileRecentItem => ({
+      kind: "project",
+      id: project.id,
+      title: project.title,
+      updatedAt: project.updated_at,
+    })),
+  ]
+    .sort(
+      (left, right) =>
+        new Date(right.updatedAt).getTime() -
+        new Date(left.updatedAt).getTime(),
+    )
+    .slice(0, 3);
+
+  if (!loading && !error && items.length === 0) return null;
+
+  return (
+    <section className="mt-auto w-full max-w-[800px] pb-4 lg:hidden">
+      <h2 className="text-secondary mb-3 px-1 text-sm font-medium">
+        {t("continue")}
+      </h2>
+      {loading ? (
+        <div aria-label={t("loading")} className="grid gap-2" role="status">
+          {["first", "second", "third"].map((key, index) => (
+            <Skeleton
+              className={cn(
+                "h-12 rounded-full",
+                index === 0 ? "w-[88%]" : index === 1 ? "w-[72%]" : "w-[80%]",
+              )}
+              key={key}
+            />
+          ))}
+        </div>
+      ) : error && items.length === 0 ? (
+        <div
+          className="flex min-h-12 items-center justify-between gap-3 px-1"
+          role="alert"
+        >
+          <p className="text-secondary text-sm">{t("loadError")}</p>
+          <Button onClick={onRetry} size="sm" variant="secondary">
+            {t("retry")}
+          </Button>
+        </div>
+      ) : (
+        <div className="grid justify-items-start gap-2">
+          {items.map((item) => {
+            const selected =
+              context.kind === "selection" &&
+              (item.kind === "paper"
+                ? context.document_ids?.includes(item.id)
+                : context.project_ids?.includes(item.id));
+            const label = t(item.kind === "paper" ? "usePaper" : "useProject", {
+              title: item.title,
+            });
+            return (
+              <button
+                aria-label={label}
+                aria-pressed={selected}
+                className={cn(
+                  "bg-subtle hover:bg-hover flex min-h-12 max-w-full items-center gap-2.5 rounded-full px-4 text-left text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] motion-reduce:transition-none",
+                  selected && "bg-pressed",
+                )}
+                key={`${item.kind}:${item.id}`}
+                onClick={() =>
+                  onContextChange({
+                    kind: "selection",
+                    project_ids: item.kind === "project" ? [item.id] : [],
+                    document_ids: item.kind === "paper" ? [item.id] : [],
+                  })
+                }
+                type="button"
+              >
+                <Icon
+                  glyph={item.kind === "paper" ? BookStack : Folder}
+                  size={20}
+                  tone="secondary"
+                />
+                <span className="truncate">{item.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -221,12 +340,13 @@ export function HomeDashboard({
         "mx-auto flex min-h-full w-full max-w-[1088px] flex-col px-3 sm:px-8 lg:px-16",
         emptyWorkspace
           ? "pb-3 lg:pt-[clamp(12rem,28vh,18rem)] lg:pb-16"
-          : "py-7 lg:py-16",
+          : "pb-3 lg:py-16",
       )}
     >
       <section
         className={cn(
           "mx-auto flex w-full max-w-[800px] flex-col items-center gap-7 text-center lg:gap-6",
+          !emptyWorkspace && "pt-[clamp(7rem,20vh,11rem)] lg:pt-0",
           emptyWorkspace &&
             "min-h-full flex-1 justify-between gap-0 lg:min-h-0 lg:flex-none lg:justify-start lg:gap-6",
         )}
@@ -260,9 +380,23 @@ export function HomeDashboard({
         )}
       </section>
       {!emptyWorkspace && (
+        <MobileRecentLauncher
+          context={context}
+          error={Boolean(papersError || projectsError)}
+          loading={Boolean(papersLoading || projectsLoading)}
+          onContextChange={onContextChange}
+          onRetry={() => {
+            onRetryPapers();
+            onRetryProjects();
+          }}
+          papers={recentPapers}
+          projects={recentProjects}
+        />
+      )}
+      {!emptyWorkspace && (
         <div
           className={cn(
-            "mt-10 grid w-full gap-8 lg:mx-auto lg:mt-12",
+            "mt-10 hidden w-full gap-8 lg:mx-auto lg:mt-12 lg:grid",
             showPapers &&
               showProjects &&
               "lg:grid-cols-[minmax(0,600px)_minmax(280px,340px)] lg:gap-5",

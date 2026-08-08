@@ -8,23 +8,24 @@ p1_count: 3
 timestamp: 2026-08-05T05-22-43Z
 slug: src-features-home-components-conversation-view-tsx
 ---
+
 # Home conversation streaming critique
 
 ## Design Health Score
 
-| # | Heuristic | Score | Key issue |
-|---|---|---:|---|
-| 1 | Visibility of system status | 2/4 | The disclosure header, its final history row, and a separate generic working line represent the same current state. |
-| 2 | Match between system and real world | 1/4 | Iteration counts, tool names, workspace labels, and English status strings expose implementation vocabulary. |
-| 3 | User control and freedom | 2/4 | Stop and disclosure controls exist, but recovery actions are missing and automatic scrolling can fight history inspection. |
-| 4 | Consistency and standards | 1/4 | Progress, reasoning, provider warnings, cancellation, errors, and sources use disconnected presentation patterns. |
-| 5 | Error prevention | 2/4 | Duplicate sends are blocked, but infrastructure failure can be misrepresented as a successful no-results search. |
-| 6 | Recognition rather than recall | 2/4 | Users must infer which raw rows are phases, retries, searches, warnings, or completion. |
-| 7 | Flexibility and efficiency | 2/4 | Expansion exists, but experts receive volume rather than useful structured detail. |
-| 8 | Aesthetic and minimalist design | 2/4 | The conversation canvas is calm, but expanded progress becomes a long diagnostic dump. |
-| 9 | Error recovery | 1/4 | Generic terminal copy loses structured error meaning and offers no adjacent retry or scope adjustment. |
-| 10 | Help and documentation | 2/4 | Rephrase/contact-support guidance is not tied to the actual failure state. |
-| **Total** | | **17/40** | **Poor: the visual foundation is usable, but the progress interaction model requires consolidation.** |
+| #         | Heuristic                           |     Score | Key issue                                                                                                                  |
+| --------- | ----------------------------------- | --------: | -------------------------------------------------------------------------------------------------------------------------- |
+| 1         | Visibility of system status         |       2/4 | The disclosure header, its final history row, and a separate generic working line represent the same current state.        |
+| 2         | Match between system and real world |       1/4 | Iteration counts, tool names, workspace labels, and English status strings expose implementation vocabulary.               |
+| 3         | User control and freedom            |       2/4 | Stop and disclosure controls exist, but recovery actions are missing and automatic scrolling can fight history inspection. |
+| 4         | Consistency and standards           |       1/4 | Progress, reasoning, provider warnings, cancellation, errors, and sources use disconnected presentation patterns.          |
+| 5         | Error prevention                    |       2/4 | Duplicate sends are blocked, but infrastructure failure can be misrepresented as a successful no-results search.           |
+| 6         | Recognition rather than recall      |       2/4 | Users must infer which raw rows are phases, retries, searches, warnings, or completion.                                    |
+| 7         | Flexibility and efficiency          |       2/4 | Expansion exists, but experts receive volume rather than useful structured detail.                                         |
+| 8         | Aesthetic and minimalist design     |       2/4 | The conversation canvas is calm, but expanded progress becomes a long diagnostic dump.                                     |
+| 9         | Error recovery                      |       1/4 | Generic terminal copy loses structured error meaning and offers no adjacent retry or scope adjustment.                     |
+| 10        | Help and documentation              |       2/4 | Rephrase/contact-support guidance is not tied to the actual failure state.                                                 |
+| **Total** |                                     | **17/40** | **Poor: the visual foundation is usable, but the progress interaction model requires consolidation.**                      |
 
 ## Design Specificity Verdict
 
@@ -68,14 +69,14 @@ The current Processing story covers only one status and Stop. Add long expanded 
 
 ## Recommended collapsed/expanded state model
 
-| Outcome | Collapsed | Expanded |
-|---|---|---|
-| Streaming | Activity indicator plus one localized present-tense phase; entire row is the disclosure. | Three or four semantic phases with completed/current semantics; repeated searches aggregate. |
-| Complete | Muted check plus `研究完成 · 使用 N 个来源` when the count is reliable; omit for trivial no-tool answers. | Concise completed phases, active scope, and a jump to visible sources. |
-| Partial | Warning plus `部分资料源不可用；已使用其余来源完成回答`. | Explain the unavailable capability in user terms and what evidence remained. |
-| No results | Neutral search state plus `未找到相关资料`. | Show searched scope and actions to adjust scope or rephrase. |
-| Error | Warning/error plus `未能完成检索`; expanded by default when action is required. | Plain-language cause, preserved work, Retry, and Adjust scope. |
-| Cancelled | Neutral stop state plus `已停止`. | Preserve completed phases and offer restart where appropriate. |
+| Outcome    | Collapsed                                                                                                 | Expanded                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Streaming  | Activity indicator plus one localized present-tense phase; entire row is the disclosure.                  | Three or four semantic phases with completed/current semantics; repeated searches aggregate. |
+| Complete   | Muted check plus `研究完成 · 使用 N 个来源` when the count is reliable; omit for trivial no-tool answers. | Concise completed phases, active scope, and a jump to visible sources.                       |
+| Partial    | Warning plus `部分资料源不可用；已使用其余来源完成回答`.                                                  | Explain the unavailable capability in user terms and what evidence remained.                 |
+| No results | Neutral search state plus `未找到相关资料`.                                                               | Show searched scope and actions to adjust scope or rephrase.                                 |
+| Error      | Warning/error plus `未能完成检索`; expanded by default when action is required.                           | Plain-language cause, preserved work, Retry, and Adjust scope.                               |
+| Cancelled  | Neutral stop state plus `已停止`.                                                                         | Preserve completed phases and offer restart where appropriate.                               |
 
 The user's proposed thin single-line expandable pattern is the correct direction, provided it replaces both existing progress elements and becomes a complete turn-state component rather than a styled text link.
 
@@ -100,3 +101,13 @@ The user's proposed thin single-line expandable pattern is the correct direction
 - Should the activity row name the active scope, such as `正在检索“思维链压缩技术”项目中的 12 篇论文`?
 - What evidence threshold permits partial success when one provider fails?
 - Can every Scholens conversation surface share the same phases and five terminal outcomes?
+
+## Resolution update — 2026-08-08
+
+The single activity disclosure and typed Agent trace remain the canonical
+progress model. Terminal stream failures now retain their safe public code,
+kind, retryability, correlation ID, and diagnostic ID instead of collapsing to
+`Could not complete`. Redis capacity outages are classified as unavailable
+rather than as user rate-limit exhaustion, while the failed user message stays
+in history for an explicit, idempotent retry. Raw dependency details remain in
+controlled diagnostics only.

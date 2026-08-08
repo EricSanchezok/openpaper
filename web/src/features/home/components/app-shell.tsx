@@ -677,7 +677,11 @@ export function AppShell({
   onReasoningLevelChange: (level: ReasoningLevel) => void;
   onSignOut: () => Promise<void>;
   mobileComposer?: React.ReactNode;
-  mobileKeyboardOverride?: { open: boolean; viewportHeight?: number };
+  mobileKeyboardOverride?: {
+    open: boolean;
+    viewportHeight?: number;
+    viewportOffsetTop?: number;
+  };
   children: React.ReactNode;
 }) {
   const t = useTranslations("Home");
@@ -695,7 +699,10 @@ export function AppShell({
       className="bg-canvas flex h-dvh min-h-0 overflow-hidden antialiased lg:h-screen lg:min-h-[36rem]"
       style={
         effectiveMobileKeyboard.viewportHeight
-          ? { height: `${effectiveMobileKeyboard.viewportHeight}px` }
+          ? {
+              height: `${effectiveMobileKeyboard.viewportHeight}px`,
+              transform: `translateY(${effectiveMobileKeyboard.viewportOffsetTop ?? 0}px)`,
+            }
           : undefined
       }
     >

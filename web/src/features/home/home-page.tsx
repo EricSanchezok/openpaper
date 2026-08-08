@@ -11,6 +11,7 @@ import { useAuthSession, type Actor } from "@/features/authentication";
 import { AppShell } from "./components/app-shell";
 import { ConversationView } from "./components/conversation-view";
 import {
+  conversationFailureFromError,
   createLiveTurn,
   reduceLiveTurn,
   type LiveTurn,
@@ -186,7 +187,13 @@ export function HomeWorkspace({
         }
       } else if (activeConversationId || conversationId) {
         setLiveTurn((current) =>
-          current ? { ...current, state: "error" } : current,
+          current
+            ? {
+                ...current,
+                failure: conversationFailureFromError(error),
+                state: "error",
+              }
+            : current,
         );
       } else {
         toast.notify({

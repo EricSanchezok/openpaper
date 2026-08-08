@@ -7,7 +7,7 @@ describe("mobile keyboard state", () => {
     expect(
       calculateMobileKeyboardState({
         composerFocused: false,
-        layoutViewportHeight: 844,
+        baselineViewportHeight: 844,
         visualViewport: { height: 500, offsetTop: 0 },
       }),
     ).toBe(false);
@@ -17,7 +17,7 @@ describe("mobile keyboard state", () => {
     expect(
       calculateMobileKeyboardState({
         composerFocused: true,
-        layoutViewportHeight: 844,
+        baselineViewportHeight: 844,
         visualViewport: { height: 520, offsetTop: 0 },
       }),
     ).toBe(true);
@@ -27,7 +27,7 @@ describe("mobile keyboard state", () => {
     expect(
       calculateMobileKeyboardState({
         composerFocused: true,
-        layoutViewportHeight: 844,
+        baselineViewportHeight: 844,
         visualViewport: { height: 800, offsetTop: 0 },
       }),
     ).toBe(false);
@@ -37,8 +37,28 @@ describe("mobile keyboard state", () => {
     expect(
       calculateMobileKeyboardState({
         composerFocused: true,
-        layoutViewportHeight: 844,
+        baselineViewportHeight: 844,
       }),
     ).toBe(true);
+  });
+
+  it("stays open when Android pans the visual viewport during a swipe", () => {
+    expect(
+      calculateMobileKeyboardState({
+        composerFocused: true,
+        baselineViewportHeight: 844,
+        visualViewport: { height: 460, offsetTop: 220 },
+      }),
+    ).toBe(true);
+  });
+
+  it("closes only after the visual viewport recovers", () => {
+    expect(
+      calculateMobileKeyboardState({
+        composerFocused: true,
+        baselineViewportHeight: 844,
+        visualViewport: { height: 820, offsetTop: 0 },
+      }),
+    ).toBe(false);
   });
 });

@@ -100,6 +100,10 @@
       "noPapersDescription": "打开过的论文会显示在这里。",
       "noProjectsTitle": "暂无最近项目",
       "noProjectsDescription": "创建或加入项目后会显示在这里。",
+      "continue": "继续最近研究",
+      "loading": "正在加载最近研究",
+      "usePaper": "将论文《{title}》设为研究范围",
+      "useProject": "将项目“{title}”设为研究范围",
       "loadError": "无法加载最近研究",
       "retry": "重试"
     },
@@ -113,6 +117,12 @@
       "error": "未能完成这次回答。",
       "retry": "重试",
       "retryHint": "你的消息已经保存，准备好后可以发送新消息。",
+      "failure": {
+        "unavailable": "研究服务暂时不可用。你的消息已保存，请稍后再试。",
+        "rateLimited": "请求过于频繁。你的消息已保存，请稍后再试。",
+        "generic": "回答意外中断。你的消息已保存，可以重新发送。",
+        "diagnostic": "诊断编号：{id}"
+      },
       "readOnly": "你可以阅读此对话，但已没有权限继续发送消息。",
       "readOnlyReason": "此对话的研究上下文已不可用，因此当前为只读状态。",
       "reference": "来源 {number}",

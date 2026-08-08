@@ -6,6 +6,7 @@ const MINIMUM_KEYBOARD_OCCLUSION = 96;
 const CLOSED_KEYBOARD_STATE = {
   open: false,
   viewportHeight: undefined as number | undefined,
+  viewportOffsetTop: undefined as number | undefined,
 };
 
 export type VisualViewportMetrics = {
@@ -15,18 +16,20 @@ export type VisualViewportMetrics = {
 
 export function calculateMobileKeyboardState({
   composerFocused,
-  layoutViewportHeight,
+  baselineViewportHeight,
   visualViewport,
 }: {
   composerFocused: boolean;
-  layoutViewportHeight: number;
+  baselineViewportHeight: number;
   visualViewport?: VisualViewportMetrics;
 }) {
   if (!composerFocused) return false;
   if (!visualViewport) return true;
 
-  const occludedHeight =
-    layoutViewportHeight - visualViewport.height - visualViewport.offsetTop;
+  // offsetTop changes while Chrome pans the visual viewport during a swipe. It
+  // does not mean the keyboard closed, so keyboard state must be derived from
+  // the stable pre-focus height and the current visible height only.
+  const occludedHeight = baselineViewportHeight - visualViewport.height;
   return occludedHeight >= MINIMUM_KEYBOARD_OCCLUSION;
 }
 
@@ -35,12 +38,22 @@ export function useMobileKeyboard(
   enabled: boolean,
 ) {
   const [state, setState] = React.useState(CLOSED_KEYBOARD_STATE);
+  const baselineViewportHeight = React.useRef<number | undefined>(undefined);
 
   React.useEffect(() => {
     if (!enabled) return;
 
     const visualViewport = window.visualViewport;
     let focusTimer: number | undefined;
+
+    function currentViewportHeight() {
+      return Math.max(
+        window.innerHeight,
+        visualViewport
+          ? visualViewport.height + visualViewport.offsetTop
+          : window.innerHeight,
+      );
+    }
 
     function update() {
       const activeElement = document.activeElement;
@@ -51,7 +64,8 @@ export function useMobileKeyboard(
       );
       const open = calculateMobileKeyboardState({
         composerFocused,
-        layoutViewportHeight: window.innerHeight,
+        baselineViewportHeight:
+          baselineViewportHeight.current ?? currentViewportHeight(),
         visualViewport: visualViewport
           ? {
               height: visualViewport.height,
@@ -62,6 +76,7 @@ export function useMobileKeyboard(
       setState({
         open,
         viewportHeight: open ? visualViewport?.height : undefined,
+        viewportOffsetTop: open ? visualViewport?.offsetTop : undefined,
       });
     }
 
@@ -70,18 +85,44 @@ export function useMobileKeyboard(
       focusTimer = window.setTimeout(update, 0);
     }
 
+    function handleFocusIn(event: FocusEvent) {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        dockRef.current?.contains(target) &&
+        target.matches("[data-mobile-composer-input]")
+      ) {
+        baselineViewportHeight.current = currentViewportHeight();
+      }
+      scheduleUpdate();
+    }
+
+    function handleFocusOut() {
+      scheduleUpdate();
+      window.setTimeout(() => {
+        const activeElement = document.activeElement;
+        if (!(
+          activeElement instanceof HTMLElement &&
+          dockRef.current?.contains(activeElement) &&
+          activeElement.matches("[data-mobile-composer-input]")
+        )) {
+          baselineViewportHeight.current = undefined;
+        }
+      }, 0);
+    }
+
     update();
     window.addEventListener("resize", update);
-    document.addEventListener("focusin", scheduleUpdate);
-    document.addEventListener("focusout", scheduleUpdate);
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
     visualViewport?.addEventListener("resize", update);
     visualViewport?.addEventListener("scroll", update);
 
     return () => {
       window.clearTimeout(focusTimer);
       window.removeEventListener("resize", update);
-      document.removeEventListener("focusin", scheduleUpdate);
-      document.removeEventListener("focusout", scheduleUpdate);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
       visualViewport?.removeEventListener("resize", update);
       visualViewport?.removeEventListener("scroll", update);
     };
