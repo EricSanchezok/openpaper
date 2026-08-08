@@ -3,6 +3,7 @@ name: scholens-dev
 services:
   rabbitmq:
     image: rabbitmq:3.13-alpine
+    restart: unless-stopped
     ports:
       - "127.0.0.1:55672:5672"
     healthcheck:
@@ -13,6 +14,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "127.0.0.1:56379:6379"
     healthcheck:

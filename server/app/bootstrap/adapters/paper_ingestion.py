@@ -10,6 +10,7 @@ from uuid import UUID
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
+    ai_limit_app_error,
     enforce_rate_limit,
 )
 from app.helpers.parser import validate_pdf_content, validate_url_and_fetch_pdf
@@ -75,10 +76,9 @@ class DefaultPaperIngestionLimits:
                 feature="upload",
             )
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="Upload rate limit exceeded",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="Upload rate limit exceeded",
             ) from None
 
     async def acquire(self, *, actor: Actor, job_id: UUID) -> None:
@@ -89,10 +89,9 @@ class DefaultPaperIngestionLimits:
                 operation_id=str(job_id),
             )
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="Too many background jobs are already running",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="Too many background jobs are already running",
             ) from None
 
     async def release(self, *, actor: Actor, job_id: UUID) -> None:

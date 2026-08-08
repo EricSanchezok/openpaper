@@ -12,6 +12,7 @@ from app.database.product_analytics import track_event
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
+    ai_limit_app_error,
     enforce_rate_limit,
     release_concurrency,
 )
@@ -45,7 +46,7 @@ from app.shared.application import (
     OperationContextFactory,
     OperationInitiator,
 )
-from app.shared.domain import AppError, FailureKind, JsonValue
+from app.shared.domain import JsonValue
 from pydantic import TypeAdapter
 from scholens_observability import DiagnosticSnapshotRecorder
 
@@ -175,10 +176,9 @@ async def stream_conversation_agent(
             category="interactive",
         )
     except AILimitExceeded as exc:
-        raise AppError(
-            code=exc.code,
-            message="AI request limit exceeded",
-            kind=FailureKind.RATE_LIMITED,
+        raise ai_limit_app_error(
+            exc,
+            exceeded_message="AI request limit exceeded",
         ) from None
 
     diagnostic_context: dict[str, object] = {

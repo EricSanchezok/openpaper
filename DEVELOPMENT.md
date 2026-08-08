@@ -170,14 +170,15 @@ Storybook, and Flower are opt-in profiles.
 
 Use separate terminals:
 
-| Profile | Directory | Command                                                                  |
-| ------- | --------- | ------------------------------------------------------------------------ |
-| Default | `server/` | `uv run --frozen --no-sync start` — validate local PostgreSQL; API 7301  |
-| Default | `web/`    | `pnpm dev` — canonical web on 7300                                       |
-| Jobs    | `jobs/`   | `uv run --frozen --no-sync start` — broker, worker, Beat, and API 7302   |
-| Legacy  | `client/` | `corepack yarn dev` — comparison UI on 7303                              |
-| UI      | `web/`    | `pnpm storybook` — isolated components on 7306, no Server required       |
-| Observe | `jobs/`   | `./scripts/start_flower.sh` — Flower on 7307 after RabbitMQ is available |
+| Profile | Directory       | Command                                                                      |
+| ------- | --------------- | ---------------------------------------------------------------------------- |
+| Infra   | repository root | `docker compose -f jobs/compose.local.yaml up -d redis` — AI limits on 56379 |
+| Default | `server/`       | `uv run --frozen --no-sync start` — validate local PostgreSQL; API 7301      |
+| Default | `web/`          | `pnpm dev` — canonical web on 7300                                           |
+| Jobs    | `jobs/`         | `uv run --frozen --no-sync start` — broker, worker, Beat, and API 7302       |
+| Legacy  | `client/`       | `corepack yarn dev` — comparison UI on 7303                                  |
+| UI      | `web/`          | `pnpm storybook` — isolated components on 7306, no Server required           |
+| Observe | `jobs/`         | `./scripts/start_flower.sh` — Flower on 7307 after RabbitMQ is available     |
 
 Check: [127.0.0.1:7301/docs](http://127.0.0.1:7301/docs),
 [127.0.0.1:7300](http://127.0.0.1:7300), and, when enabled,
@@ -185,6 +186,12 @@ Check: [127.0.0.1:7301/docs](http://127.0.0.1:7301/docs),
 [127.0.0.1:7303](http://127.0.0.1:7303), and
 [127.0.0.1:7306](http://127.0.0.1:7306). Confirm the worker log shows
 `celery@... ready` when using the Jobs profile.
+
+Redis is required whenever `AI_LIMIT_REDIS_URL` is configured, including Home
+conversation testing. The local value is
+`redis://127.0.0.1:56379/1`; port 6379 is the container-only port. The Compose
+services use `restart: unless-stopped`, so they return with Docker after a host
+restart unless they were explicitly stopped.
 
 If any registered port is occupied, stop the conflicting process or change the
 other project's contract deliberately in all affected repositories. Do not

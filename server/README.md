@@ -8,15 +8,17 @@ Scholens-specific ownership is documented in
 [`docs/architecture/data-ownership.md`](../docs/architecture/data-ownership.md).
 
 ## Prerequisites
+
 - Python 3.12 or higher
 - [Uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [PostgreSQL database](http://postgresql.org/download/) (Make sure it's running with a user postgres)
-- [Docker](https://docs.docker.com/get-docker/) (for RabbitMQ/Redis used by PDF processing)
+- [Docker](https://docs.docker.com/get-docker/) (for RabbitMQ/Redis used by PDF processing and Redis-backed AI capacity limits)
 - Jobs service running for uploads and Zotero import (see [jobs/README.md](../jobs/README.md))
 
 ## Setup
 
 1. Install dependencies
+
 ```bash
 uv sync
 source .venv/bin/activate
@@ -26,6 +28,7 @@ source .venv/bin/activate
 
 3. Set up environment variables from the repository-level catalog. Copy only
    the Server section; the root file is not itself a runtime file.
+
 ```bash
 touch .env
 ```
@@ -49,12 +52,14 @@ second capability map or provider-specific tool wrappers.
 ## Start the Application
 
 1. Start the jobs service (RabbitMQ + Celery worker) in a separate terminal:
+
 ```bash
 cd ../jobs
 uv run --frozen --no-sync start
 ```
 
 2. Start the API server:
+
 ```bash
 uv run --frozen --no-sync start
 ```
@@ -103,11 +108,13 @@ locked `uv` environment:
 ```bash
 uv run alembic revision --autogenerate -m "migration message"
 ```
+
 To apply the migration, run:
 
 ```bash
 uv run alembic upgrade head
 ```
+
 To downgrade the migration, run:
 
 ```bash
@@ -136,6 +143,7 @@ We have an `Ask` page, which allows you to ask questions across your entire know
 
 The response agent is one contextual Pydantic AI runtime with access to the
 authorized subset of the canonical workspace and connector tools:
+
 - `search_papers`
 - `get_paper_abstract`
 - `search_paper_content`

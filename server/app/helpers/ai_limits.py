@@ -10,6 +10,8 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from scholens_observability import add_counter
 
+from app.shared.domain import AppError, FailureKind
+
 logger = logging.getLogger(__name__)
 
 _redis_clients: dict[str, Redis] = {}
@@ -36,6 +38,24 @@ class AILimitExceeded(Exception):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+def ai_limit_app_error(
+    error: AILimitExceeded,
+    *,
+    exceeded_message: str,
+) -> AppError:
+    """Map dependency outages separately from an exhausted user quota."""
+    unavailable = error.code.endswith("_unavailable")
+    return AppError(
+        code=error.code,
+        message=(
+            "AI capacity checks are temporarily unavailable"
+            if unavailable
+            else exceeded_message
+        ),
+        kind=(FailureKind.UNAVAILABLE if unavailable else FailureKind.RATE_LIMITED),
+    )
 
 
 def _redis_client(redis_url: str | None = None) -> Redis | None:

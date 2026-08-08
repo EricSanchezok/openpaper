@@ -8,11 +8,11 @@ from app.helpers.ai_limits import (
     AILimitExceeded,
     AIConcurrencyLease,
     acquire_concurrency,
+    ai_limit_app_error,
     enforce_rate_limit,
     release_concurrency,
 )
 from app.modules.translations.application import TranslationCapacityLease
-from app.shared.domain import AppError, FailureKind
 
 
 class RedisTranslationCapacity:
@@ -40,10 +40,9 @@ class RedisTranslationCapacity:
                 environment=self._environment,
             )
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="AI request limit exceeded",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="AI request limit exceeded",
             ) from None
 
     async def acquire(
@@ -61,10 +60,9 @@ class RedisTranslationCapacity:
                 environment=self._environment,
             )
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="AI request limit exceeded",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="AI request limit exceeded",
             ) from None
         return TranslationCapacityLease(key=lease.key, member=lease.member)
 

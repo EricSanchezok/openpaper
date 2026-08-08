@@ -8,6 +8,7 @@ from uuid import UUID
 from app.helpers.ai_limits import (
     AILimitExceeded,
     acquire_concurrency,
+    ai_limit_app_error,
     enforce_rate_limit,
     release_concurrency_by_id,
 )
@@ -45,10 +46,9 @@ class RedisGenerationCapacity:
                 feature=feature,
             )
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="AI request limit exceeded",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="AI request limit exceeded",
             ) from None
 
     async def acquire_audio(self, *, actor: Actor, operation_id: UUID) -> None:
@@ -68,10 +68,9 @@ class RedisGenerationCapacity:
                 await self.release_background(actor=actor, operation_id=operation_id)
                 raise
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="AI request limit exceeded",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="AI request limit exceeded",
             ) from None
 
     async def acquire_background(
@@ -87,10 +86,9 @@ class RedisGenerationCapacity:
                 operation_id=str(operation_id),
             )
         except AILimitExceeded as exc:
-            raise AppError(
-                code=exc.code,
-                message="AI request limit exceeded",
-                kind=FailureKind.RATE_LIMITED,
+            raise ai_limit_app_error(
+                exc,
+                exceeded_message="AI request limit exceeded",
             ) from None
 
     async def release_audio(self, *, actor: Actor, operation_id: UUID) -> None:
