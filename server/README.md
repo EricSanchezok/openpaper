@@ -92,11 +92,17 @@ is intentionally not routed by the production edge proxy.
 
 Conversation message creation streams standard Server-Sent Events at
 `POST /api/v1/conversations/{conversation_id}/messages`. Consumers must handle
-the typed `start`, `activity`, `content_delta`, `references`, `complete`, and
-`error` events and treat `complete` or `error` as terminal. Requests include
-the UI locale and a validated IANA time zone. `activity` contains only a
-sanitized tool lifecycle projection; model reasoning and raw tool payloads are
-never part of the public stream.
+the typed `start`, `assistant_item_start`, `assistant_item_delta`,
+`assistant_item_complete`, `activity`, `references`, `complete`, and `error`
+events and treat `complete` or `error` as terminal. Assistant items begin as
+provisional and are authoritatively classified on completion as `progress` or
+`final`; clients move the same stable item instead of duplicating its text.
+Progress and activity entries share a monotonic sequence. Requests include the
+UI locale and a validated IANA time zone. `activity` contains only a sanitized
+category/state/subject projection and intentionally omits the raw tool name.
+Model reasoning, provider heartbeats, tool arguments, and tool payloads are
+never part of the public stream. References may be emitted only for the final
+assistant item.
 There is no private delimiter. Clients may abort the request, but must not
 automatically retry this non-idempotent operation.
 

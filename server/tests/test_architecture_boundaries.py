@@ -348,7 +348,9 @@ def test_conversation_answer_runtime_has_one_packet_and_typed_source_path() -> N
 
     agent_source = runtime_files[0].read_text(encoding="utf-8")
     assert "Agent(" in agent_source
-    assert "run_stream_events(" in agent_source
+    assert "agent.iter(" in agent_source
+    assert "run_stream_events(" not in agent_source
+    assert "FinalResultEvent" not in agent_source
     assert "ConversationToolLoop" not in agent_source
     assert "finish_tool_use" not in agent_source
 

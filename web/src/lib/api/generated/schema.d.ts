@@ -1982,6 +1982,11 @@ export interface components {
             connector_name?: string | null;
             /** Id */
             id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "activity";
             /** Sequence */
             sequence: number;
             /** Source Count */
@@ -1993,8 +1998,20 @@ export interface components {
             state: "running" | "succeeded" | "failed";
             /** Subject */
             subject?: string | null;
-            /** Tool Name */
-            tool_name: string;
+        };
+        /** ConversationAssistantItem */
+        ConversationAssistantItem: {
+            /** Content */
+            content: string;
+            /** Id */
+            id: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "progress" | "final";
+            /** Sequence */
+            sequence: number;
         };
         /** ConversationCapabilitiesResponse */
         ConversationCapabilitiesResponse: {
@@ -2140,6 +2157,23 @@ export interface components {
             scope_type: "global" | "project";
         };
         /**
+         * ConversationProgressEntry
+         * @description One safe, user-visible progress statement emitted before tool work.
+         */
+        ConversationProgressEntry: {
+            /** Content */
+            content: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "progress";
+            /** Sequence */
+            sequence: number;
+        };
+        /**
          * ConversationScopeType
          * @enum {string}
          */
@@ -2152,6 +2186,39 @@ export interface components {
              * @enum {string}
              */
             type: "activity";
+        };
+        /** ConversationStreamAssistantItemCompleteEvent */
+        ConversationStreamAssistantItemCompleteEvent: {
+            item: components["schemas"]["ConversationAssistantItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "assistant_item_complete";
+        };
+        /** ConversationStreamAssistantItemDeltaEvent */
+        ConversationStreamAssistantItemDeltaEvent: {
+            /** Delta */
+            delta: string;
+            /** Item Id */
+            item_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "assistant_item_delta";
+        };
+        /** ConversationStreamAssistantItemStartEvent */
+        ConversationStreamAssistantItemStartEvent: {
+            /** Item Id */
+            item_id: string;
+            /** Sequence */
+            sequence: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "assistant_item_start";
         };
         /** ConversationStreamCompleteEvent */
         ConversationStreamCompleteEvent: {
@@ -2171,16 +2238,6 @@ export interface components {
              */
             type: "complete";
         };
-        /** ConversationStreamContentDeltaEvent */
-        ConversationStreamContentDeltaEvent: {
-            /** Delta */
-            delta: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "content_delta";
-        };
         /** ConversationStreamErrorEvent */
         ConversationStreamErrorEvent: {
             /** Error */
@@ -2197,7 +2254,7 @@ export interface components {
          * ConversationStreamEventSchema
          * @description Public schema for the JSON payload carried by each SSE event.
          */
-        ConversationStreamEventSchema: components["schemas"]["ConversationStreamStartEvent"] | components["schemas"]["ConversationStreamActivityEvent"] | components["schemas"]["ConversationStreamContentDeltaEvent"] | components["schemas"]["ConversationStreamReferencesEvent"] | components["schemas"]["ConversationStreamCompleteEvent"] | components["schemas"]["ConversationStreamErrorEvent"];
+        ConversationStreamEventSchema: components["schemas"]["ConversationStreamStartEvent"] | components["schemas"]["ConversationStreamActivityEvent"] | components["schemas"]["ConversationStreamAssistantItemStartEvent"] | components["schemas"]["ConversationStreamAssistantItemDeltaEvent"] | components["schemas"]["ConversationStreamAssistantItemCompleteEvent"] | components["schemas"]["ConversationStreamReferencesEvent"] | components["schemas"]["ConversationStreamCompleteEvent"] | components["schemas"]["ConversationStreamErrorEvent"];
         /** ConversationStreamReferencesEvent */
         ConversationStreamReferencesEvent: {
             /** References */
@@ -2274,9 +2331,9 @@ export interface components {
         };
         /** ConversationTrace */
         ConversationTrace: {
-            /** Activities */
-            activities?: components["schemas"]["ConversationActivity"][];
             citation_summary?: components["schemas"]["ConversationCitationSummary"] | null;
+            /** Entries */
+            entries?: (components["schemas"]["ConversationProgressEntry"] | components["schemas"]["ConversationActivity"])[];
         };
         /** ConversationUpdateRequest */
         ConversationUpdateRequest: {

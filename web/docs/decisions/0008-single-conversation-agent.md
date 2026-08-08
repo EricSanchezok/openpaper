@@ -1,4 +1,4 @@
-# ADR 0008: One Pydantic AI conversation agent with Scholens-owned tools
+# ADR 0008: One node-driven conversation agent with ordered public items
 
 - Status: Accepted
 - Date: 2026-08-05
@@ -28,19 +28,40 @@ Use one Pydantic AI agent loop for every Conversation scope.
   cancellation, logging, and token settlement.
 - Requests carry a locale and validated IANA time zone. An injectable Clock
   supplies absolute local time to the model.
-- The public SSE union is `start`, `activity`, `content_delta`, `references`,
-  `complete`, and `error`. Activity records are typed and sanitized. The server
-  never returns chain-of-thought or raw tool payloads.
-- Terminal traces persist only final activity records and citation counts.
+- Scholens consumes the run through Pydantic AI `Agent.iter()` node boundaries.
+  A `ModelRequestNode` streams one provisional assistant item. The complete
+  `ModelResponse` and following `CallToolsNode` classify it as user-visible
+  `progress` or the accepted `final` answer; no natural-language phrase parser
+  participates in classification.
+- The public SSE union is `start`, `assistant_item_start`,
+  `assistant_item_delta`, `assistant_item_complete`, `activity`, `references`,
+  `complete`, and `error`. Item completion is authoritative. Clients may show
+  provisional text immediately and must move the same item by stable ID when
+  its `progress | final` phase arrives.
+- Progress and activity share one monotonically increasing sequence. An
+  activity update reuses its ID and sequence. Public activity omits the raw
+  tool name and exposes only category, state, bounded subject, and result
+  counts.
+- Terminal traces persist ordered `progress | activity` entries and citation
+  counts. The final answer remains solely in `Message.content`.
+- Only a final item may materialize references. Progress may contain safe,
+  concise stage narration, but citation markers are removed without registering
+  sources.
+- The server never returns provider reasoning/ThinkingPart, chain-of-thought,
+  heartbeat events, tool arguments, raw results, or tool identity. Those remain
+  in controlled diagnostics and the invocation journal.
 - The previous tool loop, final-answer model call, `finish_tool_use`, search
   fallback, iteration prompts, and legacy trace parser are removed without a
   compatibility layer.
 
 ## Consequences
 
-Ordinary requests can be answered with zero tools, while research and
-workspace requests can call multiple tools and continue naturally after a
-recoverable tool failure. Context-specific entry points remain product
-compositions over one runtime. The destructive contract change requires the
-Web client, generated types, fixtures, Storybook states, and local persisted
-traces to move in the same development cut.
+Ordinary requests can be answered with zero tools and therefore produce only a
+final item. Research and workspace requests can interleave concise progress
+items with multiple tool activities before the final answer. Context-specific
+entry points remain product compositions over one runtime.
+
+The contract is deliberately destructive while Scholens is local-only: there
+is no dual reducer, feature flag, legacy trace union, or compatibility parser.
+Existing local JSONB traces are cleared once; message bodies and conversations
+remain intact.

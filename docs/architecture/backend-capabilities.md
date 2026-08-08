@@ -144,10 +144,17 @@ cancellation.
 
 The model receives an injected absolute time for the request's validated IANA
 time zone, so current-date answers do not rely on model memory. Tool results are
-bounded and projected before returning to the model. The public Conversation
-stream exposes typed activity records, visible content, server-generated
-references, and one terminal event. Raw reasoning, provider heartbeats, full
-tool parameters, and tool return payloads remain internal diagnostics.
+bounded and projected before returning to the model. `Agent.iter()` exposes
+complete model and tool nodes to the harness: text from a response that calls a
+tool completes as a `progress` item, while the accepted no-tool response
+completes as the `final` item. Both use stable IDs and share a monotonic sequence
+with sanitized activity records. The persisted trace contains ordered progress
+and activity entries; final answer text remains in the Message row.
+
+The public Conversation stream exposes item lifecycle events, sanitized
+activity, final-only server-generated references, and one terminal event. Raw
+reasoning, provider heartbeats, tool identity, full parameters, and tool return
+payloads remain internal diagnostics.
 
 `ToolDispatcher` validates arguments and executes each tool through a fresh
 `ApplicationExecutor` operation. Query tools never commit. Command tools commit

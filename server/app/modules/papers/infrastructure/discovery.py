@@ -6,7 +6,11 @@ import asyncio
 from uuid import UUID
 
 from app.database.product_analytics import track_event
-from app.helpers.ai_limits import AILimitExceeded, ai_limit_app_error, enforce_rate_limit
+from app.helpers.ai_limits import (
+    AILimitExceeded,
+    ai_limit_app_error,
+    enforce_rate_limit,
+)
 from app.helpers.paper_search import (
     construct_citation_graph,
     get_doi,

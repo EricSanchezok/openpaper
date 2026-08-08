@@ -26,11 +26,14 @@ from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
 )
 from app.modules.conversations.application.contracts.messages import (
+    ConversationAssistantItem,
     ConversationActivity,
     ConversationMessageRequest,
+    ConversationStreamAssistantItemCompleteEvent,
+    ConversationStreamAssistantItemDeltaEvent,
+    ConversationStreamAssistantItemStartEvent,
     ConversationStreamActivityEvent,
     ConversationStreamCompleteEvent,
-    ConversationStreamContentDeltaEvent,
     ConversationStreamReferencesEvent,
     ConversationStreamStartEvent,
     ConversationTrace,
@@ -148,9 +151,38 @@ async def stream_conversation_agent(
         persisted = turn_start.assistant
 
         async def replay_response() -> AsyncGenerator[str, None]:
+            sequence = (
+                max(
+                    (entry.sequence for entry in persisted.trace.entries),
+                    default=0,
+                )
+                + 1
+                if persisted.trace is not None
+                else 1
+            )
+            item_id = f"assistant:{request.turn_id}:{sequence}"
             yield start_event
             yield encode_conversation_sse(
-                ConversationStreamContentDeltaEvent(delta=persisted.content)
+                ConversationStreamAssistantItemStartEvent(
+                    item_id=item_id,
+                    sequence=sequence,
+                )
+            )
+            yield encode_conversation_sse(
+                ConversationStreamAssistantItemDeltaEvent(
+                    item_id=item_id,
+                    delta=persisted.content,
+                )
+            )
+            yield encode_conversation_sse(
+                ConversationStreamAssistantItemCompleteEvent(
+                    item=ConversationAssistantItem(
+                        id=item_id,
+                        sequence=sequence,
+                        phase="final",
+                        content=persisted.content,
+                    )
+                )
             )
             if persisted.references is not None:
                 yield encode_conversation_sse(
@@ -198,7 +230,7 @@ async def stream_conversation_agent(
 
     async def run_response_generator() -> AsyncGenerator[str, None]:
         yield start_event
-        content_chunks: list[str] = []
+        final_content = ""
         artifacts: list[dict[str, JsonValue]] = []
         references: ReferenceBundle | None = None
         trace: ConversationTrace | None = None
@@ -224,13 +256,33 @@ async def stream_conversation_agent(
                     yield encode_conversation_sse(
                         ConversationStreamActivityEvent(activity=activity)
                     )
-            elif event_type == "content":
-                content = event.get("content")
-                if isinstance(content, str):
-                    content_chunks.append(content)
+            elif event_type == "assistant_item_start":
+                item_id = event.get("item_id")
+                sequence = event.get("sequence")
+                if isinstance(item_id, str) and isinstance(sequence, int):
                     yield encode_conversation_sse(
-                        ConversationStreamContentDeltaEvent(delta=content)
+                        ConversationStreamAssistantItemStartEvent(
+                            item_id=item_id,
+                            sequence=sequence,
+                        )
                     )
+            elif event_type == "assistant_item_delta":
+                item_id = event.get("item_id")
+                delta = event.get("delta")
+                if isinstance(item_id, str) and isinstance(delta, str):
+                    yield encode_conversation_sse(
+                        ConversationStreamAssistantItemDeltaEvent(
+                            item_id=item_id,
+                            delta=delta,
+                        )
+                    )
+            elif event_type == "assistant_item_complete":
+                item = ConversationAssistantItem.model_validate(event.get("item"))
+                if item.phase == "final":
+                    final_content = item.content
+                yield encode_conversation_sse(
+                    ConversationStreamAssistantItemCompleteEvent(item=item)
+                )
             elif event_type == "references":
                 candidate = event.get("references")
                 if isinstance(candidate, ReferenceBundle):
@@ -255,9 +307,10 @@ async def stream_conversation_agent(
                     extra={"event_type": str(event_type)},
                 )
 
-        full_content = "".join(content_chunks)
-        diagnostic_context["answer_char_count"] = len(full_content)
-        diagnostic_context["activity_count"] = len(trace.activities) if trace else 0
+        diagnostic_context["answer_char_count"] = len(final_content)
+        diagnostic_context["activity_count"] = (
+            sum(entry.kind == "activity" for entry in trace.entries) if trace else 0
+        )
         answer_operation = operation_factory.resume(
             correlation_id=turn_start.correlation_id,
             causation_id=turn_start.user_operation_id,
@@ -271,7 +324,7 @@ async def stream_conversation_agent(
                 operation=answer_operation,
                 conversation_id=conversation_id,
                 turn_id=request.turn_id,
-                assistant_content=full_content,
+                assistant_content=final_content,
                 assistant_references=(
                     _JSON_OBJECT.validate_python(references.model_dump(mode="json"))
                     if references is not None

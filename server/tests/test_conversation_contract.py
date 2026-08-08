@@ -57,13 +57,13 @@ def test_assistant_trace_serializes_as_a_typed_product_trace() -> None:
         content="Answer",
         references={"annotations": [], "sources": []},
         trace={
-            "activities": [
+            "entries": [
                 {
+                    "kind": "activity",
                     "id": "search-1",
                     "sequence": 1,
                     "category": "search",
                     "state": "succeeded",
-                    "tool_name": "search_papers",
                     "subject": "reasoning compression",
                     "source_count": 2,
                 }
@@ -138,7 +138,9 @@ def test_conversation_messages_expose_a_typed_standard_sse_contract() -> None:
     assert {item["$ref"].rsplit("/", maxsplit=1)[-1] for item in event_schema} == {
         "ConversationStreamStartEvent",
         "ConversationStreamActivityEvent",
-        "ConversationStreamContentDeltaEvent",
+        "ConversationStreamAssistantItemStartEvent",
+        "ConversationStreamAssistantItemDeltaEvent",
+        "ConversationStreamAssistantItemCompleteEvent",
         "ConversationStreamReferencesEvent",
         "ConversationStreamCompleteEvent",
         "ConversationStreamErrorEvent",

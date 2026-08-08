@@ -1224,6 +1224,12 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "const": "activity",
+            "default": "activity",
+            "title": "Kind",
+            "type": "string"
+          },
           "sequence": {
             "minimum": 1.0,
             "title": "Sequence",
@@ -1261,22 +1267,52 @@
               }
             ],
             "title": "Subject"
-          },
-          "tool_name": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Tool Name",
-            "type": "string"
           }
         },
         "required": [
           "id",
           "sequence",
           "category",
-          "state",
-          "tool_name"
+          "state"
         ],
         "title": "ConversationActivity",
+        "type": "object"
+      },
+      "ConversationAssistantItem": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 200000,
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "progress",
+              "final"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "phase",
+          "content"
+        ],
+        "title": "ConversationAssistantItem",
         "type": "object"
       },
       "ConversationCapabilitiesResponse": {
@@ -1731,6 +1767,42 @@
         "title": "ConversationMoveRequest",
         "type": "object"
       },
+      "ConversationProgressEntry": {
+        "additionalProperties": false,
+        "description": "One safe, user-visible progress statement emitted before tool work.",
+        "properties": {
+          "content": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "progress",
+            "default": "progress",
+            "title": "Kind",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "content"
+        ],
+        "title": "ConversationProgressEntry",
+        "type": "object"
+      },
       "ConversationScopeType": {
         "enum": [
           "global",
@@ -1756,6 +1828,77 @@
           "activity"
         ],
         "title": "ConversationStreamActivityEvent",
+        "type": "object"
+      },
+      "ConversationStreamAssistantItemCompleteEvent": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ConversationAssistantItem"
+          },
+          "type": {
+            "const": "assistant_item_complete",
+            "default": "assistant_item_complete",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "ConversationStreamAssistantItemCompleteEvent",
+        "type": "object"
+      },
+      "ConversationStreamAssistantItemDeltaEvent": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "item_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Item Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "assistant_item_delta",
+            "default": "assistant_item_delta",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "delta"
+        ],
+        "title": "ConversationStreamAssistantItemDeltaEvent",
+        "type": "object"
+      },
+      "ConversationStreamAssistantItemStartEvent": {
+        "properties": {
+          "item_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Item Id",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "type": {
+            "const": "assistant_item_start",
+            "default": "assistant_item_start",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "sequence"
+        ],
+        "title": "ConversationStreamAssistantItemStartEvent",
         "type": "object"
       },
       "ConversationStreamCompleteEvent": {
@@ -1798,25 +1941,6 @@
         "title": "ConversationStreamCompleteEvent",
         "type": "object"
       },
-      "ConversationStreamContentDeltaEvent": {
-        "properties": {
-          "delta": {
-            "title": "Delta",
-            "type": "string"
-          },
-          "type": {
-            "const": "content_delta",
-            "default": "content_delta",
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "delta"
-        ],
-        "title": "ConversationStreamContentDeltaEvent",
-        "type": "object"
-      },
       "ConversationStreamErrorEvent": {
         "properties": {
           "error": {
@@ -1844,8 +1968,10 @@
         "discriminator": {
           "mapping": {
             "activity": "#/components/schemas/ConversationStreamActivityEvent",
+            "assistant_item_complete": "#/components/schemas/ConversationStreamAssistantItemCompleteEvent",
+            "assistant_item_delta": "#/components/schemas/ConversationStreamAssistantItemDeltaEvent",
+            "assistant_item_start": "#/components/schemas/ConversationStreamAssistantItemStartEvent",
             "complete": "#/components/schemas/ConversationStreamCompleteEvent",
-            "content_delta": "#/components/schemas/ConversationStreamContentDeltaEvent",
             "error": "#/components/schemas/ConversationStreamErrorEvent",
             "references": "#/components/schemas/ConversationStreamReferencesEvent",
             "start": "#/components/schemas/ConversationStreamStartEvent"
@@ -1860,7 +1986,13 @@
             "$ref": "#/components/schemas/ConversationStreamActivityEvent"
           },
           {
-            "$ref": "#/components/schemas/ConversationStreamContentDeltaEvent"
+            "$ref": "#/components/schemas/ConversationStreamAssistantItemStartEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamAssistantItemDeltaEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamAssistantItemCompleteEvent"
           },
           {
             "$ref": "#/components/schemas/ConversationStreamReferencesEvent"
@@ -2073,13 +2205,6 @@
       "ConversationTrace": {
         "additionalProperties": false,
         "properties": {
-          "activities": {
-            "items": {
-              "$ref": "#/components/schemas/ConversationActivity"
-            },
-            "title": "Activities",
-            "type": "array"
-          },
           "citation_summary": {
             "anyOf": [
               {
@@ -2089,6 +2214,27 @@
                 "type": "null"
               }
             ]
+          },
+          "entries": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "activity": "#/components/schemas/ConversationActivity",
+                  "progress": "#/components/schemas/ConversationProgressEntry"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ConversationProgressEntry"
+                },
+                {
+                  "$ref": "#/components/schemas/ConversationActivity"
+                }
+              ]
+            },
+            "title": "Entries",
+            "type": "array"
           }
         },
         "title": "ConversationTrace",

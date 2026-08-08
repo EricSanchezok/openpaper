@@ -18,11 +18,11 @@ class ConversationActivity(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    kind: Literal["activity"] = "activity"
     id: str = Field(min_length=1, max_length=200)
     sequence: int = Field(ge=1)
     category: Literal["search", "read", "workspace_action", "connector"]
     state: Literal["running", "succeeded", "failed"]
-    tool_name: str = Field(min_length=1, max_length=128)
     subject: str | None = Field(default=None, max_length=240)
     connector_name: str | None = Field(default=None, max_length=80)
     source_count: int | None = Field(default=None, ge=0)
@@ -37,10 +37,27 @@ class ConversationCitationSummary(BaseModel):
     rejected_source_count: int = Field(ge=0)
 
 
+class ConversationProgressEntry(BaseModel):
+    """One safe, user-visible progress statement emitted before tool work."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["progress"] = "progress"
+    id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=1)
+    content: str = Field(min_length=1, max_length=4_000)
+
+
+ConversationTraceEntry = Annotated[
+    ConversationProgressEntry | ConversationActivity,
+    Field(discriminator="kind"),
+]
+
+
 class ConversationTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    activities: list[ConversationActivity] = Field(default_factory=list)
+    entries: list[ConversationTraceEntry] = Field(default_factory=list)
     citation_summary: ConversationCitationSummary | None = None
 
 
@@ -49,9 +66,30 @@ class ConversationStreamActivityEvent(BaseModel):
     activity: ConversationActivity
 
 
-class ConversationStreamContentDeltaEvent(BaseModel):
-    type: Literal["content_delta"] = "content_delta"
+class ConversationAssistantItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=1)
+    phase: Literal["progress", "final"]
+    content: str = Field(max_length=200_000)
+
+
+class ConversationStreamAssistantItemStartEvent(BaseModel):
+    type: Literal["assistant_item_start"] = "assistant_item_start"
+    item_id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=1)
+
+
+class ConversationStreamAssistantItemDeltaEvent(BaseModel):
+    type: Literal["assistant_item_delta"] = "assistant_item_delta"
+    item_id: str = Field(min_length=1, max_length=200)
     delta: str
+
+
+class ConversationStreamAssistantItemCompleteEvent(BaseModel):
+    type: Literal["assistant_item_complete"] = "assistant_item_complete"
+    item: ConversationAssistantItem
 
 
 class ConversationStreamReferencesEvent(BaseModel):
@@ -74,7 +112,9 @@ class ConversationStreamErrorEvent(BaseModel):
 ConversationStreamEvent = Annotated[
     ConversationStreamStartEvent
     | ConversationStreamActivityEvent
-    | ConversationStreamContentDeltaEvent
+    | ConversationStreamAssistantItemStartEvent
+    | ConversationStreamAssistantItemDeltaEvent
+    | ConversationStreamAssistantItemCompleteEvent
     | ConversationStreamReferencesEvent
     | ConversationStreamCompleteEvent
     | ConversationStreamErrorEvent,

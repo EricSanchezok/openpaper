@@ -9,8 +9,8 @@ from app.modules.conversations.infrastructure.chat_streaming import (
     stream_with_stable_error,
 )
 from app.modules.conversations.application.contracts.messages import (
+    ConversationStreamAssistantItemDeltaEvent,
     ConversationStreamCompleteEvent,
-    ConversationStreamContentDeltaEvent,
 )
 
 
@@ -70,7 +70,10 @@ async def test_stream_requires_explicit_complete_event(
 ) -> None:
     async def incomplete_stream():
         yield encode_conversation_sse(
-            ConversationStreamContentDeltaEvent(delta="partial")
+            ConversationStreamAssistantItemDeltaEvent(
+                item_id="assistant:turn:1",
+                delta="partial",
+            )
         )
 
     monkeypatch.setattr(
@@ -94,7 +97,10 @@ async def test_stream_requires_explicit_complete_event(
 async def test_complete_stream_has_no_error_event() -> None:
     async def completed_stream():
         yield encode_conversation_sse(
-            ConversationStreamContentDeltaEvent(delta="answer")
+            ConversationStreamAssistantItemDeltaEvent(
+                item_id="assistant:turn:1",
+                delta="answer",
+            )
         )
         yield encode_conversation_sse(
             ConversationStreamCompleteEvent(

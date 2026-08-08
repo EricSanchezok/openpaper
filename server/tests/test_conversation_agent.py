@@ -226,6 +226,18 @@ async def _events(
     ]
 
 
+def _activities(trace: ConversationTrace) -> list[ConversationActivity]:
+    return [entry for entry in trace.entries if entry.kind == "activity"]
+
+
+def _final_text(events: list[dict[str, object]]) -> str:
+    return "".join(
+        str(event["delta"])
+        for event in events
+        if event["type"] == "assistant_item_delta"
+    )
+
+
 @pytest.fixture(autouse=True)
 def _disable_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -254,10 +266,80 @@ async def test_zero_tool_answer_uses_injected_local_date() -> None:
     )
 
     assert dispatcher.calls == []
-    assert [event["type"] for event in events] == ["content", "complete"]
+    assert [event["type"] for event in events] == [
+        "assistant_item_start",
+        "assistant_item_delta",
+        "assistant_item_complete",
+        "complete",
+    ]
+    assert events[2]["item"]["phase"] == "final"  # type: ignore[index]
     assert "2026-08-06" in seen_instructions[0]
     assert "Asia/Shanghai" in seen_instructions[0]
     assert events[-1]["trace"] is None
+
+
+@pytest.mark.asyncio
+async def test_text_before_tool_is_completed_as_progress_before_activity() -> None:
+    async def staged_answer(
+        messages: list[ModelMessage], _info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        has_result = any(
+            isinstance(part, ToolReturnPart)
+            for message in messages
+            for part in message.parts
+        )
+        if not has_result:
+            yield "I will inspect the available research."
+            yield {
+                0: DeltaToolCall(
+                    name="search_papers",
+                    json_args='{"query":"reasoning compression"}',
+                    tool_call_id="search-progress",
+                )
+            }
+            return
+        yield "Final answer."
+
+    events = await _events(
+        model=FunctionModel(stream_function=staged_answer),
+        dispatcher=_Dispatcher(),
+        query="Research this topic",
+        locale="en",
+        time_zone="UTC",
+    )
+
+    types = [event["type"] for event in events]
+    progress_complete_index = next(
+        index
+        for index, event in enumerate(events)
+        if event["type"] == "assistant_item_complete"
+        and event["item"]["phase"] == "progress"  # type: ignore[index]
+    )
+    first_activity_index = types.index("activity")
+    assert progress_complete_index < first_activity_index
+    assert events[progress_complete_index]["item"]["content"] == (  # type: ignore[index]
+        "I will inspect the available research."
+    )
+    trace = events[-1]["trace"]
+    assert isinstance(trace, ConversationTrace)
+    assert [(entry.kind, entry.sequence) for entry in trace.entries] == [
+        ("progress", 1),
+        ("activity", 2),
+    ]
+    final = [
+        event["item"]
+        for event in events
+        if event["type"] == "assistant_item_complete"
+        and event["item"]["phase"] == "final"  # type: ignore[index]
+    ]
+    assert final == [
+        {
+            "id": final[0]["id"],
+            "sequence": 3,
+            "phase": "final",
+            "content": "Final answer.",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -297,7 +379,6 @@ async def test_research_tool_streams_sanitized_activity_and_references() -> None
             sequence=1,
             category="search",
             state="running",
-            tool_name="search_papers",
             subject="reasoning compression",
         ),
         ConversationActivity(
@@ -305,17 +386,13 @@ async def test_research_tool_streams_sanitized_activity_and_references() -> None
             sequence=1,
             category="search",
             state="succeeded",
-            tool_name="search_papers",
             subject="reasoning compression",
             source_count=1,
             artifact_count=0,
         ),
     ]
     assert dispatcher.calls == [("search_papers", {"query": "reasoning compression"})]
-    assert (
-        "".join(str(event["content"]) for event in events if event["type"] == "content")
-        == "Grounded claim"
-    )
+    assert _final_text(events) == "Grounded claim"
     references = next(
         event["references"] for event in events if event["type"] == "references"
     )
@@ -343,8 +420,8 @@ async def test_tool_failure_can_continue_to_a_natural_answer() -> None:
 
     trace = events[-1]["trace"]
     assert isinstance(trace, ConversationTrace)
-    assert trace.activities[-1].state == "failed"
-    assert any(event["type"] == "content" for event in events)
+    assert _activities(trace)[-1].state == "failed"
+    assert any(event["type"] == "assistant_item_delta" for event in events)
 
 
 @pytest.mark.asyncio
@@ -359,6 +436,7 @@ async def test_multiple_tools_preserve_order_and_terminal_state() -> None:
         )
         if result_count < 2:
             sequence = result_count + 1
+            yield f"Research stage {sequence}."
             yield {
                 0: DeltaToolCall(
                     name="search_papers",
@@ -380,8 +458,14 @@ async def test_multiple_tools_preserve_order_and_terminal_state() -> None:
 
     trace = events[-1]["trace"]
     assert isinstance(trace, ConversationTrace)
-    assert [activity.sequence for activity in trace.activities] == [1, 2]
-    assert [activity.state for activity in trace.activities] == [
+    assert [(entry.kind, entry.sequence) for entry in trace.entries] == [
+        ("progress", 1),
+        ("activity", 2),
+        ("progress", 3),
+        ("activity", 4),
+    ]
+    assert [activity.sequence for activity in _activities(trace)] == [2, 4]
+    assert [activity.state for activity in _activities(trace)] == [
         "succeeded",
         "succeeded",
     ]
@@ -389,6 +473,20 @@ async def test_multiple_tools_preserve_order_and_terminal_state() -> None:
         "topic 1",
         "topic 2",
     ]
+    completed_items = [
+        event["item"] for event in events if event["type"] == "assistant_item_complete"
+    ]
+    assert [item["phase"] for item in completed_items] == [
+        "progress",
+        "progress",
+        "final",
+    ]
+    assert [item["content"] for item in completed_items] == [
+        "Research stage 1.",
+        "Research stage 2.",
+        "Combined answer.",
+    ]
+    assert "tool_name" not in str(events)
 
 
 @pytest.mark.asyncio
@@ -425,7 +523,7 @@ async def test_duplicate_tool_call_is_blocked_before_dispatch() -> None:
     assert len(dispatcher.calls) == 1
     trace = events[-1]["trace"]
     assert isinstance(trace, ConversationTrace)
-    assert [activity.state for activity in trace.activities] == [
+    assert [activity.state for activity in _activities(trace)] == [
         "succeeded",
         "failed",
     ]
