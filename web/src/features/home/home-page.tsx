@@ -72,6 +72,7 @@ export function HomeWorkspace({
   const [liveTurnConversationId, setLiveTurnConversationId] =
     React.useState<string>();
   const streamController = React.useRef<AbortController | null>(null);
+  const submissionInFlight = React.useRef(false);
   const composerForm = useResearchComposerForm();
   const isDesktop = useDesktopLayout();
 
@@ -112,7 +113,8 @@ export function HomeWorkspace({
   }
 
   async function sendMessage(message: string) {
-    if (streamController.current) return;
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
     let conversationId = activeConversationId;
     try {
       if (!conversationId) {
@@ -143,6 +145,7 @@ export function HomeWorkspace({
       streamController.current = controller;
       setLiveTurnConversationId(conversationId);
       setLiveTurn(createLiveTurn(turnId, message));
+      composerForm.reset();
       let failed = false;
       await streamConversationMessage({
         conversationId,
@@ -203,6 +206,7 @@ export function HomeWorkspace({
       }
     } finally {
       streamController.current = null;
+      submissionInFlight.current = false;
       setPendingConversationId(undefined);
     }
   }

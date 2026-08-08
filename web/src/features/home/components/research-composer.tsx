@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowUp, AtSign, Folder, Xmark } from "iconoir-react";
+import { ArrowUp, AtSign, Folder, Square } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
@@ -402,7 +402,6 @@ export function ResearchComposer({
 
   async function submit(values: ComposerValues) {
     await onSubmit(values.message.trim());
-    composerForm.reset();
   }
 
   return (
@@ -478,9 +477,9 @@ export function ResearchComposer({
           className="col-start-3 row-start-1 size-12 lg:row-start-3 lg:size-11"
           label={t("composer.stop")}
           onClick={onStop}
-          variant="secondary"
+          type="button"
         >
-          <Icon glyph={Xmark} size={20} />
+          <Icon glyph={Square} size={20} tone="inverse" />
         </IconButton>
       ) : (
         <IconButton

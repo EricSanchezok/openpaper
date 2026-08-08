@@ -29,7 +29,11 @@ from app.modules.conversations.application.contracts.conversations import (
     SelectedPaperContext,
     ConversationUpdateRequest,
 )
-from app.modules.conversations.application.contracts.messages import ConversationTrace
+from app.modules.conversations.application.contracts.messages import (
+    ConversationActivity,
+    ConversationProgressEntry,
+    ConversationTrace,
+)
 from app.modules.conversations.infrastructure.presenters import serialize_messages
 from app.modules.conversations.infrastructure.message_repository import MessageCreate
 from app.shared.application import Actor
@@ -178,6 +182,56 @@ def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
     assert conversation.updated_at > original_updated_at
     ownership_statement = db.scalar.call_args_list[0].args[0]
     assert "FOR UPDATE" in str(ownership_statement)
+
+
+def test_message_creation_preserves_trace_discriminators_for_round_trip() -> None:
+    db = MagicMock(spec=Session)
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        title="Conversation",
+        user_id=1,
+        scope_type="global",
+    )
+    db.scalar.side_effect = [conversation, 1]
+    trace = ConversationTrace(
+        entries=[
+            ConversationProgressEntry(
+                id="progress-1",
+                sequence=1,
+                content="I will search the selected research.",
+            ),
+            ConversationActivity(
+                id="activity-1",
+                sequence=2,
+                category="search",
+                state="succeeded",
+                subject="reasoning compression",
+                source_count=3,
+            ),
+        ]
+    )
+
+    message = message_repository.create(
+        db,
+        request=MessageCreate(
+            conversation_id=conversation.id,
+            turn_id=uuid.uuid4(),
+            created_operation_id=uuid.uuid4(),
+            correlation_id=uuid.uuid4(),
+            role=RoleType.ASSISTANT,
+            content="Answer",
+            trace=trace,
+        ),
+        user_id=_current_user().id,
+        refresh_result=False,
+    )
+
+    assert message.trace is not None
+    assert [entry["kind"] for entry in message.trace["entries"]] == [
+        "progress",
+        "activity",
+    ]
+    assert ConversationTrace.model_validate(message.trace) == trace
 
 
 def test_message_creation_rejects_a_conversation_owned_by_someone_else() -> None:

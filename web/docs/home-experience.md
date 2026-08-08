@@ -51,7 +51,12 @@ tool name. Adjacent tool entries are rendered as one category-count batch;
 progress text separates batches. Model reasoning, provider heartbeats, raw tool
 names, arguments, and return payloads are not product UI. Only final items may
 publish references. `complete` and `error` are terminal. The user may abort an
-active stream; the Web app never automatically retries message creation.
+active stream; the Web app never automatically retries message creation. Once
+a turn is accepted into the optimistic transcript, the Composer clears
+immediately and its send action becomes the standard stop-square action for
+the lifetime of that stream. A failure before optimistic acceptance preserves
+the draft; a later stream failure preserves the submitted user message in the
+transcript instead of restoring duplicate text to the Composer.
 Capacity dependency outages are returned as `unavailable`, not as a user quota
 exhaustion. The interface preserves the failed user message, explains that it
 was saved, and retains the public diagnostic ID without exposing provider or

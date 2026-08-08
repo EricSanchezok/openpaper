@@ -80,7 +80,10 @@ class MessageRepository:
         # characters that PostgreSQL cannot store — message content/references
         # are derived from extracted PDF text, which can contain them. This
         # NUL bytes from extracted PDF text cannot be stored by PostgreSQL.
-        request_data = sanitize_for_postgres(request.model_dump(exclude_unset=True))
+        # Persist the complete typed payload. Discriminated JSON values such as
+        # ConversationTrace entries rely on their defaulted `kind` field for a
+        # lossless round trip; exclude_unset would silently remove that tag.
+        request_data = sanitize_for_postgres(request.model_dump())
         db_obj = Message(**request_data, sequence=next_sequence)
         conversation.updated_at = datetime.now(timezone.utc)
 
