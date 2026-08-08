@@ -50,29 +50,44 @@ const baseHandlers = [
         {
           type: "activity",
           activity: {
+            kind: "activity",
             id: "search-1",
             sequence: 1,
             category: "search",
             state: "running",
-            tool_name: "search_papers",
             subject: "selected research",
           },
         },
         {
-          type: "content_delta",
+          type: "assistant_item_start",
+          item_id: `assistant:${requestBody.turn_id}:2`,
+          sequence: 2,
+        },
+        {
+          type: "assistant_item_delta",
+          item_id: `assistant:${requestBody.turn_id}:2`,
           delta: "The answer is grounded in your selected research.",
+        },
+        {
+          type: "assistant_item_complete",
+          item: {
+            id: `assistant:${requestBody.turn_id}:2`,
+            sequence: 2,
+            phase: "final",
+            content: "The answer is grounded in your selected research.",
+          },
         },
         {
           type: "complete",
           turn_id: requestBody.turn_id,
           trace: {
-            activities: [
+            entries: [
               {
+                kind: "activity",
                 id: "search-1",
                 sequence: 1,
                 category: "search",
                 state: "succeeded",
-                tool_name: "search_papers",
                 subject: "selected research",
                 source_count: 1,
                 artifact_count: 0,
@@ -154,11 +169,11 @@ export const homeHandlers = {
               `event: activity\ndata: ${JSON.stringify({
                 type: "activity",
                 activity: {
+                  kind: "activity",
                   id: "search-1",
                   sequence: 1,
                   category: "search",
                   state: "running",
-                  tool_name: "search_papers",
                   subject: "selected papers",
                 },
               })}\n\n`,

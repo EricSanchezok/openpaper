@@ -4,7 +4,17 @@ import type { ConversationStreamEvent } from "./api/conversations";
 
 export type ConversationActivity =
   components["schemas"]["ConversationActivity"];
+export type ConversationProgressEntry =
+  components["schemas"]["ConversationProgressEntry"];
 export type ConversationTrace = components["schemas"]["ConversationTrace"];
+export type ConversationTraceEntry =
+  ConversationProgressEntry | ConversationActivity;
+export type ConversationAssistantItem =
+  components["schemas"]["ConversationAssistantItem"];
+export type ProvisionalAssistantItem = Omit<
+  ConversationAssistantItem,
+  "phase"
+> & { phase: "provisional" };
 export type ConversationFailure = {
   code?: string;
   kind?: string;
@@ -17,7 +27,9 @@ export type LiveTurn = {
   turnId: string;
   userMessage: string;
   content: string;
-  activities: ConversationActivity[];
+  entries: ConversationTraceEntry[];
+  provisionalItems: ProvisionalAssistantItem[];
+  completedItemIds: string[];
   trace: ConversationTrace | null;
   references: Record<string, unknown> | null;
   failure: ConversationFailure | null;
@@ -29,7 +41,9 @@ export function createLiveTurn(turnId: string, userMessage: string): LiveTurn {
     turnId,
     userMessage,
     content: "",
-    activities: [],
+    entries: [],
+    provisionalItems: [],
+    completedItemIds: [],
     trace: null,
     references: null,
     failure: null,
@@ -72,22 +86,55 @@ export function conversationFailureFromError(
   };
 }
 
-function updateActivity(
-  activities: ConversationActivity[],
-  activity: ConversationActivity,
+function updateEntry(
+  entries: ConversationTraceEntry[],
+  entry: ConversationTraceEntry,
 ) {
-  const existing = activities.find((item) => item.id === activity.id);
+  const existing = entries.find((item) => item.id === entry.id);
   if (
-    existing &&
+    existing?.kind === "activity" &&
+    entry.kind === "activity" &&
     existing.state !== "running" &&
-    activity.state === "running"
+    entry.state === "running"
   ) {
-    return activities;
+    return entries;
   }
-  return [
-    ...activities.filter((item) => item.id !== activity.id),
-    activity,
-  ].sort((left, right) => left.sequence - right.sequence);
+  return [...entries.filter((item) => item.id !== entry.id), entry].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+}
+
+function completeAssistantItem(
+  current: LiveTurn,
+  item: ConversationAssistantItem,
+) {
+  if (current.completedItemIds.includes(item.id)) return current;
+  const completedItemIds = [...current.completedItemIds, item.id];
+  const provisionalItems = current.provisionalItems.filter(
+    (candidate) => candidate.id !== item.id,
+  );
+  if (item.phase === "progress") {
+    if (!item.content) {
+      return { ...current, completedItemIds, provisionalItems };
+    }
+    return {
+      ...current,
+      completedItemIds,
+      provisionalItems,
+      entries: updateEntry(current.entries, {
+        kind: "progress",
+        id: item.id,
+        sequence: item.sequence,
+        content: item.content,
+      }),
+    };
+  }
+  return {
+    ...current,
+    completedItemIds,
+    provisionalItems,
+    content: item.content,
+  };
 }
 
 export function reduceLiveTurn(
@@ -95,14 +142,44 @@ export function reduceLiveTurn(
   event: ConversationStreamEvent,
 ): LiveTurn | null {
   if (!current) return current;
+  if (current.state !== "streaming") return current;
   switch (event.type) {
     case "activity":
       return {
         ...current,
-        activities: updateActivity(current.activities, event.activity),
+        entries: updateEntry(current.entries, event.activity),
       };
-    case "content_delta":
-      return { ...current, content: current.content + event.delta };
+    case "assistant_item_start":
+      if (
+        current.completedItemIds.includes(event.item_id) ||
+        current.provisionalItems.some((item) => item.id === event.item_id)
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        provisionalItems: [
+          ...current.provisionalItems,
+          {
+            id: event.item_id,
+            sequence: event.sequence,
+            phase: "provisional" as const,
+            content: "",
+          },
+        ].sort((left, right) => left.sequence - right.sequence),
+      };
+    case "assistant_item_delta":
+      if (current.completedItemIds.includes(event.item_id)) return current;
+      return {
+        ...current,
+        provisionalItems: current.provisionalItems.map((item) =>
+          item.id === event.item_id
+            ? { ...item, content: item.content + event.delta }
+            : item,
+        ),
+      };
+    case "assistant_item_complete":
+      return completeAssistantItem(current, event.item);
     case "references":
       return {
         ...current,
@@ -111,7 +188,7 @@ export function reduceLiveTurn(
     case "complete":
       return {
         ...current,
-        activities: event.trace?.activities ?? current.activities,
+        entries: event.trace?.entries ?? current.entries,
         trace: event.trace ?? current.trace,
         state: "complete",
       };

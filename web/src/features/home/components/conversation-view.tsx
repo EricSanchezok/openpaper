@@ -1,21 +1,15 @@
 "use client";
 
-import {
-  CheckCircle,
-  NavArrowDown,
-  Page,
-  WarningTriangle,
-} from "iconoir-react";
+import { WarningTriangle } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
 import { Button } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
-import { cn } from "@/lib/utilities/cn";
 import type {
-  ConversationActivity,
   ConversationFailure,
+  ConversationTraceEntry,
   LiveTurn,
 } from "../conversation-state";
 import type { ComposerValues } from "../schemas";
@@ -26,6 +20,7 @@ import {
   type ResearchContext,
 } from "./research-composer";
 import { MessageContent } from "./message-content";
+import { ConversationWorklog } from "./conversation-worklog";
 
 type Message =
   components["schemas"]["app__modules__conversations__application__contracts__conversations__MessageResponse"];
@@ -43,196 +38,6 @@ function isReferenceBundle(value: unknown): value is ReferenceBundle {
 
 function sourceCount(references: unknown) {
   return isReferenceBundle(references) ? (references.sources?.length ?? 0) : 0;
-}
-
-function activityLabel(
-  activity: ConversationActivity,
-  t: ReturnType<typeof useTranslations<"Home.conversation">>,
-) {
-  if (activity.category === "connector") {
-    return t("activity.connector", {
-      connector: activity.connector_name || t("activity.connectorFallback"),
-    });
-  }
-  return t(`activity.${activity.category}`);
-}
-
-function activitySummary(
-  activities: ConversationActivity[],
-  contentStarted: boolean,
-  state: LiveTurn["state"],
-  sources: number,
-  failure: ConversationFailure | null,
-  t: ReturnType<typeof useTranslations<"Home.conversation">>,
-) {
-  if (state === "cancelled") return t("activity.stopped");
-  if (state === "error") {
-    if (failure?.code?.endsWith("_unavailable")) {
-      return t("failure.unavailable");
-    }
-    if (failure?.kind === "rate_limited") return t("failure.rateLimited");
-    return t("failure.generic");
-  }
-  const running = activities.findLast(
-    (activity) => activity.state === "running",
-  );
-  if (state === "streaming") {
-    if (running?.category === "search") return t("activity.searching");
-    if (running?.category === "read") return t("activity.reading");
-    if (running?.category === "workspace_action") {
-      return t("activity.updatingWorkspace");
-    }
-    if (running?.category === "connector") {
-      return t("activity.usingConnector", {
-        connector: running.connector_name || t("activity.connectorFallback"),
-      });
-    }
-    if (!contentStarted || activities.length === 0) {
-      return t("activity.thinking");
-    }
-  }
-  const failed = activities.filter(
-    (activity) => activity.state === "failed",
-  ).length;
-  return t(
-    failed > 0 ? "activity.partialSummary" : "activity.completeSummary",
-    {
-      count: activities.length,
-      sources,
-    },
-  );
-}
-
-function ActivityDisclosure({
-  activities,
-  contentStarted,
-  sourceTotal,
-  state,
-  failure,
-  onOpenChange,
-}: {
-  activities: ConversationActivity[];
-  contentStarted: boolean;
-  sourceTotal: number;
-  state: LiveTurn["state"];
-  failure: ConversationFailure | null;
-  onOpenChange?: (open: boolean) => void;
-}) {
-  const t = useTranslations("Home.conversation");
-  const [openState, setOpenState] = React.useState({
-    contentStarted,
-    open: false,
-  });
-  const open =
-    openState.contentStarted === contentStarted ? openState.open : false;
-  const hasHistory = activities.length > 0;
-  const visible =
-    hasHistory ||
-    state === "cancelled" ||
-    state === "error" ||
-    (state === "streaming" && !contentStarted);
-  const summary = activitySummary(
-    activities,
-    contentStarted,
-    state,
-    sourceTotal,
-    failure,
-    t,
-  );
-
-  if (!visible) return null;
-
-  function toggle() {
-    if (!hasHistory) return;
-    onOpenChange?.(!open);
-    setOpenState({ contentStarted, open: !open });
-  }
-
-  return (
-    <div className="text-secondary text-base lg:text-sm" data-state={state}>
-      {hasHistory ? (
-        <button
-          aria-expanded={open}
-          className="hover:text-foreground focus-visible:text-foreground flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-sm)] text-left transition-colors motion-reduce:transition-none lg:min-h-8"
-          onClick={toggle}
-          type="button"
-        >
-          <span
-            aria-live="polite"
-            className="activity-copy-enter min-w-0 flex-1 truncate"
-            key={summary}
-          >
-            {summary}
-          </span>
-          <Icon
-            className={cn(
-              "shrink-0 transition-transform duration-150 motion-reduce:transition-none",
-              open && "rotate-180",
-            )}
-            glyph={NavArrowDown}
-            size={16}
-            tone="secondary"
-          />
-        </button>
-      ) : (
-        <p
-          aria-live="polite"
-          className="flex min-h-11 items-center lg:min-h-8"
-          role="status"
-        >
-          <span className="activity-copy-enter" key={summary}>
-            {summary}
-          </span>
-        </p>
-      )}
-      {open && hasHistory && (
-        <ol className="border-line mt-1 grid gap-2 border-t pt-3 pb-1">
-          {activities.map((activity) => (
-            <li className="flex min-w-0 gap-2.5" key={activity.id}>
-              <Icon
-                className="mt-0.5 shrink-0"
-                glyph={
-                  activity.state === "failed"
-                    ? WarningTriangle
-                    : activity.state === "succeeded"
-                      ? CheckCircle
-                      : Page
-                }
-                size={16}
-                tone="secondary"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="text-foreground block text-sm font-medium lg:text-xs">
-                  {activityLabel(activity, t)}
-                </span>
-                {activity.subject && (
-                  <span className="text-muted mt-0.5 block text-sm leading-5 break-words lg:text-xs">
-                    {activity.subject}
-                  </span>
-                )}
-                {Boolean(activity.source_count || activity.artifact_count) && (
-                  <span className="text-muted mt-0.5 block text-sm lg:text-xs">
-                    {t("activity.results", {
-                      sources: activity.source_count ?? 0,
-                      artifacts: activity.artifact_count ?? 0,
-                    })}
-                  </span>
-                )}
-              </span>
-              <span className="sr-only">
-                {t(`activity.state.${activity.state}`)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-      {state === "error" && failure?.diagnosticId && (
-        <p className="text-muted mt-1 text-xs">
-          {t("failure.diagnostic", { id: failure.diagnosticId })}
-        </p>
-      )}
-    </div>
-  );
 }
 
 function Sources({ references }: { references: unknown }) {
@@ -292,34 +97,42 @@ function Sources({ references }: { references: unknown }) {
 }
 
 function AssistantMessage({
-  activities,
+  entries,
   content,
+  provisionalContent,
   references,
   sourceTotal,
   state,
   failure,
+  historical,
   onActivityOpenChange,
 }: {
-  activities: ConversationActivity[];
+  entries: ConversationTraceEntry[];
   content: string;
+  provisionalContent?: string;
   references: unknown;
   sourceTotal: number;
   state: LiveTurn["state"];
   failure?: ConversationFailure | null;
+  historical?: boolean;
   onActivityOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations("Home.conversation");
+  const visibleContent = content || provisionalContent || "";
+  const presentationState =
+    content && state === "streaming" ? "complete" : state;
   return (
     <article aria-label={t("assistantMessage")} className="grid gap-3">
-      <ActivityDisclosure
-        activities={activities}
-        contentStarted={Boolean(content)}
-        onOpenChange={onActivityOpenChange}
-        sourceTotal={sourceTotal}
-        state={state}
+      <ConversationWorklog
+        entries={entries}
         failure={failure ?? null}
+        historical={historical}
+        onOpenChange={onActivityOpenChange}
+        provisionalVisible={Boolean(provisionalContent)}
+        sourceTotal={sourceTotal}
+        state={presentationState}
       />
-      {content && <MessageContent content={content} />}
+      {visibleContent && <MessageContent content={visibleContent} />}
       <Sources references={references} />
     </article>
   );
@@ -337,8 +150,9 @@ function MessageHistory({ messages }: { messages: Message[] }) {
           </div>
         ) : (
           <AssistantMessage
-            activities={message.trace?.activities ?? []}
             content={message.content}
+            entries={message.trace?.entries ?? []}
+            historical
             key={message.id}
             references={message.references}
             sourceTotal={
@@ -404,9 +218,16 @@ export function ConversationView({
         : messages,
     [liveTurn, messages],
   );
-  const activitySignature = liveTurn?.activities
-    .map((activity) => `${activity.id}:${activity.state}`)
+  const worklogSignature = liveTurn?.entries
+    .map((entry) =>
+      entry.kind === "activity"
+        ? `${entry.id}:${entry.state}`
+        : `${entry.id}:${entry.content.length}`,
+    )
     .join("|");
+  const provisionalContent = liveTurn?.provisionalItems
+    .map((item) => item.content)
+    .join("");
 
   React.useEffect(() => {
     const scrollRoot = rootRef.current?.closest("main");
@@ -431,7 +252,12 @@ export function ConversationView({
       behavior: reducedMotion ? "auto" : "smooth",
       block: "end",
     });
-  }, [activitySignature, liveTurn?.content, visibleMessages.length]);
+  }, [
+    worklogSignature,
+    liveTurn?.content,
+    provisionalContent,
+    visibleMessages.length,
+  ]);
 
   return (
     <div
@@ -477,11 +303,13 @@ export function ConversationView({
                   </p>
                 </div>
                 <AssistantMessage
-                  activities={liveTurn.activities}
                   content={liveTurn.content}
+                  entries={liveTurn.entries}
+                  key={liveTurn.turnId}
                   onActivityOpenChange={(open) => {
                     if (open) nearBottom.current = false;
                   }}
+                  provisionalContent={provisionalContent}
                   references={liveTurn.references}
                   sourceTotal={
                     liveTurn.trace?.citation_summary?.source_count ??

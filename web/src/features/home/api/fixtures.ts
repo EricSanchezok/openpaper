@@ -226,23 +226,23 @@ export const homeMessages: Message[] = [
     },
     artifacts: null,
     trace: {
-      activities: [
+      entries: [
         {
+          kind: "activity",
           id: "search-1",
           sequence: 1,
           category: "search",
           state: "succeeded",
-          tool_name: "search_papers",
           subject: "persistent agent runtime",
           source_count: 1,
           artifact_count: 0,
         },
         {
+          kind: "activity",
           id: "read-2",
           sequence: 2,
           category: "read",
           state: "succeeded",
-          tool_name: "get_paper_content",
           subject: "Synergy: A Next-Generation General-Purpose Agent",
           source_count: 1,
           artifact_count: 0,

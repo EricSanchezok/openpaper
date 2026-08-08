@@ -6,24 +6,28 @@ describe("conversation SSE parsing", () => {
   it("parses a typed standard SSE event", () => {
     expect(
       parseConversationEventBlock(
-        'event: content_delta\ndata: {"type":"content_delta","delta":"hello"}',
+        'event: assistant_item_delta\ndata: {"type":"assistant_item_delta","item_id":"assistant-1","delta":"hello"}',
       ),
-    ).toEqual({ type: "content_delta", delta: "hello" });
+    ).toEqual({
+      type: "assistant_item_delta",
+      item_id: "assistant-1",
+      delta: "hello",
+    });
   });
 
   it("joins multiline data fields and ignores comments", () => {
     expect(
       parseConversationEventBlock(
-        ': keep-alive\nevent: activity\ndata: {"type":"activity",\ndata: "activity":{"id":"search-1","sequence":1,"category":"search","state":"running","tool_name":"search_papers"}}',
+        ': keep-alive\nevent: activity\ndata: {"type":"activity",\ndata: "activity":{"kind":"activity","id":"search-1","sequence":1,"category":"search","state":"running"}}',
       ),
     ).toEqual({
       type: "activity",
       activity: {
+        kind: "activity",
         id: "search-1",
         sequence: 1,
         category: "search",
         state: "running",
-        tool_name: "search_papers",
       },
     });
   });

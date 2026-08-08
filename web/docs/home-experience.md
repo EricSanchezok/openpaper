@@ -38,12 +38,20 @@ contracts. It does not import from `client/` and does not define duplicate wire
 DTOs.
 
 Conversation creation and continuation use one standard SSE decoder. The
-stream accepts `start`, `activity`, `content_delta`, `references`, `complete`,
-and `error`. `activity` is an ID-addressed, sanitized tool lifecycle record;
-the interface derives localized progress copy from its category and state.
-Model reasoning, provider heartbeats, raw tool names, arguments, and return
-payloads are not product UI. `complete` and `error` are terminal. The user may
-abort an active stream; the Web app never automatically retries message creation.
+stream accepts `start`, the stable-ID `assistant_item_start → delta → complete`
+lifecycle, `activity`, `references`, `complete`, and `error`. A provisional
+assistant item is rendered immediately, then atomically classified as
+`progress` or `final` by its completion event; the client never infers phase
+from prose and never duplicates the text while moving it. Progress and activity
+share one sequence and become an ordered worklog. The final answer remains
+outside that trace and is always visible.
+
+`activity` is an ID-addressed, sanitized tool lifecycle record without a raw
+tool name. Adjacent tool entries are rendered as one category-count batch;
+progress text separates batches. Model reasoning, provider heartbeats, raw tool
+names, arguments, and return payloads are not product UI. Only final items may
+publish references. `complete` and `error` are terminal. The user may abort an
+active stream; the Web app never automatically retries message creation.
 Capacity dependency outages are returned as `unavailable`, not as a user quota
 exhaustion. The interface preserves the failed user message, explains that it
 was saved, and retains the public diagnostic ID without exposing provider or
@@ -66,16 +74,22 @@ never overwritten by title generation.
 
 The Figma conversation-state frames and Storybook stories map one-to-one:
 
-| Figma `20 — Home` state    | Storybook acceptance state                    |
-| -------------------------- | --------------------------------------------- |
-| Direct answer              | `Conversation View / Direct Answer`           |
-| Thinking before tools      | `Conversation View / Thinking Without Tools`  |
-| Single tool running        | `Conversation View / Single Tool Running`     |
-| Multiple tools expanded    | `Conversation View / Multiple Tools Expanded` |
-| Partial tool failure       | `Conversation View / Partial Failure`         |
-| Completed activity summary | `Conversation View / Multiple Tools Expanded` |
-| Cancelled                  | `Conversation View / Cancelled`               |
-| Error                      | `Conversation View / Error`                   |
+| Figma `20 — Home` state | Storybook acceptance state                    |
+| ----------------------- | --------------------------------------------- |
+| Provisional response    | `Conversation View / Provisional Response`    |
+| Progress before tools   | `Conversation View / Progress Before Tools`   |
+| Consecutive tool batch  | `Conversation View / Consecutive Tool Batch`  |
+| Strategy change         | `Conversation View / Strategy Change`         |
+| Completed collapsed     | `Conversation View / Completed Collapsed`     |
+| Completed expanded      | `Conversation View / Multiple Tools Expanded` |
+| Partial failure         | `Conversation View / Partial Failure`         |
+| Cancelled               | `Conversation View / Cancelled`               |
+| Direct answer           | `Conversation View / Direct Answer`           |
+| Error                   | `Conversation View / Error`                   |
+
+The canonical ordered-harness matrix is Figma node `893:3415`, with Desktop
+Light/Dark and Mobile Light/Dark groups. The superseded per-tool activity
+checklist is archived under `99 — Archive / Interaction States`.
 
 The mobile Dock acceptance inventory extends that mapping:
 
@@ -109,12 +123,21 @@ and
 frames. Library and Projects document the future selected visual state only;
 their runtime destinations remain deliberately unavailable in the Home slice.
 
-The former heavy process card is archived in Figma and is not a supported Web
-state. `Conversation View / Narrow Long Subject` and
+The former heavy process card and per-tool checklist are archived in Figma and
+are not supported Web states. `Conversation View / Narrow Long Subject` and
 `Conversation View / Simplified Chinese Dark` supplement the Figma mapping with
 runtime overflow, locale, and appearance coverage. Optimistic and persisted
 messages are reconciled by `turn_id`; the isolated deduplication state guards
 against showing the same user message twice while a stream is active.
+
+Each assistant turn owns one `ConversationWorklog` before its final answer.
+During a run it opens by default; a final item collapses it unless the user has
+manually chosen a state. Persisted history starts collapsed. Expanded rows
+interleave concise progress with grouped tool batches, show at most two safe
+subject examples per batch, and never create nested tool disclosures. The
+summary is the only polite live-region announcement, so screen readers do not
+receive every tool update. The same semantic component is used on desktop and
+mobile, with compact responsive spacing and no inner scrolling surface.
 
 On phones, the shell uses a 64 px content bar plus platform safe-area insets.
 The bar owns navigation, the current reasoning-strength selector, and the

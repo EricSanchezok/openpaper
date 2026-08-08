@@ -111,3 +111,28 @@ kind, retryability, correlation ID, and diagnostic ID instead of collapsing to
 rather than as user rate-limit exhaustion, while the failed user message stays
 in history for an explicit, idempotent retry. Raw dependency details remain in
 controlled diagnostics only.
+
+## Ordered-harness resolution — 2026-08-08
+
+The remaining semantic and presentation issues are resolved by the ordered
+assistant-item protocol and grouped worklog:
+
+- Provider response boundaries, not English/Chinese phrase matching, classify
+  streamed text as provisional, progress, or final. Stable item IDs let the UI
+  move text without rendering a second copy or appending progress after the
+  answer.
+- Progress and tool activities now share one sequence. The expanded record
+  preserves actual interleaving while adjacent activities collapse into one
+  category-count batch with at most two safe subject examples.
+- The checklist of repeated checkmarks and raw query rows is removed. Raw tool
+  identity, parameters, results, reasoning, and heartbeat events remain outside
+  product UI.
+- Running work opens by default; final completion collapses it unless the user
+  has manually chosen otherwise. Historical messages start collapsed.
+- One lightweight summary row owns running, complete, partial, cancelled, and
+  failure status. Its summary alone is announced as a polite live region.
+- Storybook now covers provisional output, progress before tools, consecutive
+  batching, strategy change, collapsed and expanded completion, partial
+  failure, cancellation, direct answer, and terminal error across responsive
+  appearance/locale controls. The matching 40-state Figma matrix is node
+  `893:3415`; the old checklist has moved to the archive page.

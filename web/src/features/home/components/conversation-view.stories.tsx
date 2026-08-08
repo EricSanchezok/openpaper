@@ -76,22 +76,22 @@ const mobileResearchMessages: Message[] = [
 ];
 
 const searchActivity = {
+  kind: "activity" as const,
   id: "search-1",
   sequence: 1,
   category: "search" as const,
   state: "succeeded" as const,
-  tool_name: "search_papers",
   subject: "chain-of-thought compression for efficient language models",
   source_count: 3,
   artifact_count: 0,
 };
 
 const readActivity = {
+  kind: "activity" as const,
   id: "read-2",
   sequence: 2,
   category: "read" as const,
   state: "succeeded" as const,
-  tool_name: "get_paper_content",
   subject: "Reasoning Efficiently: Models, Methods, and Open Questions",
   source_count: 2,
   artifact_count: 0,
@@ -102,7 +102,9 @@ function liveTurn(overrides: Partial<LiveTurn> = {}): LiveTurn {
     turnId: "52000000-0000-4000-8000-000000000001",
     userMessage: "Compare the strongest reasoning-compression approaches.",
     content: "",
-    activities: [],
+    entries: [],
+    provisionalItems: [],
+    completedItemIds: [],
     trace: null,
     references: null,
     failure: null,
@@ -187,11 +189,81 @@ export const ThinkingWithoutTools: Story = {
   },
 };
 
+export const ProvisionalResponse: Story = {
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      provisionalItems: [
+        {
+          id: "assistant:turn:1",
+          sequence: 1,
+          phase: "provisional",
+          content: "I’ll first inspect the research available in your library.",
+        },
+      ],
+    }),
+  },
+};
+
+export const ProgressBeforeTools: Story = {
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      entries: [
+        {
+          kind: "progress",
+          id: "assistant:turn:1",
+          sequence: 1,
+          content: "I’ll first inspect the research available in your library.",
+        },
+        { ...searchActivity, sequence: 2, state: "running" },
+      ],
+    }),
+  },
+};
+
+export const ConsecutiveToolBatch: Story = {
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      entries: [
+        searchActivity,
+        readActivity,
+        {
+          ...searchActivity,
+          id: "search-3",
+          sequence: 3,
+          subject: "latent reasoning compression",
+        },
+      ],
+    }),
+  },
+};
+
+export const StrategyChange: Story = {
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      entries: [
+        searchActivity,
+        {
+          kind: "progress",
+          id: "assistant:turn:2",
+          sequence: 2,
+          content:
+            "The first search was too narrow, so I’ll compare adjacent reasoning-efficiency work.",
+        },
+        { ...readActivity, sequence: 3, state: "running" },
+      ],
+    }),
+  },
+};
+
 export const SingleToolRunning: Story = {
   args: {
     messages: [],
     liveTurn: liveTurn({
-      activities: [{ ...searchActivity, state: "running" }],
+      entries: [{ ...searchActivity, state: "running" }],
     }),
   },
   play: async ({ canvasElement }) => {
@@ -199,12 +271,14 @@ export const SingleToolRunning: Story = {
     const disclosure = canvas.getByRole("button", {
       name: "Searching your research…",
     });
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expect(canvas.getByText("Searched 1 time")).toBeVisible();
     disclosure.focus();
     await userEvent.keyboard(" ");
-    await expect(canvas.getByText("Searched research sources")).toBeVisible();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
     await expect(canvas.queryByText("search_papers")).not.toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
-    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   },
 };
 
@@ -212,12 +286,12 @@ export const MultipleToolsExpanded: Story = {
   args: {
     messages: [],
     liveTurn: liveTurn({
-      activities: [searchActivity, readActivity],
+      entries: [searchActivity, readActivity],
       content:
         "The strongest approaches trade additional training for shorter inference traces.",
       state: "complete",
       trace: {
-        activities: [searchActivity, readActivity],
+        entries: [searchActivity, readActivity],
         citation_summary: {
           source_count: 4,
           annotation_count: 2,
@@ -229,11 +303,38 @@ export const MultipleToolsExpanded: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const disclosure = canvas.getByRole("button", {
-      name: "Completed · 2 actions · 4 sources",
+      name: "Research complete · 2 actions · 4 sources",
     });
     await userEvent.click(disclosure);
-    await expect(canvas.getByText("Read source material")).toBeVisible();
+    await expect(
+      canvas.getByText("Searched 1 time · Read 1 source"),
+    ).toBeVisible();
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  },
+};
+
+export const CompletedCollapsed: Story = {
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      entries: [searchActivity, readActivity],
+      content: "The evidence supports a shorter distilled reasoning trace.",
+      state: "complete",
+      trace: {
+        entries: [searchActivity, readActivity],
+        citation_summary: {
+          source_count: 4,
+          annotation_count: 2,
+          rejected_source_count: 0,
+        },
+      },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const disclosure = within(canvasElement).getByRole("button", {
+      name: "Research complete · 2 actions · 4 sources",
+    });
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   },
 };
 
@@ -241,12 +342,12 @@ export const PartialFailure: Story = {
   args: {
     messages: [],
     liveTurn: liveTurn({
-      activities: [searchActivity, { ...readActivity, state: "failed" }],
+      entries: [searchActivity, { ...readActivity, state: "failed" }],
       content:
         "I found enough material to answer, although one source could not be opened.",
       state: "complete",
       trace: {
-        activities: [searchActivity, { ...readActivity, state: "failed" }],
+        entries: [searchActivity, { ...readActivity, state: "failed" }],
         citation_summary: {
           source_count: 2,
           annotation_count: 1,
@@ -260,7 +361,7 @@ export const PartialFailure: Story = {
 export const Cancelled: Story = {
   args: {
     messages: [],
-    liveTurn: liveTurn({ activities: [searchActivity], state: "cancelled" }),
+    liveTurn: liveTurn({ entries: [searchActivity], state: "cancelled" }),
   },
 };
 
@@ -284,7 +385,7 @@ export const NarrowLongSubject: Story = {
   args: {
     messages: [],
     liveTurn: liveTurn({
-      activities: [
+      entries: [
         {
           ...searchActivity,
           state: "running",
@@ -301,7 +402,7 @@ export const SimplifiedChineseDark: Story = {
   args: {
     messages: [],
     liveTurn: liveTurn({
-      activities: [{ ...searchActivity, state: "running" }],
+      entries: [{ ...searchActivity, state: "running" }],
     }),
   },
 };
@@ -322,7 +423,7 @@ export const OptimisticTurnDeduplicated: Story = {
       },
     ],
     liveTurn: liveTurn({
-      activities: [{ ...searchActivity, state: "running" }],
+      entries: [{ ...searchActivity, state: "running" }],
     }),
   },
   play: async ({ canvasElement }) => {
