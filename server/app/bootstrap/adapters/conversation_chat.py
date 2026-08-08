@@ -16,7 +16,10 @@ from app.helpers.ai_limits import (
     enforce_rate_limit,
     release_concurrency,
 )
-from app.llm.conversation_agent import ScholensConversationAgent
+from app.llm.conversation_agent import (
+    ConversationAgentResult,
+    ScholensConversationAgent,
+)
 from app.llm.conversation_titles import (
     initial_conversation_title_generator,
     should_generate_initial_title,
@@ -27,12 +30,10 @@ from app.modules.conversations.application.contracts.answer_packet import (
 )
 from app.modules.conversations.application.contracts.messages import (
     ConversationAssistantItem,
-    ConversationActivity,
     ConversationMessageRequest,
     ConversationStreamAssistantItemCompleteEvent,
     ConversationStreamAssistantItemDeltaEvent,
     ConversationStreamAssistantItemStartEvent,
-    ConversationStreamActivityEvent,
     ConversationStreamCompleteEvent,
     ConversationStreamReferencesEvent,
     ConversationStreamStartEvent,
@@ -249,63 +250,19 @@ async def stream_conversation_agent(
             user_operation_id=turn_start.user_operation_id,
             mentioned_highlights=mentions.highlights,
         ):
-            event_type = event.get("type")
-            if event_type == "activity":
-                activity = event.get("activity")
-                if isinstance(activity, ConversationActivity):
-                    yield encode_conversation_sse(
-                        ConversationStreamActivityEvent(activity=activity)
-                    )
-            elif event_type == "assistant_item_start":
-                item_id = event.get("item_id")
-                sequence = event.get("sequence")
-                if isinstance(item_id, str) and isinstance(sequence, int):
-                    yield encode_conversation_sse(
-                        ConversationStreamAssistantItemStartEvent(
-                            item_id=item_id,
-                            sequence=sequence,
-                        )
-                    )
-            elif event_type == "assistant_item_delta":
-                item_id = event.get("item_id")
-                delta = event.get("delta")
-                if isinstance(item_id, str) and isinstance(delta, str):
-                    yield encode_conversation_sse(
-                        ConversationStreamAssistantItemDeltaEvent(
-                            item_id=item_id,
-                            delta=delta,
-                        )
-                    )
-            elif event_type == "assistant_item_complete":
-                item = ConversationAssistantItem.model_validate(event.get("item"))
-                if item.phase == "final":
-                    final_content = item.content
-                yield encode_conversation_sse(
-                    ConversationStreamAssistantItemCompleteEvent(item=item)
-                )
-            elif event_type == "references":
-                candidate = event.get("references")
-                if isinstance(candidate, ReferenceBundle):
-                    references = candidate
-                    yield encode_conversation_sse(
-                        ConversationStreamReferencesEvent(
-                            references=_JSON_OBJECT.validate_python(
-                                candidate.model_dump(mode="json")
-                            )
-                        )
-                    )
-            elif event_type == "complete":
-                candidate_trace = event.get("trace")
-                if isinstance(candidate_trace, ConversationTrace):
-                    trace = candidate_trace
-                candidate_artifacts = event.get("artifacts")
-                if isinstance(candidate_artifacts, list):
-                    artifacts = _JSON_OBJECT_LIST.validate_python(candidate_artifacts)
-            else:
-                logger.warning(
-                    "conversation.runtime.unknown_event",
-                    extra={"event_type": str(event_type)},
-                )
+            if isinstance(event, ConversationAgentResult):
+                trace = event.trace
+                artifacts = event.artifacts
+                continue
+            if isinstance(event, ConversationStreamAssistantItemCompleteEvent):
+                if event.item.phase == "final":
+                    final_content = event.item.content
+            elif isinstance(event, ConversationStreamReferencesEvent):
+                references = ReferenceBundle.model_validate(event.references)
+            yield encode_conversation_sse(event)
+
+        if not final_content:
+            raise RuntimeError("Conversation agent completed without a final answer")
 
         diagnostic_context["answer_char_count"] = len(final_content)
         diagnostic_context["activity_count"] = (

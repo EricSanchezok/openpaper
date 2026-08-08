@@ -8,7 +8,11 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from app.llm.conversation_agent import ScholensConversationAgent
+from app.llm.conversation_agent import (
+    ConversationAgentResult,
+    ConversationAgentStreamEvent,
+    ScholensConversationAgent,
+)
 from app.modules.conversations.application.chat import (
     ChatPaperSnapshot,
     ConversationChatScope,
@@ -16,7 +20,12 @@ from app.modules.conversations.application.chat import (
 )
 from app.modules.conversations.application.contracts.messages import (
     ConversationActivity,
+    ConversationAssistantItem,
     ConversationMessageRequest,
+    ConversationStreamActivityEvent,
+    ConversationStreamAssistantItemCompleteEvent,
+    ConversationStreamAssistantItemDeltaEvent,
+    ConversationStreamReferencesEvent,
     ConversationTrace,
 )
 from app.modules.conversations.application.contracts.answer_packet import (
@@ -185,7 +194,7 @@ async def _events(
     locale: str = "zh-CN",
     time_zone: str = "Asia/Shanghai",
     scope: ConversationChatScope | None = None,
-) -> list[dict[str, object]]:
+) -> list[ConversationAgentStreamEvent]:
     runtime = ScholensConversationAgent(
         catalog=_catalog(),
         dispatcher=dispatcher,  # type: ignore[arg-type]
@@ -230,11 +239,17 @@ def _activities(trace: ConversationTrace) -> list[ConversationActivity]:
     return [entry for entry in trace.entries if entry.kind == "activity"]
 
 
-def _final_text(events: list[dict[str, object]]) -> str:
+def _result(events: list[ConversationAgentStreamEvent]) -> ConversationAgentResult:
+    results = [event for event in events if isinstance(event, ConversationAgentResult)]
+    assert len(results) == 1
+    return results[0]
+
+
+def _final_text(events: list[ConversationAgentStreamEvent]) -> str:
     return "".join(
-        str(event["delta"])
+        event.delta
         for event in events
-        if event["type"] == "assistant_item_delta"
+        if isinstance(event, ConversationStreamAssistantItemDeltaEvent)
     )
 
 
@@ -266,16 +281,21 @@ async def test_zero_tool_answer_uses_injected_local_date() -> None:
     )
 
     assert dispatcher.calls == []
-    assert [event["type"] for event in events] == [
+    assert [
+        "result" if isinstance(event, ConversationAgentResult) else event.type
+        for event in events
+    ] == [
         "assistant_item_start",
         "assistant_item_delta",
         "assistant_item_complete",
-        "complete",
+        "result",
     ]
-    assert events[2]["item"]["phase"] == "final"  # type: ignore[index]
+    assert isinstance(events[2], ConversationStreamAssistantItemCompleteEvent)
+    assert events[2].item.phase == "final"
     assert "2026-08-06" in seen_instructions[0]
     assert "Asia/Shanghai" in seen_instructions[0]
-    assert events[-1]["trace"] is None
+    assert _result(events).trace is None
+    assert all(not isinstance(event, dict) for event in events)
 
 
 @pytest.mark.asyncio
@@ -308,38 +328,153 @@ async def test_text_before_tool_is_completed_as_progress_before_activity() -> No
         time_zone="UTC",
     )
 
-    types = [event["type"] for event in events]
+    types = [
+        "result" if isinstance(event, ConversationAgentResult) else event.type
+        for event in events
+    ]
     progress_complete_index = next(
         index
         for index, event in enumerate(events)
-        if event["type"] == "assistant_item_complete"
-        and event["item"]["phase"] == "progress"  # type: ignore[index]
+        if isinstance(event, ConversationStreamAssistantItemCompleteEvent)
+        and event.item.phase == "progress"
     )
     first_activity_index = types.index("activity")
     assert progress_complete_index < first_activity_index
-    assert events[progress_complete_index]["item"]["content"] == (  # type: ignore[index]
-        "I will inspect the available research."
-    )
-    trace = events[-1]["trace"]
+    progress_event = events[progress_complete_index]
+    assert isinstance(progress_event, ConversationStreamAssistantItemCompleteEvent)
+    assert progress_event.item.content == ("I will inspect the available research.")
+    trace = _result(events).trace
     assert isinstance(trace, ConversationTrace)
     assert [(entry.kind, entry.sequence) for entry in trace.entries] == [
         ("progress", 1),
         ("activity", 2),
     ]
     final = [
-        event["item"]
+        event.item
         for event in events
-        if event["type"] == "assistant_item_complete"
-        and event["item"]["phase"] == "final"  # type: ignore[index]
+        if isinstance(event, ConversationStreamAssistantItemCompleteEvent)
+        and event.item.phase == "final"
     ]
     assert final == [
-        {
-            "id": final[0]["id"],
-            "sequence": 3,
-            "phase": "final",
-            "content": "Final answer.",
-        }
+        ConversationAssistantItem(
+            id=final[0].id,
+            sequence=3,
+            phase="final",
+            content="Final answer.",
+        )
     ]
+
+
+@pytest.mark.asyncio
+async def test_progress_is_bounded_without_breaking_the_final_answer() -> None:
+    long_progress = "p" * 4_500
+
+    async def staged_answer(
+        messages: list[ModelMessage], _info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        has_result = any(
+            isinstance(part, ToolReturnPart)
+            for message in messages
+            for part in message.parts
+        )
+        if not has_result:
+            yield long_progress
+            yield {
+                0: DeltaToolCall(
+                    name="search_papers",
+                    json_args='{"query":"bounded progress"}',
+                    tool_call_id="search-bounded",
+                )
+            }
+            return
+        yield "Final answer after bounded progress."
+
+    events = await _events(
+        model=FunctionModel(stream_function=staged_answer),
+        dispatcher=_Dispatcher(),
+        query="Research this topic",
+        locale="en",
+        time_zone="UTC",
+    )
+
+    progress_items = [
+        event.item
+        for event in events
+        if isinstance(event, ConversationStreamAssistantItemCompleteEvent)
+        and event.item.phase == "progress"
+    ]
+    assert [len(item.content) for item in progress_items] == [4_000]
+    assert _result(events).trace is not None
+    assert _final_text(events).endswith("Final answer after bounded progress.")
+
+
+@pytest.mark.asyncio
+async def test_hidden_only_pre_tool_text_does_not_emit_an_empty_item() -> None:
+    async def staged_answer(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        has_result = any(
+            isinstance(part, ToolReturnPart)
+            for message in messages
+            for part in message.parts
+        )
+        if not has_result:
+            nonce_match = re.search(
+                r"SCHOLENS_CITE:([0-9a-f]+):1", info.instructions or ""
+            )
+            assert nonce_match is not None
+            yield f"[[SCHOLENS_CITE:{nonce_match.group(1)}:1]]"
+            yield {
+                0: DeltaToolCall(
+                    name="search_papers",
+                    json_args='{"query":"hidden marker"}',
+                    tool_call_id="search-hidden",
+                )
+            }
+            return
+        yield "Visible final answer."
+
+    events = await _events(
+        model=FunctionModel(stream_function=staged_answer),
+        dispatcher=_Dispatcher(),
+        query="Research this topic",
+        locale="en",
+        time_zone="UTC",
+    )
+
+    completed = [
+        event.item
+        for event in events
+        if isinstance(event, ConversationStreamAssistantItemCompleteEvent)
+    ]
+    assert completed == [
+        ConversationAssistantItem(
+            id=completed[0].id,
+            sequence=3,
+            phase="final",
+            content="Visible final answer.",
+        )
+    ]
+    assert all(item.content for item in completed)
+
+
+@pytest.mark.asyncio
+async def test_hidden_only_final_answer_is_rejected() -> None:
+    async def hidden_answer(
+        _messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        nonce_match = re.search(r"SCHOLENS_CITE:([0-9a-f]+):1", info.instructions or "")
+        assert nonce_match is not None
+        yield f"[[SCHOLENS_CITE:{nonce_match.group(1)}:1]]"
+
+    with pytest.raises(AppError):
+        await _events(
+            model=FunctionModel(stream_function=hidden_answer),
+            dispatcher=_Dispatcher(),
+            query="Answer with no visible content",
+            locale="en",
+            time_zone="UTC",
+        )
 
 
 @pytest.mark.asyncio
@@ -372,7 +507,11 @@ async def test_research_tool_streams_sanitized_activity_and_references() -> None
         query="研究思维链压缩技术",
     )
 
-    activities = [event["activity"] for event in events if event["type"] == "activity"]
+    activities = [
+        event.activity
+        for event in events
+        if isinstance(event, ConversationStreamActivityEvent)
+    ]
     assert activities == [
         ConversationActivity(
             id="search-1",
@@ -394,11 +533,12 @@ async def test_research_tool_streams_sanitized_activity_and_references() -> None
     assert dispatcher.calls == [("search_papers", {"query": "reasoning compression"})]
     assert _final_text(events) == "Grounded claim"
     references = next(
-        event["references"] for event in events if event["type"] == "references"
+        ReferenceBundle.model_validate(event.references)
+        for event in events
+        if isinstance(event, ConversationStreamReferencesEvent)
     )
-    assert isinstance(references, ReferenceBundle)
     assert len(references.sources) == 1
-    trace = events[-1]["trace"]
+    trace = _result(events).trace
     assert isinstance(trace, ConversationTrace)
     assert trace.citation_summary is not None
     assert trace.citation_summary.source_count == 1
@@ -418,10 +558,12 @@ async def test_tool_failure_can_continue_to_a_natural_answer() -> None:
         time_zone="UTC",
     )
 
-    trace = events[-1]["trace"]
+    trace = _result(events).trace
     assert isinstance(trace, ConversationTrace)
     assert _activities(trace)[-1].state == "failed"
-    assert any(event["type"] == "assistant_item_delta" for event in events)
+    assert any(
+        isinstance(event, ConversationStreamAssistantItemDeltaEvent) for event in events
+    )
 
 
 @pytest.mark.asyncio
@@ -456,7 +598,7 @@ async def test_multiple_tools_preserve_order_and_terminal_state() -> None:
         time_zone="UTC",
     )
 
-    trace = events[-1]["trace"]
+    trace = _result(events).trace
     assert isinstance(trace, ConversationTrace)
     assert [(entry.kind, entry.sequence) for entry in trace.entries] == [
         ("progress", 1),
@@ -474,14 +616,16 @@ async def test_multiple_tools_preserve_order_and_terminal_state() -> None:
         "topic 2",
     ]
     completed_items = [
-        event["item"] for event in events if event["type"] == "assistant_item_complete"
+        event.item
+        for event in events
+        if isinstance(event, ConversationStreamAssistantItemCompleteEvent)
     ]
-    assert [item["phase"] for item in completed_items] == [
+    assert [item.phase for item in completed_items] == [
         "progress",
         "progress",
         "final",
     ]
-    assert [item["content"] for item in completed_items] == [
+    assert [item.content for item in completed_items] == [
         "Research stage 1.",
         "Research stage 2.",
         "Combined answer.",
@@ -521,7 +665,7 @@ async def test_duplicate_tool_call_is_blocked_before_dispatch() -> None:
     )
 
     assert len(dispatcher.calls) == 1
-    trace = events[-1]["trace"]
+    trace = _result(events).trace
     assert isinstance(trace, ConversationTrace)
     assert [activity.state for activity in _activities(trace)] == [
         "succeeded",
@@ -549,7 +693,7 @@ async def test_unauthorized_tool_is_not_exposed_or_dispatched() -> None:
     )
 
     assert dispatcher.calls == []
-    assert events[-1]["trace"] is None
+    assert _result(events).trace is None
 
 
 @pytest.mark.asyncio

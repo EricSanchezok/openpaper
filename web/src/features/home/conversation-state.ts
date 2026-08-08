@@ -114,9 +114,6 @@ function completeAssistantItem(
     (candidate) => candidate.id !== item.id,
   );
   if (item.phase === "progress") {
-    if (!item.content) {
-      return { ...current, completedItemIds, provisionalItems };
-    }
     return {
       ...current,
       completedItemIds,

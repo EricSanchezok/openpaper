@@ -136,3 +136,12 @@ assistant-item protocol and grouped worklog:
   failure, cancellation, direct answer, and terminal error across responsive
   appearance/locale controls. The matching 40-state Figma matrix is node
   `893:3415`; the old checklist has moved to the archive page.
+
+## Harness hardening update — 2026-08-08
+
+The post-implementation audit removed the remaining parallel dictionary event
+protocol between the Agent runtime and SSE adapter. Both layers now share typed
+event models; completed items require visible content, hidden citation-only
+output cannot create a blank row, progress is bounded before it enters the
+trace, and the adapter refuses to persist a turn without a final answer. The
+former Web empty-progress branch was consequently deleted.

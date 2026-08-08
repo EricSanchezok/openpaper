@@ -12,7 +12,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Literal, cast
 from zoneinfo import ZoneInfo
 
 import openai
@@ -36,10 +36,16 @@ from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
 )
 from app.modules.conversations.application.contracts.messages import (
+    ConversationAssistantItem,
     ConversationActivity,
     ConversationCitationSummary,
     ConversationMessageRequest,
     ConversationProgressEntry,
+    ConversationStreamActivityEvent,
+    ConversationStreamAssistantItemCompleteEvent,
+    ConversationStreamAssistantItemDeltaEvent,
+    ConversationStreamAssistantItemStartEvent,
+    ConversationStreamReferencesEvent,
     ConversationTrace,
 )
 from app.modules.integrations.connectors.infrastructure.mcp import (
@@ -102,6 +108,7 @@ _MAX_AGENT_REQUESTS = 32
 _MAX_AGENT_TOOL_CALLS = 24
 _MAX_TOOL_RESULT_TOKENS = 80_000
 _DEEPSEEK_MAX_OUTPUT_TOKENS = 384 * 1024
+_MAX_PROGRESS_CHARS = 4_000
 
 
 def _citation_artifact_summary(result: CitationResult) -> str:
@@ -196,6 +203,25 @@ class _StreamedAssistantItem:
     content: str
     packet: AnswerPacket
     parser: GroundedAnswerStreamParser
+    started: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationAgentResult:
+    """Private terminal envelope; public SSE completion remains adapter-owned."""
+
+    trace: ConversationTrace | None
+    artifacts: list[dict[str, JsonValue]]
+
+
+ConversationAgentStreamEvent = (
+    ConversationStreamActivityEvent
+    | ConversationStreamAssistantItemStartEvent
+    | ConversationStreamAssistantItemDeltaEvent
+    | ConversationStreamAssistantItemCompleteEvent
+    | ConversationStreamReferencesEvent
+    | ConversationAgentResult
+)
 
 
 class ScholensConversationAgent:
@@ -271,7 +297,7 @@ class ScholensConversationAgent:
         correlation_id: uuid.UUID,
         user_operation_id: uuid.UUID,
         mentioned_highlights: list[dict[str, Any]] | None,
-    ) -> AsyncGenerator[dict[str, object], None]:
+    ) -> AsyncGenerator[ConversationAgentStreamEvent, None]:
         started = time.monotonic()
         history = executor.query(
             lambda capabilities: capabilities.conversation_chat_data.history(
@@ -402,30 +428,35 @@ class ScholensConversationAgent:
                                                 nonce=nonce,
                                             ),
                                         )
-                                        yield {
-                                            "type": "assistant_item_start",
-                                            "item_id": item.id,
-                                            "sequence": item.sequence,
-                                        }
                                     visible = item.parser.feed(delta)
                                     if visible:
+                                        if not item.started:
+                                            item.started = True
+                                            yield ConversationStreamAssistantItemStartEvent(
+                                                item_id=item.id,
+                                                sequence=item.sequence,
+                                            )
                                         item.content += visible
-                                        yield {
-                                            "type": "assistant_item_delta",
-                                            "item_id": item.id,
-                                            "delta": visible,
-                                        }
+                                        yield ConversationStreamAssistantItemDeltaEvent(
+                                            item_id=item.id,
+                                            delta=visible,
+                                        )
 
                             next_node = await agent_run.next(node)
                             if item is not None:
                                 remaining = item.parser.finish()
                                 if remaining:
+                                    if not item.started:
+                                        item.started = True
+                                        yield ConversationStreamAssistantItemStartEvent(
+                                            item_id=item.id,
+                                            sequence=item.sequence,
+                                        )
                                     item.content += remaining
-                                    yield {
-                                        "type": "assistant_item_delta",
-                                        "item_id": item.id,
-                                        "delta": remaining,
-                                    }
+                                    yield ConversationStreamAssistantItemDeltaEvent(
+                                        item_id=item.id,
+                                        delta=remaining,
+                                    )
                                 response = (
                                     next_node.model_response
                                     if isinstance(next_node, CallToolsNode)
@@ -440,32 +471,14 @@ class ScholensConversationAgent:
                                     and response.finish_reason == "tool_call"
                                 ):
                                     if item.content:
-                                        progress = ConversationProgressEntry(
-                                            id=item.id,
-                                            sequence=item.sequence,
-                                            content=item.content,
-                                        )
+                                        progress = self._progress_entry(item)
                                         deps.progress_entries.append(progress)
-                                        yield {
-                                            "type": "assistant_item_complete",
-                                            "item": {
-                                                "id": item.id,
-                                                "sequence": item.sequence,
-                                                "phase": "progress",
-                                                "content": item.content,
-                                            },
-                                        }
-                                    else:
-                                        yield {
-                                            "type": "assistant_item_complete",
-                                            "item": {
-                                                "id": item.id,
-                                                "sequence": item.sequence,
-                                                "phase": "progress",
-                                                "content": "",
-                                            },
-                                        }
-                                else:
+                                        yield self._complete_item(
+                                            item,
+                                            phase="progress",
+                                            content=progress.content,
+                                        )
+                                elif item.content:
                                     pending_final = item
                             node = next_node
                             continue
@@ -484,10 +497,9 @@ class ScholensConversationAgent:
                                             activity = self._running_activity(
                                                 deps, tool_event
                                             )
-                                            yield {
-                                                "type": "activity",
-                                                "activity": activity,
-                                            }
+                                            yield ConversationStreamActivityEvent(
+                                                activity=activity
+                                            )
                                         elif isinstance(
                                             tool_event, FunctionToolResultEvent
                                         ):
@@ -499,45 +511,28 @@ class ScholensConversationAgent:
                                                     call_id
                                                 )
                                                 if updated_activity is not None:
-                                                    yield {
-                                                        "type": "activity",
-                                                        "activity": updated_activity,
-                                                    }
+                                                    yield ConversationStreamActivityEvent(
+                                                        activity=updated_activity
+                                                    )
                             next_node = await agent_run.next(node)
                             if pending_final is not None:
                                 if isinstance(next_node, End):
                                     final_item = pending_final
-                                    yield {
-                                        "type": "assistant_item_complete",
-                                        "item": {
-                                            "id": final_item.id,
-                                            "sequence": final_item.sequence,
-                                            "phase": "final",
-                                            "content": final_item.content,
-                                        },
-                                    }
+                                    yield self._complete_item(
+                                        final_item,
+                                        phase="final",
+                                    )
                                     final_references = final_item.parser.references()
                                     if final_references is not None:
-                                        yield {
-                                            "type": "references",
-                                            "references": final_references,
-                                        }
+                                        yield self._references_event(final_references)
                                 elif pending_final.content:
-                                    progress = ConversationProgressEntry(
-                                        id=pending_final.id,
-                                        sequence=pending_final.sequence,
-                                        content=pending_final.content,
-                                    )
+                                    progress = self._progress_entry(pending_final)
                                     deps.progress_entries.append(progress)
-                                    yield {
-                                        "type": "assistant_item_complete",
-                                        "item": {
-                                            "id": progress.id,
-                                            "sequence": progress.sequence,
-                                            "phase": "progress",
-                                            "content": progress.content,
-                                        },
-                                    }
+                                    yield self._complete_item(
+                                        pending_final,
+                                        phase="progress",
+                                        content=progress.content,
+                                    )
                                 pending_final = None
                             node = next_node
                             continue
@@ -564,32 +559,23 @@ class ScholensConversationAgent:
                             packet=packet,
                             parser=fallback_parser,
                         )
-                        yield {
-                            "type": "assistant_item_start",
-                            "item_id": final_item.id,
-                            "sequence": final_item.sequence,
-                        }
-                        if content:
-                            yield {
-                                "type": "assistant_item_delta",
-                                "item_id": final_item.id,
-                                "delta": content,
-                            }
-                        yield {
-                            "type": "assistant_item_complete",
-                            "item": {
-                                "id": final_item.id,
-                                "sequence": final_item.sequence,
-                                "phase": "final",
-                                "content": final_item.content,
-                            },
-                        }
+                        if not content:
+                            raise RuntimeError(
+                                "Conversation agent produced no visible final answer"
+                            )
+                        final_item.started = True
+                        yield ConversationStreamAssistantItemStartEvent(
+                            item_id=final_item.id,
+                            sequence=final_item.sequence,
+                        )
+                        yield ConversationStreamAssistantItemDeltaEvent(
+                            item_id=final_item.id,
+                            delta=content,
+                        )
+                        yield self._complete_item(final_item, phase="final")
                         final_references = fallback_parser.references()
                         if final_references is not None:
-                            yield {
-                                "type": "references",
-                                "references": final_references,
-                            }
+                            yield self._references_event(final_references)
                     self._settle_usage(
                         result=result,
                         request=request,
@@ -603,11 +589,10 @@ class ScholensConversationAgent:
                         references=final_references,
                         parser=final_item.parser,
                     )
-                    yield {
-                        "type": "complete",
-                        "trace": trace,
-                        "artifacts": self._artifacts(deps.agent_state),
-                    }
+                    yield ConversationAgentResult(
+                        trace=trace,
+                        artifacts=self._artifacts(deps.agent_state),
+                    )
         except BaseException as exc:
             if isinstance(
                 exc,
@@ -1133,6 +1118,41 @@ Initial server-validated answer material:
     @staticmethod
     def _assistant_item_id(turn_id: uuid.UUID, sequence: int) -> str:
         return f"assistant:{turn_id}:{sequence}"
+
+    @staticmethod
+    def _progress_entry(item: _StreamedAssistantItem) -> ConversationProgressEntry:
+        return ConversationProgressEntry(
+            id=item.id,
+            sequence=item.sequence,
+            content=item.content[:_MAX_PROGRESS_CHARS],
+        )
+
+    @staticmethod
+    def _complete_item(
+        item: _StreamedAssistantItem,
+        *,
+        phase: Literal["progress", "final"],
+        content: str | None = None,
+    ) -> ConversationStreamAssistantItemCompleteEvent:
+        return ConversationStreamAssistantItemCompleteEvent(
+            item=ConversationAssistantItem(
+                id=item.id,
+                sequence=item.sequence,
+                phase=phase,
+                content=content if content is not None else item.content,
+            )
+        )
+
+    @staticmethod
+    def _references_event(
+        references: ReferenceBundle,
+    ) -> ConversationStreamReferencesEvent:
+        return ConversationStreamReferencesEvent(
+            references=cast(
+                dict[str, JsonValue],
+                references.model_dump(mode="json"),
+            )
+        )
 
     @staticmethod
     def _settle_usage(

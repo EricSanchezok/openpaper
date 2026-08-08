@@ -102,7 +102,11 @@ UI locale and a validated IANA time zone. `activity` contains only a sanitized
 category/state/subject projection and intentionally omits the raw tool name.
 Model reasoning, provider heartbeats, tool arguments, and tool payloads are
 never part of the public stream. References may be emitted only for the final
-assistant item.
+assistant item. The runtime passes these same typed event models to the HTTP
+adapter rather than maintaining a second dictionary-shaped protocol. Completed
+assistant items must contain visible text; user-visible progress is bounded to
+4,000 characters, and a turn without a visible final answer is failed instead
+of persisting an empty assistant message.
 There is no private delimiter. Clients may abort the request, but must not
 automatically retry this non-idempotent operation.
 

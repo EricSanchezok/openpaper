@@ -72,7 +72,7 @@ class ConversationAssistantItem(BaseModel):
     id: str = Field(min_length=1, max_length=200)
     sequence: int = Field(ge=1)
     phase: Literal["progress", "final"]
-    content: str = Field(max_length=200_000)
+    content: str = Field(min_length=1, max_length=200_000)
 
 
 class ConversationStreamAssistantItemStartEvent(BaseModel):

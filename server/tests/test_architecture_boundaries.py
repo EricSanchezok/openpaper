@@ -353,6 +353,13 @@ def test_conversation_answer_runtime_has_one_packet_and_typed_source_path() -> N
     assert "FinalResultEvent" not in agent_source
     assert "ConversationToolLoop" not in agent_source
     assert "finish_tool_use" not in agent_source
+    assert "AsyncGenerator[dict[" not in agent_source
+
+    adapter_source = (
+        APP_ROOT / "bootstrap" / "adapters" / "conversation_chat.py"
+    ).read_text(encoding="utf-8")
+    assert 'event.get("type")' not in adapter_source
+    assert "conversation.runtime.unknown_event" not in adapter_source
 
 
 def test_only_versioned_public_routes_are_exposed() -> None:

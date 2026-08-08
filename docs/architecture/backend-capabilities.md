@@ -149,7 +149,11 @@ complete model and tool nodes to the harness: text from a response that calls a
 tool completes as a `progress` item, while the accepted no-tool response
 completes as the `final` item. Both use stable IDs and share a monotonic sequence
 with sanitized activity records. The persisted trace contains ordered progress
-and activity entries; final answer text remains in the Message row.
+and activity entries; progress is bounded before persistence, and final answer
+text remains in the Message row. Runtime-to-adapter communication uses the
+public typed event models directly plus one private typed result envelope, so
+there is no second untyped event protocol to drift. Empty assistant items are
+rejected and a turn cannot complete without visible final content.
 
 The public Conversation stream exposes item lifecycle events, sanitized
 activity, final-only server-generated references, and one terminal event. Raw

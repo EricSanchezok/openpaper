@@ -33,6 +33,10 @@ Use one Pydantic AI agent loop for every Conversation scope.
   `ModelResponse` and following `CallToolsNode` classify it as user-visible
   `progress` or the accepted `final` answer; no natural-language phrase parser
   participates in classification.
+- The in-process runtime emits the same typed public event models consumed by
+  the SSE adapter, plus one private typed terminal result. There is no parallel
+  dictionary protocol or adapter-side field guessing. Empty assistant items
+  are invalid; citation-only hidden output never starts a public item.
 - The public SSE union is `start`, `assistant_item_start`,
   `assistant_item_delta`, `assistant_item_complete`, `activity`, `references`,
   `complete`, and `error`. Item completion is authoritative. Clients may show
@@ -43,7 +47,9 @@ Use one Pydantic AI agent loop for every Conversation scope.
   tool name and exposes only category, state, bounded subject, and result
   counts.
 - Terminal traces persist ordered `progress | activity` entries and citation
-  counts. The final answer remains solely in `Message.content`.
+  counts. Progress text is bounded to 4,000 characters before it enters the
+  product trace. The final answer remains solely in `Message.content`, and the
+  adapter refuses to persist a completed turn without visible final content.
 - Only a final item may materialize references. Progress may contain safe,
   concise stage narration, but citation markers are removed without registering
   sources.

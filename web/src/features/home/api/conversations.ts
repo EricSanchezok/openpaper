@@ -9,6 +9,17 @@ export type ConversationMessageRequest =
 export type ConversationCreateRequest =
   components["schemas"]["ConversationCreateRequest"];
 
+const conversationStreamEventTypes = {
+  start: true,
+  activity: true,
+  assistant_item_start: true,
+  assistant_item_delta: true,
+  assistant_item_complete: true,
+  references: true,
+  complete: true,
+  error: true,
+} satisfies Record<ConversationStreamEvent["type"], true>;
+
 export async function createConversation(body: ConversationCreateRequest) {
   const { data } = await apiClient.POST("/api/v1/conversations", { body });
   if (!data) throw new Error("Create conversation response was empty");
@@ -41,11 +52,17 @@ export function parseConversationEventBlock(
     .map((line) => line.slice(5).trimStart())
     .join("\n");
   if (!data) return undefined;
-  const value = JSON.parse(data) as ConversationStreamEvent;
-  if (!value || typeof value !== "object" || !("type" in value)) {
+  const value: unknown = JSON.parse(data);
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("type" in value) ||
+    typeof value.type !== "string" ||
+    !(value.type in conversationStreamEventTypes)
+  ) {
     throw new Error("Conversation stream event was malformed");
   }
-  return value;
+  return value as ConversationStreamEvent;
 }
 
 export async function streamConversationMessage({
@@ -87,7 +104,7 @@ export async function streamConversationMessage({
     buffer = blocks.pop() ?? "";
     for (const block of blocks) {
       const event = parseConversationEventBlock(block);
-      if (!event) continue;
+      if (!event || completed) continue;
       onEvent(event);
       if (event.type === "complete") completed = true;
       if (event.type === "error") completed = true;
@@ -96,7 +113,7 @@ export async function streamConversationMessage({
   }
 
   const trailing = parseConversationEventBlock(buffer);
-  if (trailing) {
+  if (trailing && !completed) {
     onEvent(trailing);
     if (trailing.type === "complete" || trailing.type === "error") {
       completed = true;

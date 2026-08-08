@@ -35,4 +35,12 @@ describe("conversation SSE parsing", () => {
   it("ignores blocks without data", () => {
     expect(parseConversationEventBlock(": keep-alive")).toBeUndefined();
   });
+
+  it("rejects event discriminators outside the generated contract", () => {
+    expect(() =>
+      parseConversationEventBlock(
+        'data: {"type":"content_delta","delta":"legacy"}',
+      ),
+    ).toThrow("Conversation stream event was malformed");
+  });
 });

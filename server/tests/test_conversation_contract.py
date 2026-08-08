@@ -31,6 +31,7 @@ from app.modules.conversations.application.contracts.conversations import (
 )
 from app.modules.conversations.application.contracts.messages import (
     ConversationActivity,
+    ConversationAssistantItem,
     ConversationProgressEntry,
     ConversationTrace,
 )
@@ -86,6 +87,16 @@ def test_assistant_trace_serializes_as_a_typed_product_trace() -> None:
 
     assert serialized[0].trace == ConversationTrace.model_validate(message.trace)
     assert serialized[0].turn_id == message.turn_id
+
+
+def test_completed_assistant_items_require_visible_content() -> None:
+    with pytest.raises(ValidationError):
+        ConversationAssistantItem(
+            id="assistant:item",
+            sequence=1,
+            phase="final",
+            content="",
+        )
 
 
 def test_conversation_scope_contract_is_private_and_unified() -> None:
