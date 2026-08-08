@@ -291,9 +291,7 @@ def test_chat_requests_reject_legacy_provider_fields() -> None:
         "time_zone": "UTC",
     }
     with pytest.raises(ValidationError):
-        ConversationTurnCreateRequest.model_validate(
-            {**base, "llm_provider": "gemini"}
-        )
+        ConversationTurnCreateRequest.model_validate({**base, "llm_provider": "gemini"})
     with pytest.raises(ValidationError):
         ConversationTurnCreateRequest.model_validate(
             {

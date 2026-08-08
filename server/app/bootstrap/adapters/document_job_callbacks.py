@@ -1134,33 +1134,33 @@ async def handle_paper_processing_webhook(
                 if summary_turn_id is not None and summary_response_id is not None:
                     changes.extend(
                         (
-                        OperationChange(
-                            action=CONVERSATION_TURN_CREATED,
-                            resources=(
-                                ResourceRef(
-                                    "conversation_turn",
-                                    str(summary_turn_id),
+                            OperationChange(
+                                action=CONVERSATION_TURN_CREATED,
+                                resources=(
+                                    ResourceRef(
+                                        "conversation_turn",
+                                        str(summary_turn_id),
+                                    ),
                                 ),
                             ),
-                        ),
-                        OperationChange(
-                            action=CONVERSATION_RESPONSE_CREATED,
-                            resources=(
-                                ResourceRef(
-                                    "conversation_response",
-                                    str(summary_response_id),
+                            OperationChange(
+                                action=CONVERSATION_RESPONSE_CREATED,
+                                resources=(
+                                    ResourceRef(
+                                        "conversation_response",
+                                        str(summary_response_id),
+                                    ),
                                 ),
                             ),
-                        ),
-                        OperationChange(
-                            action=CONVERSATION_RESPONSE_COMPLETED,
-                            resources=(
-                                ResourceRef(
-                                    "conversation_response",
-                                    str(summary_response_id),
+                            OperationChange(
+                                action=CONVERSATION_RESPONSE_COMPLETED,
+                                resources=(
+                                    ResourceRef(
+                                        "conversation_response",
+                                        str(summary_response_id),
+                                    ),
                                 ),
                             ),
-                        ),
                         )
                     )
                 if postprocess_job.created:

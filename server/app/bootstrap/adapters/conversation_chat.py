@@ -196,7 +196,7 @@ async def stream_conversation_agent(
                         sequence=sequence,
                         phase="final",
                         content=persisted.content,
-                    )
+                    ),
                 )
             )
             if persisted.references is not None:
@@ -404,21 +404,25 @@ async def stream_conversation_agent(
                     yield event
         except asyncio.CancelledError:
             executor.command(
-                lambda capabilities: capabilities.conversation_chat_data.finish_response(
-                    actor=current_user,
-                    conversation_id=conversation_id,
-                    response_id=request.response_id,
-                    status="cancelled",
+                lambda capabilities: (
+                    capabilities.conversation_chat_data.finish_response(
+                        actor=current_user,
+                        conversation_id=conversation_id,
+                        response_id=request.response_id,
+                        status="cancelled",
+                    )
                 )
             )
             raise
         except Exception:
             executor.command(
-                lambda capabilities: capabilities.conversation_chat_data.finish_response(
-                    actor=current_user,
-                    conversation_id=conversation_id,
-                    response_id=request.response_id,
-                    status="failed",
+                lambda capabilities: (
+                    capabilities.conversation_chat_data.finish_response(
+                        actor=current_user,
+                        conversation_id=conversation_id,
+                        response_id=request.response_id,
+                        status="failed",
+                    )
                 )
             )
             raise

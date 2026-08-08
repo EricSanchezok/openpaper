@@ -310,9 +310,7 @@ def test_migrations_define_only_final_operation_causality() -> None:
 
     tables = _created_table_columns()
     assert {"correlation_id", "origin_operation_id"} <= tables["jobs"]
-    assert {"created_operation_id", "correlation_id"} <= tables[
-        "conversation_turns"
-    ]
+    assert {"created_operation_id", "correlation_id"} <= tables["conversation_turns"]
     assert {
         "turn_id",
         "created_operation_id",

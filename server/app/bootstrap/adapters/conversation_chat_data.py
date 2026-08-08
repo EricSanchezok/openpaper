@@ -188,7 +188,9 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             if selected is None or selected.content is None:
                 continue
             history.append(ChatHistoryMessage(role="user", content=turn.user_query))
-            history.append(ChatHistoryMessage(role="assistant", content=selected.content))
+            history.append(
+                ChatHistoryMessage(role="assistant", content=selected.content)
+            )
         return history
 
     def mentions(
@@ -359,11 +361,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
                 kind=FailureKind.CONFLICT,
             )
         prior_status = next(
-            (
-                item.status
-                for item in turn.responses
-                if item.id == response_id
-            ),
+            (item.status for item in turn.responses if item.id == response_id),
             None,
         )
         response = turn_repository.complete_response(
@@ -423,11 +421,14 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             turn_id=turn_id,
             user_id=actor.id,
         )
-        if turn_repository.latest_turn_id(
-            self._session,
-            conversation_id=conversation_id,
-            user_id=actor.id,
-        ) != turn.id:
+        if (
+            turn_repository.latest_turn_id(
+                self._session,
+                conversation_id=conversation_id,
+                user_id=actor.id,
+            )
+            != turn.id
+        ):
             raise AppError(
                 code="conversation_retry_not_latest",
                 message="Only the latest turn can be retried",
