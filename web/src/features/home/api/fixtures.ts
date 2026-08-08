@@ -3,8 +3,7 @@ import type { components } from "@/lib/api/generated/schema";
 type LibraryPaper = components["schemas"]["LibraryPaperResponse"];
 type Project = components["schemas"]["ProjectResponse"];
 type Conversation = components["schemas"]["ConversationSummaryResponse"];
-type Message =
-  components["schemas"]["app__modules__conversations__application__contracts__conversations__MessageResponse"];
+type ConversationTurn = components["schemas"]["ConversationTurnResponse"];
 
 const now = "2026-08-04T09:00:00Z";
 const conversationCapabilities = {
@@ -192,69 +191,76 @@ export const homeProjects: Project[] = [
   ),
 ];
 
-export const homeMessages: Message[] = [
+export const homeTurns: ConversationTurn[] = [
   {
-    id: "40000000-0000-4000-8000-000000000001",
-    turn_id: "50000000-0000-4000-8000-000000000001",
-    role: "user",
-    content: "What is the paper’s central contribution?",
-    references: null,
-    artifacts: null,
-    trace: null,
+    id: "50000000-0000-4000-8000-000000000001",
+    user_query: "What is the paper’s central contribution?",
+    locale: "en",
+    time_zone: "Asia/Shanghai",
+    reasoning_level: "standard",
     scope: null,
     sequence: 1,
-  },
-  {
-    id: "40000000-0000-4000-8000-000000000002",
-    turn_id: "50000000-0000-4000-8000-000000000001",
-    role: "assistant",
-    content:
-      "The paper’s central contribution is a persistent runtime for agents that continue beyond a single interaction. It treats identity, collaboration, and accumulated experience as parts of the operating model—not add-ons to a chat session.",
-    references: {
-      annotations: [],
-      sources: [
-        {
-          key: 1,
-          kind: "document",
-          document_id: homePapers[0]!.document.document_id,
-          title: homePapers[0]!.document.title,
-          authors: homePapers[0]!.document.authors ?? [],
-          reference: "A persistent workspace connects collaborative sessions.",
-          locator: { section: "Introduction" },
+    user_references: null,
+    selected_response_id: "40000000-0000-4000-8000-000000000002",
+    responses: [
+      {
+        id: "40000000-0000-4000-8000-000000000002",
+        variant_index: 1,
+        status: "completed",
+        content:
+          "The paper’s central contribution is a persistent runtime for agents that continue beyond a single interaction. It treats identity, collaboration, and accumulated experience as parts of the operating model—not add-ons to a chat session.",
+        references: {
+          annotations: [],
+          sources: [
+            {
+              key: 1,
+              kind: "document",
+              document_id: homePapers[0]!.document.document_id,
+              title: homePapers[0]!.document.title,
+              authors: homePapers[0]!.document.authors ?? [],
+              reference:
+                "A persistent workspace connects collaborative sessions.",
+              locator: { section: "Introduction" },
+            },
+          ],
         },
-      ],
-    },
-    artifacts: null,
-    trace: {
-      entries: [
-        {
-          kind: "activity",
-          id: "search-1",
-          sequence: 1,
-          category: "search",
-          state: "succeeded",
-          subject: "persistent agent runtime",
-          source_count: 1,
-          artifact_count: 0,
+        artifacts: null,
+        trace: {
+          entries: [
+            {
+              kind: "activity",
+              id: "search-1",
+              sequence: 1,
+              category: "search",
+              state: "succeeded",
+              subject: "persistent agent runtime",
+              source_count: 1,
+              artifact_count: 0,
+            },
+            {
+              kind: "activity",
+              id: "read-2",
+              sequence: 2,
+              category: "read",
+              state: "succeeded",
+              subject: "Synergy: A Next-Generation General-Purpose Agent",
+              source_count: 1,
+              artifact_count: 0,
+            },
+          ],
+          citation_summary: {
+            source_count: 1,
+            annotation_count: 1,
+            rejected_source_count: 0,
+          },
         },
-        {
-          kind: "activity",
-          id: "read-2",
-          sequence: 2,
-          category: "read",
-          state: "succeeded",
-          subject: "Synergy: A Next-Generation General-Purpose Agent",
-          source_count: 1,
-          artifact_count: 0,
-        },
-      ],
-      citation_summary: {
-        source_count: 1,
-        annotation_count: 1,
-        rejected_source_count: 0,
+        suggestions_status: "completed",
+        suggestions: [
+          "How does this compare with a retrieval-only assistant?",
+          "Which design choice matters most for continuity?",
+          "What evidence supports the paper’s central claim?",
+        ],
       },
-    },
-    scope: null,
-    sequence: 2,
+    ],
   },
 ];

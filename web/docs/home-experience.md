@@ -67,6 +67,12 @@ list are invalidated. A turn owns the submitted prompt and its generated
 response variants. Only the latest turn may expose retry and variant selection;
 once a newer turn is submitted, prior alternatives and their controls are
 removed from the product history.
+Every completed answer exposes a copy action for the selected final response.
+Retry creates a new response variant under the same latest turn, selects it
+after completion, and never duplicates the user prompt. Version navigation is
+shown only while that turn remains latest. Exactly three persisted follow-up
+suggestions belong to the selected completed response; selecting one only
+fills and focuses the Composer so the user can edit it before sending.
 The Server replaces the default Sidebar title once after the first successful
 assistant reply. Follow-up turns do not regenerate it, and user renames are
 never overwritten by title generation.
@@ -83,18 +89,22 @@ never overwritten by title generation.
 
 The Figma conversation-state frames and Storybook stories map one-to-one:
 
-| Figma `20 — Home` state | Storybook acceptance state                    |
-| ----------------------- | --------------------------------------------- |
-| Provisional response    | `Conversation View / Provisional Response`    |
-| Progress before tools   | `Conversation View / Progress Before Tools`   |
-| Consecutive tool batch  | `Conversation View / Consecutive Tool Batch`  |
-| Strategy change         | `Conversation View / Strategy Change`         |
-| Completed collapsed     | `Conversation View / Completed Collapsed`     |
-| Completed expanded      | `Conversation View / Multiple Tools Expanded` |
-| Partial failure         | `Conversation View / Partial Failure`         |
-| Cancelled               | `Conversation View / Cancelled`               |
-| Direct answer           | `Conversation View / Direct Answer`           |
-| Error                   | `Conversation View / Error`                   |
+| Figma `20 — Home` state | Storybook acceptance state                           |
+| ----------------------- | ---------------------------------------------------- |
+| Provisional response    | `Conversation View / Provisional Response`           |
+| Progress before tools   | `Conversation View / Progress Before Tools`          |
+| Consecutive tool batch  | `Conversation View / Consecutive Tool Batch`         |
+| Strategy change         | `Conversation View / Strategy Change`                |
+| Completed collapsed     | `Conversation View / Completed Collapsed`            |
+| Completed expanded      | `Conversation View / Multiple Tools Expanded`        |
+| Partial failure         | `Conversation View / Partial Failure`                |
+| Cancelled               | `Conversation View / Cancelled`                      |
+| Direct answer           | `Conversation View / Direct Answer`                  |
+| Error                   | `Conversation View / Error`                          |
+| Latest answer actions   | `Conversation View / Latest Answer Actions`          |
+| Retried variants        | `Conversation View / Retried Response Versions`      |
+| Historical answer       | `Conversation View / Historical Answer Has No Retry` |
+| Suggested follow-ups    | `Conversation View / Suggested Follow Ups`           |
 
 The canonical ordered-harness matrix is Figma node `893:3415`, with Desktop
 Light/Dark and Mobile Light/Dark groups. The superseded per-tool activity

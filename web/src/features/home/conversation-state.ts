@@ -25,6 +25,8 @@ export type ConversationFailure = {
 
 export type LiveTurn = {
   turnId: string;
+  responseId: string;
+  generationKind: "initial" | "retry";
   userMessage: string;
   content: string;
   entries: ConversationTraceEntry[];
@@ -36,9 +38,16 @@ export type LiveTurn = {
   state: "streaming" | "complete" | "cancelled" | "error";
 };
 
-export function createLiveTurn(turnId: string, userMessage: string): LiveTurn {
+export function createLiveTurn(
+  turnId: string,
+  responseId: string,
+  userMessage: string,
+  generationKind: "initial" | "retry" = "initial",
+): LiveTurn {
   return {
     turnId,
+    responseId,
+    generationKind,
     userMessage,
     content: "",
     entries: [],
@@ -140,6 +149,7 @@ export function reduceLiveTurn(
 ): LiveTurn | null {
   if (!current) return current;
   if (current.state !== "streaming") return current;
+  if (event.response_id !== current.responseId) return current;
   switch (event.type) {
     case "activity":
       return {

@@ -4,8 +4,10 @@ import { clientEnvironment } from "@/lib/env/client";
 
 export type ConversationStreamEvent =
   components["schemas"]["ConversationStreamEventSchema"];
-export type ConversationMessageRequest =
-  components["schemas"]["ConversationMessageRequest"];
+export type ConversationTurnCreateRequest =
+  components["schemas"]["ConversationTurnCreateRequest"];
+export type ConversationResponseCreateRequest =
+  components["schemas"]["ConversationResponseCreateRequest"];
 export type ConversationCreateRequest =
   components["schemas"]["ConversationCreateRequest"];
 
@@ -65,19 +67,19 @@ export function parseConversationEventBlock(
   return value as ConversationStreamEvent;
 }
 
-export async function streamConversationMessage({
-  conversationId,
-  message,
+async function streamConversation({
+  path,
+  body,
   signal,
   onEvent,
 }: {
-  conversationId: string;
-  message: ConversationMessageRequest;
+  path: string;
+  body: ConversationTurnCreateRequest | ConversationResponseCreateRequest;
   signal: AbortSignal;
   onEvent: (event: ConversationStreamEvent) => void;
 }) {
   const response = await authenticatedFetch(
-    `${clientEnvironment.NEXT_PUBLIC_API_URL}/api/v1/conversations/${conversationId}/messages`,
+    `${clientEnvironment.NEXT_PUBLIC_API_URL}${path}`,
     {
       method: "POST",
       credentials: "include",
@@ -85,7 +87,7 @@ export async function streamConversationMessage({
         Accept: "text/event-stream",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(message),
+      body: JSON.stringify(body),
       signal,
     },
   );
@@ -106,8 +108,7 @@ export async function streamConversationMessage({
       const event = parseConversationEventBlock(block);
       if (!event || completed) continue;
       onEvent(event);
-      if (event.type === "complete") completed = true;
-      if (event.type === "error") completed = true;
+      if (event.type === "complete" || event.type === "error") completed = true;
     }
     if (done) break;
   }
@@ -120,4 +121,83 @@ export async function streamConversationMessage({
     }
   }
   if (!completed) throw new Error("Conversation stream ended unexpectedly");
+}
+
+export function streamConversationTurn({
+  conversationId,
+  request,
+  signal,
+  onEvent,
+}: {
+  conversationId: string;
+  request: ConversationTurnCreateRequest;
+  signal: AbortSignal;
+  onEvent: (event: ConversationStreamEvent) => void;
+}) {
+  return streamConversation({
+    path: `/api/v1/conversations/${conversationId}/turns`,
+    body: request,
+    signal,
+    onEvent,
+  });
+}
+
+export function streamConversationRetry({
+  conversationId,
+  turnId,
+  request,
+  signal,
+  onEvent,
+}: {
+  conversationId: string;
+  turnId: string;
+  request: ConversationResponseCreateRequest;
+  signal: AbortSignal;
+  onEvent: (event: ConversationStreamEvent) => void;
+}) {
+  return streamConversation({
+    path: `/api/v1/conversations/${conversationId}/turns/${turnId}/responses`,
+    body: request,
+    signal,
+    onEvent,
+  });
+}
+
+export async function selectConversationResponse({
+  conversationId,
+  turnId,
+  responseId,
+}: {
+  conversationId: string;
+  turnId: string;
+  responseId: string;
+}) {
+  const { data } = await apiClient.PUT(
+    "/api/v1/conversations/{conversation_id}/turns/{turn_id}/selected-response",
+    {
+      params: { path: { conversation_id: conversationId, turn_id: turnId } },
+      body: { response_id: responseId },
+    },
+  );
+  if (!data) throw new Error("Selected response was empty");
+  return data;
+}
+
+export async function generateConversationSuggestions({
+  conversationId,
+  responseId,
+}: {
+  conversationId: string;
+  responseId: string;
+}) {
+  const { data } = await apiClient.POST(
+    "/api/v1/conversations/{conversation_id}/responses/{response_id}/suggestions",
+    {
+      params: {
+        path: { conversation_id: conversationId, response_id: responseId },
+      },
+    },
+  );
+  if (!data) throw new Error("Suggestion generation response was empty");
+  return data;
 }

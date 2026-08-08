@@ -3,9 +3,9 @@ import { expect, type Page, test } from "@playwright/test";
 
 import {
   homeConversations,
-  homeMessages,
   homePapers,
   homeProjects,
+  homeTurns,
 } from "../../src/features/home/api/fixtures";
 
 const apiPattern = "**/api/v1";
@@ -301,14 +301,23 @@ test("keeps conversation scrolling independent from the mobile Dock", async ({
   page,
 }) => {
   const conversation = homeConversations[0]!;
-  const messages = Array.from({ length: 6 }).flatMap((_, index) =>
-    homeMessages.map((message) => ({
-      ...message,
-      id: `${message.id.slice(0, -1)}${index}`,
-      turn_id: `${message.turn_id.slice(0, -1)}${index}`,
-      sequence: message.sequence + index * 2,
-    })),
-  );
+  const turns = Array.from({ length: 6 }, (_, index) => {
+    const source = homeTurns[0]!;
+    const turnId = `50000000-0000-4000-8000-00000000000${index + 1}`;
+    const responseId = `40000000-0000-4000-8000-00000000000${index + 1}`;
+    return {
+      ...source,
+      id: turnId,
+      sequence: index + 1,
+      selected_response_id: responseId,
+      responses: source.responses.map((response) => ({
+        ...response,
+        id: responseId,
+        suggestions: index === 5 ? response.suggestions : [],
+        suggestions_status: index === 5 ? response.suggestions_status : "idle",
+      })),
+    };
+  });
   await page.route(`${apiPattern}/conversations/${conversation.id}`, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -320,11 +329,11 @@ test("keeps conversation scrolling independent from the mobile Dock", async ({
     }),
   );
   await page.route(
-    `${apiPattern}/conversations/${conversation.id}/messages**`,
+    `${apiPattern}/conversations/${conversation.id}/turns**`,
     (route) =>
       route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ items: messages, next_cursor: null }),
+        body: JSON.stringify({ items: turns, next_cursor: null }),
       }),
   );
   await page.setViewportSize({ width: 390, height: 844 });

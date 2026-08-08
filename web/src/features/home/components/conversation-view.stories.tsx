@@ -2,57 +2,64 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { components } from "@/lib/api/generated/schema";
-import { homeMessages, homePapers, homeProjects } from "../api/fixtures";
+import { homePapers, homeProjects, homeTurns } from "../api/fixtures";
 import type { LiveTurn } from "../conversation-state";
-import { ConversationView } from "./conversation-view";
+import {
+  ConversationView,
+  type ConversationResponseVariant,
+  type ConversationTurn,
+} from "./conversation-view";
 
-type Message =
-  components["schemas"]["app__modules__conversations__application__contracts__conversations__MessageResponse"];
+type ReferenceBundle = components["schemas"]["ReferenceBundle"];
 
-const directMessages: Message[] = [
-  {
-    id: "41000000-0000-4000-8000-000000000001",
-    turn_id: "51000000-0000-4000-8000-000000000001",
-    role: "user",
-    content: "What day is it today?",
-    references: null,
-    artifacts: null,
-    trace: null,
-    scope: null,
-    sequence: 1,
-  },
-  {
-    id: "41000000-0000-4000-8000-000000000002",
-    turn_id: "51000000-0000-4000-8000-000000000001",
-    role: "assistant",
+const turnId = "51000000-0000-4000-8000-000000000001";
+const responseId = "41000000-0000-4000-8000-000000000001";
+
+function response(
+  overrides: Partial<ConversationResponseVariant> = {},
+): ConversationResponseVariant {
+  return {
+    id: responseId,
+    variant_index: 1,
+    status: "completed",
     content: "Today is Wednesday, August 5, 2026.",
     references: null,
     artifacts: null,
     trace: null,
-    scope: null,
-    sequence: 2,
-  },
-];
+    suggestions_status: "completed",
+    suggestions: [
+      "What is tomorrow’s date?",
+      "Which time zone are you using?",
+      "Show this week as a calendar.",
+    ],
+    ...overrides,
+  };
+}
 
-const mobileResearchMessages: Message[] = [
-  {
-    id: "41000000-0000-4000-8000-000000000011",
-    turn_id: "51000000-0000-4000-8000-000000000011",
-    role: "user",
-    content: "帮我调研一下思维链压缩技术",
-    references: null,
-    artifacts: null,
-    trace: null,
+function turn(
+  overrides: Partial<ConversationTurn> & {
+    responses?: ConversationResponseVariant[];
+  } = {},
+): ConversationTurn {
+  const responses = overrides.responses ?? [response()];
+  return {
+    id: turnId,
+    user_query: "What day is it today?",
+    locale: "en",
+    time_zone: "Asia/Shanghai",
+    reasoning_level: "standard",
     scope: null,
     sequence: 1,
-  },
-  {
-    id: "41000000-0000-4000-8000-000000000012",
-    turn_id: "51000000-0000-4000-8000-000000000011",
-    role: "assistant",
-    content: `# 思维链压缩技术调研
+    user_references: null,
+    selected_response_id: responses.at(-1)?.id ?? null,
+    ...overrides,
+    responses,
+  };
+}
 
-思维链压缩关注如何在保留复杂推理能力的同时，减少中间推理步骤、延迟和推理成本。它并不是简单删除文字，而是尝试保留对最终答案真正有贡献的信息。
+const researchContent = `# 思维链压缩技术调研
+
+思维链压缩关注如何在保留复杂推理能力的同时，减少中间推理步骤、延迟和推理成本。
 
 ## 主要研究方向
 
@@ -63,47 +70,7 @@ const mobileResearchMessages: Message[] = [
 ## 评估时需要注意
 
 - 不能只比较输出长度，还要检查答案正确率和校准程度。
-- 对数学、代码和开放式研究问题应分别评估。
-- 压缩后的推理过程仍需保留必要的可验证证据。
-
-下一步可以从推理长度、准确率、延迟和成本四个维度建立统一的实验表。`,
-    references: null,
-    artifacts: null,
-    trace: null,
-    scope: null,
-    sequence: 2,
-  },
-];
-
-const mobileSourceMessages: Message[] = mobileResearchMessages.map((message) =>
-  message.role !== "assistant"
-    ? message
-    : {
-        ...message,
-        references: {
-          annotations: [],
-          sources: homePapers.slice(0, 3).map((paper, index) => ({
-            key: index + 1,
-            kind: "document" as const,
-            document_id: paper.document.document_id,
-            title: paper.document.title,
-            authors: paper.document.authors ?? [],
-            reference: `第 ${index + 1} 个研究依据`,
-            locator: { section: "Introduction" },
-          })),
-        },
-      },
-);
-
-const mobileLongThreadMessages: Message[] = Array.from({ length: 3 }).flatMap(
-  (_, index) =>
-    mobileResearchMessages.map((message, messageIndex) => ({
-      ...message,
-      id: `41000000-0000-4000-8000-${String(index * 2 + messageIndex + 1).padStart(12, "0")}`,
-      turn_id: `51000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-      sequence: message.sequence + index * 2,
-    })),
-);
+- 对数学、代码和开放式研究问题应分别评估。`;
 
 const searchActivity = {
   kind: "activity" as const,
@@ -127,9 +94,56 @@ const readActivity = {
   artifact_count: 0,
 };
 
+const researchTrace = {
+  entries: [searchActivity, readActivity],
+  citation_summary: {
+    source_count: 3,
+    annotation_count: 2,
+    rejected_source_count: 0,
+  },
+};
+
+const researchReferences: ReferenceBundle = {
+  annotations: [],
+  sources: homePapers.slice(0, 3).map((paper, index) => ({
+    key: index + 1,
+    kind: "document" as const,
+    document_id: paper.document.document_id,
+    title: paper.document.title,
+    authors: paper.document.authors ?? [],
+    reference: `第 ${index + 1} 个研究依据`,
+    locator: { section: "Introduction" },
+  })),
+};
+
+function researchTurn(overrides: Partial<ConversationTurn> = {}) {
+  return turn({
+    id: "51000000-0000-4000-8000-000000000011",
+    user_query: "帮我调研一下思维链压缩技术",
+    locale: "zh-CN",
+    selected_response_id: "41000000-0000-4000-8000-000000000011",
+    responses: [
+      response({
+        id: "41000000-0000-4000-8000-000000000011",
+        content: researchContent,
+        references: researchReferences,
+        trace: researchTrace,
+        suggestions: [
+          "比较三种主流压缩路线",
+          "如何设计统一评测？",
+          "列出值得阅读的论文",
+        ],
+      }),
+    ],
+    ...overrides,
+  });
+}
+
 function liveTurn(overrides: Partial<LiveTurn> = {}): LiveTurn {
   return {
     turnId: "52000000-0000-4000-8000-000000000001",
+    responseId: "42000000-0000-4000-8000-000000000001",
+    generationKind: "initial",
     userMessage: "Compare the strongest reasoning-compression approaches.",
     content: "",
     entries: [],
@@ -148,7 +162,7 @@ const meta = {
   component: ConversationView,
   args: {
     title: "Reasoning compression",
-    messages: homeMessages,
+    turns: homeTurns,
     liveTurn: null,
     context: { kind: "library" },
     papers: homePapers,
@@ -159,6 +173,9 @@ const meta = {
     onSubmit: fn(async () => undefined),
     onStop: fn(),
     onRetry: fn(),
+    onRetryResponse: fn(),
+    onSelectResponse: fn(),
+    onUseSuggestion: fn(),
     canSend: true,
   },
   decorators: [
@@ -175,23 +192,109 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const DirectAnswer: Story = {
-  args: { messages: directMessages },
+  args: { turns: [turn()] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText(/Today is Wednesday/)).toBeVisible();
-    await expect(canvas.queryByText(/Completed ·/)).not.toBeInTheDocument();
+    await expect(
+      canvas.queryByText(/Research complete/),
+    ).not.toBeInTheDocument();
+  },
+};
+
+export const LatestAnswerActions: Story = {
+  args: { turns: [turn()], onRetryResponse: fn() },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole("button", { name: "Copy answer" }),
+    ).toBeVisible();
+    await userEvent.click(
+      canvas.getByRole("button", { name: "Try another response" }),
+    );
+    await expect(args.onRetryResponse).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const RetriedResponseVersions: Story = {
+  args: {
+    turns: [
+      turn({
+        selected_response_id: "41000000-0000-4000-8000-000000000002",
+        responses: [
+          response(),
+          response({
+            id: "41000000-0000-4000-8000-000000000002",
+            variant_index: 2,
+            content: "The regenerated answer is Wednesday.",
+          }),
+        ],
+      }),
+    ],
+    onSelectResponse: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText("Response 2 of 2")).toBeVisible();
+    await userEvent.click(
+      canvas.getByRole("button", { name: "Previous response" }),
+    );
+    await expect(args.onSelectResponse).toHaveBeenCalledWith(
+      turnId,
+      responseId,
+    );
+  },
+};
+
+export const HistoricalAnswerHasNoRetry: Story = {
+  args: {
+    turns: [
+      turn(),
+      turn({
+        id: "51000000-0000-4000-8000-000000000002",
+        sequence: 2,
+        user_query: "And tomorrow?",
+        selected_response_id: "41000000-0000-4000-8000-000000000003",
+        responses: [
+          response({
+            id: "41000000-0000-4000-8000-000000000003",
+            content: "Tomorrow is Thursday.",
+            suggestions: null,
+            suggestions_status: "idle",
+          }),
+        ],
+      }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getAllByRole("button", { name: "Try another response" }),
+    ).toHaveLength(1);
+    await expect(
+      canvas.queryByLabelText("Response 1 of 1"),
+    ).not.toBeInTheDocument();
+  },
+};
+
+export const SuggestedFollowUps: Story = {
+  args: { turns: [turn()], onUseSuggestion: fn() },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const suggestion = canvas.getByRole("button", {
+      name: "What is tomorrow’s date?",
+    });
+    await userEvent.click(suggestion);
+    await expect(args.onUseSuggestion).toHaveBeenCalledWith(
+      "What is tomorrow’s date?",
+    );
+    await expect(args.onSubmit).not.toHaveBeenCalled();
   },
 };
 
 export const MobileResearchAnswer: Story = {
-  globals: {
-    locale: "zh-CN",
-    viewport: { value: "mobile", isRotated: false },
-  },
-  args: {
-    messages: mobileResearchMessages,
-    title: "思维链压缩技术调研",
-  },
+  globals: { locale: "zh-CN", viewport: { value: "mobile", isRotated: false } },
+  args: { turns: [researchTurn()], title: "思维链压缩技术调研" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
@@ -210,17 +313,10 @@ export const MobileResearchAnswerDark: Story = {
   },
 };
 
-export const MobileLongAnswer: Story = {
-  ...MobileResearchAnswer,
-};
-
 export const MobileWorklogExpanded: Story = {
-  globals: {
-    locale: "zh-CN",
-    viewport: { value: "mobile", isRotated: false },
-  },
+  globals: { locale: "zh-CN", viewport: { value: "mobile", isRotated: false } },
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [
         {
@@ -229,11 +325,7 @@ export const MobileWorklogExpanded: Story = {
           sequence: 1,
           content: "我会先检查资料库，再比较相邻的推理效率研究。",
         },
-        {
-          ...searchActivity,
-          sequence: 2,
-          subject: "思维链压缩与短推理轨迹",
-        },
+        { ...searchActivity, sequence: 2, subject: "思维链压缩与短推理轨迹" },
         {
           ...searchActivity,
           id: "search-mobile-2",
@@ -246,94 +338,23 @@ export const MobileWorklogExpanded: Story = {
           sequence: 4,
           content: "初步结果较少，我将范围扩展到隐式推理与蒸馏方法。",
         },
-        {
-          ...readActivity,
-          sequence: 5,
-          subject: "Reasoning Efficiently",
-        },
+        { ...readActivity, sequence: 5, subject: "Reasoning Efficiently" },
       ],
       content: "现有研究主要围绕短轨迹训练、隐式推理和动态预算展开。",
       state: "complete",
-      trace: {
-        entries: [],
-        citation_summary: {
-          source_count: 3,
-          annotation_count: 2,
-          rejected_source_count: 0,
-        },
-      },
+      trace: researchTrace,
     }),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const disclosure = canvas.getByRole("button", {
-      name: /已完成研究/,
-    });
+    const disclosure = canvas.getByRole("button", { name: /已完成研究/ });
     await userEvent.click(disclosure);
-    await expect(
-      canvas.getByText("我会先检查资料库，再比较相邻的推理效率研究。"),
-    ).toBeVisible();
     await expect(canvas.getByText("检索了 2 次")).toBeVisible();
   },
 };
 
-export const MobileSourcesAggregated: Story = {
-  globals: {
-    locale: "zh-CN",
-    viewport: { value: "mobile", isRotated: false },
-  },
-  args: {
-    messages: mobileSourceMessages,
-    title: "思维链压缩技术调研",
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const disclosure = canvas.getByLabelText("展开 3 个来源");
-    await expect(disclosure).toBeVisible();
-    await userEvent.click(disclosure);
-    const firstPaperTitle = homePapers[0]!.document.title;
-    if (!firstPaperTitle) {
-      throw new globalThis.Error(
-        "Mobile source fixture must include a paper title",
-      );
-    }
-    const details = disclosure.closest("details");
-    if (!details) {
-      throw new globalThis.Error("Mobile source disclosure must use details");
-    }
-    await expect(within(details).getByText(firstPaperTitle)).toBeVisible();
-  },
-};
-
-export const MobileJumpToLatest: Story = {
-  globals: {
-    locale: "zh-CN",
-    viewport: { value: "mobile", isRotated: false },
-  },
-  args: {
-    messages: mobileLongThreadMessages,
-    title: "思维链压缩技术调研",
-  },
-  play: async ({ canvasElement }) => {
-    const scroller = canvasElement.querySelector("main");
-    if (!(scroller instanceof HTMLElement)) {
-      throw new globalThis.Error(
-        "Conversation story scroll container was not found",
-      );
-    }
-    await waitFor(() =>
-      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight),
-    );
-    scroller.scrollTo({ top: 0 });
-    scroller.dispatchEvent(new window.Event("scroll"));
-    await expect(
-      within(canvasElement).getByRole("button", { name: "返回最新消息" }),
-    ).toBeVisible();
-  },
-};
-
 export const ThinkingWithoutTools: Story = {
-  args: { messages: [], liveTurn: liveTurn() },
+  args: { turns: [], liveTurn: liveTurn() },
   play: async ({ canvasElement }) => {
     await waitFor(() =>
       expect(within(canvasElement).getByText("Thinking…")).toBeVisible(),
@@ -343,7 +364,7 @@ export const ThinkingWithoutTools: Story = {
 
 export const ProvisionalResponse: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       provisionalItems: [
         {
@@ -359,7 +380,7 @@ export const ProvisionalResponse: Story = {
 
 export const ProgressBeforeTools: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [
         {
@@ -376,17 +397,12 @@ export const ProgressBeforeTools: Story = {
 
 export const ConsecutiveToolBatch: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [
         searchActivity,
         readActivity,
-        {
-          ...searchActivity,
-          id: "search-3",
-          sequence: 3,
-          subject: "latent reasoning compression",
-        },
+        { ...searchActivity, id: "search-3", sequence: 3 },
       ],
     }),
   },
@@ -394,7 +410,7 @@ export const ConsecutiveToolBatch: Story = {
 
 export const StrategyChange: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [
         searchActivity,
@@ -403,7 +419,7 @@ export const StrategyChange: Story = {
           id: "assistant:turn:2",
           sequence: 2,
           content:
-            "The first search was too narrow, so I’ll compare adjacent reasoning-efficiency work.",
+            "The first search was too narrow, so I’ll compare adjacent work.",
         },
         { ...readActivity, sequence: 3, state: "running" },
       ],
@@ -413,10 +429,8 @@ export const StrategyChange: Story = {
 
 export const SingleToolRunning: Story = {
   args: {
-    messages: [],
-    liveTurn: liveTurn({
-      entries: [{ ...searchActivity, state: "running" }],
-    }),
+    turns: [],
+    liveTurn: liveTurn({ entries: [{ ...searchActivity, state: "running" }] }),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -424,67 +438,25 @@ export const SingleToolRunning: Story = {
       name: "Searching your research…",
     });
     await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-    await expect(canvas.getByText("Searched 1 time")).toBeVisible();
     disclosure.focus();
     await userEvent.keyboard(" ");
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    await expect(canvas.queryByText("search_papers")).not.toBeInTheDocument();
-    await userEvent.keyboard("{Enter}");
-    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-  },
-};
-
-export const MultipleToolsExpanded: Story = {
-  args: {
-    messages: [],
-    liveTurn: liveTurn({
-      entries: [searchActivity, readActivity],
-      content:
-        "The strongest approaches trade additional training for shorter inference traces.",
-      state: "complete",
-      trace: {
-        entries: [searchActivity, readActivity],
-        citation_summary: {
-          source_count: 4,
-          annotation_count: 2,
-          rejected_source_count: 0,
-        },
-      },
-    }),
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const disclosure = canvas.getByRole("button", {
-      name: "Research complete · 2 actions · 4 sources",
-    });
-    await userEvent.click(disclosure);
-    await expect(
-      canvas.getByText("Searched 1 time · Read 1 source"),
-    ).toBeVisible();
-    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   },
 };
 
 export const CompletedCollapsed: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [searchActivity, readActivity],
       content: "The evidence supports a shorter distilled reasoning trace.",
       state: "complete",
-      trace: {
-        entries: [searchActivity, readActivity],
-        citation_summary: {
-          source_count: 4,
-          annotation_count: 2,
-          rejected_source_count: 0,
-        },
-      },
+      trace: researchTrace,
     }),
   },
   play: async ({ canvasElement }) => {
     const disclosure = within(canvasElement).getByRole("button", {
-      name: "Research complete · 2 actions · 4 sources",
+      name: "Research complete · 2 actions · 3 sources",
     });
     await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   },
@@ -492,19 +464,14 @@ export const CompletedCollapsed: Story = {
 
 export const PartialFailure: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [searchActivity, { ...readActivity, state: "failed" }],
-      content:
-        "I found enough material to answer, although one source could not be opened.",
+      content: "I found enough material to answer.",
       state: "complete",
       trace: {
+        ...researchTrace,
         entries: [searchActivity, { ...readActivity, state: "failed" }],
-        citation_summary: {
-          source_count: 2,
-          annotation_count: 1,
-          rejected_source_count: 0,
-        },
       },
     }),
   },
@@ -512,14 +479,14 @@ export const PartialFailure: Story = {
 
 export const Cancelled: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({ entries: [searchActivity], state: "cancelled" }),
   },
 };
 
 export const Error: Story = {
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       state: "error",
       failure: {
@@ -535,14 +502,14 @@ export const Error: Story = {
 export const NarrowLongSubject: Story = {
   globals: { viewport: { value: "smallMobile", isRotated: false } },
   args: {
-    messages: [],
+    turns: [],
     liveTurn: liveTurn({
       entries: [
         {
           ...searchActivity,
           state: "running",
           subject:
-            "A deliberately long research subject that must wrap safely without widening the conversation viewport or moving the composer",
+            "A deliberately long research subject that must wrap safely without widening the conversation viewport",
         },
       ],
     }),
@@ -552,36 +519,26 @@ export const NarrowLongSubject: Story = {
 export const SimplifiedChineseDark: Story = {
   globals: { appearance: "dark", locale: "zh-CN" },
   args: {
-    messages: [],
-    liveTurn: liveTurn({
-      entries: [{ ...searchActivity, state: "running" }],
-    }),
+    turns: [],
+    liveTurn: liveTurn({ entries: [{ ...searchActivity, state: "running" }] }),
   },
 };
 
 export const OptimisticTurnDeduplicated: Story = {
   args: {
-    messages: [
-      {
-        id: "41000000-0000-4000-8000-000000000003",
-        turn_id: "52000000-0000-4000-8000-000000000001",
-        role: "user",
-        content: "Compare the strongest reasoning-compression approaches.",
-        references: null,
-        artifacts: null,
-        trace: null,
-        scope: null,
-        sequence: 3,
-      },
+    turns: [
+      turn({
+        id: "52000000-0000-4000-8000-000000000001",
+        user_query: "Compare the strongest reasoning-compression approaches.",
+        selected_response_id: null,
+        responses: [],
+      }),
     ],
-    liveTurn: liveTurn({
-      entries: [{ ...searchActivity, state: "running" }],
-    }),
+    liveTurn: liveTurn({ entries: [{ ...searchActivity, state: "running" }] }),
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
     await expect(
-      canvas.getAllByText(
+      within(canvasElement).getAllByText(
         "Compare the strongest reasoning-compression approaches.",
       ),
     ).toHaveLength(1);

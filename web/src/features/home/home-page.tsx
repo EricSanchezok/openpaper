@@ -20,7 +20,10 @@ import { HomeDashboard } from "./components/home-dashboard";
 import { useDesktopLayout } from "./hooks/use-desktop-layout";
 import {
   createConversation,
-  streamConversationMessage,
+  generateConversationSuggestions,
+  selectConversationResponse,
+  streamConversationRetry,
+  streamConversationTurn,
   updateConversationContext,
   type ConversationStreamEvent,
 } from "./api/conversations";
@@ -32,6 +35,7 @@ import {
   type ReasoningLevel,
   type ResearchContext,
 } from "./components/research-composer";
+import type { ConversationTurn } from "./components/conversation-view";
 
 function sameContext(left: ResearchContext, right: ResearchContext) {
   if (left.kind !== right.kind) return false;
@@ -85,9 +89,17 @@ export function HomeWorkspace({
     ...homeQueries.conversation(activeConversationId ?? ""),
     enabled: Boolean(activeConversationId),
   });
-  const messagesQuery = useQuery({
-    ...homeQueries.messages(activeConversationId ?? ""),
+  const turnsQuery = useQuery({
+    ...homeQueries.turns(activeConversationId ?? ""),
     enabled: Boolean(activeConversationId),
+    refetchInterval: (query) => {
+      const turns = query.state.data?.items ?? [];
+      const latestTurn = turns.at(-1);
+      const selectedResponse = latestTurn?.responses.find(
+        (response) => response.id === latestTurn.selected_response_id,
+      );
+      return selectedResponse?.suggestions_status === "pending" ? 1_000 : false;
+    },
   });
 
   React.useEffect(() => () => streamController.current?.abort(), []);
@@ -110,6 +122,29 @@ export function HomeWorkspace({
 
   function applyStreamEvent(event: ConversationStreamEvent) {
     setLiveTurn((current) => reduceLiveTurn(current, event));
+  }
+
+  async function finishGeneration(
+    conversationId: string,
+    responseId: string,
+    failed: boolean,
+  ) {
+    if (!failed) {
+      await generateConversationSuggestions({
+        conversationId,
+        responseId,
+      }).catch(() => undefined);
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: homeKeys.conversations() }),
+      queryClient.invalidateQueries({
+        queryKey: homeKeys.turns(conversationId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: homeKeys.conversation(conversationId),
+      }),
+    ]);
+    if (!failed) setLiveTurn(null);
   }
 
   async function sendMessage(message: string) {
@@ -142,15 +177,17 @@ export function HomeWorkspace({
 
       const controller = new AbortController();
       const turnId = crypto.randomUUID();
+      const responseId = crypto.randomUUID();
       streamController.current = controller;
       setLiveTurnConversationId(conversationId);
-      setLiveTurn(createLiveTurn(turnId, message));
+      setLiveTurn(createLiveTurn(turnId, responseId, message));
       composerForm.reset();
       let failed = false;
-      await streamConversationMessage({
+      await streamConversationTurn({
         conversationId,
-        message: {
+        request: {
           turn_id: turnId,
+          response_id: responseId,
           user_query: message,
           locale,
           time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -162,17 +199,7 @@ export function HomeWorkspace({
           applyStreamEvent(event);
         },
       });
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: homeKeys.conversations() }),
-        queryClient.invalidateQueries({
-          queryKey: homeKeys.messages(conversationId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: homeKeys.conversation(conversationId),
-        }),
-      ]);
-      if (!failed) setLiveTurn(null);
+      await finishGeneration(conversationId, responseId, failed);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         setLiveTurn((current) =>
@@ -181,7 +208,7 @@ export function HomeWorkspace({
         if (conversationId) {
           await Promise.all([
             queryClient.invalidateQueries({
-              queryKey: homeKeys.messages(conversationId),
+              queryKey: homeKeys.turns(conversationId),
             }),
             queryClient.invalidateQueries({
               queryKey: homeKeys.conversation(conversationId),
@@ -211,6 +238,72 @@ export function HomeWorkspace({
     }
   }
 
+  async function retryResponse(turn: ConversationTurn) {
+    if (!activeConversationId || submissionInFlight.current) return;
+    submissionInFlight.current = true;
+    const responseId = crypto.randomUUID();
+    const controller = new AbortController();
+    streamController.current = controller;
+    setLiveTurnConversationId(activeConversationId);
+    setLiveTurn(createLiveTurn(turn.id, responseId, turn.user_query, "retry"));
+    try {
+      let failed = false;
+      await streamConversationRetry({
+        conversationId: activeConversationId,
+        turnId: turn.id,
+        request: { response_id: responseId },
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.type === "error") failed = true;
+          applyStreamEvent(event);
+        },
+      });
+      await finishGeneration(activeConversationId, responseId, failed);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setLiveTurn((current) =>
+          current ? { ...current, state: "cancelled" } : current,
+        );
+      } else {
+        setLiveTurn((current) =>
+          current
+            ? {
+                ...current,
+                failure: conversationFailureFromError(error),
+                state: "error",
+              }
+            : current,
+        );
+      }
+      await queryClient.invalidateQueries({
+        queryKey: homeKeys.turns(activeConversationId),
+      });
+    } finally {
+      streamController.current = null;
+      submissionInFlight.current = false;
+    }
+  }
+
+  async function selectResponse(turnId: string, responseId: string) {
+    if (!activeConversationId || submissionInFlight.current) return;
+    await selectConversationResponse({
+      conversationId: activeConversationId,
+      turnId,
+      responseId,
+    });
+    await queryClient.invalidateQueries({
+      queryKey: homeKeys.turns(activeConversationId),
+    });
+  }
+
+  function useSuggestion(suggestion: string) {
+    composerForm.setValue("message", suggestion, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    composerForm.setFocus("message");
+  }
+
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -225,7 +318,7 @@ export function HomeWorkspace({
   const conversationUnavailable =
     conversationQuery.isPending ||
     conversationQuery.isError ||
-    messagesQuery.isError ||
+    turnsQuery.isError ||
     conversationQuery.data?.capabilities.send !== true;
   const mobileComposer = !isDesktop ? (
     <ResearchComposer
@@ -267,20 +360,25 @@ export function HomeWorkspace({
           canSend={conversationQuery.data?.capabilities.send === true}
           composerForm={composerForm}
           context={context}
-          error={conversationQuery.isError || messagesQuery.isError}
+          error={conversationQuery.isError || turnsQuery.isError}
           liveTurn={
             liveTurnConversationId === activeConversationId ? liveTurn : null
           }
-          loading={conversationQuery.isPending || messagesQuery.isPending}
-          messages={messagesQuery.data?.items ?? []}
+          loading={conversationQuery.isPending || turnsQuery.isPending}
+          turns={turnsQuery.data?.items ?? []}
           onContextChange={handleContextChange}
           onReasoningLevelChange={setReasoningLevel}
           onRetry={() => {
             void conversationQuery.refetch();
-            void messagesQuery.refetch();
+            void turnsQuery.refetch();
           }}
+          onRetryResponse={(turn) => void retryResponse(turn)}
+          onSelectResponse={(turnId, responseId) =>
+            void selectResponse(turnId, responseId)
+          }
           onStop={() => streamController.current?.abort()}
           onSubmit={sendMessage}
+          onUseSuggestion={useSuggestion}
           papers={papers}
           projects={projects}
           reasoningLevel={reasoningLevel}

@@ -3,8 +3,8 @@ export const homeKeys = {
   conversations: () => [...homeKeys.all, "conversations"] as const,
   conversation: (conversationId: string) =>
     [...homeKeys.conversations(), conversationId] as const,
-  messages: (conversationId: string) =>
-    [...homeKeys.conversation(conversationId), "messages"] as const,
+  turns: (conversationId: string) =>
+    [...homeKeys.conversation(conversationId), "turns"] as const,
   papers: () => [...homeKeys.all, "papers"] as const,
   projects: () => [...homeKeys.all, "projects"] as const,
 };

@@ -1,6 +1,14 @@
 "use client";
 
-import { NavArrowDown, Page, WarningTriangle } from "iconoir-react";
+import {
+  Copy,
+  NavArrowDown,
+  NavArrowLeft,
+  NavArrowRight,
+  Page,
+  RefreshDouble,
+  WarningTriangle,
+} from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
@@ -22,8 +30,10 @@ import {
 import { MessageContent } from "./message-content";
 import { ConversationWorklog } from "./conversation-worklog";
 
-type Message =
-  components["schemas"]["app__modules__conversations__application__contracts__conversations__MessageResponse"];
+export type ConversationTurn =
+  components["schemas"]["ConversationTurnResponse"];
+export type ConversationResponseVariant =
+  components["schemas"]["ConversationResponseVariantResponse"];
 type LibraryPaper = components["schemas"]["LibraryPaperResponse"];
 type Project = components["schemas"]["ProjectResponse"];
 type ReferenceBundle = components["schemas"]["ReferenceBundle"];
@@ -135,6 +145,13 @@ function AssistantMessage({
   failure,
   historical,
   onActivityOpenChange,
+  response,
+  variants,
+  canRetry,
+  canSwitch,
+  onRetryResponse,
+  onSelectResponse,
+  onUseSuggestion,
 }: {
   entries: ConversationTraceEntry[];
   content: string;
@@ -145,8 +162,16 @@ function AssistantMessage({
   failure?: ConversationFailure | null;
   historical?: boolean;
   onActivityOpenChange?: (open: boolean) => void;
+  response?: ConversationResponseVariant;
+  variants?: ConversationResponseVariant[];
+  canRetry?: boolean;
+  canSwitch?: boolean;
+  onRetryResponse?: () => void;
+  onSelectResponse?: (responseId: string) => void;
+  onUseSuggestion?: (suggestion: string) => void;
 }) {
   const t = useTranslations("Home.conversation");
+  const [copied, setCopied] = React.useState(false);
   const visibleContent = content || provisionalContent || "";
   const presentationState =
     content && state === "streaming" ? "complete" : state;
@@ -163,43 +188,195 @@ function AssistantMessage({
       />
       {visibleContent && <MessageContent content={visibleContent} />}
       <Sources references={references} />
+      {response?.status === "completed" && visibleContent && (
+        <div
+          className="flex min-h-10 items-center gap-1"
+          role="group"
+          aria-label={t("answerActions")}
+        >
+          <IconButton
+            label={copied ? t("copied") : t("copy")}
+            onClick={() => {
+              void (async () => {
+                try {
+                  await navigator.clipboard.writeText(visibleContent);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1500);
+                } catch {
+                  // Clipboard access may be denied outside a secure context.
+                }
+              })();
+            }}
+            variant="ghost"
+          >
+            <Icon glyph={Copy} size={20} tone="secondary" />
+          </IconButton>
+          {canRetry && onRetryResponse && (
+            <IconButton
+              label={t("regenerate")}
+              onClick={onRetryResponse}
+              variant="ghost"
+            >
+              <Icon glyph={RefreshDouble} size={20} tone="secondary" />
+            </IconButton>
+          )}
+          {canSwitch &&
+            variants &&
+            variants.length > 1 &&
+            onSelectResponse &&
+            (() => {
+              const ordered = [...variants].sort(
+                (left, right) => left.variant_index - right.variant_index,
+              );
+              const index = ordered.findIndex(
+                (candidate) => candidate.id === response.id,
+              );
+              return (
+                <div className="text-muted ml-1 flex items-center gap-0.5 text-xs">
+                  <IconButton
+                    disabled={index <= 0}
+                    label={t("previousResponse")}
+                    onClick={() => onSelectResponse(ordered[index - 1]!.id)}
+                    variant="ghost"
+                  >
+                    <Icon glyph={NavArrowLeft} size={16} />
+                  </IconButton>
+                  <span
+                    aria-label={t("responseVersion", {
+                      current: index + 1,
+                      total: ordered.length,
+                    })}
+                  >
+                    {index + 1}/{ordered.length}
+                  </span>
+                  <IconButton
+                    disabled={index >= ordered.length - 1}
+                    label={t("nextResponse")}
+                    onClick={() => onSelectResponse(ordered[index + 1]!.id)}
+                    variant="ghost"
+                  >
+                    <Icon glyph={NavArrowRight} size={16} />
+                  </IconButton>
+                </div>
+              );
+            })()}
+          <span className="sr-only" aria-live="polite">
+            {copied ? t("copied") : ""}
+          </span>
+        </div>
+      )}
+      {response?.suggestions_status === "completed" &&
+        response.suggestions?.length === 3 &&
+        onUseSuggestion && (
+          <div
+            className="grid justify-items-start gap-2 pt-1"
+            aria-label={t("suggestions")}
+          >
+            {response.suggestions.map((suggestion) => (
+              <button
+                className="bg-subtle hover:bg-hover min-h-11 rounded-full px-4 py-2 text-left text-sm transition-colors"
+                key={suggestion}
+                onClick={() => onUseSuggestion(suggestion)}
+                type="button"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
     </article>
   );
 }
 
-function MessageHistory({ messages }: { messages: Message[] }) {
+function selectedResponse(turn: ConversationTurn) {
+  return (
+    turn.responses.find(
+      (response) => response.id === turn.selected_response_id,
+    ) ??
+    [...turn.responses].sort(
+      (left, right) => right.variant_index - left.variant_index,
+    )[0]
+  );
+}
+
+function MessageHistory({
+  turns,
+  liveTurn,
+  canSend,
+  onRetryResponse,
+  onSelectResponse,
+  onUseSuggestion,
+}: {
+  turns: ConversationTurn[];
+  liveTurn: LiveTurn | null;
+  canSend: boolean;
+  onRetryResponse: (turn: ConversationTurn) => void;
+  onSelectResponse: (turnId: string, responseId: string) => void;
+  onUseSuggestion: (suggestion: string) => void;
+}) {
+  const latestTurnId = turns.at(-1)?.id;
   return (
     <>
-      {messages.map((message) =>
-        message.role === "user" ? (
-          <div className="flex justify-end" key={message.id}>
-            <p className="bg-subtle max-w-[86%] rounded-[var(--radius-xl)] px-4 py-3 text-base leading-6 lg:max-w-[80%] lg:rounded-[var(--radius-lg)] lg:text-sm">
-              {message.content}
-            </p>
-          </div>
-        ) : (
-          <AssistantMessage
-            content={message.content}
-            entries={message.trace?.entries ?? []}
-            historical
-            key={message.id}
-            references={message.references}
-            sourceTotal={
-              message.trace?.citation_summary?.source_count ??
-              sourceCount(message.references)
-            }
-            state="complete"
-            failure={null}
-          />
-        ),
-      )}
+      {turns.map((turn) => {
+        const response = selectedResponse(turn);
+        const isLive = liveTurn?.turnId === turn.id;
+        return (
+          <React.Fragment key={turn.id}>
+            <div className="flex justify-end">
+              <p className="bg-subtle max-w-[86%] rounded-[var(--radius-xl)] px-4 py-3 text-base leading-6 lg:max-w-[80%] lg:rounded-[var(--radius-lg)] lg:text-sm">
+                {turn.user_query}
+              </p>
+            </div>
+            {isLive && liveTurn ? (
+              <AssistantMessage
+                content={liveTurn.content}
+                entries={liveTurn.entries}
+                failure={liveTurn.failure}
+                provisionalContent={liveTurn.provisionalItems
+                  .map((item) => item.content)
+                  .join("")}
+                references={liveTurn.references}
+                sourceTotal={
+                  liveTurn.trace?.citation_summary?.source_count ??
+                  sourceCount(liveTurn.references)
+                }
+                state={liveTurn.state}
+              />
+            ) : response ? (
+              <AssistantMessage
+                canRetry={turn.id === latestTurnId && canSend}
+                canSwitch={turn.id === latestTurnId}
+                content={response.content ?? ""}
+                entries={response.trace?.entries ?? []}
+                historical
+                onRetryResponse={() => onRetryResponse(turn)}
+                onSelectResponse={(responseId) =>
+                  onSelectResponse(turn.id, responseId)
+                }
+                onUseSuggestion={
+                  turn.id === latestTurnId ? onUseSuggestion : undefined
+                }
+                references={response.references}
+                response={response}
+                sourceTotal={
+                  response.trace?.citation_summary?.source_count ??
+                  sourceCount(response.references)
+                }
+                state="complete"
+                failure={null}
+                variants={turn.responses}
+              />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
     </>
   );
 }
 
 export function ConversationView({
   title,
-  messages,
+  turns,
   liveTurn,
   context,
   papers,
@@ -212,13 +389,16 @@ export function ConversationView({
   onSubmit,
   onStop,
   onRetry,
+  onRetryResponse,
+  onSelectResponse,
+  onUseSuggestion,
   canSend,
   readOnlyReason,
   composerForm,
   showComposer = true,
 }: {
   title?: string;
-  messages: Message[];
+  turns: ConversationTurn[];
   liveTurn: LiveTurn | null;
   context: ResearchContext;
   papers: LibraryPaper[];
@@ -231,6 +411,9 @@ export function ConversationView({
   onSubmit: (message: string) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
+  onRetryResponse: (turn: ConversationTurn) => void;
+  onSelectResponse: (turnId: string, responseId: string) => void;
+  onUseSuggestion: (suggestion: string) => void;
   canSend: boolean;
   readOnlyReason?: string | null;
   composerForm?: UseFormReturn<ComposerValues>;
@@ -241,12 +424,12 @@ export function ConversationView({
   const scrollAnchor = React.useRef<HTMLDivElement>(null);
   const nearBottom = React.useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
-  const visibleMessages = React.useMemo(
+  const visibleTurns = React.useMemo(
     () =>
-      liveTurn
-        ? messages.filter((message) => message.turn_id !== liveTurn.turnId)
-        : messages,
-    [liveTurn, messages],
+      liveTurn?.generationKind === "initial"
+        ? turns.filter((turn) => turn.id !== liveTurn.turnId)
+        : turns,
+    [liveTurn, turns],
   );
   const worklogSignature = liveTurn?.entries
     .map((entry) =>
@@ -296,7 +479,7 @@ export function ConversationView({
     worklogSignature,
     liveTurn?.content,
     provisionalContent,
-    visibleMessages.length,
+    visibleTurns.length,
   ]);
 
   function jumpToLatest() {
@@ -342,12 +525,19 @@ export function ConversationView({
               {t("retry")}
             </Button>
           </div>
-        ) : visibleMessages.length === 0 && !liveTurn ? (
+        ) : visibleTurns.length === 0 && !liveTurn ? (
           <p className="text-muted py-12 text-center text-sm">{t("empty")}</p>
         ) : (
           <div className="grid gap-9 lg:gap-8">
-            <MessageHistory messages={visibleMessages} />
-            {liveTurn && (
+            <MessageHistory
+              canSend={canSend && liveTurn?.state !== "streaming"}
+              liveTurn={liveTurn}
+              onRetryResponse={onRetryResponse}
+              onSelectResponse={onSelectResponse}
+              onUseSuggestion={onUseSuggestion}
+              turns={visibleTurns}
+            />
+            {liveTurn?.generationKind === "initial" && (
               <>
                 <div className="flex justify-end">
                   <p className="bg-subtle max-w-[86%] rounded-[var(--radius-xl)] px-4 py-3 text-base leading-6 lg:max-w-[80%] lg:rounded-[var(--radius-lg)] lg:text-sm">

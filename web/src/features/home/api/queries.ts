@@ -28,12 +28,12 @@ export const homeQueries = {
         return data;
       },
     }),
-  messages: (conversationId: string) =>
+  turns: (conversationId: string) =>
     queryOptions({
-      queryKey: homeKeys.messages(conversationId),
+      queryKey: homeKeys.turns(conversationId),
       queryFn: async ({ signal }) => {
         const { data } = await apiClient.GET(
-          "/api/v1/conversations/{conversation_id}/messages",
+          "/api/v1/conversations/{conversation_id}/turns",
           {
             params: {
               path: { conversation_id: conversationId },
@@ -42,7 +42,7 @@ export const homeQueries = {
             signal,
           },
         );
-        if (!data) throw new Error("Conversation messages response was empty");
+        if (!data) throw new Error("Conversation turns response was empty");
         return data;
       },
     }),
