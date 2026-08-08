@@ -11,5 +11,6 @@ export * from "./select";
 export * from "./selection-controls";
 export * from "./sheet";
 export * from "./tabs-pagination";
+export * from "./text-control-focus";
 export * from "./toast";
 export * from "./tooltip-popover";

@@ -140,6 +140,9 @@ Use `Field` as the accessible composition boundary. `FieldControl` establishes
 the control ID and connects the label, optional description, error message,
 `aria-invalid`, and `aria-describedby`. `PasswordInput` owns only password
 visibility; the caller provides localized accessible labels and autocomplete.
+Pointer and touch focus do not alter a text field's resting border. Keyboard
+navigation retains the shared semantic focus indicator, so removing the noisy
+pointer ring does not remove accessible focus visibility.
 
 ## Figma ↔ Code mapping
 

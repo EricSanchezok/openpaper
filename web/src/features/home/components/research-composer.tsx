@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
   SearchField,
   Switch,
+  useTextControlFocus,
 } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
@@ -389,6 +390,11 @@ export function ResearchComposer({
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const internalForm = useResearchComposerForm();
   const composerForm = form ?? internalForm;
+  const messageRegistration = composerForm.register("message");
+  const { focusHandlers, focusOrigin } =
+    useTextControlFocus<HTMLTextAreaElement>({
+      onBlur: messageRegistration.onBlur,
+    });
   const selectionCount =
     context.kind === "selection"
       ? (context.project_ids?.length ?? 0) + (context.document_ids?.length ?? 0)
@@ -402,11 +408,12 @@ export function ResearchComposer({
   return (
     <form
       className={cn(
-        "border-line bg-surface focus-within:border-control shadow-composer lg:shadow-raised grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[var(--radius-xl)] border p-2.5 transition-colors lg:px-4",
+        "border-line bg-surface shadow-composer lg:shadow-raised grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[var(--radius-xl)] border p-2.5 lg:px-4",
         compact
           ? "max-w-[720px] lg:gap-3 lg:pt-4 lg:pb-2"
           : "max-w-[760px] lg:gap-4 lg:pt-4 lg:pb-3",
       )}
+      data-focus-surface
       onSubmit={composerForm.handleSubmit(submit)}
     >
       <textarea
@@ -421,7 +428,8 @@ export function ResearchComposer({
             ? "lg:min-h-[22px] lg:leading-[22px]"
             : "lg:min-h-7 lg:leading-7",
         )}
-        data-focus-delegate
+        data-focus-delegate="surface"
+        data-focus-origin={focusOrigin ?? undefined}
         data-mobile-composer-input
         disabled={busy || unavailable}
         onKeyDown={(event) => {
@@ -437,7 +445,8 @@ export function ResearchComposer({
             : t("composer.placeholder")
         }
         rows={1}
-        {...composerForm.register("message")}
+        {...messageRegistration}
+        {...focusHandlers}
       />
       {context.kind === "selection" && selectionCount > 0 ? (
         <div className="col-span-3 row-start-2 hidden flex-wrap gap-1.5 lg:flex">

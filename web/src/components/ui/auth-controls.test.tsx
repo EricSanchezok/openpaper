@@ -99,4 +99,24 @@ describe("authentication controls", () => {
     );
     expect(input).toHaveAttribute("type", "text");
   });
+
+  it("keeps pointer focus quiet and preserves a keyboard-only focus cue", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button">Before field</button>
+        <Input aria-label="Email" />
+      </>,
+    );
+    const input = screen.getByRole("textbox", { name: "Email" });
+
+    await user.click(input);
+    expect(input).toHaveAttribute("data-focus-origin", "pointer");
+    expect(input).toHaveAttribute("data-focus-delegate", "self");
+
+    await user.click(screen.getByRole("button", { name: "Before field" }));
+    await user.tab();
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("data-focus-origin", "keyboard");
+  });
 });

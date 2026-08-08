@@ -56,8 +56,12 @@ export const Default: Story = {
     });
     await expect(submit).toBeDisabled();
     await userEvent.click(composer);
-    await expect(composer).toHaveAttribute("data-focus-delegate");
+    await expect(composer).toHaveAttribute("data-focus-delegate", "surface");
+    await expect(composer).toHaveAttribute("data-focus-origin", "pointer");
     await expect(composer).toHaveStyle({ outlineStyle: "none" });
+    await expect(composer.closest("form")).toHaveStyle({
+      outlineStyle: "none",
+    });
   },
 };
 

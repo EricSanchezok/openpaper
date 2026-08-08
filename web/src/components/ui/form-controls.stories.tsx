@@ -114,6 +114,42 @@ export const PasswordKeyboardInteraction: Story = {
   },
 };
 
+export const QuietPointerFocus: Story = {
+  render: () => (
+    <div className="grid w-[min(90vw,26rem)] gap-3">
+      <button className="sr-only" type="button">
+        Before field
+      </button>
+      <Field>
+        <FieldLabel>Email</FieldLabel>
+        <FieldControl>
+          <Input placeholder="name@example.com" />
+        </FieldControl>
+      </Field>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByRole("textbox", { name: "Email" });
+    const restingBorder = getComputedStyle(input).borderColor;
+
+    await userEvent.click(input);
+    await expect(input).toHaveAttribute("data-focus-origin", "pointer");
+    await expect(input).toHaveStyle({ outlineStyle: "none" });
+    await expect(getComputedStyle(input).borderColor).toBe(restingBorder);
+
+    await userEvent.click(canvas.getByRole("button", { name: "Before field" }));
+    await userEvent.tab();
+    await expect(input).toHaveFocus();
+    await expect(input).toHaveAttribute("data-focus-origin", "keyboard");
+  },
+};
+
+export const QuietPointerFocusDark: Story = {
+  ...QuietPointerFocus,
+  globals: { appearance: "dark" },
+};
+
 export const SimplifiedChineseLongContent: Story = {
   globals: {
     locale: "zh-CN",

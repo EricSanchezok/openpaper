@@ -38,6 +38,11 @@ actually shared.
   icon library or manually redraw a glyph inside product code.
 - Every interactive control must have default, hover, pressed, focus-visible,
   disabled, and loading behavior where applicable.
+- Text controls distinguish input modality: pointer and touch focus keep the
+  resting border unchanged, while keyboard navigation receives the semantic
+  focus ring. Composite controls delegate that keyboard cue to their outer
+  interaction surface instead of drawing a second rectangle around the native
+  input.
 - Icon-only controls require an accessible label and usually a Tooltip.
 - Narrow containers and long English or Simplified Chinese content must not
   break layout.

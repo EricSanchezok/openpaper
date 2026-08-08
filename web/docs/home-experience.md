@@ -157,8 +157,10 @@ On phones, its composer sits at the bottom of the usable canvas immediately
 above primary navigation; the research prompt remains in the available reading
 area rather than pulling the input toward screen center. On desktop, the 760 px
 composer retains the centered Figma composition. Its textarea delegates focus
-presentation to the rounded composer boundary, so native rectangular outlines
-never split the composition.
+presentation to the rounded composer boundary. Pointer and touch focus leave
+that boundary visually stable; keyboard navigation alone receives the shared
+semantic focus indicator, so a native rectangular outline never splits the
+composition.
 The account trigger sits against the sidebar's bottom safe-area inset without a
 redundant disclosure arrow. Its menu aligns to the expanded sidebar content
 edge and opens to the right of the collapsed rail.

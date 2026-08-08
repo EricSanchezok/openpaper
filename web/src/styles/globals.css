@@ -17,6 +17,14 @@
     outline: none;
     outline-offset: 0;
   }
+
+  [data-focus-delegate="self"][data-focus-origin="keyboard"]:focus,
+  [data-focus-surface]:has(
+    [data-focus-delegate="surface"][data-focus-origin="keyboard"]:focus
+  ) {
+    outline: var(--focus-width) solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
 }
 
 html {

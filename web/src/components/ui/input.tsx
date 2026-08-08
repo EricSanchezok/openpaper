@@ -5,28 +5,51 @@ import * as React from "react";
 
 import { Icon } from "@/design-system/icons/icon";
 import { cn } from "@/lib/utilities/cn";
+import { useTextControlFocus } from "./text-control-focus";
 
 const controlClass =
-  "w-full rounded-[var(--radius-md)] border border-control bg-surface px-3 text-sm text-foreground placeholder:text-muted transition-colors hover:border-line-strong focus-visible:border-[var(--color-border-focus)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-canvas aria-invalid:border-[var(--color-danger-border)] aria-invalid:ring-[var(--color-danger-border)] disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-disabled";
+  "w-full rounded-[var(--radius-md)] border border-control bg-surface px-3 text-sm text-foreground placeholder:text-muted transition-colors hover:border-line-strong aria-invalid:border-[var(--color-danger-border)] disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-disabled";
 
 export const Input = React.forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement>
->(({ className, ...props }, ref) => (
-  <input className={cn(controlClass, "h-11", className)} ref={ref} {...props} />
-));
+>(({ className, onBlur, onFocus, ...props }, ref) => {
+  const { focusHandlers, focusOrigin } = useTextControlFocus<HTMLInputElement>({
+    onBlur,
+    onFocus,
+  });
+
+  return (
+    <input
+      className={cn(controlClass, "h-11", className)}
+      data-focus-delegate="self"
+      data-focus-origin={focusOrigin ?? undefined}
+      ref={ref}
+      {...focusHandlers}
+      {...props}
+    />
+  );
+});
 Input.displayName = "Input";
 
 export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => (
-  <textarea
-    className={cn(controlClass, "min-h-24 resize-y py-3", className)}
-    ref={ref}
-    {...props}
-  />
-));
+>(({ className, onBlur, onFocus, ...props }, ref) => {
+  const { focusHandlers, focusOrigin } =
+    useTextControlFocus<HTMLTextAreaElement>({ onBlur, onFocus });
+
+  return (
+    <textarea
+      className={cn(controlClass, "min-h-24 resize-y py-3", className)}
+      data-focus-delegate="self"
+      data-focus-origin={focusOrigin ?? undefined}
+      ref={ref}
+      {...focusHandlers}
+      {...props}
+    />
+  );
+});
 Textarea.displayName = "Textarea";
 
 export const SearchField = React.forwardRef<
