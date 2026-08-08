@@ -6,37 +6,45 @@ parser state, and return signed results to the Server webhook API.
 
 ## PDF ingestion
 
-The PDF worker follows one explicit pipeline:
+The PDF worker follows one explicit, local-first pipeline:
 
 1. Download the original PDF from private S3 storage.
-2. Generate a short-lived S3 URL for MinerU.
-3. Analyze the local PDF with PyMuPDF for preview and deterministic page text.
-4. Submit or resume the MinerU task and share one 600-second deadline across
-   polling and archive download.
-5. Validate and normalize MinerU's archive into canonical Markdown.
-6. If the MinerU lifecycle reaches that deadline, accept PyMuPDF text only when
-   it passes the local quality gate.
-7. Store Markdown, preview, and the MinerU archive when available.
-8. Extract metadata with DeepSeek unless the caller supplied authoritative
+2. Analyze the PDF locally with PyMuPDF: per-page text statistics, preview,
+   and deterministic page offsets (milliseconds per page).
+3. Classify the document:
+   - **Scanned PDF** (empty or near-empty text layer, or repeated boilerplate
+     such as per-page watermarks) is submitted to MinerU, the only OCR-capable
+     parser, and shares one 600-second deadline across polling and archive
+     download.
+   - **Digital PDF** (≥80% of uploads: arXiv, journal, most conference PDFs)
+     stays local:
+     a. `pymupdf4llm` extracts page-chunked Markdown with exact per-page
+        offsets (primary engine);
+     b. on failure, `markitdown` is tried as a second engine and is persisted
+        as `text_only` because its output has no page boundaries (offsets are
+        approximated from the local page analysis);
+     c. if both local engines fail, MinerU rescues the document (OCR can
+        recover misclassified or malformed PDFs);
+     d. if the MinerU rescue fails or times out, the deterministic per-page
+        text from step 2 is persisted as `text_only` with exact offsets.
+4. Store Markdown and preview; only the MinerU path produces an audit archive
+   (`mineru-result.zip`).
+5. Extract metadata with DeepSeek unless the caller supplied authoritative
    metadata, as Zotero imports do.
-9. Send the result and token usage to Server through an HMAC-signed webhook.
+6. Send the result and token usage to Server through an HMAC-signed webhook.
 
-MinerU is the only high-fidelity parser. PyMuPDF is a deterministic fallback for
-native-text PDFs; it does not attempt OCR, table reconstruction, or formula
-recognition. A fallback result is persisted as `text_only` so the client can
-warn that layout-dependent content may be incomplete.
+Local engines (`pymupdf4llm`, `markitdown`) are CPU-only, run in-process with
+a bounded time budget per engine, and never send document content off-host.
+MinerU is used only for scanned PDFs and as a rescue for digital PDFs whose
+local extraction failed; its results are persisted as `full` quality. A
+`text_only` result (local fallback or rescue timeout) is persisted so the
+client can warn that layout-dependent content may be incomplete.
 
 MinerU task IDs are checkpointed in Redis under the job ID. Four consecutive
 network failures switch polling or downloading to a slower bounded backoff;
 they do not end the task before its deadline. A redelivered Celery task resumes
-the same provider task instead of submitting another one.
-
-When a running MinerU task outlives the initial deadline, Scholens keeps its
-checkpoint after persisting the `text_only` result. A dedicated Celery task
-continues the existing MinerU lifecycle. Once the full result is available,
-Jobs writes deterministic Markdown and audit ZIP keys and Server atomically
-replaces the paper content, page offsets, parser quality, and passage index.
-The checkpoint is cleared only after Server acknowledges the full result.
+the same provider task instead of submitting another one. The checkpoint is
+cleared after Server acknowledges the result.
 
 ## Code layout
 

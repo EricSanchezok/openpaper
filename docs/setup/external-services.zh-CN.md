@@ -115,9 +115,16 @@ MINERU_API_BASE_URL=https://mineru.net/api/v4
 MINERU_MODEL_VERSION=vlm
 ```
 
-Scholens Jobs 会给 MinerU 提交一个短期 S3 签名 URL，轮询解析结果，并将 Markdown 与解析 ZIP 重新保存到自己的 S3。真实论文会离开 AWS 边界并交给 MinerU 处理，因此在上传敏感或未公开论文前，需要确认其隐私条款和数据保留政策。
+Scholens Jobs 采用本地优先的解析策略：数字版 PDF（文本层完好的 arXiv/期刊论文）
+由 `pymupdf4llm` 在本地解析（失败时尝试 `markitdown`），文档内容不会离开服务器。
+MinerU 仅用于扫描件（文本层不足或只有重复水印的 PDF），以及本地解析失败时的
+救援路径；它会收到一个短期 S3 签名 URL，轮询解析结果，并将 Markdown 与解析 ZIP
+重新保存到自己的 S3。真实论文会离开 AWS 边界并交给 MinerU 处理，因此在上传敏感
+或未公开论文前，需要确认其隐私条款和数据保留政策。
 
-MinerU 的提交、轮询和结果下载共享一个 600 秒 deadline。网络连续失败 4 次后会进入较慢退避，而不是立即结束；deadline 到期且本地文本质量合格时，论文先以 `text_only` 可用。运行中的 MinerU task checkpoint 会继续保留，后台恢复任务取得完整结果后会自动替换正文、页码映射和全文索引，并将解析质量升级为 `full`。
+MinerU 的提交、轮询和结果下载共享一个 600 秒 deadline。网络连续失败 4 次后会
+进入较慢退避，而不是立即结束。扫描件在 MinerU 超时后视为解析失败；数字版论文在
+本地解析失败且 MinerU 救援也超时时，会以本地逐页文本的 `text_only` 结果交付。
 
 ## 4. MOSS Voice
 

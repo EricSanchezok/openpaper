@@ -25,7 +25,7 @@ def _successful_result() -> dict:
         "job_id": "job-1",
         "raw_content": "paper text",
         "page_offset_map": {1: [0, 10]},
-        "parser_backend": "pymupdf",
+        "parser_backend": "pymupdf4llm",
         "parser_quality": "text_only",
         "parser_version": "pymupdf-test",
         "parser_warning_code": "text_only_fallback",
