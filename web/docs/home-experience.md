@@ -73,6 +73,10 @@ after completion, and never duplicates the user prompt. Version navigation is
 shown only while that turn remains latest. Exactly three persisted follow-up
 suggestions belong to the selected completed response; selecting one only
 fills and focuses the Composer so the user can edit it before sending.
+Suggestion generation is deliberately secondary: pending work uses a quiet
+three-row placeholder and a failed suggestion job leaves the completed answer
+usable with one muted status line. Neither state retries automatically or
+changes the response lifecycle.
 Grounded answers expose one source-count pill in the same action row. Selecting
 that pill opens the single canonical source panel: a bottom sheet on phones and
 a centered dialog on desktop. Inline citation markers open that same panel and
@@ -126,6 +130,10 @@ The final-answer action and evidence contract is the authoritative Figma matrix
 | Retried response versions                            | `Conversation View / Retried Response Versions`      |
 | Historical answer                                    | `Conversation View / Historical Answer Has No Retry` |
 | Suggested follow-ups                                 | `Conversation View / Suggested Follow Ups`           |
+| Suggestions pending                                  | `Conversation View / Suggestions Pending`            |
+| Suggestions unavailable                              | `Conversation View / Suggestions Unavailable`        |
+| Retry in progress                                    | `Conversation View / Retry In Progress`              |
+| Retry failed                                         | `Conversation View / Retry Failed`                   |
 | Source count and evidence panel                      | `Conversation View / Answer Sources`                 |
 
 The matrix covers mobile Light/Dark final actions, the mobile source bottom
@@ -136,6 +144,15 @@ px viewport controls available for the same executable states. The superseded
 phone reading surface at node `898:2628` is archived under
 `99 — Archive / Interaction States`; it is historical reference, not a current
 implementation contract.
+
+Reader consumes the same message contract instead of defining a second
+conversation renderer. Its authoritative Figma matrix is
+[`50 — Reader / Matrix / Reader conversation contract v2`](https://www.figma.com/design/2T5BuTPMIrM2jsVhgIVYIX/Scholens-%E2%80%94-Product-Design?node-id=910-2):
+Reader contributes only the current paper, passage, and selection as default
+scope; the ordered worklog, final-answer actions, suggestions, citations, and
+source panel remain the Home semantics described above. The former Reader
+process-card frames are archived under `99 — Archive / Interaction States` and
+are not implementation references.
 
 The mobile Dock acceptance inventory extends that mapping:
 

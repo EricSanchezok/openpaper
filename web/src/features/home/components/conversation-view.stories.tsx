@@ -299,6 +299,98 @@ export const SuggestedFollowUps: Story = {
   },
 };
 
+export const SuggestionsPending: Story = {
+  args: {
+    turns: [
+      turn({
+        responses: [
+          response({ suggestions: null, suggestions_status: "pending" }),
+        ],
+      }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByRole("status", {
+        name: "Preparing follow-up suggestions…",
+      }),
+    ).toBeVisible();
+  },
+};
+
+export const SuggestionsUnavailable: Story = {
+  args: {
+    turns: [
+      turn({
+        responses: [
+          response({ suggestions: null, suggestions_status: "failed" }),
+        ],
+      }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByText(
+        "Follow-up suggestions are unavailable for this answer.",
+      ),
+    ).toBeVisible();
+  },
+};
+
+export const RetryInProgress: Story = {
+  args: {
+    turns: [turn()],
+    liveTurn: liveTurn({
+      turnId,
+      generationKind: "retry",
+      provisionalItems: [
+        {
+          id: "assistant:retry:1",
+          sequence: 1,
+          phase: "provisional",
+          content: "I’m checking the evidence again before answering.",
+        },
+      ],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText("I’m checking the evidence again before answering."),
+    ).toBeVisible();
+    await expect(canvas.getAllByText("What day is it today?")).toHaveLength(1);
+    await expect(
+      canvas.queryByRole("button", { name: "Try another response" }),
+    ).not.toBeInTheDocument();
+  },
+};
+
+export const RetryFailed: Story = {
+  args: {
+    turns: [turn()],
+    liveTurn: liveTurn({
+      turnId,
+      generationKind: "retry",
+      state: "error",
+      failure: {
+        code: "research_service_unavailable",
+        kind: "unavailable",
+        retryable: true,
+        diagnosticId: "diagnostic-retry-123",
+      },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() =>
+      expect(
+        canvas.getByText(/Research service is temporarily unavailable/),
+      ).toBeVisible(),
+    );
+    await expect(canvas.getAllByText("What day is it today?")).toHaveLength(1);
+  },
+};
+
 export const MobileResearchAnswer: Story = {
   globals: { locale: "zh-CN", viewport: { value: "mobile", isRotated: false } },
   args: { turns: [researchTurn()], title: "思维链压缩技术调研" },

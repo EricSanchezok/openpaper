@@ -11,7 +11,12 @@ import {
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
-import { Button, IconButton, keyboardFocusRing } from "@/components/ui";
+import {
+  Button,
+  IconButton,
+  Skeleton,
+  keyboardFocusRing,
+} from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import type {
@@ -192,6 +197,25 @@ function AssistantMessage({
             {copied ? t("copied") : ""}
           </span>
         </div>
+      )}
+      {response?.suggestions_status === "pending" && onUseSuggestion && (
+        <div
+          aria-label={t("suggestionsPreparing")}
+          className="grid w-full max-w-md gap-2 pt-1"
+          role="status"
+        >
+          <span className="text-muted text-xs">
+            {t("suggestionsPreparing")}
+          </span>
+          <Skeleton className="h-11 w-3/4 rounded-full" />
+          <Skeleton className="h-11 w-[88%] rounded-full" />
+          <Skeleton className="h-11 w-2/3 rounded-full" />
+        </div>
+      )}
+      {response?.suggestions_status === "failed" && onUseSuggestion && (
+        <p className="text-muted pt-1 text-xs" role="status">
+          {t("suggestionsUnavailable")}
+        </p>
       )}
       {response?.suggestions_status === "completed" &&
         response.suggestions?.length === 3 &&

@@ -39,6 +39,10 @@ artifact checks, and the complete Server and Web gates.
   outside the public contract.
 - There is no legacy SSE reader, trace union, compatibility adapter, feature
   flag, duplicate reducer, or import from `client/`.
+- Response retry reuses the same `LiveTurn` reducer and transcript position as
+  initial generation. Suggestion pending and failed states project the
+  persisted response status directly; neither feature introduces a parallel
+  state machine or client-only retry loop.
 
 ## Dead-code and duplication audit
 
@@ -53,6 +57,19 @@ The Home worklog remains feature-owned because it has only one real consumer.
 It should move to a shared conversation package only when Project or Reader
 introduces a second concrete consumer; extracting it earlier would create an
 unproven abstraction.
+
+Storybook exercises the complete response lifecycle: direct completion,
+latest-only actions, multiple response variants, historical control removal,
+retry streaming and failure, suggestion pending/completed/failed, sources,
+ordered progress, partial failure, cancellation, and terminal error. These
+states are fixtures over production types rather than mock-only component
+branches.
+
+The Figma audit also removed the two obsolete Reader conversation-only frames
+from the active `50 — Reader` page. The replacement Reader contract explicitly
+reuses Home message semantics and varies only the paper or selection scope, so
+future Reader implementation has one product contract rather than a second
+worklog, action, or evidence system.
 
 ## Residual risks and extension rules
 

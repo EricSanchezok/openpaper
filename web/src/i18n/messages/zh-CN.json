@@ -118,6 +118,8 @@
       "nextResponse": "下一版回答",
       "responseVersion": "第 {current} 版，共 {total} 版",
       "suggestions": "建议的后续问题",
+      "suggestionsPreparing": "正在准备后续建议…",
+      "suggestionsUnavailable": "暂时无法为这条回答生成后续建议。",
       "sourceSummary": "{count} 个来源",
       "sourcePanelTitle": "引用来源 {count}",
       "sourcePanelDescription": "本回答使用的研究来源。",

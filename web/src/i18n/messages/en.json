@@ -118,6 +118,8 @@
       "nextResponse": "Next response",
       "responseVersion": "Response {current} of {total}",
       "suggestions": "Suggested follow-up questions",
+      "suggestionsPreparing": "Preparing follow-up suggestions…",
+      "suggestionsUnavailable": "Follow-up suggestions are unavailable for this answer.",
       "sourceSummary": "{count, plural, one {# source} other {# sources}}",
       "sourcePanelTitle": "{count, plural, one {# source} other {# sources}}",
       "sourcePanelDescription": "Research sources supporting this answer.",
