@@ -35,11 +35,11 @@ from app.modules.conversations.application.contracts.answer_packet import (
     AnswerPacket,
     ReferenceBundle,
 )
-from app.modules.conversations.application.contracts.messages import (
+from app.modules.conversations.application.contracts.turns import (
     ConversationAssistantItem,
     ConversationActivity,
     ConversationCitationSummary,
-    ConversationMessageRequest,
+    ConversationTurnCreateRequest,
     ConversationProgressEntry,
     ConversationStreamActivityEvent,
     ConversationStreamAssistantItemCompleteEvent,
@@ -286,7 +286,7 @@ class ScholensConversationAgent:
     async def stream(
         self,
         *,
-        request: ConversationMessageRequest,
+        request: ConversationTurnCreateRequest,
         actor: Actor,
         executor: ApplicationExecutor[ApplicationCapabilities],
         conversation_scope: ConversationChatScope,
@@ -433,11 +433,13 @@ class ScholensConversationAgent:
                                         if not item.started:
                                             item.started = True
                                             yield ConversationStreamAssistantItemStartEvent(
+                                                response_id=request.response_id,
                                                 item_id=item.id,
                                                 sequence=item.sequence,
                                             )
                                         item.content += visible
                                         yield ConversationStreamAssistantItemDeltaEvent(
+                                            response_id=request.response_id,
                                             item_id=item.id,
                                             delta=visible,
                                         )
@@ -449,11 +451,13 @@ class ScholensConversationAgent:
                                     if not item.started:
                                         item.started = True
                                         yield ConversationStreamAssistantItemStartEvent(
+                                            response_id=request.response_id,
                                             item_id=item.id,
                                             sequence=item.sequence,
                                         )
                                     item.content += remaining
                                     yield ConversationStreamAssistantItemDeltaEvent(
+                                        response_id=request.response_id,
                                         item_id=item.id,
                                         delta=remaining,
                                     )
@@ -475,6 +479,7 @@ class ScholensConversationAgent:
                                         deps.progress_entries.append(progress)
                                         yield self._complete_item(
                                             item,
+                                            response_id=request.response_id,
                                             phase="progress",
                                             content=progress.content,
                                         )
@@ -498,6 +503,7 @@ class ScholensConversationAgent:
                                                 deps, tool_event
                                             )
                                             yield ConversationStreamActivityEvent(
+                                                response_id=request.response_id,
                                                 activity=activity
                                             )
                                         elif isinstance(
@@ -512,6 +518,7 @@ class ScholensConversationAgent:
                                                 )
                                                 if updated_activity is not None:
                                                     yield ConversationStreamActivityEvent(
+                                                        response_id=request.response_id,
                                                         activity=updated_activity
                                                     )
                             next_node = await agent_run.next(node)
@@ -520,16 +527,21 @@ class ScholensConversationAgent:
                                     final_item = pending_final
                                     yield self._complete_item(
                                         final_item,
+                                        response_id=request.response_id,
                                         phase="final",
                                     )
                                     final_references = final_item.parser.references()
                                     if final_references is not None:
-                                        yield self._references_event(final_references)
+                                        yield self._references_event(
+                                            final_references,
+                                            response_id=request.response_id,
+                                        )
                                 elif pending_final.content:
                                     progress = self._progress_entry(pending_final)
                                     deps.progress_entries.append(progress)
                                     yield self._complete_item(
                                         pending_final,
+                                        response_id=request.response_id,
                                         phase="progress",
                                         content=progress.content,
                                     )
@@ -565,17 +577,26 @@ class ScholensConversationAgent:
                             )
                         final_item.started = True
                         yield ConversationStreamAssistantItemStartEvent(
+                            response_id=request.response_id,
                             item_id=final_item.id,
                             sequence=final_item.sequence,
                         )
                         yield ConversationStreamAssistantItemDeltaEvent(
+                            response_id=request.response_id,
                             item_id=final_item.id,
                             delta=content,
                         )
-                        yield self._complete_item(final_item, phase="final")
+                        yield self._complete_item(
+                            final_item,
+                            response_id=request.response_id,
+                            phase="final",
+                        )
                         final_references = fallback_parser.references()
                         if final_references is not None:
-                            yield self._references_event(final_references)
+                            yield self._references_event(
+                                final_references,
+                                response_id=request.response_id,
+                            )
                     self._settle_usage(
                         result=result,
                         request=request,
@@ -1024,7 +1045,7 @@ class ScholensConversationAgent:
     @staticmethod
     def _instructions(
         *,
-        request: ConversationMessageRequest,
+        request: ConversationTurnCreateRequest,
         local_now: str,
         context: dict[str, JsonValue],
         initial_packet: AnswerPacket,
@@ -1131,10 +1152,12 @@ Initial server-validated answer material:
     def _complete_item(
         item: _StreamedAssistantItem,
         *,
+        response_id: uuid.UUID,
         phase: Literal["progress", "final"],
         content: str | None = None,
     ) -> ConversationStreamAssistantItemCompleteEvent:
         return ConversationStreamAssistantItemCompleteEvent(
+            response_id=response_id,
             item=ConversationAssistantItem(
                 id=item.id,
                 sequence=item.sequence,
@@ -1146,8 +1169,11 @@ Initial server-validated answer material:
     @staticmethod
     def _references_event(
         references: ReferenceBundle,
+        *,
+        response_id: uuid.UUID,
     ) -> ConversationStreamReferencesEvent:
         return ConversationStreamReferencesEvent(
+            response_id=response_id,
             references=cast(
                 dict[str, JsonValue],
                 references.model_dump(mode="json"),
@@ -1158,7 +1184,7 @@ Initial server-validated answer material:
     def _settle_usage(
         *,
         result: Any,
-        request: ConversationMessageRequest,
+        request: ConversationTurnCreateRequest,
         turn_id: uuid.UUID,
         model_name: str,
     ) -> None:

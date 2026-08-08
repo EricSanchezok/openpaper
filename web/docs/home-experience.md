@@ -51,7 +51,8 @@ tool name. Adjacent tool entries are rendered as one category-count batch;
 progress text separates batches. Model reasoning, provider heartbeats, raw tool
 names, arguments, and return payloads are not product UI. Only final items may
 publish references. `complete` and `error` are terminal. The user may abort an
-active stream; the Web app never automatically retries message creation. Once
+active stream; the Web app never automatically retries turn or response
+creation. Once
 a turn is accepted into the optimistic transcript, the Composer clears
 immediately and its send action becomes the standard stop-square action for
 the lifetime of that stream. A failure before optimistic acceptance preserves
@@ -61,8 +62,11 @@ Capacity dependency outages are returned as `unavailable`, not as a user quota
 exhaustion. The interface preserves the failed user message, explains that it
 was saved, and retains the public diagnostic ID without exposing provider or
 Redis details.
-After completion, only the active conversation, its messages, and the
-conversation list are invalidated.
+After completion, only the active conversation, its turns, and the conversation
+list are invalidated. A turn owns the submitted prompt and its generated
+response variants. Only the latest turn may expose retry and variant selection;
+once a newer turn is submitted, prior alternatives and their controls are
+removed from the product history.
 The Server replaces the default Sidebar title once after the first successful
 assistant reply. Follow-up turns do not regenerate it, and user renames are
 never overwritten by title generation.
@@ -146,10 +150,10 @@ The former heavy process card and per-tool checklist are archived in Figma and
 are not supported Web states. `Conversation View / Narrow Long Subject` and
 `Conversation View / Simplified Chinese Dark` supplement the Figma mapping with
 runtime overflow, locale, and appearance coverage. Optimistic and persisted
-messages are reconciled by `turn_id`; the isolated deduplication state guards
-against showing the same user message twice while a stream is active.
+turns are reconciled by `turn_id`; the isolated deduplication state guards
+against showing the same submitted prompt twice while a stream is active.
 
-Each assistant turn owns one `ConversationWorklog` before its final answer.
+Each generated response owns one `ConversationWorklog` before its final answer.
 During a run it opens by default; a final item collapses it unless the user has
 manually chosen a state. Persisted history starts collapsed. Expanded rows
 interleave concise progress with grouped tool batches, show at most two safe

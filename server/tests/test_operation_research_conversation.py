@@ -154,7 +154,7 @@ def _conversations(
 ) -> Conversations:
     return Conversations(
         gateway=gateway,
-        message_cursors=MagicMock(),
+        turn_cursors=MagicMock(),
         journal=journal,
     )
 

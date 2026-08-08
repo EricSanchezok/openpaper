@@ -58,7 +58,7 @@ def test_research_items_use_one_metadata_contract_with_typed_payloads() -> None:
         "document_id",
         "project_id",
         "is_shared",
-        "source_message_id",
+        "source_response_id",
     }.issubset(ResearchItem.__table__.c.keys())
     assert HighlightThread.__table__.c.research_item_id.primary_key
     assert ResearchAudioOverview.__table__.c.research_item_id.primary_key

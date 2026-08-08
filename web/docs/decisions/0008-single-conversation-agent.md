@@ -48,8 +48,9 @@ Use one Pydantic AI agent loop for every Conversation scope.
   counts.
 - Terminal traces persist ordered `progress | activity` entries and citation
   counts. Progress text is bounded to 4,000 characters before it enters the
-  product trace. The final answer remains solely in `Message.content`, and the
-  adapter refuses to persist a completed turn without visible final content.
+  product trace. The final answer remains solely in
+  `ConversationResponse.content`, and the adapter refuses to persist a
+  completed response without visible final content.
 - Only a final item may materialize references. Progress may contain safe,
   concise stage narration, but citation markers are removed without registering
   sources.
@@ -69,5 +70,11 @@ entry points remain product compositions over one runtime.
 
 The contract is deliberately destructive while Scholens is local-only: there
 is no dual reducer, feature flag, legacy trace union, or compatibility parser.
-Existing local JSONB traces are cleared once; message bodies and conversations
-remain intact.
+The previous Message aggregate is removed rather than adapted. A
+`ConversationTurn` owns one user prompt and one or more
+`ConversationResponse` variants. Only the latest turn may be retried or switch
+its selected response; creating the next turn prunes unselected variants from
+the previous turn so historical context has one canonical branch. Aggregate
+ownership and retry semantics are specified by
+[ADR 0009](./0009-turn-response-variants.md); this record remains authoritative
+only for the Agent harness and event-stream boundary.

@@ -15,9 +15,9 @@ artifact checks, and the complete Server and Web gates.
 | Finding                                                                   | Risk                                                                          | Resolution                                                                                                         |
 | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Runtime emitted ad-hoc dictionaries which the adapter parsed again        | Silent field loss and two event protocols drifting independently              | Runtime now emits the public Pydantic event models directly plus one private typed terminal result                 |
-| Citation-only text could start and complete an empty assistant item       | Blank worklog rows, invalid persisted messages, reducer dead branches         | Public items start only after visible text and completed item content is contractually non-empty                   |
+| Citation-only text could start and complete an empty assistant item       | Blank worklog rows, invalid persisted responses, reducer dead branches        | Public items start only after visible text and completed item content is contractually non-empty                   |
 | Pre-tool prose could exceed the persisted progress limit                  | A valid model response could fail only after its text had streamed            | One runtime helper bounds progress to 4,000 characters before completion and trace persistence                     |
-| A run could reach persistence without a final visible answer              | Empty assistant messages and misleading successful terminal events            | Runtime rejects hidden-only output and the adapter independently requires final content before completing the turn |
+| A run could reach persistence without a final visible answer              | Empty response variants and misleading successful terminal events              | Runtime rejects hidden-only output and the adapter independently requires final content before completing the response |
 | Trace discriminator defaults were omitted during repository serialization | The answer streamed successfully but persistence failed, producing `未能完成` | Repository serialization now retains required `kind` discriminators and has a round-trip regression test           |
 | Composer reset waited for the full request to finish                      | Submitted text stayed in the input while Stop was active                      | The accepted optimistic turn clears the Composer immediately; preflight failures still preserve the draft          |
 | Web retained an empty-progress compatibility branch                       | Dead behavior contradicted the new non-empty public contract                  | The branch was deleted; generated types and reducers follow one destructive contract                               |
@@ -29,7 +29,7 @@ artifact checks, and the complete Server and Web gates.
 - One sequence orders safe progress and tool activity. Activity updates retain
   their ID and sequence.
 - Only visible non-empty text can enter an assistant item. Only a final item can
-  publish references or become `Message.content`.
+  publish references or become `ConversationResponse.content`.
 - The Server owns event validation, progress bounds, citations, persistence,
   idempotency, and the unique terminal result. Web owns presentation state and
   ignores events after a terminal state.
@@ -62,7 +62,7 @@ unproven abstraction.
 - The 4,000-character progress bound is a safety ceiling, not a copy target.
   Agent instructions and UI grouping should continue to favor short stage
   updates.
-- Historical local rows with invalid or empty assistant content are not
+- Historical local response rows with invalid or empty assistant content are not
   supported by a compatibility layer. Local development may clear them; a
   future production migration would require an explicit data decision.
 - New activity categories or assistant phases require a deliberate public

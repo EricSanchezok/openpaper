@@ -383,24 +383,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/conversations/{conversation_id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Conversation Messages */
-        get: operations["get_conversation_messages_api_v1_conversations__conversation_id__messages_get"];
-        put?: never;
-        /** Create Conversation Message */
-        post: operations["create_conversation_message_api_v1_conversations__conversation_id__messages_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conversations/{conversation_id}/scope": {
         parameters: {
             query?: never;
@@ -428,6 +410,58 @@ export interface paths {
         get?: never;
         /** Update Conversation Tool Permissions */
         put: operations["update_conversation_tool_permissions_api_v1_conversations__conversation_id__tool_permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Conversation Turns */
+        get: operations["get_conversation_turns_api_v1_conversations__conversation_id__turns_get"];
+        put?: never;
+        /** Create Conversation Turn */
+        post: operations["create_conversation_turn_api_v1_conversations__conversation_id__turns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/turns/{turn_id}/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Conversation Turn */
+        post: operations["retry_conversation_turn_api_v1_conversations__conversation_id__turns__turn_id__responses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/turns/{turn_id}/selected-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Select Conversation Response */
+        put: operations["select_conversation_response_api_v1_conversations__conversation_id__turns__turn_id__selected_response_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2113,39 +2147,6 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
-        /**
-         * ConversationMessageRequest
-         * @description One stable message contract for every conversation scope.
-         */
-        ConversationMessageRequest: {
-            /**
-             * Locale
-             * @enum {string}
-             */
-            locale: "en" | "zh-CN";
-            /** Mentioned Highlight Ids */
-            mentioned_highlight_ids?: string[] | null;
-            /** @default standard */
-            reasoning_level: components["schemas"]["ReasoningLevel"];
-            /** Time Zone */
-            time_zone: string;
-            /**
-             * Turn Id
-             * Format: uuid
-             */
-            turn_id: string;
-            /** User Query */
-            user_query: string;
-            /** User References */
-            user_references?: string[] | null;
-        };
-        /** ConversationMessagesResponse */
-        ConversationMessagesResponse: {
-            /** Items */
-            items: components["schemas"]["app__modules__conversations__application__contracts__conversations__MessageResponse"][];
-            /** Next Cursor */
-            next_cursor?: string | null;
-        };
         /** ConversationMoveRequest */
         ConversationMoveRequest: {
             /** Scope Id */
@@ -2174,6 +2175,53 @@ export interface components {
             sequence: number;
         };
         /**
+         * ConversationResponseCreateRequest
+         * @description Generate another response variant for the latest conversation turn.
+         */
+        ConversationResponseCreateRequest: {
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+        };
+        /** ConversationResponseSelectionRequest */
+        ConversationResponseSelectionRequest: {
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+        };
+        /** ConversationResponseVariantResponse */
+        ConversationResponseVariantResponse: {
+            /** Artifacts */
+            artifacts: components["schemas"]["CitationSnapshot"][] | null;
+            /** Content */
+            content: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            references: components["schemas"]["ReferenceBundle"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "completed" | "failed" | "cancelled";
+            /** Suggestions */
+            suggestions: string[] | null;
+            /**
+             * Suggestions Status
+             * @enum {string}
+             */
+            suggestions_status: "idle" | "pending" | "completed" | "failed";
+            trace: components["schemas"]["ConversationTrace"] | null;
+            /** Variant Index */
+            variant_index: number;
+        };
+        /**
          * ConversationScopeType
          * @enum {string}
          */
@@ -2181,6 +2229,11 @@ export interface components {
         /** ConversationStreamActivityEvent */
         ConversationStreamActivityEvent: {
             activity: components["schemas"]["ConversationActivity"];
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2190,6 +2243,11 @@ export interface components {
         /** ConversationStreamAssistantItemCompleteEvent */
         ConversationStreamAssistantItemCompleteEvent: {
             item: components["schemas"]["ConversationAssistantItem"];
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2203,6 +2261,11 @@ export interface components {
             /** Item Id */
             item_id: string;
             /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -2212,6 +2275,11 @@ export interface components {
         ConversationStreamAssistantItemStartEvent: {
             /** Item Id */
             item_id: string;
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
             /** Sequence */
             sequence: number;
             /**
@@ -2226,6 +2294,11 @@ export interface components {
             artifacts?: {
                 [key: string]: components["schemas"]["JsonValue-Output"];
             }[];
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
             trace?: components["schemas"]["ConversationTrace"] | null;
             /**
              * Turn Id
@@ -2245,6 +2318,11 @@ export interface components {
                 [key: string]: components["schemas"]["JsonValue-Output"];
             };
             /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -2262,6 +2340,11 @@ export interface components {
                 [key: string]: components["schemas"]["JsonValue-Output"];
             };
             /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -2275,6 +2358,16 @@ export interface components {
              */
             conversation_id: string;
             /**
+             * Generation Kind
+             * @enum {string}
+             */
+            generation_kind: "initial" | "retry";
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /**
              * Turn Id
              * Format: uuid
              */
@@ -2284,6 +2377,8 @@ export interface components {
              * @enum {string}
              */
             type: "start";
+            /** Variant Index */
+            variant_index: number;
         };
         /** ConversationSummaryResponse */
         ConversationSummaryResponse: {
@@ -2334,6 +2429,77 @@ export interface components {
             citation_summary?: components["schemas"]["ConversationCitationSummary"] | null;
             /** Entries */
             entries?: (components["schemas"]["ConversationProgressEntry"] | components["schemas"]["ConversationActivity"])[];
+        };
+        /**
+         * ConversationTurnCreateRequest
+         * @description Create one user turn and its initial generated response.
+         */
+        ConversationTurnCreateRequest: {
+            /**
+             * Locale
+             * @enum {string}
+             */
+            locale: "en" | "zh-CN";
+            /** Mentioned Highlight Ids */
+            mentioned_highlight_ids?: string[] | null;
+            /** @default standard */
+            reasoning_level: components["schemas"]["ReasoningLevel"];
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /** Time Zone */
+            time_zone: string;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
+            /** User Query */
+            user_query: string;
+            /** User References */
+            user_references?: string[] | null;
+        };
+        /** ConversationTurnResponse */
+        ConversationTurnResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Locale
+             * @enum {string}
+             */
+            locale: "en" | "zh-CN";
+            /** Reasoning Level */
+            reasoning_level: string;
+            /** Responses */
+            responses: components["schemas"]["ConversationResponseVariantResponse"][];
+            /** Scope */
+            scope: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            }[] | null;
+            /** Selected Response Id */
+            selected_response_id: string | null;
+            /** Sequence */
+            sequence: number;
+            /** Time Zone */
+            time_zone: string;
+            /** User Query */
+            user_query: string;
+            /** User References */
+            user_references: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            } | null;
+        };
+        /** ConversationTurnsResponse */
+        ConversationTurnsResponse: {
+            /** Items */
+            items: components["schemas"]["ConversationTurnResponse"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
         };
         /** ConversationUpdateRequest */
         ConversationUpdateRequest: {
@@ -2859,6 +3025,11 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** MessageResponse */
+        MessageResponse: {
+            /** Message */
+            message: string;
         };
         /**
          * OAStatus
@@ -4046,38 +4217,6 @@ export interface components {
             /** Synced Papers Count */
             synced_papers_count: number;
         };
-        /** MessageResponse */
-        app__modules__conversations__application__contracts__conversations__MessageResponse: {
-            /** Artifacts */
-            artifacts: components["schemas"]["CitationSnapshot"][] | null;
-            /** Content */
-            content: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            references: components["schemas"]["ReferenceBundle"] | null;
-            /** Role */
-            role: string;
-            /** Scope */
-            scope: {
-                [key: string]: components["schemas"]["JsonValue-Output"];
-            }[] | null;
-            /** Sequence */
-            sequence: number;
-            trace: components["schemas"]["ConversationTrace"] | null;
-            /**
-             * Turn Id
-             * Format: uuid
-             */
-            turn_id: string;
-        };
-        /** MessageResponse */
-        sanchezcloud_identity__models__auth__MessageResponse: {
-            /** Message */
-            message: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -4205,7 +4344,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Invalid or expired authentication token */
@@ -4265,7 +4404,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -4372,7 +4511,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Authentication failed or session unavailable */
@@ -4452,7 +4591,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -4503,7 +4642,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -4554,7 +4693,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Invalid or expired authentication token */
@@ -4614,7 +4753,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["sanchezcloud_identity__models__auth__MessageResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Invalid or expired authentication token */
@@ -5057,75 +5196,6 @@ export interface operations {
             };
         };
     };
-    get_conversation_messages_api_v1_conversations__conversation_id__messages_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationMessagesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_conversation_message_api_v1_conversations__conversation_id__messages_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConversationMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Standard SSE stream of typed conversation events. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": components["schemas"]["ConversationStreamEventSchema"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     move_conversation_api_v1_conversations__conversation_id__scope_put: {
         parameters: {
             query?: never;
@@ -5183,6 +5253,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationToolPermissionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_turns_api_v1_conversations__conversation_id__turns_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationTurnsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_conversation_turn_api_v1_conversations__conversation_id__turns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationTurnCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Standard SSE stream of typed conversation events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ConversationStreamEventSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_conversation_turn_api_v1_conversations__conversation_id__turns__turn_id__responses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationResponseCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Standard SSE stream of typed conversation events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ConversationStreamEventSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_conversation_response_api_v1_conversations__conversation_id__turns__turn_id__selected_response_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationResponseSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationResponseVariantResponse"];
                 };
             };
             /** @description Validation Error */

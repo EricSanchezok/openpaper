@@ -4,10 +4,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from app.modules.conversations.infrastructure.message_repository import (
-    MessageCreate,
-    message_repository,
-)
+from app.modules.conversations.infrastructure.turn_repository import turn_repository
 from app.bootstrap.adapters.upload_repository import (
     upload_reservation_repository,
 )
@@ -27,7 +24,6 @@ from app.database.models import (
     JobOperation,
     LibraryPaper,
     ProjectPaper,
-    RoleType,
     ZoteroImportStatus,
 )
 from app.shared.domain import JsonValue
@@ -86,7 +82,9 @@ from app.modules.research.application.items import (
     RESEARCH_HIGHLIGHT_CREATED,
 )
 from app.modules.conversations.application.chat import (
-    CONVERSATION_MESSAGE_CREATED,
+    CONVERSATION_RESPONSE_COMPLETED,
+    CONVERSATION_RESPONSE_CREATED,
+    CONVERSATION_TURN_CREATED,
 )
 from app.modules.conversations.application.conversations import (
     CONVERSATION_CREATED,
@@ -1006,7 +1004,8 @@ async def handle_paper_processing_webhook(
                         created_comment_ids = created_highlights.comment_ids
 
                 summary_conversation_id: uuid.UUID | None = None
-                summary_message_id: uuid.UUID | None = None
+                summary_turn_id: uuid.UUID | None = None
+                summary_response_id: uuid.UUID | None = None
                 if metadata.summary:
                     with optional_savepoint(
                         db,
@@ -1031,28 +1030,54 @@ async def handle_paper_processing_webhook(
                             document_id=paper.id,
                             title=paper.title,
                         )
-                        message = message_repository.create(
+                        summary_turn_id = uuid.uuid4()
+                        summary_response_id = uuid.uuid4()
+                        turn_repository.create_turn(
                             db,
-                            request=MessageCreate(
-                                conversation_id=conversation.id,
-                                turn_id=operation.trace.operation_id,
-                                created_operation_id=operation.trace.operation_id,
-                                correlation_id=operation.trace.correlation_id,
-                                role=RoleType.ASSISTANT,
-                                content=summary_content,
-                                references=(
-                                    _JSON_OBJECT.validate_python(
-                                        references.model_dump(mode="json")
-                                    )
-                                    if references is not None
-                                    else None
-                                ),
-                            ),
+                            conversation_id=conversation.id,
+                            turn_id=summary_turn_id,
                             user_id=actor.id,
-                            refresh_result=False,
+                            created_operation_id=operation.trace.operation_id,
+                            correlation_id=operation.trace.correlation_id,
+                            user_query=f"Summarize {paper.title or 'this paper'}",
+                            user_references=None,
+                            scope=[
+                                {
+                                    "kind": "paper",
+                                    "id": str(paper.id),
+                                    "title": paper.title,
+                                }
+                            ],
+                            reasoning_level="standard",
+                            locale="en",
+                            time_zone="UTC",
+                        )
+                        turn_repository.create_response(
+                            db,
+                            conversation_id=conversation.id,
+                            turn_id=summary_turn_id,
+                            response_id=summary_response_id,
+                            user_id=actor.id,
+                            created_operation_id=operation.trace.operation_id,
+                            correlation_id=operation.trace.correlation_id,
+                            generation_kind="initial",
+                        )
+                        turn_repository.complete_response(
+                            db,
+                            conversation_id=conversation.id,
+                            response_id=summary_response_id,
+                            user_id=actor.id,
+                            content=summary_content,
+                            references=(
+                                _JSON_OBJECT.validate_python(
+                                    references.model_dump(mode="json")
+                                )
+                                if references is not None
+                                else None
+                            ),
+                            trace=None,
                         )
                         summary_conversation_id = conversation.id
-                        summary_message_id = message.id
 
                 completed = _complete_pdf_job(
                     db,
@@ -1106,16 +1131,36 @@ async def handle_paper_processing_webhook(
                             ),
                         )
                     )
-                if summary_message_id is not None:
-                    changes.append(
+                if summary_turn_id is not None and summary_response_id is not None:
+                    changes.extend(
+                        (
                         OperationChange(
-                            action=CONVERSATION_MESSAGE_CREATED,
+                            action=CONVERSATION_TURN_CREATED,
                             resources=(
                                 ResourceRef(
-                                    "message",
-                                    str(summary_message_id),
+                                    "conversation_turn",
+                                    str(summary_turn_id),
                                 ),
                             ),
+                        ),
+                        OperationChange(
+                            action=CONVERSATION_RESPONSE_CREATED,
+                            resources=(
+                                ResourceRef(
+                                    "conversation_response",
+                                    str(summary_response_id),
+                                ),
+                            ),
+                        ),
+                        OperationChange(
+                            action=CONVERSATION_RESPONSE_COMPLETED,
+                            resources=(
+                                ResourceRef(
+                                    "conversation_response",
+                                    str(summary_response_id),
+                                ),
+                            ),
+                        ),
                         )
                     )
                 if postprocess_job.created:

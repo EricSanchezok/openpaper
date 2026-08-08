@@ -25,7 +25,7 @@ from app.shared.infrastructure.persistence import Base
 from app.shared.domain.enums import ResearchItemKind, ResearchScopeType
 
 if TYPE_CHECKING:
-    from app.modules.conversations.infrastructure.models import Message
+    from app.modules.conversations.infrastructure.models import ConversationResponse
     from app.modules.papers.infrastructure.models import Document
     from app.modules.identity.infrastructure.models import AuthUser
     from app.modules.jobs.infrastructure.models import DurableJob
@@ -98,9 +98,9 @@ class ResearchItem(Base):
         default=False,
         server_default="false",
     )
-    source_message_id: Mapped[uuid.UUID | None] = mapped_column(
+    source_response_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("messages.id", ondelete="SET NULL"),
+        ForeignKey("conversation_responses.id", ondelete="SET NULL"),
         nullable=True,
     )
     source_job_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -117,8 +117,8 @@ class ResearchItem(Base):
     )
     document: Mapped["Document | None"] = relationship("Document")
     project: Mapped["Project | None"] = relationship("Project")
-    source_message: Mapped["Message | None"] = relationship(
-        "Message",
+    source_response: Mapped["ConversationResponse | None"] = relationship(
+        "ConversationResponse",
         back_populates="research_items",
     )
     source_job: Mapped["DurableJob | None"] = relationship("DurableJob")

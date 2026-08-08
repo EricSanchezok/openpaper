@@ -6,7 +6,10 @@ from pathlib import Path
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.models.tool_invocation import ToolInvocation
-from app.modules.conversations.infrastructure.models import Message
+from app.modules.conversations.infrastructure.models import (
+    ConversationResponse,
+    ConversationTurn,
+)
 from app.modules.integrations.zotero.infrastructure.models import (
     ZoteroOAuthPending,
 )
@@ -283,7 +286,12 @@ def test_only_application_services_call_operation_journal() -> None:
 def test_causality_models_use_only_the_final_schema() -> None:
     expected_columns = {
         DurableJob: {"correlation_id", "origin_operation_id"},
-        Message: {"turn_id", "created_operation_id", "correlation_id"},
+        ConversationTurn: {"created_operation_id", "correlation_id"},
+        ConversationResponse: {
+            "turn_id",
+            "created_operation_id",
+            "correlation_id",
+        },
         ZoteroOAuthPending: {"correlation_id", "origin_operation_id"},
         ToolInvocation: {"operation_id"},
     }
@@ -302,11 +310,14 @@ def test_migrations_define_only_final_operation_causality() -> None:
 
     tables = _created_table_columns()
     assert {"correlation_id", "origin_operation_id"} <= tables["jobs"]
+    assert {"created_operation_id", "correlation_id"} <= tables[
+        "conversation_turns"
+    ]
     assert {
         "turn_id",
         "created_operation_id",
         "correlation_id",
-    } <= tables["messages"]
+    } <= tables["conversation_responses"]
     assert {"operation_id"} <= tables["tool_invocations"]
     assert {"source", "access_key_id"}.isdisjoint(tables["tool_invocations"])
 

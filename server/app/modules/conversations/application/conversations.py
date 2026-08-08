@@ -12,14 +12,15 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationDetailResponse,
     ConversationListResponse,
-    ConversationMessagesResponse,
+    ConversationTurnsResponse,
+    ConversationResponseVariantResponse,
     ConversationMoveRequest,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
     ConversationToolPermissionsRequest,
     ConversationToolPermissionsResponse,
     PaperContext,
-    MessageResponse,
+    ConversationTurnResponse,
 )
 from app.shared.application import Actor, OperationContext, SignedCursorCodec
 
@@ -34,6 +35,7 @@ CONVERSATION_PAPER_CONTEXT_UPDATED = OperationAction(
 CONVERSATION_TOOL_PERMISSIONS_UPDATED = OperationAction(
     "conversation.tool_permissions_updated"
 )
+CONVERSATION_RESPONSE_SELECTED = OperationAction("conversation.response_selected")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,14 +65,23 @@ class ConversationGateway(Protocol):
         self, *, user_id: int, conversation_id: UUID
     ) -> ConversationDetailResponse: ...
 
-    def messages(
+    def turns(
         self,
         *,
         user_id: int,
         conversation_id: UUID,
         offset: int,
         limit: int,
-    ) -> list[MessageResponse]: ...
+    ) -> list[ConversationTurnResponse]: ...
+
+    def select_response(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        turn_id: UUID,
+        response_id: UUID,
+    ) -> ConversationResponseVariantResponse: ...
 
     def update(
         self,
@@ -120,11 +131,11 @@ class Conversations:
         self,
         *,
         gateway: ConversationGateway,
-        message_cursors: SignedCursorCodec,
+        turn_cursors: SignedCursorCodec,
         journal: OperationJournal,
     ) -> None:
         self._gateway = gateway
-        self._message_cursors = message_cursors
+        self._turn_cursors = turn_cursors
         self._journal = journal
 
     def list_page(
@@ -169,38 +180,38 @@ class Conversations:
             conversation_id=conversation_id,
         )
 
-    def messages(
+    def turns(
         self,
         *,
         actor: Actor,
         conversation_id: UUID,
         cursor: str | None,
         limit: int,
-    ) -> ConversationMessagesResponse:
+    ) -> ConversationTurnsResponse:
         fingerprint = f"{actor.id}:{conversation_id}:{limit}"
         offset = (
-            self._message_cursors.decode(
+            self._turn_cursors.decode(
                 cursor=cursor,
                 fingerprint=fingerprint,
             )
             if cursor
             else 0
         )
-        messages = self._gateway.messages(
+        turns = self._gateway.turns(
             user_id=actor.id,
             conversation_id=conversation_id,
             offset=offset,
             limit=limit + 1,
         )
-        has_more = len(messages) > limit
+        has_more = len(turns) > limit
         if has_more:
             # The gateway returns chronological order, so discard the oldest
             # extra item that belongs to the next, older page.
-            messages = messages[1:]
-        return ConversationMessagesResponse(
-            items=messages,
+            turns = turns[1:]
+        return ConversationTurnsResponse(
+            items=turns,
             next_cursor=(
-                self._message_cursors.encode(
+                self._turn_cursors.encode(
                     fingerprint=fingerprint,
                     offset=offset + limit,
                 )
@@ -230,6 +241,33 @@ class Conversations:
                 resources=(ResourceRef("conversation", str(conversation_id)),),
             )
         return result.value
+
+    def select_response(
+        self,
+        *,
+        actor: Actor,
+        operation: OperationContext,
+        conversation_id: UUID,
+        turn_id: UUID,
+        response_id: UUID,
+    ) -> ConversationResponseVariantResponse:
+        response = self._gateway.select_response(
+            user_id=actor.id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            response_id=response_id,
+        )
+        self._journal.append(
+            actor=actor,
+            operation=operation,
+            action=CONVERSATION_RESPONSE_SELECTED,
+            resources=(
+                ResourceRef("conversation", str(conversation_id)),
+                ResourceRef("conversation_turn", str(turn_id)),
+                ResourceRef("conversation_response", str(response_id)),
+            ),
+        )
+        return response
 
     def move(
         self,

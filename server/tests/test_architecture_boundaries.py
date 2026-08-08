@@ -332,7 +332,7 @@ def test_conversation_answer_runtime_has_one_packet_and_typed_source_path() -> N
         / "conversations"
         / "application"
         / "contracts"
-        / "messages.py",
+        / "turns.py",
     )
     source = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
     for legacy in (

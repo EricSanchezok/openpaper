@@ -8,7 +8,7 @@ from app.modules.research.application.contracts import CitationSnapshot
 from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
 )
-from app.modules.conversations.application.contracts.messages import ConversationTrace
+from app.modules.conversations.application.contracts.turns import ConversationTrace
 from app.shared.domain import (
     JsonValue,
     WorkspacePermission,
@@ -158,18 +158,31 @@ class ConversationToolPermissionsResponse(BaseModel):
     permissions: OrderedWorkspacePermissions
 
 
-class MessageResponse(BaseModel):
+class ConversationResponseVariantResponse(BaseModel):
     id: UUID
-    turn_id: UUID
-    role: str
-    content: str
+    variant_index: int
+    status: Literal["running", "completed", "failed", "cancelled"]
+    content: str | None
     references: ReferenceBundle | None
     artifacts: list[CitationSnapshot] | None
     trace: ConversationTrace | None
+    suggestions: list[str] | None
+    suggestions_status: Literal["idle", "pending", "completed", "failed"]
+
+
+class ConversationTurnResponse(BaseModel):
+    id: UUID
+    user_query: str
+    user_references: dict[str, JsonValue] | None
     scope: list[dict[str, JsonValue]] | None
+    reasoning_level: str
+    locale: Literal["en", "zh-CN"]
+    time_zone: str
     sequence: int
+    selected_response_id: UUID | None
+    responses: list[ConversationResponseVariantResponse]
 
 
-class ConversationMessagesResponse(BaseModel):
-    items: list[MessageResponse]
+class ConversationTurnsResponse(BaseModel):
+    items: list[ConversationTurnResponse]
     next_cursor: str | None = None

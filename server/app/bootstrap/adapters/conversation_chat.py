@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
+from typing import Literal
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.database.product_analytics import track_event
@@ -28,9 +30,9 @@ from app.llm.token_credits import llm_usage_context
 from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
 )
-from app.modules.conversations.application.contracts.messages import (
+from app.modules.conversations.application.contracts.turns import (
     ConversationAssistantItem,
-    ConversationMessageRequest,
+    ConversationTurnCreateRequest,
     ConversationStreamAssistantItemCompleteEvent,
     ConversationStreamAssistantItemDeltaEvent,
     ConversationStreamAssistantItemStartEvent,
@@ -60,7 +62,7 @@ _JSON_OBJECT_LIST = TypeAdapter(list[dict[str, JsonValue]])
 
 
 async def stream_conversation_agent(
-    request: ConversationMessageRequest,
+    request: ConversationTurnCreateRequest,
     *,
     conversation_id: uuid.UUID,
     client_ip: str,
@@ -69,6 +71,7 @@ async def stream_conversation_agent(
     runtime: ScholensConversationAgent,
     operation: OperationContext,
     operation_factory: OperationContextFactory,
+    generation_kind: Literal["initial", "retry"] = "initial",
     diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
 ) -> AsyncGenerator[str, None]:
     """Run one contextual agent and expose its sanitized product event stream."""
@@ -132,6 +135,8 @@ async def stream_conversation_agent(
             operation=operation,
             conversation_id=conversation_id,
             turn_id=request.turn_id,
+            response_id=request.response_id,
+            generation_kind=generation_kind,
             user_content=request.user_query,
             user_references=(
                 _JSON_OBJECT.validate_python(formatted_references)
@@ -139,17 +144,23 @@ async def stream_conversation_agent(
                 else None
             ),
             scope=_JSON_OBJECT_LIST.validate_python(scope_snapshot),
+            reasoning_level=request.reasoning_level.value,
+            locale=request.locale,
+            time_zone=request.time_zone,
         )
     )
     start_event = encode_conversation_sse(
         ConversationStreamStartEvent(
             conversation_id=conversation_id,
             turn_id=request.turn_id,
+            response_id=request.response_id,
+            variant_index=turn_start.response.variant_index,
+            generation_kind=generation_kind,
         )
     )
 
-    if turn_start.assistant is not None:
-        persisted = turn_start.assistant
+    if not turn_start.response_created and turn_start.response.status == "completed":
+        persisted = turn_start.response
 
         async def replay_response() -> AsyncGenerator[str, None]:
             sequence = (
@@ -165,18 +176,21 @@ async def stream_conversation_agent(
             yield start_event
             yield encode_conversation_sse(
                 ConversationStreamAssistantItemStartEvent(
+                    response_id=persisted.id,
                     item_id=item_id,
                     sequence=sequence,
                 )
             )
             yield encode_conversation_sse(
                 ConversationStreamAssistantItemDeltaEvent(
+                    response_id=persisted.id,
                     item_id=item_id,
                     delta=persisted.content,
                 )
             )
             yield encode_conversation_sse(
                 ConversationStreamAssistantItemCompleteEvent(
+                    response_id=persisted.id,
                     item=ConversationAssistantItem(
                         id=item_id,
                         sequence=sequence,
@@ -187,16 +201,22 @@ async def stream_conversation_agent(
             )
             if persisted.references is not None:
                 yield encode_conversation_sse(
-                    ConversationStreamReferencesEvent(references=persisted.references)
+                    ConversationStreamReferencesEvent(
+                        response_id=persisted.id,
+                        references=persisted.references,
+                    )
                 )
             yield encode_conversation_sse(
                 ConversationStreamCompleteEvent(
                     turn_id=request.turn_id,
+                    response_id=persisted.id,
                     trace=persisted.trace,
                 )
             )
 
         return replay_response()
+    if not turn_start.response_created:
+        raise RuntimeError("Conversation response is already in progress")
 
     try:
         await enforce_rate_limit(
@@ -247,7 +267,7 @@ async def stream_conversation_agent(
             client_ip=client_ip,
             request_operation=operation,
             correlation_id=turn_start.correlation_id,
-            user_operation_id=turn_start.user_operation_id,
+            user_operation_id=turn_start.turn_operation_id,
             mentioned_highlights=mentions.highlights,
         ):
             if isinstance(event, ConversationAgentResult):
@@ -270,7 +290,7 @@ async def stream_conversation_agent(
         )
         answer_operation = operation_factory.resume(
             correlation_id=turn_start.correlation_id,
-            causation_id=turn_start.user_operation_id,
+            causation_id=turn_start.turn_operation_id,
             initiated_by=OperationInitiator.AGENT,
             origin=operation.origin,
             credential=operation.credential,
@@ -281,6 +301,7 @@ async def stream_conversation_agent(
                 operation=answer_operation,
                 conversation_id=conversation_id,
                 turn_id=request.turn_id,
+                response_id=request.response_id,
                 assistant_content=final_content,
                 assistant_references=(
                     _JSON_OBJECT.validate_python(references.model_dump(mode="json"))
@@ -359,6 +380,7 @@ async def stream_conversation_agent(
         yield encode_conversation_sse(
             ConversationStreamCompleteEvent(
                 turn_id=request.turn_id,
+                response_id=request.response_id,
                 trace=trace,
                 artifacts=artifacts,
             )
@@ -377,8 +399,29 @@ async def stream_conversation_agent(
                     },
                     diagnostic_recorder=diagnostic_recorder,
                     diagnostic_context=diagnostic_context,
+                    response_id=request.response_id,
                 ):
                     yield event
+        except asyncio.CancelledError:
+            executor.command(
+                lambda capabilities: capabilities.conversation_chat_data.finish_response(
+                    actor=current_user,
+                    conversation_id=conversation_id,
+                    response_id=request.response_id,
+                    status="cancelled",
+                )
+            )
+            raise
+        except Exception:
+            executor.command(
+                lambda capabilities: capabilities.conversation_chat_data.finish_response(
+                    actor=current_user,
+                    conversation_id=conversation_id,
+                    response_id=request.response_id,
+                    status="failed",
+                )
+            )
+            raise
         finally:
             await release_concurrency(concurrency_lease)
 
@@ -406,8 +449,9 @@ class DefaultConversationChatGateway:
         actor: Actor,
         operation: OperationContext,
         conversation_id: uuid.UUID,
-        request: ConversationMessageRequest,
+        request: ConversationTurnCreateRequest,
         client_ip: str,
+        generation_kind: Literal["initial", "retry"] = "initial",
     ) -> AsyncGenerator[str, None]:
         return await stream_conversation_agent(
             request,
@@ -418,5 +462,33 @@ class DefaultConversationChatGateway:
             runtime=self._runtime,
             operation=operation,
             operation_factory=self._operation_factory,
+            generation_kind=generation_kind,
             diagnostic_recorder=self._diagnostic_recorder,
+        )
+
+    async def retry(
+        self,
+        *,
+        actor: Actor,
+        operation: OperationContext,
+        conversation_id: uuid.UUID,
+        turn_id: uuid.UUID,
+        response_id: uuid.UUID,
+        client_ip: str,
+    ) -> AsyncGenerator[str, None]:
+        request = self._executor.query(
+            lambda capabilities: capabilities.conversation_chat_data.retry_request(
+                actor=actor,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                response_id=response_id,
+            )
+        )
+        return await self.stream(
+            actor=actor,
+            operation=operation,
+            conversation_id=conversation_id,
+            request=request,
+            client_ip=client_ip,
+            generation_kind="retry",
         )

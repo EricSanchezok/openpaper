@@ -113,9 +113,11 @@ Queries, rejected operations, no-ops, technical leases, and replayed tool
 invocations do not create Journal entries. The Journal is append-only and has
 no public read capability or transport endpoint.
 
-Conversation user messages are USER root operations. Model tool calls,
-answers, citations, and generated titles are AGENT child operations that retain
-the turn correlation. Jobs persist only their origin operation and correlation
+Conversation turns are USER root operations. A turn owns the immutable user
+prompt, while model responses, tool calls, citations, and generated titles are
+AGENT child operations that retain the turn correlation. A retry creates a new
+response variant under the same latest turn; selecting a variant does not
+rewrite the prompt. Jobs persist only their origin operation and correlation
 UUIDs, then callbacks resume a new SYSTEM operation after signature and owner
 verification.
 
@@ -150,7 +152,7 @@ tool completes as a `progress` item, while the accepted no-tool response
 completes as the `final` item. Both use stable IDs and share a monotonic sequence
 with sanitized activity records. The persisted trace contains ordered progress
 and activity entries; progress is bounded before persistence, and final answer
-text remains in the Message row. Runtime-to-adapter communication uses the
+text remains in the selected `ConversationResponse` row. Runtime-to-adapter communication uses the
 public typed event models directly plus one private typed result envelope, so
 there is no second untyped event protocol to drift. Empty assistant items are
 rejected and a turn cannot complete without visible final content.
@@ -159,6 +161,12 @@ The public Conversation stream exposes item lifecycle events, sanitized
 activity, final-only server-generated references, and one terminal event. Raw
 reasoning, provider heartbeats, tool identity, full parameters, and tool return
 payloads remain internal diagnostics.
+
+The conversation aggregate has a destructive Turn/Response contract rather
+than a compatibility wrapper around messages. Only the latest turn exposes its
+completed response variants and permits retry or selection. Starting a newer
+turn deletes the older turn's unselected variants and its now-stale follow-up
+suggestions; persisted history therefore remains linear and bounded.
 
 `ToolDispatcher` validates arguments and executes each tool through a fresh
 `ApplicationExecutor` operation. Query tools never commit. Command tools commit

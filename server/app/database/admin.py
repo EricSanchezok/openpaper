@@ -3,9 +3,10 @@ from app.database.database import engine
 from app.database.models import (
     AnnotationComment,
     Conversation,
+    ConversationResponse,
+    ConversationTurn,
     DurableJob,
     HighlightThread,
-    Message,
     Onboarding,
     Document,
     Project,
@@ -162,14 +163,26 @@ class ConversationAdmin(ModelView, model=Conversation):
     column_searchable_list = [Conversation.title]
 
 
-class MessageAdmin(ModelView, model=Message):
+class ConversationTurnAdmin(ModelView, model=ConversationTurn):
     column_list = [
-        Message.id,
-        Message.conversation_id,
-        Message.content,
-        Message.role,
+        ConversationTurn.id,
+        ConversationTurn.conversation_id,
+        ConversationTurn.sequence,
+        ConversationTurn.user_query,
+        ConversationTurn.selected_response_id,
     ]
-    column_searchable_list = [Message.content]
+    column_searchable_list = [ConversationTurn.user_query]
+
+
+class ConversationResponseAdmin(ModelView, model=ConversationResponse):
+    column_list = [
+        ConversationResponse.id,
+        ConversationResponse.turn_id,
+        ConversationResponse.variant_index,
+        ConversationResponse.status,
+        ConversationResponse.suggestions_status,
+    ]
+    column_searchable_list = [ConversationResponse.content]
 
 
 class DurableJobAdmin(ModelView, model=DurableJob):
@@ -291,7 +304,8 @@ def setup_admin(app: FastAPI) -> None:
     admin.add_view(HighlightAdmin)
     admin.add_view(AnnotationAdmin)
     admin.add_view(ConversationAdmin)
-    admin.add_view(MessageAdmin)
+    admin.add_view(ConversationTurnAdmin)
+    admin.add_view(ConversationResponseAdmin)
     admin.add_view(ProjectAdmin)
     admin.add_view(ProjectInvitationAdmin)
     admin.add_view(ProjectCollaboratorAdmin)

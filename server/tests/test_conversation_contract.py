@@ -3,14 +3,12 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from app.modules.conversations.infrastructure.message_repository import (
-    message_repository,
-)
 from app.database.models import (
     Conversation,
     ConversationContextDocument,
     ConversationContextProject,
-    Message,
+    ConversationResponse,
+    ConversationTurn,
 )
 from app.shared.domain import AppError, FailureKind, WorkspacePermission
 from app.main import app
@@ -29,16 +27,14 @@ from app.modules.conversations.application.contracts.conversations import (
     SelectedPaperContext,
     ConversationUpdateRequest,
 )
-from app.modules.conversations.application.contracts.messages import (
-    ConversationActivity,
+from app.modules.conversations.application.contracts.turns import (
     ConversationAssistantItem,
-    ConversationProgressEntry,
     ConversationTrace,
 )
-from app.modules.conversations.infrastructure.presenters import serialize_messages
-from app.modules.conversations.infrastructure.message_repository import MessageCreate
+from app.modules.conversations.infrastructure.presenters import serialize_turns
+from app.modules.conversations.infrastructure.turn_repository import turn_repository
 from app.shared.application import Actor
-from app.shared.domain.enums import ConversationScopeType, RoleType
+from app.shared.domain.enums import ConversationScopeType
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -53,12 +49,25 @@ def _current_user() -> Actor:
     )
 
 
-def test_assistant_trace_serializes_as_a_typed_product_trace() -> None:
-    message = Message(
+def test_response_trace_serializes_as_a_typed_product_trace() -> None:
+    turn = ConversationTurn(
         id=uuid.uuid4(),
-        turn_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
-        role="assistant",
+        created_operation_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
+        user_query="Question",
+        reasoning_level="standard",
+        locale="en",
+        time_zone="UTC",
+        sequence=1,
+    )
+    response = ConversationResponse(
+        id=uuid.uuid4(),
+        turn_id=turn.id,
+        created_operation_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
+        variant_index=1,
+        status="completed",
         content="Answer",
         references={"annotations": [], "sources": []},
         trace={
@@ -79,14 +88,18 @@ def test_assistant_trace_serializes_as_a_typed_product_trace() -> None:
                 "rejected_source_count": 0,
             },
         },
-        sequence=2,
+        suggestions_status="idle",
     )
-    message.artifacts = []
+    response.research_items = []
+    turn.responses = [response]
+    turn.selected_response_id = response.id
 
-    serialized = serialize_messages([message])
+    serialized = serialize_turns([turn], latest_turn_id=turn.id)
 
-    assert serialized[0].trace == ConversationTrace.model_validate(message.trace)
-    assert serialized[0].turn_id == message.turn_id
+    assert serialized[0].responses[0].trace == ConversationTrace.model_validate(
+        response.trace
+    )
+    assert serialized[0].selected_response_id == response.id
 
 
 def test_completed_assistant_items_require_visible_content() -> None:
@@ -105,7 +118,15 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
     assert "/api/v1/conversations" in paths
     assert "/api/v1/conversations/{conversation_id}/scope" in paths
     assert "/api/v1/conversations/{conversation_id}/context" in paths
-    assert "/api/v1/conversations/{conversation_id}/messages" in paths
+    assert "/api/v1/conversations/{conversation_id}/turns" in paths
+    assert (
+        "/api/v1/conversations/{conversation_id}/turns/{turn_id}/responses" in paths
+    )
+    assert (
+        "/api/v1/conversations/{conversation_id}/turns/{turn_id}/selected-response"
+        in paths
+    )
+    assert "/api/v1/conversations/{conversation_id}/messages" not in paths
     assert not any(path.startswith("/api/v1/conversation/") for path in paths)
     assert not any(path.startswith("/api/v1/projects/conversations") for path in paths)
     assert not any("conversation/share" in path for path in paths)
@@ -132,16 +153,20 @@ def test_conversation_scope_contract_is_private_and_unified() -> None:
         "conversation_id",
         "document_id",
     } <= set(ConversationContextDocument.__table__.c.keys())
-    assert "user_id" not in Message.__table__.c
+    assert "user_id" not in ConversationTurn.__table__.c
     assert any(
-        constraint.name == "uq_messages_conversation_sequence"
-        for constraint in Message.__table__.constraints
+        constraint.name == "uq_conversation_turns_conversation_sequence"
+        for constraint in ConversationTurn.__table__.constraints
+    )
+    assert any(
+        constraint.name == "uq_conversation_responses_turn_variant"
+        for constraint in ConversationResponse.__table__.constraints
     )
 
 
-def test_conversation_messages_expose_a_typed_standard_sse_contract() -> None:
+def test_conversation_turns_expose_a_typed_standard_sse_contract() -> None:
     response = app.openapi()["paths"][
-        "/api/v1/conversations/{conversation_id}/messages"
+        "/api/v1/conversations/{conversation_id}/turns"
     ]["post"]["responses"]["200"]
 
     assert response["content"]["text/event-stream"]["schema"]["$ref"] == (
@@ -160,110 +185,6 @@ def test_conversation_messages_expose_a_typed_standard_sse_contract() -> None:
         "ConversationStreamCompleteEvent",
         "ConversationStreamErrorEvent",
     }
-
-
-def test_message_creation_locks_and_touches_the_owned_conversation() -> None:
-    db = MagicMock(spec=Session)
-    conversation = Conversation(
-        id=uuid.uuid4(),
-        title="Conversation",
-        user_id=1,
-        scope_type="global",
-    )
-    original_updated_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
-    conversation.updated_at = original_updated_at
-    db.scalar.side_effect = [conversation, 3]
-
-    message = message_repository.create(
-        db,
-        request=MessageCreate(
-            conversation_id=conversation.id,
-            turn_id=uuid.uuid4(),
-            created_operation_id=uuid.uuid4(),
-            correlation_id=uuid.uuid4(),
-            role=RoleType.USER,
-            content="Question",
-        ),
-        user_id=_current_user().id,
-        refresh_result=False,
-    )
-
-    assert message is not None
-    assert message.sequence == 4
-    assert conversation.updated_at > original_updated_at
-    ownership_statement = db.scalar.call_args_list[0].args[0]
-    assert "FOR UPDATE" in str(ownership_statement)
-
-
-def test_message_creation_preserves_trace_discriminators_for_round_trip() -> None:
-    db = MagicMock(spec=Session)
-    conversation = Conversation(
-        id=uuid.uuid4(),
-        title="Conversation",
-        user_id=1,
-        scope_type="global",
-    )
-    db.scalar.side_effect = [conversation, 1]
-    trace = ConversationTrace(
-        entries=[
-            ConversationProgressEntry(
-                id="progress-1",
-                sequence=1,
-                content="I will search the selected research.",
-            ),
-            ConversationActivity(
-                id="activity-1",
-                sequence=2,
-                category="search",
-                state="succeeded",
-                subject="reasoning compression",
-                source_count=3,
-            ),
-        ]
-    )
-
-    message = message_repository.create(
-        db,
-        request=MessageCreate(
-            conversation_id=conversation.id,
-            turn_id=uuid.uuid4(),
-            created_operation_id=uuid.uuid4(),
-            correlation_id=uuid.uuid4(),
-            role=RoleType.ASSISTANT,
-            content="Answer",
-            trace=trace,
-        ),
-        user_id=_current_user().id,
-        refresh_result=False,
-    )
-
-    assert message.trace is not None
-    assert [entry["kind"] for entry in message.trace["entries"]] == [
-        "progress",
-        "activity",
-    ]
-    assert ConversationTrace.model_validate(message.trace) == trace
-
-
-def test_message_creation_rejects_a_conversation_owned_by_someone_else() -> None:
-    db = MagicMock(spec=Session)
-    db.scalar.return_value = None
-
-    with pytest.raises(AppError) as exc_info:
-        message_repository.create(
-            db,
-            request=MessageCreate(
-                conversation_id=uuid.uuid4(),
-                turn_id=uuid.uuid4(),
-                created_operation_id=uuid.uuid4(),
-                correlation_id=uuid.uuid4(),
-                role=RoleType.USER,
-                content="Question",
-            ),
-            user_id=_current_user().id,
-        )
-
-    assert exc_info.value.code == "conversation_not_found"
 
 
 def test_owned_conversation_lookup_filters_id_and_user_in_one_query() -> None:
@@ -543,7 +464,7 @@ def test_missing_conversation_is_the_only_404(monkeypatch: pytest.MonkeyPatch) -
     assert exc_info.value.code == "conversation_not_found"
 
 
-def test_conversation_serialization_errors_are_not_reported_as_404(
+def test_conversation_turn_serialization_errors_are_not_reported_as_404(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation_id = uuid.uuid4()
@@ -560,20 +481,26 @@ def test_conversation_serialization_errors_are_not_reported_as_404(
         "require_owned",
         lambda *_args, **_kwargs: conversation,
     )
-    monkeypatch.setattr(
-        message_repository,
-        "list_conversation_messages",
-        lambda *_args, **_kwargs: [MagicMock()],
-    )
+    gateway = SqlAlchemyConversationGateway(MagicMock(spec=Session))
 
     with pytest.raises(ValueError, match="invalid message payload"):
         monkeypatch.setattr(
-            "app.bootstrap.adapters.conversation_lifecycle.serialize_messages",
-            lambda _messages: (_ for _ in ()).throw(
+            "app.bootstrap.adapters.conversation_lifecycle.serialize_turns",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 ValueError("invalid message payload")
             ),
         )
-        SqlAlchemyConversationGateway(MagicMock(spec=Session)).messages(
+        monkeypatch.setattr(
+            turn_repository,
+            "list_turns",
+            lambda *_args, **_kwargs: [MagicMock()],
+        )
+        monkeypatch.setattr(
+            turn_repository,
+            "latest_turn_id",
+            lambda *_args, **_kwargs: None,
+        )
+        gateway.turns(
             conversation_id=conversation_id,
             offset=0,
             limit=10,

@@ -49,3 +49,17 @@ roles or persist credentials. The required order is:
 
 A Scholens deployment never bundles or executes Identity migrations. Candidate Identity failures
 remain advisory until Scholens is declared production-ready in the consumer registry.
+
+## Conversation storage
+
+Scholens owns conversation state entirely inside `scholens.*`. A
+`conversation_turns` row is the immutable user request and owns one or more
+`conversation_responses`. The turn's selected response is the sole model-history
+branch. References, research items, artifacts, worklog trace, and follow-up
+suggestions belong to a concrete response ID rather than a generic message.
+
+Only the latest turn may retain multiple completed response variants. Creating
+the next turn removes unselected variants from the previous turn and clears its
+no-longer-visible suggestions. No Identity, Scholight, or Jobs schema owns or
+selects a conversation response; callbacks may update Scholens-owned artifacts
+only through the Server's verified application boundary.

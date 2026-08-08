@@ -11,6 +11,9 @@ class ConversationStreamStartEvent(BaseModel):
     type: Literal["start"] = "start"
     conversation_id: uuid.UUID
     turn_id: uuid.UUID
+    response_id: uuid.UUID
+    variant_index: int = Field(ge=1)
+    generation_kind: Literal["initial", "retry"]
 
 
 class ConversationActivity(BaseModel):
@@ -63,6 +66,7 @@ class ConversationTrace(BaseModel):
 
 class ConversationStreamActivityEvent(BaseModel):
     type: Literal["activity"] = "activity"
+    response_id: uuid.UUID
     activity: ConversationActivity
 
 
@@ -77,35 +81,41 @@ class ConversationAssistantItem(BaseModel):
 
 class ConversationStreamAssistantItemStartEvent(BaseModel):
     type: Literal["assistant_item_start"] = "assistant_item_start"
+    response_id: uuid.UUID
     item_id: str = Field(min_length=1, max_length=200)
     sequence: int = Field(ge=1)
 
 
 class ConversationStreamAssistantItemDeltaEvent(BaseModel):
     type: Literal["assistant_item_delta"] = "assistant_item_delta"
+    response_id: uuid.UUID
     item_id: str = Field(min_length=1, max_length=200)
     delta: str
 
 
 class ConversationStreamAssistantItemCompleteEvent(BaseModel):
     type: Literal["assistant_item_complete"] = "assistant_item_complete"
+    response_id: uuid.UUID
     item: ConversationAssistantItem
 
 
 class ConversationStreamReferencesEvent(BaseModel):
     type: Literal["references"] = "references"
+    response_id: uuid.UUID
     references: dict[str, JsonValue]
 
 
 class ConversationStreamCompleteEvent(BaseModel):
     type: Literal["complete"] = "complete"
     turn_id: uuid.UUID
+    response_id: uuid.UUID
     trace: ConversationTrace | None = None
     artifacts: list[dict[str, JsonValue]] = Field(default_factory=list)
 
 
 class ConversationStreamErrorEvent(BaseModel):
     type: Literal["error"] = "error"
+    response_id: uuid.UUID
     error: dict[str, JsonValue]
 
 
@@ -126,12 +136,13 @@ class ConversationStreamEventSchema(RootModel[ConversationStreamEvent]):
     """Public schema for the JSON payload carried by each SSE event."""
 
 
-class ConversationMessageRequest(BaseModel):
-    """One stable message contract for every conversation scope."""
+class ConversationTurnCreateRequest(BaseModel):
+    """Create one user turn and its initial generated response."""
 
     model_config = ConfigDict(extra="forbid")
 
     turn_id: uuid.UUID
+    response_id: uuid.UUID
     user_query: str = Field(min_length=1, max_length=20_000)
     locale: Literal["en", "zh-CN"]
     time_zone: str = Field(min_length=1, max_length=100)
@@ -162,3 +173,17 @@ class ConversationMessageRequest(BaseModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("time_zone must be a valid IANA time zone") from exc
         return value
+
+
+class ConversationResponseCreateRequest(BaseModel):
+    """Generate another response variant for the latest conversation turn."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    response_id: uuid.UUID
+
+
+class ConversationResponseSelectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    response_id: uuid.UUID

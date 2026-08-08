@@ -18,10 +18,10 @@ from app.modules.conversations.application.chat import (
     ConversationChatScope,
     ConversationContextSnapshot,
 )
-from app.modules.conversations.application.contracts.messages import (
+from app.modules.conversations.application.contracts.turns import (
     ConversationActivity,
     ConversationAssistantItem,
-    ConversationMessageRequest,
+    ConversationTurnCreateRequest,
     ConversationStreamActivityEvent,
     ConversationStreamAssistantItemCompleteEvent,
     ConversationStreamAssistantItemDeltaEvent,
@@ -206,8 +206,9 @@ async def _events(
     conversation_id = uuid4()
     turn_id = uuid4()
     operation = _request_operation(conversation_id, turn_id)
-    request = ConversationMessageRequest(
+    request = ConversationTurnCreateRequest(
         turn_id=turn_id,
+        response_id=uuid4(),
         user_query=query,
         locale=locale,  # type: ignore[arg-type]
         time_zone=time_zone,
@@ -752,8 +753,9 @@ async def test_agent_enforces_maximum_tool_call_budget() -> None:
 
 def test_request_rejects_non_iana_time_zone() -> None:
     with pytest.raises(ValueError, match="valid IANA time zone"):
-        ConversationMessageRequest(
+        ConversationTurnCreateRequest(
             turn_id=uuid4(),
+            response_id=uuid4(),
             user_query="What time is it?",
             locale="en",
             time_zone="Shanghai",

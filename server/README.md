@@ -90,8 +90,11 @@ Public application routes are under `/api/v1`; provider webhooks are under
 `/webhooks/v1`. `/internal/v1` is reserved for authenticated worker traffic and
 is intentionally not routed by the production edge proxy.
 
-Conversation message creation streams standard Server-Sent Events at
-`POST /api/v1/conversations/{conversation_id}/messages`. Consumers must handle
+Conversation turns are created at
+`POST /api/v1/conversations/{conversation_id}/turns`; retrying the latest turn
+creates another response variant at
+`POST /api/v1/conversations/{conversation_id}/turns/{turn_id}/responses`.
+Both generation endpoints stream standard Server-Sent Events. Consumers must handle
 the typed `start`, `assistant_item_start`, `assistant_item_delta`,
 `assistant_item_complete`, `activity`, `references`, `complete`, and `error`
 events and treat `complete` or `error` as terminal. Assistant items begin as
@@ -105,8 +108,11 @@ never part of the public stream. References may be emitted only for the final
 assistant item. The runtime passes these same typed event models to the HTTP
 adapter rather than maintaining a second dictionary-shaped protocol. Completed
 assistant items must contain visible text; user-visible progress is bounded to
-4,000 characters, and a turn without a visible final answer is failed instead
-of persisting an empty assistant message.
+4,000 characters, and a response without a visible final answer is failed
+instead of persisting an empty response variant. A turn owns the immutable user
+prompt and one or more generated responses; only the latest turn may be retried
+or switch its selected response. Creating the next turn prunes unselected
+variants from the prior turn, so completed history has one canonical response.
 There is no private delimiter. Clients may abort the request, but must not
 automatically retry this non-idempotent operation.
 

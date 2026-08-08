@@ -11,13 +11,17 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationDetailResponse,
     ConversationListResponse,
-    ConversationMessagesResponse,
+    ConversationTurnsResponse,
     ConversationMoveRequest,
+    ConversationResponseVariantResponse,
     ConversationSummaryResponse,
     ConversationUpdateRequest,
     ConversationToolPermissionsRequest,
     ConversationToolPermissionsResponse,
     PaperContext,
+)
+from app.modules.conversations.application.contracts.turns import (
+    ConversationResponseSelectionRequest,
 )
 from app.shared.application import Actor, ApplicationExecutor, OperationContext
 from app.shared.domain.enums import ConversationScopeType
@@ -98,10 +102,10 @@ def get_conversation(
 
 
 @conversation_router.get(
-    "/{conversation_id}/messages",
-    response_model=ConversationMessagesResponse,
+    "/{conversation_id}/turns",
+    response_model=ConversationTurnsResponse,
 )
-def get_conversation_messages(
+def get_conversation_turns(
     conversation_id: UUID,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
@@ -109,13 +113,38 @@ def get_conversation_messages(
         get_application_executor
     ),
     current_user: Actor = Depends(get_required_user),
-) -> ConversationMessagesResponse:
+) -> ConversationTurnsResponse:
     return executor.query(
-        lambda capabilities: capabilities.conversations.messages(
+        lambda capabilities: capabilities.conversations.turns(
             actor=current_user,
             conversation_id=conversation_id,
             cursor=cursor,
             limit=limit,
+        )
+    )
+
+
+@conversation_router.put(
+    "/{conversation_id}/turns/{turn_id}/selected-response",
+    response_model=ConversationResponseVariantResponse,
+)
+def select_conversation_response(
+    conversation_id: UUID,
+    turn_id: UUID,
+    request: ConversationResponseSelectionRequest,
+    executor: ApplicationExecutor[ApplicationCapabilities] = Depends(
+        get_application_executor
+    ),
+    current_user: Actor = Depends(get_required_user),
+    operation: OperationContext = Depends(get_required_operation),
+) -> ConversationResponseVariantResponse:
+    return executor.command(
+        lambda capabilities: capabilities.conversations.select_response(
+            actor=current_user,
+            operation=operation,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            response_id=request.response_id,
         )
     )
 

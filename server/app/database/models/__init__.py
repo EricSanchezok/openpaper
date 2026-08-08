@@ -43,7 +43,8 @@ from app.modules.conversations.infrastructure.models import (
     Conversation,
     ConversationContextDocument,
     ConversationContextProject,
-    Message,
+    ConversationResponse,
+    ConversationTurn,
 )
 from app.modules.papers.infrastructure.models import (
     LibraryPaper,
@@ -96,7 +97,8 @@ __all__ = [
     "LibraryPaperTag",
     "JsonScalar",
     "JsonValue",
-    "Message",
+    "ConversationResponse",
+    "ConversationTurn",
     "Onboarding",
     "OperationJournalEntryModel",
     "Document",

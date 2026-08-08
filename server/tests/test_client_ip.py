@@ -41,7 +41,7 @@ def test_client_ip_is_normalized_once_at_transport_boundaries() -> None:
         APP_ROOT / "transport" / "http" / "public_v1" / "discovery.py",
         APP_ROOT / "transport" / "http" / "public_v1" / "document_uploads.py",
         APP_ROOT / "transport" / "http" / "public_v1" / "research_generation.py",
-        APP_ROOT / "transport" / "http" / "public_v1" / "messages.py",
+        APP_ROOT / "transport" / "http" / "public_v1" / "turns.py",
     )
     for path in paths:
         source = path.read_text(encoding="utf-8")

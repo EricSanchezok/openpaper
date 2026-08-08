@@ -6,10 +6,10 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from typing import cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.database.product_analytics import track_event
-from app.modules.conversations.application.contracts.messages import (
+from app.modules.conversations.application.contracts.turns import (
     ConversationStreamErrorEvent,
     ConversationStreamEvent,
 )
@@ -52,6 +52,7 @@ async def stream_with_stable_error(
     event_name: str,
     user_id: int,
     properties: dict[str, object],
+    response_id: UUID,
     diagnostic_recorder: DiagnosticSnapshotRecorder | None = None,
     diagnostic_context: dict[str, object] | None = None,
 ) -> AsyncIterator[str]:
@@ -152,6 +153,7 @@ async def stream_with_stable_error(
         )
         yield encode_conversation_sse(
             ConversationStreamErrorEvent(
+                response_id=response_id,
                 error=cast(dict[str, JsonValue], public_error.to_dict()),
             )
         )

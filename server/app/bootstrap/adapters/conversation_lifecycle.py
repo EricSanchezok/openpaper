@@ -15,13 +15,15 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationToolPermissionsRequest,
     ConversationToolPermissionsResponse,
     PaperContext,
-    MessageResponse,
+    ConversationTurnResponse,
+    ConversationResponseVariantResponse,
 )
 from app.modules.conversations.application.conversations import ConversationChange
-from app.modules.conversations.infrastructure.message_repository import (
-    message_repository,
+from app.modules.conversations.infrastructure.presenters import (
+    serialize_response,
+    serialize_turns,
 )
-from app.modules.conversations.infrastructure.presenters import serialize_messages
+from app.modules.conversations.infrastructure.turn_repository import turn_repository
 from app.bootstrap.adapters.conversation_repository import conversation_repository
 from sqlalchemy.orm import Session
 
@@ -102,21 +104,44 @@ class SqlAlchemyConversationGateway:
         )
         return self._detail(conversation=conversation, user_id=user_id)
 
-    def messages(
+    def turns(
         self,
         *,
         user_id: int,
         conversation_id: UUID,
         offset: int,
         limit: int,
-    ) -> list[MessageResponse]:
-        return serialize_messages(
-            message_repository.list_conversation_messages(
+    ) -> list[ConversationTurnResponse]:
+        return serialize_turns(
+            turn_repository.list_turns(
                 self._db,
                 conversation_id=conversation_id,
                 user_id=user_id,
                 offset=offset,
                 limit=limit,
+            ),
+            latest_turn_id=turn_repository.latest_turn_id(
+                self._db,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            ),
+        )
+
+    def select_response(
+        self,
+        *,
+        user_id: int,
+        conversation_id: UUID,
+        turn_id: UUID,
+        response_id: UUID,
+    ) -> ConversationResponseVariantResponse:
+        return serialize_response(
+            turn_repository.select_response(
+                self._db,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                response_id=response_id,
+                user_id=user_id,
             )
         )
 

@@ -18,6 +18,7 @@ history; add a later ADR that supersedes it.
 - [ADR 0006: Fixed local-development port block](./0006-local-development-port-contract.md)
 - [ADR 0007: Generated design-system contract](./0007-generated-design-system-contract.md)
 - [ADR 0008: Single Conversation agent](./0008-single-conversation-agent.md)
+- [ADR 0009: Conversation turns own response variants](./0009-turn-response-variants.md)
 
 ## Template
 

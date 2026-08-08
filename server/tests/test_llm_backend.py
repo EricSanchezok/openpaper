@@ -9,8 +9,8 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.modules.conversations.application.contracts.messages import (
-    ConversationMessageRequest,
+from app.modules.conversations.application.contracts.turns import (
+    ConversationTurnCreateRequest,
 )
 from app.database.models import ReasoningLevel
 from app.llm.base import BaseLLMClient
@@ -285,42 +285,45 @@ def test_token_settlement_failure_has_a_stable_backend_type(
 def test_chat_requests_reject_legacy_provider_fields() -> None:
     base = {
         "turn_id": str(uuid4()),
+        "response_id": str(uuid4()),
         "user_query": "Explain the result",
         "locale": "en",
         "time_zone": "UTC",
     }
     with pytest.raises(ValidationError):
-        ConversationMessageRequest.model_validate({**base, "llm_provider": "gemini"})
+        ConversationTurnCreateRequest.model_validate(
+            {**base, "llm_provider": "gemini"}
+        )
     with pytest.raises(ValidationError):
-        ConversationMessageRequest.model_validate(
+        ConversationTurnCreateRequest.model_validate(
             {
                 **base,
                 "document_id": "00000000-0000-0000-0000-000000000001",
             }
         )
     with pytest.raises(ValidationError):
-        ConversationMessageRequest.model_validate(
+        ConversationTurnCreateRequest.model_validate(
             {
                 **base,
                 "project_id": "00000000-0000-0000-0000-000000000003",
             }
         )
     with pytest.raises(ValidationError):
-        ConversationMessageRequest.model_validate(
+        ConversationTurnCreateRequest.model_validate(
             {
                 **base,
                 "mentioned_document_ids": ["00000000-0000-0000-0000-000000000001"],
             }
         )
     with pytest.raises(ValidationError):
-        ConversationMessageRequest.model_validate(
+        ConversationTurnCreateRequest.model_validate(
             {
                 **base,
                 "reasoning_level": "extreme",
             }
         )
     with pytest.raises(ValidationError):
-        ConversationMessageRequest.model_validate({**base, "style": "detailed"})
+        ConversationTurnCreateRequest.model_validate({**base, "style": "detailed"})
 
 
 def test_token_week_starts_monday_utc() -> None:

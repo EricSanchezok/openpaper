@@ -25,7 +25,7 @@ from app.transport.http.internal_v1.jobs_callbacks import (
     webhook_router as jobs_callback_router,
 )
 from app.transport.http.public_v1.library_tags import library_tags_router
-from app.transport.http.public_v1.messages import message_router
+from app.transport.http.public_v1.turns import turn_router
 from app.transport.http.public_v1.discovery import (
     author_discovery_router,
     paper_search_router,
@@ -127,7 +127,7 @@ def _public_router() -> APIRouter:
         tags=["zotero"],
     )
     # Static chat capability routes must precede the UUID conversation route.
-    router.include_router(message_router, prefix="/conversations")
+    router.include_router(turn_router, prefix="/conversations")
     router.include_router(conversation_router, prefix="/conversations")
     router.include_router(library_router, prefix="/library")
     router.include_router(library_project_papers_router, prefix="/library")

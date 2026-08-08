@@ -1202,59 +1202,54 @@ def upgrade() -> None:
         schema="scholens",
     )
     op.create_table(
-        "messages",
+        "conversation_turns",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("conversation_id", sa.UUID(), nullable=False),
+        sa.Column("created_operation_id", sa.UUID(), nullable=False),
+        sa.Column("correlation_id", sa.UUID(), nullable=False),
+        sa.Column("user_query", sa.Text(), nullable=False),
+        sa.Column("user_references", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("scope", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("reasoning_level", sa.String(length=16), nullable=False),
+        sa.Column("locale", sa.String(length=16), nullable=False),
+        sa.Column("time_zone", sa.String(length=100), nullable=False),
+        sa.Column("sequence", sa.Integer(), nullable=False),
+        sa.Column("selected_response_id", sa.UUID(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.ForeignKeyConstraint(["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("conversation_id", "sequence", name="uq_conversation_turns_conversation_sequence"),
+        schema="scholens",
+    )
+    op.create_index(op.f("ix_scholens_conversation_turns_created_operation_id"), "conversation_turns", ["created_operation_id"], unique=False, schema="scholens")
+    op.create_index(op.f("ix_scholens_conversation_turns_correlation_id"), "conversation_turns", ["correlation_id"], unique=False, schema="scholens")
+    op.create_table(
+        "conversation_responses",
+        sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("turn_id", sa.UUID(), nullable=False),
         sa.Column("created_operation_id", sa.UUID(), nullable=False),
         sa.Column("correlation_id", sa.UUID(), nullable=False),
-        sa.Column("role", sa.String(), nullable=False),
-        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("variant_index", sa.Integer(), nullable=False),
+        sa.Column("status", sa.String(length=16), nullable=False),
+        sa.Column("content", sa.Text(), nullable=True),
         sa.Column("references", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("trace", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("scope", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("sequence", sa.Integer(), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["conversation_id"], ["scholens.conversations.id"], ondelete="CASCADE"
-        ),
+        sa.Column("suggestions", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("suggestions_status", sa.String(length=16), server_default="idle", nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.CheckConstraint("status IN ('running', 'completed', 'failed', 'cancelled')", name="ck_conversation_responses_status"),
+        sa.CheckConstraint("suggestions_status IN ('idle', 'pending', 'completed', 'failed')", name="ck_conversation_responses_suggestions_status"),
+        sa.ForeignKeyConstraint(["turn_id"], ["scholens.conversation_turns.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "conversation_id", "sequence", name="uq_messages_conversation_sequence"
-        ),
-        sa.UniqueConstraint(
-            "conversation_id",
-            "turn_id",
-            "role",
-            name="uq_messages_conversation_turn_role",
-        ),
+        sa.UniqueConstraint("turn_id", "variant_index", name="uq_conversation_responses_turn_variant"),
         schema="scholens",
     )
-    op.create_index(
-        op.f("ix_scholens_messages_created_operation_id"),
-        "messages",
-        ["created_operation_id"],
-        unique=False,
-        schema="scholens",
-    )
-    op.create_index(
-        op.f("ix_scholens_messages_correlation_id"),
-        "messages",
-        ["correlation_id"],
-        unique=False,
-        schema="scholens",
-    )
+    op.create_index(op.f("ix_scholens_conversation_responses_turn_id"), "conversation_responses", ["turn_id"], unique=False, schema="scholens")
+    op.create_index(op.f("ix_scholens_conversation_responses_created_operation_id"), "conversation_responses", ["created_operation_id"], unique=False, schema="scholens")
+    op.create_index(op.f("ix_scholens_conversation_responses_correlation_id"), "conversation_responses", ["correlation_id"], unique=False, schema="scholens")
+    op.create_foreign_key("fk_conversation_turns_selected_response_id", "conversation_turns", "conversation_responses", ["selected_response_id"], ["id"], source_schema="scholens", referent_schema="scholens", ondelete="SET NULL")
     op.create_table(
         "operation_journal_entries",
         sa.Column("entry_id", sa.UUID(), nullable=False),
@@ -1416,7 +1411,7 @@ def upgrade() -> None:
         sa.Column("document_id", sa.UUID(), nullable=True),
         sa.Column("project_id", sa.UUID(), nullable=True),
         sa.Column("is_shared", sa.Boolean(), server_default="false", nullable=False),
-        sa.Column("source_message_id", sa.UUID(), nullable=True),
+        sa.Column("source_response_id", sa.UUID(), nullable=True),
         sa.Column("source_job_id", sa.UUID(), nullable=True),
         sa.Column(
             "created_at",
@@ -1455,7 +1450,9 @@ def upgrade() -> None:
             ["source_job_id"], ["scholens.jobs.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
-            ["source_message_id"], ["scholens.messages.id"], ondelete="SET NULL"
+            ["source_response_id"],
+            ["scholens.conversation_responses.id"],
+            ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("source_job_id"),
@@ -1817,17 +1814,19 @@ def downgrade() -> None:
         schema="scholens",
     )
     op.drop_table("operation_journal_entries", schema="scholens")
-    op.drop_index(
-        op.f("ix_scholens_messages_correlation_id"),
-        table_name="messages",
+    op.drop_constraint(
+        "fk_conversation_turns_selected_response_id",
+        "conversation_turns",
         schema="scholens",
+        type_="foreignkey",
     )
-    op.drop_index(
-        op.f("ix_scholens_messages_created_operation_id"),
-        table_name="messages",
-        schema="scholens",
-    )
-    op.drop_table("messages", schema="scholens")
+    op.drop_index(op.f("ix_scholens_conversation_responses_correlation_id"), table_name="conversation_responses", schema="scholens")
+    op.drop_index(op.f("ix_scholens_conversation_responses_created_operation_id"), table_name="conversation_responses", schema="scholens")
+    op.drop_index(op.f("ix_scholens_conversation_responses_turn_id"), table_name="conversation_responses", schema="scholens")
+    op.drop_table("conversation_responses", schema="scholens")
+    op.drop_index(op.f("ix_scholens_conversation_turns_correlation_id"), table_name="conversation_turns", schema="scholens")
+    op.drop_index(op.f("ix_scholens_conversation_turns_created_operation_id"), table_name="conversation_turns", schema="scholens")
+    op.drop_table("conversation_turns", schema="scholens")
     op.drop_table("library_paper_tags", schema="scholens")
     op.drop_index(
         "ix_job_dispatches_pending", table_name="job_dispatches", schema="scholens"

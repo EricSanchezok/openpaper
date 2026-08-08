@@ -4,93 +4,304 @@
     "version": "1.0.0"
   },
   "paths": {
-    "/api/v1/annotation-comments/{comment_id}": ["delete", "patch"],
-    "/api/v1/admin/users/{user_id}/block": ["put"],
-    "/api/v1/auth/change-password": ["post"],
-    "/api/v1/auth/forgot-password": ["post"],
-    "/api/v1/auth/login": ["post"],
-    "/api/v1/auth/logout": ["post"],
-    "/api/v1/auth/refresh": ["post"],
-    "/api/v1/auth/register": ["post"],
-    "/api/v1/auth/resend-verification": ["post"],
-    "/api/v1/auth/reset-password": ["post"],
-    "/api/v1/auth/verify-email": ["post"],
-    "/api/v1/billing/checkout-sessions": ["post"],
-    "/api/v1/billing/checkout-sessions/{session_id}": ["get"],
-    "/api/v1/billing/portal-sessions": ["post"],
-    "/api/v1/billing/subscription": ["get"],
-    "/api/v1/billing/subscription/interval": ["delete", "patch"],
-    "/api/v1/billing/subscription/resume": ["post"],
-    "/api/v1/billing/usage": ["get"],
-    "/api/v1/conversations": ["get", "post"],
-    "/api/v1/conversations/capabilities": ["get"],
-    "/api/v1/conversations/{conversation_id}": ["delete", "get", "patch"],
-    "/api/v1/conversations/{conversation_id}/context": ["put"],
-    "/api/v1/conversations/{conversation_id}/tool-permissions": ["put"],
-    "/api/v1/conversations/{conversation_id}/messages": ["get", "post"],
-    "/api/v1/conversations/{conversation_id}/scope": ["put"],
-    "/api/v1/discovery/authors": ["get"],
-    "/api/v1/discovery/papers/match": ["post"],
-    "/api/v1/discovery/papers/search": ["get"],
-    "/api/v1/discovery/topics": ["get"],
-    "/api/v1/highlight-threads/{thread_id}": ["delete", "patch"],
-    "/api/v1/highlight-threads/{thread_id}/comments": ["post"],
-    "/api/v1/integrations/zotero/imports": ["get", "post"],
-    "/api/v1/integrations/zotero/library-items": ["get"],
-    "/api/v1/integrations/zotero/connection": ["delete", "get"],
-    "/api/v1/integrations/zotero/oauth/callback": ["get"],
-    "/api/v1/integrations/zotero/oauth/connect": ["get"],
-    "/api/v1/integrations/zotero/sync-runs": ["post"],
-    "/api/v1/jobs": ["get"],
-    "/api/v1/jobs/{job_id}": ["get"],
-    "/api/v1/library/papers": ["get", "post"],
-    "/api/v1/library/papers/{document_id}": ["delete", "get", "patch"],
-    "/api/v1/library/papers/{document_id}/share": ["delete", "post"],
-    "/api/v1/library/papers/{document_id}/tags/{tag_id}": ["delete"],
-    "/api/v1/library/tags": ["get", "post"],
-    "/api/v1/library/tags/assignments": ["post"],
-    "/api/v1/me": ["get"],
-    "/api/v1/me/access-keys": ["get", "post"],
-    "/api/v1/me/access-keys/{access_key_id}": ["delete", "patch"],
-    "/api/v1/me/connectors": ["get"],
-    "/api/v1/me/connectors/{provider}": ["delete", "patch", "put"],
-    "/api/v1/me/onboarding": ["put"],
-    "/api/v1/me/profile": ["get", "patch", "put"],
-    "/api/v1/me/translation-preferences": ["get", "put"],
-    "/api/v1/paper-ingestions/uploads": ["post"],
-    "/api/v1/paper-ingestions/urls": ["post"],
-    "/api/v1/papers/{document_id}": ["get"],
-    "/api/v1/papers/{document_id}/citation": ["get"],
-    "/api/v1/papers/{document_id}/content": ["get"],
-    "/api/v1/papers/{document_id}/audio-overviews": ["post"],
-    "/api/v1/papers/{document_id}/download-url": ["get"],
-    "/api/v1/papers/{document_id}/highlight-threads": ["get", "post"],
-    "/api/v1/papers/{document_id}/research-items": ["get"],
-    "/api/v1/papers/{document_id}/translations": ["post"],
-    "/api/v1/papers/{document_id}/projects": ["get"],
-    "/api/v1/project-invitations/{token}/accept": ["post"],
-    "/api/v1/projects": ["get", "post"],
-    "/api/v1/projects/{project_id}": ["delete", "get", "patch"],
-    "/api/v1/projects/{project_id}/audio-overviews": ["post"],
-    "/api/v1/projects/{project_id}/data-tables": ["post"],
-    "/api/v1/projects/{project_id}/invitations": ["get", "post"],
-    "/api/v1/projects/{project_id}/invitations/{invitation_id}": ["delete"],
-    "/api/v1/projects/{project_id}/invitations/{invitation_id}/resend": ["post"],
-    "/api/v1/projects/{project_id}/leave": ["post"],
-    "/api/v1/projects/{project_id}/members": ["get"],
-    "/api/v1/projects/{project_id}/members/{user_id}": ["delete", "patch"],
-    "/api/v1/projects/{project_id}/papers": ["get", "post"],
-    "/api/v1/projects/{project_id}/papers/pending-jobs": ["get"],
-    "/api/v1/projects/{project_id}/papers/{document_id}": ["delete"],
-    "/api/v1/projects/{project_id}/papers/{document_id}/download-url": ["get"],
-    "/api/v1/projects/{project_id}/research-items": ["get"],
-    "/api/v1/projects/{project_id}/transfer": ["post"],
-    "/api/v1/research-items/{item_id}": ["delete", "patch"],
-    "/api/v1/search/papers": ["post"],
-    "/api/v1/search/papers/stats": ["get"],
-    "/api/v1/search/research": ["post"],
-    "/api/v1/shares/{share_token}": ["get"],
-    "/api/v1/shares/{share_token}/collect": ["post"],
-    "/webhooks/v1/stripe": ["post"]
+    "/api/v1/admin/users/{user_id}/block": [
+      "put"
+    ],
+    "/api/v1/annotation-comments/{comment_id}": [
+      "delete",
+      "patch"
+    ],
+    "/api/v1/auth/change-password": [
+      "post"
+    ],
+    "/api/v1/auth/forgot-password": [
+      "post"
+    ],
+    "/api/v1/auth/login": [
+      "post"
+    ],
+    "/api/v1/auth/logout": [
+      "post"
+    ],
+    "/api/v1/auth/refresh": [
+      "post"
+    ],
+    "/api/v1/auth/register": [
+      "post"
+    ],
+    "/api/v1/auth/resend-verification": [
+      "post"
+    ],
+    "/api/v1/auth/reset-password": [
+      "post"
+    ],
+    "/api/v1/auth/verify-email": [
+      "post"
+    ],
+    "/api/v1/billing/checkout-sessions": [
+      "post"
+    ],
+    "/api/v1/billing/checkout-sessions/{session_id}": [
+      "get"
+    ],
+    "/api/v1/billing/portal-sessions": [
+      "post"
+    ],
+    "/api/v1/billing/subscription": [
+      "get"
+    ],
+    "/api/v1/billing/subscription/interval": [
+      "delete",
+      "patch"
+    ],
+    "/api/v1/billing/subscription/resume": [
+      "post"
+    ],
+    "/api/v1/billing/usage": [
+      "get"
+    ],
+    "/api/v1/conversations": [
+      "get",
+      "post"
+    ],
+    "/api/v1/conversations/capabilities": [
+      "get"
+    ],
+    "/api/v1/conversations/{conversation_id}": [
+      "delete",
+      "get",
+      "patch"
+    ],
+    "/api/v1/conversations/{conversation_id}/context": [
+      "put"
+    ],
+    "/api/v1/conversations/{conversation_id}/scope": [
+      "put"
+    ],
+    "/api/v1/conversations/{conversation_id}/tool-permissions": [
+      "put"
+    ],
+    "/api/v1/conversations/{conversation_id}/turns": [
+      "get",
+      "post"
+    ],
+    "/api/v1/conversations/{conversation_id}/turns/{turn_id}/responses": [
+      "post"
+    ],
+    "/api/v1/conversations/{conversation_id}/turns/{turn_id}/selected-response": [
+      "put"
+    ],
+    "/api/v1/discovery/authors": [
+      "get"
+    ],
+    "/api/v1/discovery/papers/match": [
+      "post"
+    ],
+    "/api/v1/discovery/papers/search": [
+      "get"
+    ],
+    "/api/v1/discovery/topics": [
+      "get"
+    ],
+    "/api/v1/highlight-threads/{thread_id}": [
+      "delete",
+      "patch"
+    ],
+    "/api/v1/highlight-threads/{thread_id}/comments": [
+      "post"
+    ],
+    "/api/v1/integrations/zotero/connection": [
+      "delete",
+      "get"
+    ],
+    "/api/v1/integrations/zotero/imports": [
+      "get",
+      "post"
+    ],
+    "/api/v1/integrations/zotero/library-items": [
+      "get"
+    ],
+    "/api/v1/integrations/zotero/oauth/callback": [
+      "get"
+    ],
+    "/api/v1/integrations/zotero/oauth/connect": [
+      "get"
+    ],
+    "/api/v1/integrations/zotero/sync-runs": [
+      "post"
+    ],
+    "/api/v1/jobs": [
+      "get"
+    ],
+    "/api/v1/jobs/{job_id}": [
+      "get"
+    ],
+    "/api/v1/library/papers": [
+      "get",
+      "post"
+    ],
+    "/api/v1/library/papers/{document_id}": [
+      "delete",
+      "get",
+      "patch"
+    ],
+    "/api/v1/library/papers/{document_id}/share": [
+      "delete",
+      "post"
+    ],
+    "/api/v1/library/papers/{document_id}/tags/{tag_id}": [
+      "delete"
+    ],
+    "/api/v1/library/tags": [
+      "get",
+      "post"
+    ],
+    "/api/v1/library/tags/assignments": [
+      "post"
+    ],
+    "/api/v1/me": [
+      "get"
+    ],
+    "/api/v1/me/access-keys": [
+      "get",
+      "post"
+    ],
+    "/api/v1/me/access-keys/{access_key_id}": [
+      "delete",
+      "patch"
+    ],
+    "/api/v1/me/connectors": [
+      "get"
+    ],
+    "/api/v1/me/connectors/{provider}": [
+      "delete",
+      "patch",
+      "put"
+    ],
+    "/api/v1/me/onboarding": [
+      "put"
+    ],
+    "/api/v1/me/profile": [
+      "get",
+      "patch",
+      "put"
+    ],
+    "/api/v1/me/translation-preferences": [
+      "get",
+      "put"
+    ],
+    "/api/v1/paper-ingestions/uploads": [
+      "post"
+    ],
+    "/api/v1/paper-ingestions/urls": [
+      "post"
+    ],
+    "/api/v1/papers/{document_id}": [
+      "get"
+    ],
+    "/api/v1/papers/{document_id}/audio-overviews": [
+      "post"
+    ],
+    "/api/v1/papers/{document_id}/citation": [
+      "get"
+    ],
+    "/api/v1/papers/{document_id}/content": [
+      "get"
+    ],
+    "/api/v1/papers/{document_id}/download-url": [
+      "get"
+    ],
+    "/api/v1/papers/{document_id}/highlight-threads": [
+      "get",
+      "post"
+    ],
+    "/api/v1/papers/{document_id}/projects": [
+      "get"
+    ],
+    "/api/v1/papers/{document_id}/research-items": [
+      "get"
+    ],
+    "/api/v1/papers/{document_id}/translations": [
+      "post"
+    ],
+    "/api/v1/project-invitations/{token}/accept": [
+      "post"
+    ],
+    "/api/v1/projects": [
+      "get",
+      "post"
+    ],
+    "/api/v1/projects/{project_id}": [
+      "delete",
+      "get",
+      "patch"
+    ],
+    "/api/v1/projects/{project_id}/audio-overviews": [
+      "post"
+    ],
+    "/api/v1/projects/{project_id}/data-tables": [
+      "post"
+    ],
+    "/api/v1/projects/{project_id}/invitations": [
+      "get",
+      "post"
+    ],
+    "/api/v1/projects/{project_id}/invitations/{invitation_id}": [
+      "delete"
+    ],
+    "/api/v1/projects/{project_id}/invitations/{invitation_id}/resend": [
+      "post"
+    ],
+    "/api/v1/projects/{project_id}/leave": [
+      "post"
+    ],
+    "/api/v1/projects/{project_id}/members": [
+      "get"
+    ],
+    "/api/v1/projects/{project_id}/members/{user_id}": [
+      "delete",
+      "patch"
+    ],
+    "/api/v1/projects/{project_id}/papers": [
+      "get",
+      "post"
+    ],
+    "/api/v1/projects/{project_id}/papers/pending-jobs": [
+      "get"
+    ],
+    "/api/v1/projects/{project_id}/papers/{document_id}": [
+      "delete"
+    ],
+    "/api/v1/projects/{project_id}/papers/{document_id}/download-url": [
+      "get"
+    ],
+    "/api/v1/projects/{project_id}/research-items": [
+      "get"
+    ],
+    "/api/v1/projects/{project_id}/transfer": [
+      "post"
+    ],
+    "/api/v1/research-items/{item_id}": [
+      "delete",
+      "patch"
+    ],
+    "/api/v1/search/papers": [
+      "post"
+    ],
+    "/api/v1/search/papers/stats": [
+      "get"
+    ],
+    "/api/v1/search/research": [
+      "post"
+    ],
+    "/api/v1/shares/{share_token}": [
+      "get"
+    ],
+    "/api/v1/shares/{share_token}/collect": [
+      "post"
+    ],
+    "/webhooks/v1/stripe": [
+      "post"
+    ]
   }
 }

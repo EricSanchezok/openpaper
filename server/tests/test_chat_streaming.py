@@ -4,14 +4,18 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from uuid import UUID
 from app.modules.conversations.infrastructure.chat_streaming import (
     encode_conversation_sse,
     stream_with_stable_error,
 )
-from app.modules.conversations.application.contracts.messages import (
+from app.modules.conversations.application.contracts.turns import (
     ConversationStreamAssistantItemDeltaEvent,
     ConversationStreamCompleteEvent,
 )
+
+
+RESPONSE_ID = UUID("00000000-0000-0000-0000-000000000002")
 
 
 def _payload(event: str) -> dict[str, object]:
@@ -44,6 +48,7 @@ async def test_stream_failure_is_redacted_and_recorded(
         event
         async for event in stream_with_stable_error(
             failing_stream(),
+            response_id=RESPONSE_ID,
             event_name="chat_error",
             user_id=7,
             properties={"conversation_id": "conversation"},
@@ -71,6 +76,7 @@ async def test_stream_requires_explicit_complete_event(
     async def incomplete_stream():
         yield encode_conversation_sse(
             ConversationStreamAssistantItemDeltaEvent(
+                response_id=RESPONSE_ID,
                 item_id="assistant:turn:1",
                 delta="partial",
             )
@@ -84,6 +90,7 @@ async def test_stream_requires_explicit_complete_event(
         event
         async for event in stream_with_stable_error(
             incomplete_stream(),
+            response_id=RESPONSE_ID,
             event_name="chat_error",
             user_id=7,
             properties={},
@@ -98,13 +105,15 @@ async def test_complete_stream_has_no_error_event() -> None:
     async def completed_stream():
         yield encode_conversation_sse(
             ConversationStreamAssistantItemDeltaEvent(
+                response_id=RESPONSE_ID,
                 item_id="assistant:turn:1",
                 delta="answer",
             )
         )
         yield encode_conversation_sse(
             ConversationStreamCompleteEvent(
-                turn_id="00000000-0000-0000-0000-000000000001"
+                turn_id="00000000-0000-0000-0000-000000000001",
+                response_id=RESPONSE_ID,
             )
         )
 
@@ -112,6 +121,7 @@ async def test_complete_stream_has_no_error_event() -> None:
         event
         async for event in stream_with_stable_error(
             completed_stream(),
+            response_id=RESPONSE_ID,
             event_name="chat_error",
             user_id=7,
             properties={},

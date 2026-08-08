@@ -237,7 +237,7 @@ class ResearchRepository:
         *,
         user_id: int,
         snapshot: CitationSnapshot,
-        source_message_id: uuid.UUID,
+        source_response_id: uuid.UUID,
         scope_type: ResearchScopeType,
         scope_id: uuid.UUID | None,
     ) -> ResearchItem:
@@ -250,18 +250,18 @@ class ResearchRepository:
             ),
             project_id=(scope_id if scope_type == ResearchScopeType.PROJECT else None),
             is_shared=scope_type != ResearchScopeType.PERSONAL,
-            source_message_id=source_message_id,
+            source_response_id=source_response_id,
         )
         item.citation = CitationOutput(snapshot=snapshot.model_dump(mode="json"))
         db.add(item)
         return item
 
-    def create_citations_for_message(
+    def create_citations_for_response(
         self,
         db: Session,
         *,
         conversation: Conversation,
-        message_id: uuid.UUID,
+        response_id: uuid.UUID,
         user_id: int,
         snapshots: list[dict[str, object]],
     ) -> list[ResearchItem]:
@@ -281,7 +281,7 @@ class ResearchRepository:
                 db,
                 user_id=user_id,
                 snapshot=snapshot,
-                source_message_id=message_id,
+                source_response_id=response_id,
                 scope_type=research_scope,
                 scope_id=scope_id,
             )
