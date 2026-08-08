@@ -145,3 +145,15 @@ event models; completed items require visible content, hidden citation-only
 output cannot create a blank row, progress is bounded before it enters the
 trace, and the adapter refuses to persist a turn without a final answer. The
 former Web empty-progress branch was consequently deleted.
+
+## Mobile reading-surface resolution — 2026-08-08
+
+The ordered worklog remains the single semantic model on every viewport, while
+the phone presentation now has an explicit reading contract. Android text
+autosizing is stabilized; the answer uses a compact CJK-safe type scale and
+bounded measure; long links wrap while code and tables own their overflow.
+Expanded progress uses one quiet timeline marker per authored phase or grouped
+tool batch. Sources collapse into one touch-sized aggregate disclosure, and a
+mobile-only `Jump to latest` control appears when the reader intentionally
+leaves the live edge. The implementation adds no second reducer, mobile DTO, or
+device-specific data branch.

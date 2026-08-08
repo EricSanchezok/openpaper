@@ -96,6 +96,20 @@ The canonical ordered-harness matrix is Figma node `893:3415`, with Desktop
 Light/Dark and Mobile Light/Dark groups. The superseded per-tool activity
 checklist is archived under `99 — Archive / Interaction States`.
 
+The phone reading surface has a second acceptance matrix at Figma node
+`898:2628`:
+
+| Figma `20 — Home / Mobile reading surface` | Storybook acceptance state                      |
+| ------------------------------------------ | ----------------------------------------------- |
+| Long answer                                | `Conversation View / Mobile Long Answer`        |
+| Worklog expanded                           | `Conversation View / Mobile Worklog Expanded`   |
+| Sources aggregated                         | `Conversation View / Mobile Sources Aggregated` |
+| Jump to latest                             | `Conversation View / Mobile Jump To Latest`     |
+
+Every row is represented in Light and Dark in Figma. Storybook keeps locale,
+appearance, and 320/390/430 px viewport controls available for the same
+executable states.
+
 The mobile Dock acceptance inventory extends that mapping:
 
 | Figma `20 — Home / Mobile` target | Storybook acceptance state                          |
@@ -147,8 +161,24 @@ mobile, with compact responsive spacing and no inner scrolling surface.
 On phones, the shell uses a 64 px content bar plus platform safe-area insets.
 The bar owns navigation, the current reasoning-strength selector, and the
 new-chat action. The selector exposes only Standard and Deep; model selection
-is not part of the Scholens product surface. Conversation content uses a larger
-reading scale and touch-sized activity disclosure and source rows. A single
+is not part of the Scholens product surface. Conversation content uses a stable
+16 px body with 28 px line height, 22/19/17 px heading steps, and 20 px
+horizontal gutters at the primary phone widths (16 px at 320 px). Browser text
+adjustment is fixed at 100%, preventing Android Chrome from inflating a long
+answer independently of the rest of the shell. CJK falls back to the platform
+system family; emphasis uses weight rather than another font face. Long words
+and links wrap inside the reading measure, while only code blocks and tables
+receive their own horizontal scrolling surface.
+
+The mobile worklog keeps the same typed ordered entries as desktop, but its
+expanded state uses a quiet vertical rail and one semantic marker per progress
+phase or grouped tool batch. It does not restore individual tool cards or
+per-call checkmarks. References are summarized as one touch-sized source pill;
+the source rows appear only when that disclosure is opened. When the reader
+moves away from the bottom of an overflowing conversation, a 48 px
+`Jump to latest` action appears immediately above the Dock and disappears on
+return. These are presentation rules only: desktop density, Agent events, and
+persisted conversation data remain unchanged. A single
 `MobileBottomDock` owns the Composer, primary navigation, horizontal safe-area
 gutters, bottom safe area, and stacking layer. The Composer and navigation are
 separated by 4 px inside the Dock rather than behaving as independent floating

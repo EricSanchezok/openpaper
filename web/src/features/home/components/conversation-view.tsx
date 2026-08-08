@@ -1,10 +1,10 @@
 "use client";
 
-import { WarningTriangle } from "iconoir-react";
+import { NavArrowDown, Page, WarningTriangle } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
-import { Button } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import { Icon } from "@/design-system/icons/icon";
 import type { components } from "@/lib/api/generated/schema";
 import type {
@@ -45,52 +45,81 @@ function Sources({ references }: { references: unknown }) {
   if (!isReferenceBundle(references) || !references.sources?.length)
     return null;
   const sources = references.sources;
+
+  function sourceRows(mobile: boolean) {
+    return sources.map((source, index) => {
+      const title =
+        "title" in source && source.title
+          ? source.title
+          : t("reference", { number: index + 1 });
+      const row = (
+        <>
+          <span className="bg-subtle grid size-6 shrink-0 place-items-center rounded text-xs">
+            {index + 1}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span
+              className={
+                mobile
+                  ? "line-clamp-2 text-sm font-medium"
+                  : "block truncate text-xs font-medium"
+              }
+            >
+              {title}
+            </span>
+            <span className="text-caption text-muted mt-0.5 line-clamp-1 block">
+              {source.reference}
+            </span>
+          </span>
+        </>
+      );
+      const className = mobile
+        ? "hover:bg-hover flex min-h-12 min-w-0 items-center gap-2 rounded-[var(--radius-md)] px-1 py-2"
+        : "border-line hover:bg-hover flex items-center gap-2 rounded-[var(--radius-md)] border p-2";
+      return source.kind === "external" ? (
+        <a
+          className={className}
+          href={source.url}
+          key={`${source.key}-${source.url}`}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {row}
+        </a>
+      ) : (
+        <div className={className} key={`${source.key}-${index}`}>
+          {row}
+        </div>
+      );
+    });
+  }
+
   return (
-    <section className="mt-5">
-      <div className="lg:text-ui mb-2 flex items-center gap-2 text-base font-medium">
-        {t("sources")}
-        <span className="text-muted text-xs font-normal">{sources.length}</span>
-      </div>
-      <div className="grid gap-2">
-        {sources.map((source, index) => {
-          const title =
-            "title" in source && source.title
-              ? source.title
-              : t("reference", { number: index + 1 });
-          const row = (
-            <>
-              <span className="bg-subtle grid size-6 shrink-0 place-items-center rounded text-xs">
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium">
-                  {title}
-                </span>
-                <span className="text-caption text-muted mt-0.5 line-clamp-1 block">
-                  {source.reference}
-                </span>
-              </span>
-            </>
-          );
-          return source.kind === "external" ? (
-            <a
-              className="border-line hover:bg-hover flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border p-2.5 lg:min-h-0 lg:p-2"
-              href={source.url}
-              key={`${source.key}-${source.url}`}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {row}
-            </a>
-          ) : (
-            <div
-              className="border-line flex min-h-11 items-center gap-2 rounded-[var(--radius-md)] border p-2.5 lg:min-h-0 lg:p-2"
-              key={`${source.key}-${index}`}
-            >
-              {row}
-            </div>
-          );
-        })}
+    <section className="mt-5 min-w-0">
+      <details className="group lg:hidden">
+        <summary
+          aria-label={t("showSources", { count: sources.length })}
+          className="bg-subtle hover:bg-hover flex min-h-12 w-fit cursor-pointer list-none items-center gap-2 rounded-full px-3 text-sm font-medium [&::-webkit-details-marker]:hidden"
+        >
+          <Icon glyph={Page} size={16} tone="secondary" />
+          <span>{t("sourceSummary", { count: sources.length })}</span>
+          <Icon
+            className="transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+            glyph={NavArrowDown}
+            size={16}
+            tone="secondary"
+          />
+        </summary>
+        <div className="mt-2 grid gap-1">{sourceRows(true)}</div>
+      </details>
+      <div className="hidden lg:block">
+        <div className="text-ui mb-2 flex items-center gap-2 font-medium">
+          {t("sources")}
+          <span className="text-muted text-xs font-normal">
+            {sources.length}
+          </span>
+        </div>
+        <div className="grid gap-2">{sourceRows(false)}</div>
       </div>
     </section>
   );
@@ -211,6 +240,7 @@ export function ConversationView({
   const rootRef = React.useRef<HTMLDivElement>(null);
   const scrollAnchor = React.useRef<HTMLDivElement>(null);
   const nearBottom = React.useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
   const visibleMessages = React.useMemo(
     () =>
       liveTurn
@@ -234,17 +264,27 @@ export function ConversationView({
     if (!scrollRoot) return;
     const scroller = scrollRoot;
     function updateProximity() {
-      nearBottom.current =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <
-        120;
+      const gap =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      const nextNearBottom = gap < 120;
+      nearBottom.current = nextNearBottom;
+      setShowJumpToLatest(
+        scroller.scrollHeight > scroller.clientHeight + 32 && !nextNearBottom,
+      );
     }
-    updateProximity();
+    const initialFrame = window.requestAnimationFrame(updateProximity);
     scroller.addEventListener("scroll", updateProximity, { passive: true });
-    return () => scroller.removeEventListener("scroll", updateProximity);
+    return () => {
+      window.cancelAnimationFrame(initialFrame);
+      scroller.removeEventListener("scroll", updateProximity);
+    };
   }, []);
 
   React.useEffect(() => {
-    if (!nearBottom.current) return;
+    if (!nearBottom.current) {
+      setShowJumpToLatest(true);
+      return;
+    }
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
@@ -259,9 +299,21 @@ export function ConversationView({
     visibleMessages.length,
   ]);
 
+  function jumpToLatest() {
+    nearBottom.current = true;
+    setShowJumpToLatest(false);
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    scrollAnchor.current?.scrollIntoView({
+      behavior: reducedMotion ? "auto" : "smooth",
+      block: "end",
+    });
+  }
+
   return (
     <div
-      className="mx-auto flex min-h-full w-full max-w-[848px] flex-col px-3 sm:px-8"
+      className="mx-auto flex min-h-full w-full max-w-[848px] min-w-0 flex-col px-4 min-[390px]:px-5 sm:px-8"
       ref={rootRef}
     >
       <header className="border-line sticky top-0 z-10 hidden h-16 shrink-0 items-center border-b bg-[color-mix(in_oklab,var(--color-bg-canvas)_92%,transparent)] px-1 backdrop-blur lg:flex">
@@ -324,6 +376,18 @@ export function ConversationView({
           </div>
         )}
       </div>
+      {showJumpToLatest && (
+        <div className="pointer-events-none sticky bottom-3 z-10 -mt-15 hidden h-15 justify-center max-lg:flex">
+          <IconButton
+            className="bg-elevated shadow-raised pointer-events-auto size-12 rounded-full"
+            label={t("jumpToLatest")}
+            onClick={jumpToLatest}
+            variant="secondary"
+          >
+            <Icon glyph={NavArrowDown} size={20} />
+          </IconButton>
+        </div>
+      )}
       {!loading && !error && !canSend && (
         <div
           className="border-line bg-subtle mx-4 mb-3 rounded-[var(--radius-md)] border px-3 py-2 text-center text-xs"
@@ -333,7 +397,7 @@ export function ConversationView({
         </div>
       )}
       {showComposer && (
-        <div className="pointer-events-none sticky bottom-0 z-20 -mx-3 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-3 pt-5 pb-3 sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
+        <div className="pointer-events-none sticky bottom-0 z-20 -mx-4 flex justify-center bg-[linear-gradient(to_top,var(--color-bg-canvas)_78%,transparent)] px-4 pt-5 pb-3 min-[390px]:-mx-5 min-[390px]:px-5 sm:-mx-8 lg:mx-0 lg:px-4 lg:pt-10 lg:pb-6">
           <div className="pointer-events-auto w-full max-w-[720px]">
             <ResearchComposer
               busy={liveTurn?.state === "streaming"}

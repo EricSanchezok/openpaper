@@ -1,6 +1,6 @@
 "use client";
 
-import { NavArrowDown, Page, WarningTriangle } from "iconoir-react";
+import { LightBulb, NavArrowDown, Page, WarningTriangle } from "iconoir-react";
 import { useTranslations } from "next-intl";
 import * as React from "react";
 
@@ -130,19 +130,20 @@ function ActivityBatchRow({ batch }: { batch: ActivityBatch }) {
   const remaining = subjects.length - visibleSubjects.length;
 
   return (
-    <li className="flex min-w-0 gap-2.5 py-1">
-      <Icon
-        className="mt-0.5 shrink-0"
-        glyph={failed ? WarningTriangle : Page}
-        size={16}
-        tone="secondary"
-      />
+    <li className="relative flex min-w-0 gap-2.5 py-1 lg:static">
+      <span className="border-line bg-canvas absolute top-0.5 -left-[2.0625rem] grid size-6 shrink-0 place-items-center rounded-full border lg:static lg:mt-0.5 lg:size-auto lg:border-0 lg:bg-transparent">
+        <Icon
+          glyph={failed ? WarningTriangle : Page}
+          size={16}
+          tone="secondary"
+        />
+      </span>
       <span className="min-w-0 flex-1">
-        <span className="text-foreground block text-sm font-medium lg:text-xs">
+        <span className="text-foreground block text-sm leading-5 font-medium lg:text-xs">
           {batchLabel(batch, t)}
         </span>
         {visibleSubjects.length > 0 && (
-          <span className="text-muted mt-0.5 block text-sm leading-5 break-words lg:text-xs">
+          <span className="text-muted mt-0.5 block text-sm leading-5 [overflow-wrap:anywhere] lg:text-xs">
             {visibleSubjects.join(" · ")}
             {remaining > 0
               ? ` · ${t("activity.more", { count: remaining })}`
@@ -195,7 +196,10 @@ export function ConversationWorklog({
   }
 
   return (
-    <section className="text-secondary text-base lg:text-sm" data-state={state}>
+    <section
+      className="text-secondary min-w-0 text-[0.9375rem] leading-6 lg:text-sm lg:leading-normal"
+      data-state={state}
+    >
       {hasHistory ? (
         <button
           aria-expanded={open}
@@ -232,13 +236,16 @@ export function ConversationWorklog({
         </p>
       )}
       {open && hasHistory && (
-        <ol className="mt-1 grid gap-1 pb-1">
+        <ol className="border-line relative mt-2 ml-3 grid gap-2 border-s pb-1 pl-5 lg:mt-1 lg:ml-0 lg:gap-1 lg:border-s-0 lg:pl-0">
           {rows.map((row) =>
             row.kind === "progress" ? (
               <li
-                className="text-foreground py-1 text-sm leading-6 lg:text-xs lg:leading-5"
+                className="text-foreground relative py-1 text-sm leading-[1.375rem] [overflow-wrap:anywhere] lg:static lg:text-xs lg:leading-5"
                 key={row.id}
               >
+                <span className="border-line bg-canvas absolute top-0.5 -left-[2.0625rem] grid size-6 place-items-center rounded-full border lg:hidden">
+                  <Icon glyph={LightBulb} size={16} tone="secondary" />
+                </span>
                 {row.content}
               </li>
             ) : (

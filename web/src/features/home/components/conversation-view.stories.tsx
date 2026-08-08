@@ -75,6 +75,36 @@ const mobileResearchMessages: Message[] = [
   },
 ];
 
+const mobileSourceMessages: Message[] = mobileResearchMessages.map((message) =>
+  message.role !== "assistant"
+    ? message
+    : {
+        ...message,
+        references: {
+          annotations: [],
+          sources: homePapers.slice(0, 3).map((paper, index) => ({
+            key: index + 1,
+            kind: "document" as const,
+            document_id: paper.document.document_id,
+            title: paper.document.title,
+            authors: paper.document.authors ?? [],
+            reference: `第 ${index + 1} 个研究依据`,
+            locator: { section: "Introduction" },
+          })),
+        },
+      },
+);
+
+const mobileLongThreadMessages: Message[] = Array.from({ length: 3 }).flatMap(
+  (_, index) =>
+    mobileResearchMessages.map((message, messageIndex) => ({
+      ...message,
+      id: `41000000-0000-4000-8000-${String(index * 2 + messageIndex + 1).padStart(12, "0")}`,
+      turn_id: `51000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      sequence: message.sequence + index * 2,
+    })),
+);
+
 const searchActivity = {
   kind: "activity" as const,
   id: "search-1",
@@ -177,6 +207,128 @@ export const MobileResearchAnswerDark: Story = {
     appearance: "dark",
     locale: "zh-CN",
     viewport: { value: "largeMobile", isRotated: false },
+  },
+};
+
+export const MobileLongAnswer: Story = {
+  ...MobileResearchAnswer,
+};
+
+export const MobileWorklogExpanded: Story = {
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  args: {
+    messages: [],
+    liveTurn: liveTurn({
+      entries: [
+        {
+          kind: "progress",
+          id: "assistant:mobile:1",
+          sequence: 1,
+          content: "我会先检查资料库，再比较相邻的推理效率研究。",
+        },
+        {
+          ...searchActivity,
+          sequence: 2,
+          subject: "思维链压缩与短推理轨迹",
+        },
+        {
+          ...searchActivity,
+          id: "search-mobile-2",
+          sequence: 3,
+          subject: "动态推理预算",
+        },
+        {
+          kind: "progress",
+          id: "assistant:mobile:2",
+          sequence: 4,
+          content: "初步结果较少，我将范围扩展到隐式推理与蒸馏方法。",
+        },
+        {
+          ...readActivity,
+          sequence: 5,
+          subject: "Reasoning Efficiently",
+        },
+      ],
+      content: "现有研究主要围绕短轨迹训练、隐式推理和动态预算展开。",
+      state: "complete",
+      trace: {
+        entries: [],
+        citation_summary: {
+          source_count: 3,
+          annotation_count: 2,
+          rejected_source_count: 0,
+        },
+      },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const disclosure = canvas.getByRole("button", {
+      name: /已完成研究/,
+    });
+    await userEvent.click(disclosure);
+    await expect(
+      canvas.getByText("我会先检查资料库，再比较相邻的推理效率研究。"),
+    ).toBeVisible();
+    await expect(canvas.getByText("检索了 2 次")).toBeVisible();
+  },
+};
+
+export const MobileSourcesAggregated: Story = {
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  args: {
+    messages: mobileSourceMessages,
+    title: "思维链压缩技术调研",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const disclosure = canvas.getByLabelText("展开 3 个来源");
+    await expect(disclosure).toBeVisible();
+    await userEvent.click(disclosure);
+    const firstPaperTitle = homePapers[0]!.document.title;
+    if (!firstPaperTitle) {
+      throw new globalThis.Error(
+        "Mobile source fixture must include a paper title",
+      );
+    }
+    const details = disclosure.closest("details");
+    if (!details) {
+      throw new globalThis.Error("Mobile source disclosure must use details");
+    }
+    await expect(within(details).getByText(firstPaperTitle)).toBeVisible();
+  },
+};
+
+export const MobileJumpToLatest: Story = {
+  globals: {
+    locale: "zh-CN",
+    viewport: { value: "mobile", isRotated: false },
+  },
+  args: {
+    messages: mobileLongThreadMessages,
+    title: "思维链压缩技术调研",
+  },
+  play: async ({ canvasElement }) => {
+    const scroller = canvasElement.querySelector("main");
+    if (!(scroller instanceof HTMLElement)) {
+      throw new globalThis.Error(
+        "Conversation story scroll container was not found",
+      );
+    }
+    await waitFor(() =>
+      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight),
+    );
+    scroller.scrollTo({ top: 0 });
+    scroller.dispatchEvent(new window.Event("scroll"));
+    await expect(
+      within(canvasElement).getByRole("button", { name: "返回最新消息" }),
+    ).toBeVisible();
   },
 };
 

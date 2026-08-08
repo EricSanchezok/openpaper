@@ -341,7 +341,20 @@ test("keeps conversation scrolling independent from the mobile Dock", async ({
       (element) => element.scrollHeight > element.clientHeight,
     ),
   ).toBe(true);
-  await main.evaluate((element) => element.scrollTo({ top: 240 }));
+  const sourceDisclosure = page.getByLabel("Show 1 source").last();
+  const sourceTitle = sourceDisclosure
+    .locator("..")
+    .getByText(homePapers[0]!.document.title ?? "", { exact: true });
+  await expect(sourceDisclosure).toBeVisible();
+  await expect(sourceTitle).toBeHidden();
+  await sourceDisclosure.click();
+  await expect(sourceTitle).toBeVisible();
+
+  await main.evaluate((element) => element.scrollTo({ top: 0 }));
+  const jumpToLatest = page.getByRole("button", {
+    name: "Jump to the latest response",
+  });
+  await expect(jumpToLatest).toBeVisible();
   const [dockAfter, mainAfter] = await Promise.all([
     dock.boundingBox(),
     main.boundingBox(),
@@ -350,6 +363,16 @@ test("keeps conversation scrolling independent from the mobile Dock", async ({
   expect((mainAfter?.y ?? 0) + (mainAfter?.height ?? 0)).toBeLessThanOrEqual(
     dockAfter?.y ?? 0,
   );
+  await jumpToLatest.click();
+  await expect
+    .poll(() =>
+      main.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThan(120);
+  await expect(jumpToLatest).toBeHidden();
 });
 
 test("keeps the Home composition contained on a 2560px desktop", async ({
