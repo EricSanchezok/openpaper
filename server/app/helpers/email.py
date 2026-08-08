@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 resend.api_key = RESEND_API_KEY
 
-CLIENT_DOMAIN = os.getenv("CLIENT_DOMAIN", "http://localhost:3000")
+CLIENT_DOMAIN = os.getenv("CLIENT_DOMAIN", "http://127.0.0.1:7300")
 BRAND_NAME = "Scholens"
 DEFAULT_FROM_ADDRESS = os.getenv("RESEND_FROM_ADDRESS", "no-reply@example.invalid")
 REPLY_TO_DEFAULT_EMAIL = os.getenv(

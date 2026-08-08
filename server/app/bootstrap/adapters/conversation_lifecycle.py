@@ -199,16 +199,16 @@ class SqlAlchemyConversationGateway:
         )
         return ConversationChange(value=result.value, changed=result.changed)
 
-    def update_title(
+    def apply_initial_generated_title(
         self,
         *,
         user_id: int,
         conversation_id: UUID,
         title: str,
     ) -> bool:
-        return conversation_repository.update(
+        return conversation_repository.apply_initial_generated_title(
             self._db,
             conversation_id=conversation_id,
             user_id=user_id,
-            request=ConversationUpdateRequest(title=title),
-        ).changed
+            title=title,
+        )

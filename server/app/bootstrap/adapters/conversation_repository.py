@@ -31,6 +31,7 @@ from app.modules.conversations.application.contracts.conversations import (
     ConversationToolPermissionsRequest,
     ConversationToolPermissionsResponse,
 )
+from app.modules.conversations.domain import DEFAULT_CONVERSATION_TITLE
 from app.shared.domain import (
     WorkspacePermission,
     ordered_workspace_permissions,
@@ -414,7 +415,7 @@ class ConversationRepository:
                 WorkspacePermission.WRITE,
             ]
         conversation = Conversation(
-            title=request.title,
+            title=request.title or DEFAULT_CONVERSATION_TITLE,
             user_id=user_id,
             scope_type=request.scope_type.value,
             project_id=project_id,
@@ -555,6 +556,27 @@ class ConversationRepository:
         db.flush()
         db.refresh(conversation)
         return ConversationWrite(value=conversation, changed=True)
+
+    def apply_initial_generated_title(
+        self,
+        db: Session,
+        *,
+        conversation_id: uuid.UUID,
+        user_id: int,
+        title: str,
+    ) -> bool:
+        """Apply the first generated title without overwriting a user rename."""
+        conversation = self.require_owned(
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            for_update=True,
+        )
+        if conversation.title != DEFAULT_CONVERSATION_TITLE:
+            return False
+        conversation.title = title
+        db.flush()
+        return True
 
     def move(
         self,

@@ -137,7 +137,7 @@ class Document(Base):
         UniqueConstraint("sha256", name="uq_documents_sha256"),
         Index("ix_documents_ts_vector", "ts_vector", postgresql_using="gin"),
         CheckConstraint(
-            "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf')",
+            "parser_backend IS NULL OR parser_backend IN ('mineru', 'pymupdf4llm', 'markitdown')",
             name="ck_documents_parser_backend",
         ),
         CheckConstraint(

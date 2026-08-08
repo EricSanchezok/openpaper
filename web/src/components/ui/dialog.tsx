@@ -12,7 +12,7 @@ import { IconButton } from "./button";
 const overlayClass =
   "fixed inset-0 z-50 bg-[var(--color-overlay-backdrop)] backdrop-blur-sm";
 const contentClass =
-  "fixed left-1/2 top-1/2 z-50 w-[min(92vw,36rem)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-xl)] border border-line bg-elevated p-6 shadow-[0_20px_60px_var(--color-elevation-shadow)]";
+  "border-line bg-elevated shadow-modal fixed top-1/2 left-1/2 z-50 w-[min(92vw,36rem)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-xl)] border p-6";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;

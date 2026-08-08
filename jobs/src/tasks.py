@@ -423,7 +423,7 @@ def health_check(self):
 @celery_app.task(bind=True, name="periodic_zotero_sync")
 def periodic_zotero_sync(self):
     """Ask Server to persist due per-user Zotero jobs in its outbox."""
-    webhook_base = os.getenv("WEBHOOK_BASE_URL", "http://localhost:8000")
+    webhook_base = os.getenv("WEBHOOK_BASE_URL", "http://127.0.0.1:7301")
     sync_interval = int(ZOTERO_SYNC_INTERVAL_SECONDS)
     url = (
         f"{webhook_base}/internal/v1/schedules/zotero-sync"

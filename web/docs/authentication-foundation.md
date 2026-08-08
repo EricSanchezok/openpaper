@@ -122,7 +122,19 @@ never parses backend English messages.
 Schemas live in `src/features/authentication/schemas.ts`. Confirm-password
 fields are validated locally and removed from the wire payload. Passwords use
 the backend rule of at least 12 characters; the UI must not invent a strength
-score or extra composition rules.
+score or extra composition rules. Registration and reset surfaces expose that
+single requirement as live progress and report confirmation match or mismatch
+without waiting for submission. A visible label names the field, static help
+states a real rule once, and dynamic feedback replaces rather than duplicates
+that help. Password rules do not appear again as placeholders. Confirmation
+mismatch is reported on blur or submit so the interface does not show an error
+while the user is still typing.
+
+The browser does not own a second user database or a separate password flow.
+It calls the generated public authentication contract; the backend mounts that
+contract through `sanchezcloud-identity`. Shared identity fields such as display
+name, email, and password credentials stay owned by SanchezCloud Identity,
+while Scholens-specific profile and research data remain product-owned.
 
 Use `Field` as the accessible composition boundary. `FieldControl` establishes
 the control ID and connects the label, optional description, error message,

@@ -86,7 +86,7 @@ export const ToastRoot = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitive.Root
     className={cn(
-      "border-line bg-elevated relative grid gap-1 rounded-[var(--radius-lg)] border px-4 py-3 pr-12 shadow-[0_12px_36px_var(--color-elevation-shadow)]",
+      "border-line bg-elevated shadow-overlay relative grid gap-1 rounded-[var(--radius-lg)] border px-4 py-3 pr-12",
       className,
     )}
     ref={ref}

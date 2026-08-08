@@ -40,7 +40,7 @@
         "$value": "{palette.neutral.0}"
       },
       "secondary": { "$type": "color", "$value": "{palette.neutral.100}" },
-      "disabled-bg": { "$type": "color", "$value": "{palette.neutral.100}" },
+      "disabled-bg": { "$type": "color", "$value": "{palette.neutral.300}" },
       "disabled-text": { "$type": "color", "$value": "{palette.neutral.500}" }
     },
     "accent": {
@@ -59,7 +59,8 @@
       "backdrop": { "$type": "color", "$value": "{palette.overlay.40}" }
     },
     "elevation": {
-      "shadow": { "$type": "color", "$value": "{palette.overlay.40}" }
+      "shadow": { "$type": "color", "$value": "{palette.overlay.40}" },
+      "composer": { "$type": "color", "$value": "{palette.overlay.12}" }
     },
     "annotation": {
       "bg": { "$type": "color", "$value": "{palette.status.warning.subtle}" },

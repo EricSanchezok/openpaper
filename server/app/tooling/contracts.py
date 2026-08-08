@@ -24,7 +24,6 @@ class ToolExecutionKind(StrEnum):
     QUERY = "query"
     COMMAND = "command"
     WORKFLOW = "workflow"
-    CONTROL = "control"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -93,7 +92,6 @@ class ToolOutcome:
     sources: tuple[ToolSourceCandidate, ...] = ()
     artifacts: list[dict[str, JsonValue]] = field(default_factory=list)
     action: dict[str, JsonValue] | None = None
-    stop: bool = False
 
 
 ToolHandler = Callable[[CapabilitiesT, ToolExecutionContext, BaseModel], ToolOutcome]
@@ -122,9 +120,10 @@ class ToolDefinition(Generic[CapabilitiesT]):
     description: str
     input_model: type[BaseModel]
     execution: ToolExecutionKind
-    required_permission: WorkspacePermission | None
+    required_permission: WorkspacePermission
     handler: ToolHandler[CapabilitiesT] | None = None
     workflow_handler: WorkflowToolHandler | None = None
+    activity_subject_field: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -133,12 +132,12 @@ class ToolDefinition(Generic[CapabilitiesT]):
             or not self.name.isidentifier()
         ):
             raise ValueError("tool names must be non-empty lowercase identifiers")
-        if self.execution is ToolExecutionKind.CONTROL:
-            if self.required_permission is not None:
-                raise ValueError("control tools cannot require workspace permission")
-            if self.handler is not None or self.workflow_handler is not None:
-                raise ValueError("control tools cannot define handlers")
-            return
+        if self.activity_subject_field is not None:
+            properties = self.input_model.model_json_schema().get("properties", {})
+            if self.activity_subject_field not in properties:
+                raise ValueError(
+                    f"tool {self.name} activity subject field is not in its schema"
+                )
         if self.required_permission is None:
             raise ValueError("business tools require one workspace permission")
         if self.execution is ToolExecutionKind.WORKFLOW:

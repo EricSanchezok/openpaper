@@ -119,6 +119,10 @@ the turn correlation. Jobs persist only their origin operation and correlation
 UUIDs, then callbacks resume a new SYSTEM operation after signature and owner
 verification.
 
+A Conversation title is generated once, after its first successful assistant
+reply. Later turns never invoke the title model or rewrite the Sidebar title;
+an explicit user title always wins over a concurrent generated title.
+
 ## Canonical tool catalog
 
 Every model-visible research workspace tool is defined once in
@@ -126,6 +130,24 @@ Every model-visible research workspace tool is defined once in
 description, Pydantic input model, execution kind, and application handler.
 Independent Conversation and MCP profiles select definitions from the same
 catalog; transports never copy schemas or handlers.
+
+## Single conversation agent
+
+Home, project, and paper conversations all execute through one
+`ScholensConversationAgent`. The conversation scope supplies initial context and
+the default paper collection; it does not select a different runtime or tool
+set. Pydantic AI owns only the model/tool loop and model event decoding.
+Scholens retains ownership of authentication, tool visibility, resource
+authorization, operation provenance, argument validation, idempotent dispatch,
+source registration, citation validation, persistence, limits, and
+cancellation.
+
+The model receives an injected absolute time for the request's validated IANA
+time zone, so current-date answers do not rely on model memory. Tool results are
+bounded and projected before returning to the model. The public Conversation
+stream exposes typed activity records, visible content, server-generated
+references, and one terminal event. Raw reasoning, provider heartbeats, full
+tool parameters, and tool return payloads remain internal diagnostics.
 
 `ToolDispatcher` validates arguments and executes each tool through a fresh
 `ApplicationExecutor` operation. Query tools never commit. Command tools commit

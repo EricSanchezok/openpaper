@@ -3,44 +3,20 @@
 @import "../design-system/generated/colors-light.css";
 @import "../design-system/generated/colors-dark.css";
 
-@theme inline {
-  --color-canvas: var(--color-bg-canvas);
-  --color-sidebar: var(--color-bg-sidebar);
-  --color-surface: var(--color-bg-surface);
-  --color-subtle: var(--color-bg-subtle);
-  --color-hover: var(--color-bg-hover);
-  --color-pressed: var(--color-bg-pressed);
-  --color-elevated: var(--color-bg-elevated);
-  --color-foreground: var(--color-text-primary);
-  --color-secondary: var(--color-text-secondary);
-  --color-muted: var(--color-text-muted);
-  --color-tertiary: var(--color-text-tertiary);
-  --color-inverse: var(--color-text-inverse);
-  --color-disabled: var(--color-text-disabled);
-  --color-ui-icon-primary: var(--color-icon-primary);
-  --color-ui-icon-secondary: var(--color-icon-secondary);
-  --color-ui-icon-inverse: var(--color-icon-inverse);
-  --color-ui-icon-disabled: var(--color-icon-disabled);
-  --color-line: var(--color-border-default);
-  --color-line-subtle: var(--color-border-subtle);
-  --color-line-strong: var(--color-border-strong);
-  --color-control: var(--color-border-control);
-  --color-primary: var(--color-action-primary);
-  --color-primary-hover: var(--color-action-primary-hover);
-  --color-primary-foreground: var(--color-action-primary-foreground);
-  --color-action-secondary: var(--color-action-secondary);
-  --color-danger: var(--color-danger-text);
-  --color-state-danger-bg: var(--color-danger-bg);
-  --color-success: var(--color-success-text);
-  --color-state-success-bg: var(--color-success-bg);
-  --color-warning: var(--color-warning-text);
-  --color-state-warning-bg: var(--color-warning-bg);
-  --color-info: var(--color-info-text);
-  --color-state-info-bg: var(--color-info-bg);
-}
+@layer base {
+  * {
+    border-color: var(--color-border-default);
+  }
 
-* {
-  border-color: var(--color-border-default);
+  :focus-visible:not([data-focus-delegate]) {
+    outline: var(--focus-width) solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  [data-focus-delegate]:focus-visible {
+    outline: none;
+    outline-offset: 0;
+  }
 }
 
 html {
@@ -55,8 +31,25 @@ body {
   overflow-x: clip;
   background: var(--color-bg-canvas);
   color: var(--color-text-primary);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist), "PingFang SC", "Microsoft YaHei", sans-serif;
   text-rendering: optimizeLegibility;
+}
+
+@keyframes activity-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+.activity-copy-enter {
+  animation: activity-copy-in 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-copy-enter {
+    animation: none;
+  }
 }
 
 @utility safe-page {
@@ -75,9 +68,4 @@ body {
 ::selection {
   background: var(--color-selection-bg);
   color: var(--color-selection-foreground);
-}
-
-:focus-visible {
-  outline: var(--focus-width) solid var(--color-focus-ring);
-  outline-offset: 2px;
 }

@@ -8,7 +8,6 @@ from typing import Generic, TypeVar
 from app.tooling.contracts import (
     ToolAccess,
     ToolDefinition,
-    ToolExecutionKind,
 )
 
 CapabilitiesT = TypeVar("CapabilitiesT")
@@ -61,10 +60,7 @@ class ToolCatalog(Generic[CapabilitiesT]):
         definition: ToolDefinition[CapabilitiesT],
         access: ToolAccess,
     ) -> bool:
-        return (
-            definition.execution is ToolExecutionKind.CONTROL
-            or definition.required_permission in access.permissions
-        )
+        return definition.required_permission in access.permissions
 
     def definitions_for(
         self,

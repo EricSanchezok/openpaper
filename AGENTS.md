@@ -21,6 +21,9 @@ Always read the documents relevant to the task before editing:
 
 For new `web/` product work, also complete
 [`web/docs/new-feature-checklist.md`](./web/docs/new-feature-checklist.md).
+Every addition, modification, or deletion of a Web page, module, component,
+token, theme, or Storybook state must follow
+[`web/docs/frontend-governance.md`](./web/docs/frontend-governance.md).
 
 ## Repository boundaries
 
@@ -35,6 +38,22 @@ For new `web/` product work, also complete
   `docs/architecture/data-ownership.md`.
 - Do not create compatibility layers between the old and new frontends. Evolve
   the public API contract deliberately instead.
+- Local development owns the `7300-7399` host-port block: Web `7300`, Server
+  `7301`, Jobs `7302`, legacy client `7303`, Storybook `7306`, and Flower
+  `7307`. Scholens local infrastructure uses PostgreSQL `55432`, RabbitMQ
+  `55672`, and Redis `56379`, all on `127.0.0.1`. Ports `59000/59001` remain
+  reserved for projects that explicitly choose local MinIO; Scholens does not
+  start or consume MinIO by default.
+- Local entrypoints must use fixed ports, bind to loopback, and fail on a
+  conflict. Never add port auto-increment, install dependencies, or apply
+  migrations as a side effect of a daily startup command.
+- `server` local startup must retain its guard against any database other than
+  `127.0.0.1:55432/sanchezcloud`. RDS and production object storage are outside
+  local-development scope. Scholens local development uses its isolated remote
+  dev S3 bucket and product-specific Aliyun DirectMail settings; neither may
+  reuse production resources.
+- Remote model and search providers are opt-in for the feature being tested.
+  Keep their credentials in ignored service-local environment files.
 
 ## Replacement frontend rules
 
@@ -53,6 +72,9 @@ The canonical rules live in [`web/docs`](./web/docs/README.md). In particular:
   do not handwrite duplicate DTOs;
 - every reusable component needs isolated Storybook coverage, interaction
   states, keyboard behavior, narrow-content coverage, and Light/Dark review.
+- Tailwind aliases are generated from the design-system adapter. Do not add
+  manual `@theme` mappings, page-local raw colors, primitive palette variables,
+  `dark:` appearance patches, or repeated typography/elevation recipes.
 - interface copy follows `web/docs/internationalization.md`; UI locale and
   Reader content translation are separate product concepts.
 
@@ -64,8 +86,9 @@ responsive behavior, accessibility, runtime contracts, and component APIs.
 
 Do not edit generated files directly. Change their source and regenerate them.
 
-- Design tokens: edit `web/src/design-system/tokens/`, then run
-  `pnpm tokens:build` from `web/`.
+- Design tokens: edit `web/src/design-system/tokens/` and semantic utility names
+  in `web/src/design-system/adapters/`, then run `pnpm tokens:build` from
+  `web/`.
 - Frontend API types: update the FastAPI contract and public snapshot, then run
   `pnpm api:generate` from `web/`.
 - Commit source and generated outputs together.
@@ -79,6 +102,9 @@ cd web
 pnpm tokens:check
 pnpm api:check
 pnpm i18n:check
+pnpm architecture:check
+pnpm design:check
+pnpm docs:check
 pnpm lint
 pnpm format:check
 pnpm typecheck
@@ -103,7 +129,9 @@ smaller relevant subset, but the final handoff must state exactly what ran.
   work merely because it is present.
 - Architecture changes require an ADR under `web/docs/decisions/` or the
   appropriate service-level architecture documentation.
-- Documentation must change in the same commit as the behavior that invalidates
-  it.
+- Every code, configuration, or workflow change requires an explicit
+  documentation-impact check. Documentation must change in the same commit as
+  the behavior that invalidates it; if no documentation changes are needed,
+  state that in the handoff.
 - Keep upstream copyright, license, provenance, migration, and evaluation
   references unless their removal has been explicitly validated.

@@ -1,5 +1,6 @@
 import { Plus } from "iconoir-react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import { expect, within } from "storybook/test";
 
 import { Icon } from "@/design-system/icons/icon";
 import { IconButton } from "./button";
@@ -38,4 +39,23 @@ export const AllStates: Story = {
       </IconButton>
     </div>
   ),
+};
+
+export const DisabledPrimary: Story = {
+  render: () => (
+    <IconButton disabled label="Unavailable action">
+      <Icon glyph={Plus} size={20} tone="inverse" />
+    </IconButton>
+  ),
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole("button", {
+      name: "Unavailable action",
+    });
+    const icon = button.querySelector("svg");
+    await expect(button).toBeDisabled();
+    await expect(icon).not.toBeNull();
+    await expect(getComputedStyle(icon!).color).toBe(
+      getComputedStyle(button).color,
+    );
+  },
 };

@@ -24,9 +24,10 @@ source .venv/bin/activate
 
 2. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
 
-3. Set up environment variables from the repository-level catalog
+3. Set up environment variables from the repository-level catalog. Copy only
+   the Server section; the root file is not itself a runtime file.
 ```bash
-cp ../.env.example .env
+touch .env
 ```
 
 At minimum, point `DATABASE_URL` at a `sanchezcloud` database with migrated
@@ -50,26 +51,49 @@ second capability map or provider-specific tool wrappers.
 1. Start the jobs service (RabbitMQ + Celery worker) in a separate terminal:
 ```bash
 cd ../jobs
-uv run start
+uv run --frozen --no-sync start
 ```
 
 2. Start the API server:
 ```bash
-uv run start
+uv run --frozen --no-sync start
 ```
 
-Optional: set `CELERY_BROKER_URL=pyamqp://guest@localhost:5672//` in `.env` if you use a non-default broker.
+The command binds to `127.0.0.1:7301`, rejects any `DATABASE_URL` other than
+the shared local PostgreSQL at `127.0.0.1:55432/sanchezcloud`, and does not run
+migrations. Apply product migrations explicitly with the `scholens_migrator`
+role as documented in [`../DEVELOPMENT.md`](../DEVELOPMENT.md).
+
+The local broker is `pyamqp://guest@127.0.0.1:55672//` when the Jobs profile is
+enabled.
+
+The ordinary Scholens local environment uses an isolated remote dev S3 bucket
+and Aliyun DirectMail for real verification and password-reset messages. It
+does not require Mailpit or MinIO. Keep both providers' credentials in the
+ignored `server/.env`; Jobs receives the same dev S3 settings through its own
+ignored `jobs/.env`. Production RDS, S3, and mail resources must never be used
+by local startup.
 
 ## API Documentation
 
 FastAPI automatically generates API documentation. Once the application is running, you can access:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Swagger UI: `http://127.0.0.1:7301/docs`
+- ReDoc: `http://127.0.0.1:7301/redoc`
 
 Public application routes are under `/api/v1`; provider webhooks are under
 `/webhooks/v1`. `/internal/v1` is reserved for authenticated worker traffic and
 is intentionally not routed by the production edge proxy.
+
+Conversation message creation streams standard Server-Sent Events at
+`POST /api/v1/conversations/{conversation_id}/messages`. Consumers must handle
+the typed `start`, `activity`, `content_delta`, `references`, `complete`, and
+`error` events and treat `complete` or `error` as terminal. Requests include
+the UI locale and a validated IANA time zone. `activity` contains only a
+sanitized tool lifecycle projection; model reasoning and raw tool payloads are
+never part of the public stream.
+There is no private delimiter. Clients may abort the request, but must not
+automatically retry this non-idempotent operation.
 
 # Migrations
 
@@ -110,7 +134,8 @@ uv run pytest -q
 
 We have an `Ask` page, which allows you to ask questions across your entire knowledge base. AI-generated responses come with inline citations which will link to the original papers and show the text citation. Deep-linking is not yet available, but is planned.
 
-The response agent works by sending off an agent with access to a series of research tools:
+The response agent is one contextual Pydantic AI runtime with access to the
+authorized subset of the canonical workspace and connector tools:
 - `search_papers`
 - `get_paper_abstract`
 - `search_paper_content`
@@ -127,20 +152,17 @@ Unified Conversation agent workflow:
 |      User      |----->|             FastAPI Server                    |----->|        LLM        |
 +----------------+      |         (conversation_agent.py)               |      +-------------------+
         ^             |                                                 |              ^
-        |             |  1. run_tools(request)                          |              |
-        |             |     - Iteratively calls LLM with tools:         |              |
-        |             |       - search_papers(query)                    |--------------+
-        |             |       - get_paper_content(document_id)          |
-        |             |       - ...                                     |
-        |             |     - Executes explicit workspace actions       |
-        |             |     - Compacts results if they get too large    |
-        |             |                                                 |
-        |             |  2. Build one bounded AnswerPacket              |
-        |             |     - Validates document/external sources       |
-        |             |  3. stream_answer(question, answer_packet)      |--------------+
-        |             |     - Sends materials, actions, and sources     |
-        |             |     - Streams response back to user             |              |
-        |             |     - Filters citations through server keys     |              |
+        |             |  1. Run one model loop                           |              |
+        |             |     - answer directly when tools are unnecessary |              |
+        |             |     - call 0..n authorized tools                 |--------------+
+        |             |  2. Dispatch every call through Scholens         |
+        |             |     - validate arguments and permissions         |
+        |             |     - journal writes and enforce idempotency      |
+        |             |     - project safe, bounded results               |
+        |             |  3. Register validated sources incrementally      |
+        |             |  4. Stream answer and materialize citations       |--------------+
+        |             |     - expose sanitized activity only              |              |
+        |             |     - persist typed terminal trace                 |              |
         |             +-------------------------------------------------+              |
         |                           |                                                  |
         +---------------------------+--------------------------------------------------+

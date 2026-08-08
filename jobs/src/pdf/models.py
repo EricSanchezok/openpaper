@@ -8,7 +8,8 @@ from enum import StrEnum
 
 class ParserBackend(StrEnum):
     MINERU = "mineru"
-    PYMUPDF = "pymupdf"
+    PYMUPDF4LLM = "pymupdf4llm"
+    MARKITDOWN = "markitdown"
 
 
 class ParserQuality(StrEnum):

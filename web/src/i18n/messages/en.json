@@ -12,12 +12,140 @@
     }
   },
   "Metadata": {
-    "title": "Scholens Web Foundation",
-    "description": "Scholens next-generation web foundation smoke test"
+    "title": "Scholens",
+    "description": "Read, organize, and ask across your research with Scholens."
   },
   "FoundationSmoke": {
     "eyebrow": "Web foundation · smoke route",
     "description": "The independent Next.js, token, theme, query, component, and internationalization foundation is running. Product routes intentionally begin later."
+  },
+  "Home": {
+    "navigation": {
+      "newChat": "New chat",
+      "ask": "Ask",
+      "library": "Library",
+      "projects": "Projects",
+      "primary": "Primary navigation",
+      "settings": "Settings",
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar",
+      "openMenu": "Open navigation",
+      "closeMenu": "Close navigation",
+      "searchConversations": "Search conversations",
+      "comingSoon": "Not available yet"
+    },
+    "sidebar": {
+      "pinned": "Pinned",
+      "recent": "Recent",
+      "empty": "Your conversations will appear here.",
+      "noMatches": "No matching conversations",
+      "conversationContext": "Research context"
+    },
+    "account": {
+      "openMenu": "Open account menu",
+      "settings": "Account settings",
+      "appearance": "Appearance",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…"
+    },
+    "hero": {
+      "title": "What are you working on?",
+      "description": "Ask across your research.",
+      "emptyDescription": "Ask across a paper, project, or your entire library."
+    },
+    "composer": {
+      "placeholder": "Ask anything",
+      "followUpPlaceholder": "Ask a follow-up",
+      "submit": "Ask Scholens",
+      "stop": "Stop response",
+      "addContext": "Add context",
+      "standard": "Standard",
+      "deep": "Deep",
+      "reasoningStrength": "Reasoning strength",
+      "reasoningStrengthValue": "Reasoning strength: {value}",
+      "standardDescription": "Fast, balanced reasoning",
+      "deepDescription": "More thorough reasoning"
+    },
+    "context": {
+      "title": "Add context",
+      "entireLibrary": "Entire library",
+      "search": "Search projects and papers",
+      "projects": "Projects",
+      "papers": "Papers",
+      "selected": "{count, plural, one {# selected} other {# selected}}",
+      "clear": "Clear",
+      "done": "Done",
+      "close": "Close context picker",
+      "librarySelected": "Entire library",
+      "selectionSummary": "{count, plural, one {# source} other {# sources}}",
+      "scopeLibrary": "Library",
+      "scopePapers": "{count, plural, one {# paper} other {# papers}}",
+      "scopeItems": "{count, plural, one {# item} other {# items}}",
+      "scopeEmpty": "Select scope",
+      "scopeAccessible": "Research scope: {scope}",
+      "noMatches": "No matching research found"
+    },
+    "recents": {
+      "papers": "Recent papers",
+      "projects": "Recent projects",
+      "viewAll": "View all",
+      "opened": "Opened {relative}",
+      "updated": "Updated {relative}",
+      "paperCount": "{count, plural, one {# paper} other {# papers}}",
+      "conversationCount": "{count, plural, one {# conversation} other {# conversations}}",
+      "noPapersTitle": "Your reading desk is ready",
+      "noPapersDescription": "Papers you open will appear here.",
+      "noProjectsTitle": "No recent projects",
+      "noProjectsDescription": "Projects will appear here after you create or join one.",
+      "loadError": "Could not load recent research",
+      "retry": "Try again"
+    },
+    "conversation": {
+      "assistant": "Scholens",
+      "assistantMessage": "Assistant response",
+      "sources": "Sources",
+      "loading": "Loading conversation",
+      "empty": "Ask a question to begin this conversation.",
+      "cancelled": "Response stopped. You can ask again.",
+      "error": "The response could not be completed.",
+      "retry": "Try again",
+      "retryHint": "Your message was saved. Send a new message when you are ready.",
+      "readOnly": "You can read this conversation, but you no longer have permission to continue it.",
+      "readOnlyReason": "This conversation is read-only because its research context is no longer available.",
+      "reference": "Source {number}",
+      "unknownSource": "Research source",
+      "activity": {
+        "thinking": "Thinking…",
+        "searching": "Searching your research…",
+        "reading": "Reading relevant sources…",
+        "updatingWorkspace": "Updating your workspace…",
+        "usingConnector": "Using {connector}…",
+        "completeSummary": "Completed · {count, plural, one {# action} other {# actions}} · {sources, plural, one {# source} other {# sources}}",
+        "partialSummary": "Partially completed · {count, plural, one {# action} other {# actions}} · {sources, plural, one {# source} other {# sources}}",
+        "stopped": "Stopped",
+        "failed": "Could not complete",
+        "search": "Searched research sources",
+        "read": "Read source material",
+        "workspace_action": "Updated the workspace",
+        "connector": "Used {connector}",
+        "connectorFallback": "a connector",
+        "results": "{sources, plural, =0 {No sources} one {# source} other {# sources}} · {artifacts, plural, =0 {no artifacts} one {# artifact} other {# artifacts}}",
+        "state": {
+          "running": "In progress",
+          "succeeded": "Completed",
+          "failed": "Failed"
+        }
+      }
+    },
+    "session": {
+      "checking": "Opening your research workspace",
+      "unavailableTitle": "Your session could not be checked",
+      "unavailableDescription": "The workspace is still here. Retry the session check when the server is available.",
+      "retry": "Retry session check"
+    }
   },
   "AsyncFeedback": {
     "loading": "Loading",
@@ -57,22 +185,28 @@
       "password": "Password",
       "passwordPlaceholder": "Password",
       "newPassword": "New password",
-      "confirmPassword": "Confirm password",
-      "passwordMinimum": "At least 12 characters"
+      "confirmPassword": "Confirm password"
     },
     "signIn": {
       "state": "Sign in",
       "title": "Welcome back",
-      "description": "Sign in to continue to your papers and projects.",
+      "description": "Where papers become working knowledge.",
       "submit": "Sign in",
       "submitting": "Signing in…"
     },
     "register": {
       "state": "Create account",
       "title": "Create your account",
-      "description": "Keep your papers, projects, and annotations in one place.",
+      "description": "Where papers become working knowledge.",
       "submit": "Create account",
       "submitting": "Creating account…"
+    },
+    "passwordGuidance": {
+      "minimum": "{minimum} characters minimum",
+      "progress": "{count} of {minimum} characters",
+      "complete": "Password requirement met",
+      "matches": "Passwords match",
+      "mismatch": "Passwords do not match"
     },
     "checkInbox": {
       "state": "Check inbox",
@@ -120,7 +254,9 @@
       "retry": "Retry session check"
     },
     "validation": {
+      "displayNameMaximum": "Keep your display name under 120 characters",
       "email": "Enter a valid email address",
+      "passwordConfirmationRequired": "Confirm your password",
       "passwordRequired": "Enter your password",
       "passwordMinimum": "Use at least 12 characters",
       "passwordMismatch": "Passwords do not match",

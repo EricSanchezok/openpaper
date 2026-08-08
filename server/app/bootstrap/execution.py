@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from app.bootstrap.capabilities import ApplicationCapabilities
 from app.bootstrap.settings import AppSettings
-from app.llm.conversation_agent import ConversationAgentRuntime
+from app.llm.conversation_agent import ScholensConversationAgent
 from app.database.database import SessionLocal
 from app.modules.access_keys.application.contracts import AuthenticatedAccessKey
 from app.modules.conversations.application.chat import ConversationChat
@@ -17,7 +17,6 @@ from app.modules.billing.application.webhooks import ProcessStripeWebhook
 from app.bootstrap.workflows.billing import BillingWorkflow
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.bootstrap.workflows.pdf_postprocess import PdfPostprocessWorkflow
-from app.bootstrap.workflows.conversation_title import ConversationTitleWorkflow
 from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.discovery import PaperDiscoveryWorkflow
 from app.bootstrap.workflows.research_generation import ResearchGenerationWorkflow
@@ -29,7 +28,7 @@ from app.bootstrap.workflows.zotero import (
 )
 from app.bootstrap.adapters.job_completion_processor import JobCompletionProcessor
 from app.shared.application import ApplicationExecutor, OperationContextFactory
-from app.shared.infrastructure import SqlAlchemyApplicationExecutor
+from app.shared.infrastructure import SqlAlchemyApplicationExecutor, SystemClock
 from app.tooling import ToolCatalog, ToolDispatcher
 from app.transport.mcp.server import (
     AuthenticatedMcpApplication,
@@ -89,7 +88,7 @@ def create_connector_workflow(
 
 def create_conversation_chat(
     executor: ApplicationExecutor[ApplicationCapabilities],
-    runtime: ConversationAgentRuntime,
+    runtime: ScholensConversationAgent,
     operation_factory: OperationContextFactory,
     diagnostic_recorder: DiagnosticSnapshotRecorder,
 ) -> ConversationChat:
@@ -104,19 +103,6 @@ def create_conversation_chat(
             operation_factory,
             diagnostic_recorder,
         )
-    )
-
-
-def create_conversation_title_workflow(
-    executor: ApplicationExecutor[ApplicationCapabilities],
-    operation_factory: OperationContextFactory,
-) -> ConversationTitleWorkflow:
-    from app.llm.conversation_operations import conversation_operations
-
-    return ConversationTitleWorkflow(
-        executor=executor,
-        generator=conversation_operations,
-        operation_factory=operation_factory,
     )
 
 
@@ -180,17 +166,18 @@ def create_conversation_agent_runtime(
     dispatcher: ToolDispatcher[ApplicationCapabilities],
     connector_tools: object,
     operation_factory: OperationContextFactory,
-) -> ConversationAgentRuntime:
+) -> ScholensConversationAgent:
     from app.modules.integrations.connectors.infrastructure.mcp import (
         ConnectorToolResolver,
     )
 
     assert isinstance(connector_tools, ConnectorToolResolver)
-    return ConversationAgentRuntime(
+    return ScholensConversationAgent(
         catalog=catalog,
         dispatcher=dispatcher,
         connector_tools=connector_tools,
         operation_factory=operation_factory,
+        clock=SystemClock(),
     )
 
 
@@ -401,13 +388,6 @@ def get_operation_context_factory(request: Request) -> OperationContextFactory:
 
 def get_conversation_chat(request: Request) -> ConversationChat:
     return cast(ConversationChat, request.app.state.conversation_chat)
-
-
-def get_conversation_title_workflow(request: Request) -> ConversationTitleWorkflow:
-    return cast(
-        ConversationTitleWorkflow,
-        request.app.state.conversation_title_workflow,
-    )
 
 
 def get_citation_workflow(request: Request) -> CitationWorkflow:

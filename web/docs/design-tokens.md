@@ -21,7 +21,11 @@ src/design-system/tokens/
 ├── themes/default.json
 ├── semantic/light.json
 ├── semantic/dark.json
+├── effects.json
 └── dimensions.json
+
+src/design-system/adapters/
+└── tailwind.json
 ```
 
 Figma is used to explore and validate visual intent. After initial calibration,
@@ -35,6 +39,9 @@ files under `src/design-system/generated` by hand.
   theme changes this layer rather than component styles.
 - **Semantic tokens** describe purpose: canvas, surface, text, border, action,
   focus, selection, feedback, annotation, and elevation.
+- **Composite effects** assemble semantic colors and geometry into reusable
+  elevation recipes.
+- **Framework adapters** expose stable utility names; they do not own values.
 - **Component styles** consume semantic tokens only.
 
 Do not alias semantic tokens to other semantic tokens. Both Light and Dark map
@@ -47,21 +54,47 @@ directly to the theme palette so the graph remains inspectable.
    one component.
 2. Update the relevant DTCG source using `$type`, `$value`, and references.
 3. Run `pnpm tokens:build`.
-4. Inspect Light and Dark stories, focus, disabled, feedback, overlay, and long
+4. Run `pnpm design:check` to validate appearance parity, references, adapter
+   aliases, and forbidden styling shortcuts.
+5. Inspect Light and Dark stories, focus, disabled, feedback, overlay, and long
    content in Storybook.
-5. Run `pnpm tokens:check`, tests, and builds.
-6. Commit the DTCG source and generated output together.
+6. Run `pnpm tokens:check`, tests, and builds.
+7. Commit the DTCG source and generated output together.
 
 `tokens:check` regenerates into a temporary directory and fails if committed
 outputs drift. Manual edits to generated CSS or metadata therefore fail CI.
 
 ## Using tokens in components
 
-Use semantic Tailwind names exposed by `src/styles/globals.css`, for example
+Use semantic Tailwind names generated from the adapter, for example
 `bg-canvas`, `bg-surface`, `text-foreground`, `text-muted`, `border-line`, and
-`bg-primary`. If a necessary semantic role does not exist, add and document the
-role instead of writing hex, RGB, HSL, or a primitive palette value at the call
-site.
+`bg-primary`, plus `text-ui`, `text-caption`, `shadow-overlay`, and
+`shadow-composer`. `elevation.composer` is the mobile input-surface lift: it
+uses the shared 0/6/20/-10 geometry with a 12% black Light shadow and the
+existing 40% overlay in Dark. Desktop Composer surfaces retain
+`elevation.raised`. If a
+necessary semantic role does not exist, add and document the role instead of
+writing hex, RGB, HSL, a primitive palette value, or a repeated arbitrary
+recipe at the call site.
+
+The Tailwind `@theme` adapter is appended to generated `dimensions.css`. Add or
+rename an alias in `src/design-system/adapters/tailwind.json`; never recreate an
+`@theme` table in global CSS.
+
+Interactive descendants inherit the state of their shared control. In
+particular, an icon inside a disabled button resolves to the shared disabled
+icon role even when its enabled state is inverse. Composite controls may
+suppress a native child's outline only when the containing control exposes an
+equivalent focus-visible state using semantic control or focus tokens. Mark
+that child with `data-focus-delegate`; this is the shared contract that keeps
+the global focus fallback from drawing a second, rectangular focus surface.
+Global border and focus fallbacks live in the CSS base cascade layer so
+component utilities can override them without specificity escalation.
+
+Disabled prominence is also semantic. If a disabled primary action disappears
+into a canvas in one appearance, adjust `color.action.disabled-*` for that
+appearance and review every disabled-button story. Do not patch the individual
+button or feature call site.
 
 Allowed raw-color exceptions are limited to source images, PDF content, and
 third-party brand marks that must preserve their identity. The surrounding UI

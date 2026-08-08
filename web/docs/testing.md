@@ -19,6 +19,9 @@ component assertion in Playwright.
 pnpm tokens:check
 pnpm api:check
 pnpm i18n:check
+pnpm architecture:check
+pnpm design:check
+pnpm docs:check
 pnpm lint
 pnpm format:check
 pnpm typecheck
@@ -47,6 +50,13 @@ Use global toolbar controls instead of duplicating entire story files:
 Each interactive component or product pattern covers relevant states, long
 content, narrow width, keyboard interaction, and accessibility. `play`
 functions assert outcomes rather than waiting arbitrary durations.
+
+Storybook is the executable state inventory; Figma remains the visual intent
+and acceptance inventory. During feature delivery, map canonical Figma states
+to story IDs. A visual change is reviewed in both appearances before its
+baseline is accepted. Hosted screenshot regression may be added only with an
+owned service token and baseline-review policy; it does not replace semantic,
+interaction, axe, or Figma review.
 
 ## MSW rules
 

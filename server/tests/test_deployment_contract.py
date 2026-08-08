@@ -268,6 +268,7 @@ def test_migration_chain_starts_with_the_consolidated_baseline() -> None:
     assert [path.name for path in versions] == [
         "2026_07_28_1030_scholens_initial.py",
         "2026_07_31_1500_connector_connections.py",
+        "2026_08_08_1640_expand_parser_backend_values.py",
     ]
     baseline = versions[0].read_text(encoding="utf-8")
     connector_migration = versions[1].read_text(encoding="utf-8")

@@ -16,7 +16,7 @@ from app.modules.conversations.application.contracts.answer_packet import (
     DocumentAnswerSource,
     ExternalAnswerSource,
 )
-from app.modules.conversations.application.contracts.messages import ToolRunState
+from app.llm.conversation_state import ConversationAgentState
 from app.shared.application.context_budget import (
     estimate_tokens,
     truncate_to_token_budget,
@@ -209,7 +209,7 @@ class AnswerPacketBuilder:
         self,
         *,
         context: Mapping[str, JsonValue],
-        tool_state: ToolRunState,
+        agent_state: ConversationAgentState,
         direct_sources: Sequence[ToolSourceCandidate] = (),
         user_materials: Sequence[str] = (),
         document_source_texts: Mapping[UUID, Sequence[str]] | None = None,
@@ -219,33 +219,8 @@ class AnswerPacketBuilder:
         )
         materials: list[AnswerMaterial] = []
 
-        for observation in tool_state.observations:
-            verified_candidates: list[ToolSourceCandidate] = []
-            for candidate in observation.sources:
-                if isinstance(candidate, DocumentSourceCandidate):
-                    verified_candidates.append(candidate)
-                    continue
-                if not verify_external_source(
-                    candidate,
-                    arguments=observation.args,
-                    payload=observation.payload,
-                ):
-                    registry.reject()
-                    continue
-                verified_candidates.append(candidate)
-            source_keys = registry.add_all(verified_candidates)
-            if observation.action_only:
-                continue
-            contents = observation.materials or [observation.payload]
-            for material_index, content in enumerate(contents):
-                materials.append(
-                    AnswerMaterial(
-                        id=f"o{observation.result_index}-{material_index}",
-                        content=_JSON_VALUE.validate_python(content),
-                        source_keys=source_keys,
-                    )
-                )
-
+        # Direct context is registered first so its source keys remain stable as
+        # tool observations are appended during a single agent run.
         for source_index, candidate in enumerate(direct_sources):
             if isinstance(candidate, ExternalSourceCandidate):
                 registry.reject()
@@ -269,6 +244,31 @@ class AnswerPacketBuilder:
                 )
             )
 
+        for observation in agent_state.observations:
+            verified_candidates: list[ToolSourceCandidate] = []
+            for candidate in observation.sources:
+                if isinstance(candidate, DocumentSourceCandidate):
+                    verified_candidates.append(candidate)
+                    continue
+                if not verify_external_source(
+                    candidate,
+                    arguments=observation.args,
+                    payload=observation.payload,
+                ):
+                    registry.reject()
+                    continue
+                verified_candidates.append(candidate)
+            source_keys = registry.add_all(verified_candidates)
+            if observation.action_only:
+                continue
+            materials.append(
+                AnswerMaterial(
+                    id=f"o{observation.result_index}-0",
+                    content=_JSON_VALUE.validate_python(observation.payload),
+                    source_keys=source_keys,
+                )
+            )
+
         for material_index, content in enumerate(user_materials):
             materials.append(
                 AnswerMaterial(
@@ -278,21 +278,21 @@ class AnswerPacketBuilder:
             )
 
         coverage = AnswerCoverage(
-            observations_total=len(tool_state.observations)
-            + tool_state.failed_observations,
-            observations_processed=len(tool_state.observations),
+            observations_total=len(agent_state.observations)
+            + agent_state.failed_observations,
+            observations_processed=len(agent_state.observations),
             truncated_observations=0,
             truncated_materials=0,
             truncated_sources=0,
             truncated_actions=0,
             context_truncated=False,
             rejected_sources=registry.rejected_sources,
-            failed_observations=tool_state.failed_observations,
+            failed_observations=agent_state.failed_observations,
         )
         packet = AnswerPacket(
             context=dict(context),
             materials=materials,
-            actions=tool_state.action_results,
+            actions=agent_state.action_results,
             sources=registry.sources,
             coverage=coverage,
         )

@@ -1,4 +1,4 @@
-"""Typed material and source contracts consumed by the final answer runtime."""
+"""Typed server-validated material and source contracts for Agent grounding."""
 
 from __future__ import annotations
 

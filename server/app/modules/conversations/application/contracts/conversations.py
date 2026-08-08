@@ -8,6 +8,7 @@ from app.modules.research.application.contracts import CitationSnapshot
 from app.modules.conversations.application.contracts.answer_packet import (
     ReferenceBundle,
 )
+from app.modules.conversations.application.contracts.messages import ConversationTrace
 from app.shared.domain import (
     JsonValue,
     WorkspacePermission,
@@ -62,7 +63,11 @@ class ConversationCreateRequest(BaseModel):
 
     scope_type: ConversationScopeType
     scope_id: UUID | None = None
-    title: str = Field(default="New conversation", min_length=1, max_length=240)
+    title: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=240,
+    )
     paper_context: PaperContext | None = None
     tool_permissions: OrderedWorkspacePermissions | None = None
 
@@ -155,11 +160,12 @@ class ConversationToolPermissionsResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     id: UUID
+    turn_id: UUID
     role: str
     content: str
     references: ReferenceBundle | None
     artifacts: list[CitationSnapshot] | None
-    trace: dict[str, JsonValue] | None
+    trace: ConversationTrace | None
     scope: list[dict[str, JsonValue]] | None
     sequence: int
 
@@ -167,7 +173,3 @@ class MessageResponse(BaseModel):
 class ConversationMessagesResponse(BaseModel):
     items: list[MessageResponse]
     next_cursor: str | None = None
-
-
-class ConversationAutoTitleResponse(BaseModel):
-    title: str

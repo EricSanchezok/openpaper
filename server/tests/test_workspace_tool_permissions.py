@@ -11,22 +11,13 @@ from app.bootstrap.adapters.conversation_repository import conversation_reposito
 from app.bootstrap.workflows.citation import CitationWorkflow
 from app.bootstrap.workflows.paper_ingestion import PaperIngestionWorkflow
 from app.database.models import Conversation
-from app.llm.backend import LLMResponse
-from app.llm.conversation_tool_loop import ConversationToolLoop
 from app.main import app
-from app.modules.conversations.application.chat import (
-    ConversationChatScope,
-    ConversationContextSnapshot,
-)
 from app.modules.conversations.application.contracts.conversations import (
     ConversationCreateRequest,
     ConversationSummaryResponse,
     ConversationToolPermissionsRequest,
 )
 from app.modules.papers.application.contracts.search import LibraryPaperCollection
-from app.modules.integrations.connectors.infrastructure.mcp import (
-    ResolvedConnectorToolSet,
-)
 from app.shared.application import (
     Actor,
     ConversationOrigin,
@@ -45,7 +36,6 @@ from app.shared.domain import (
     normalize_workspace_permissions,
     ordered_workspace_permissions,
 )
-from app.shared.domain.enums import ConversationScopeType
 from app.tooling import (
     ToolAccess,
     ToolExecutionContext,
@@ -196,26 +186,6 @@ def test_every_business_tool_must_declare_exactly_one_permission(
         )
 
 
-def test_control_tool_cannot_require_permission_or_execute_a_handler() -> None:
-    with pytest.raises(ValueError, match="cannot require workspace permission"):
-        ToolDefinition(
-            name="finish",
-            description="Finish",
-            input_model=RequiredInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=WorkspacePermission.READ,
-        )
-    with pytest.raises(ValueError, match="cannot define handlers"):
-        ToolDefinition(
-            name="finish",
-            description="Finish",
-            input_model=RequiredInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=None,
-            handler=_handler,
-        )
-
-
 def test_handler_shape_must_match_execution_kind() -> None:
     with pytest.raises(ValueError, match="exactly one handler"):
         ToolDefinition(
@@ -236,7 +206,7 @@ def test_handler_shape_must_match_execution_kind() -> None:
         )
 
 
-def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> None:
+def test_catalog_combines_profile_and_permissions() -> None:
     definitions = [
         ToolDefinition(
             name="read_tool",
@@ -254,20 +224,13 @@ def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> 
             required_permission=WorkspacePermission.WRITE,
             handler=_handler,
         ),
-        ToolDefinition(
-            name="finish",
-            description="Finish",
-            input_model=RequiredInput,
-            execution=ToolExecutionKind.CONTROL,
-            required_permission=None,
-        ),
     ]
     catalog = ToolCatalog(
         definitions,
         [
             ToolProfile(
                 name="conversation",
-                tool_names=frozenset({"read_tool", "write_tool", "finish"}),
+                tool_names=frozenset({"read_tool", "write_tool"}),
             ),
             ToolProfile(name="mcp", tool_names=frozenset({"read_tool"})),
         ],
@@ -279,12 +242,11 @@ def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> 
     )
     assert [
         definition.name for definition in catalog.definitions_for(conversation_access)
-    ] == ["finish", "write_tool"]
+    ] == ["write_tool"]
     assert [
         declaration["name"]
         for declaration in catalog.provider_declarations(conversation_access)
-    ] == ["finish", "write_tool"]
-    assert catalog.is_available(conversation_access, "finish")
+    ] == ["write_tool"]
     assert not catalog.is_available(conversation_access, "read_tool")
 
     mcp_access = ToolAccess(
@@ -294,7 +256,6 @@ def test_catalog_combines_profile_and_permissions_and_always_keeps_control() -> 
     assert [definition.name for definition in catalog.definitions_for(mcp_access)] == [
         "read_tool"
     ]
-    assert not catalog.is_available(mcp_access, "finish")
 
 
 class _UntouchableExecutor:
@@ -446,9 +407,7 @@ def test_workspace_tool_permission_mapping_is_exact() -> None:
         for permission in WORKSPACE_PERMISSION_ORDER
     }
     assert actual == expected
-    assert definitions["finish_tool_use"].required_permission is None
-    assert definitions["finish_tool_use"].execution is ToolExecutionKind.CONTROL
-    assert set(definitions) == set().union(*expected.values()) | {"finish_tool_use"}
+    assert set(definitions) == set().union(*expected.values())
 
     full_mcp_access = ToolAccess(
         profile_name=MCP_TOOL_PROFILE,
@@ -548,112 +507,3 @@ def test_permission_update_is_owned_locked_canonical_and_scope_independent(
 
 def test_permission_field_is_detail_only_at_the_python_contract_boundary() -> None:
     assert "tool_permissions" not in ConversationSummaryResponse.model_fields
-
-
-class _RuntimeCatalog:
-    def __init__(self) -> None:
-        self.declaration_access: ToolAccess | None = None
-        self.availability_access: ToolAccess | None = None
-
-    def provider_declarations(self, access: ToolAccess) -> list[dict[str, object]]:
-        self.declaration_access = access
-        return [{"name": "finish_tool_use", "parameters": {"type": "object"}}]
-
-    def is_available(self, access: ToolAccess, name: str) -> bool:
-        assert name == "search_papers"
-        self.availability_access = access
-        return False
-
-    @staticmethod
-    def profile_tool_names(_profile_name: str) -> frozenset[str]:
-        return frozenset({"finish_tool_use", "search_papers"})
-
-
-class _RuntimeExecutor:
-    def __init__(self) -> None:
-        self._results = iter(
-            [
-                [],
-                ConversationContextSnapshot(
-                    papers=[],
-                    projects=[],
-                    available_document_count=0,
-                ),
-            ]
-        )
-
-    def query(self, _operation: object) -> object:
-        return next(self._results)
-
-
-class _RuntimeConnectorTools:
-    def __init__(self) -> None:
-        self.permissions: frozenset[WorkspacePermission] | None = None
-
-    async def resolve(
-        self,
-        *,
-        permissions: frozenset[WorkspacePermission],
-        **_kwargs: object,
-    ) -> ResolvedConnectorToolSet:
-        self.permissions = permissions
-        return ResolvedConnectorToolSet()
-
-
-@pytest.mark.asyncio
-async def test_runtime_without_read_permission_never_runs_fallback_search(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    catalog = _RuntimeCatalog()
-    dispatcher = MagicMock()
-    runtime = object.__new__(ConversationToolLoop)
-    runtime._catalog = catalog  # type: ignore[assignment]
-    runtime._dispatcher = dispatcher
-    connector_tools = _RuntimeConnectorTools()
-    runtime._connector_tools = connector_tools  # type: ignore[assignment]
-    runtime._operation_factory = OperationContextFactory()
-    runtime.generate_content = MagicMock(return_value=LLMResponse(text=""))
-    keyword_extractor = MagicMock(side_effect=AssertionError("fallback must not run"))
-    runtime._extract_search_keywords = keyword_extractor
-    monkeypatch.setattr(
-        "app.llm.conversation_tool_loop.track_event",
-        lambda *_args, **_kwargs: None,
-    )
-    conversation_id = uuid4()
-    turn_id = uuid4()
-    request_operation = _request_operation(
-        conversation_id=conversation_id,
-        turn_id=turn_id,
-    )
-
-    events = [
-        event
-        async for event in runtime.run_tools(
-            question="What does my library say?",
-            current_user=_actor(),
-            executor=_RuntimeExecutor(),  # type: ignore[arg-type]
-            conversation_scope=ConversationChatScope(
-                scope_type=ConversationScopeType.GLOBAL,
-                project_id=None,
-                document_id=None,
-                paper_context=LibraryPaperCollection(),
-                tool_permissions=frozenset({WorkspacePermission.WRITE}),
-            ),
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            client_ip="test",
-            request_operation=request_operation,
-            turn_correlation_id=request_operation.trace.correlation_id,
-            user_operation_id=request_operation.trace.operation_id,
-        )
-    ]
-
-    assert events[-1]["type"] == "tool_run_completed"
-    assert catalog.declaration_access is catalog.availability_access
-    assert catalog.declaration_access == ToolAccess(
-        profile_name=CONVERSATION_TOOL_PROFILE,
-        permissions=frozenset({WorkspacePermission.WRITE}),
-    )
-    assert connector_tools.permissions == frozenset({WorkspacePermission.WRITE})
-    keyword_extractor.assert_not_called()
-    dispatcher.dispatch.assert_not_called()

@@ -418,23 +418,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/conversations/{conversation_id}/title": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Auto Title Conversation */
-        post: operations["auto_title_conversation_api_v1_conversations__conversation_id__title_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conversations/{conversation_id}/tool-permissions": {
         parameters: {
             query?: never;
@@ -1983,10 +1966,35 @@ export interface components {
             /** Enabled */
             enabled: boolean;
         };
-        /** ConversationAutoTitleResponse */
-        ConversationAutoTitleResponse: {
-            /** Title */
-            title: string;
+        /**
+         * ConversationActivity
+         * @description One sanitized, user-inspectable tool lifecycle entry.
+         */
+        ConversationActivity: {
+            /** Artifact Count */
+            artifact_count?: number | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "search" | "read" | "workspace_action" | "connector";
+            /** Connector Name */
+            connector_name?: string | null;
+            /** Id */
+            id: string;
+            /** Sequence */
+            sequence: number;
+            /** Source Count */
+            source_count?: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "succeeded" | "failed";
+            /** Subject */
+            subject?: string | null;
+            /** Tool Name */
+            tool_name: string;
         };
         /** ConversationCapabilitiesResponse */
         ConversationCapabilitiesResponse: {
@@ -2022,6 +2030,15 @@ export interface components {
              */
             share: boolean;
         };
+        /** ConversationCitationSummary */
+        ConversationCitationSummary: {
+            /** Annotation Count */
+            annotation_count: number;
+            /** Rejected Source Count */
+            rejected_source_count: number;
+            /** Source Count */
+            source_count: number;
+        };
         /** ConversationCreateRequest */
         ConversationCreateRequest: {
             /** Paper Context */
@@ -2029,11 +2046,8 @@ export interface components {
             /** Scope Id */
             scope_id?: string | null;
             scope_type: components["schemas"]["ConversationScopeType"];
-            /**
-             * Title
-             * @default New conversation
-             */
-            title: string;
+            /** Title */
+            title?: string | null;
             /** Tool Permissions */
             tool_permissions?: components["schemas"]["WorkspacePermission"][] | null;
         };
@@ -2087,10 +2101,17 @@ export interface components {
          * @description One stable message contract for every conversation scope.
          */
         ConversationMessageRequest: {
+            /**
+             * Locale
+             * @enum {string}
+             */
+            locale: "en" | "zh-CN";
             /** Mentioned Highlight Ids */
             mentioned_highlight_ids?: string[] | null;
             /** @default standard */
             reasoning_level: components["schemas"]["ReasoningLevel"];
+            /** Time Zone */
+            time_zone: string;
             /**
              * Turn Id
              * Format: uuid
@@ -2123,6 +2144,90 @@ export interface components {
          * @enum {string}
          */
         ConversationScopeType: "global" | "project" | "paper";
+        /** ConversationStreamActivityEvent */
+        ConversationStreamActivityEvent: {
+            activity: components["schemas"]["ConversationActivity"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "activity";
+        };
+        /** ConversationStreamCompleteEvent */
+        ConversationStreamCompleteEvent: {
+            /** Artifacts */
+            artifacts?: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            }[];
+            trace?: components["schemas"]["ConversationTrace"] | null;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "complete";
+        };
+        /** ConversationStreamContentDeltaEvent */
+        ConversationStreamContentDeltaEvent: {
+            /** Delta */
+            delta: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "content_delta";
+        };
+        /** ConversationStreamErrorEvent */
+        ConversationStreamErrorEvent: {
+            /** Error */
+            error: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+        };
+        /**
+         * ConversationStreamEventSchema
+         * @description Public schema for the JSON payload carried by each SSE event.
+         */
+        ConversationStreamEventSchema: components["schemas"]["ConversationStreamStartEvent"] | components["schemas"]["ConversationStreamActivityEvent"] | components["schemas"]["ConversationStreamContentDeltaEvent"] | components["schemas"]["ConversationStreamReferencesEvent"] | components["schemas"]["ConversationStreamCompleteEvent"] | components["schemas"]["ConversationStreamErrorEvent"];
+        /** ConversationStreamReferencesEvent */
+        ConversationStreamReferencesEvent: {
+            /** References */
+            references: {
+                [key: string]: components["schemas"]["JsonValue-Output"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "references";
+        };
+        /** ConversationStreamStartEvent */
+        ConversationStreamStartEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "start";
+        };
         /** ConversationSummaryResponse */
         ConversationSummaryResponse: {
             /** Archived At */
@@ -2166,6 +2271,12 @@ export interface components {
         ConversationToolPermissionsResponse: {
             /** Permissions */
             permissions: components["schemas"]["WorkspacePermission"][];
+        };
+        /** ConversationTrace */
+        ConversationTrace: {
+            /** Activities */
+            activities?: components["schemas"]["ConversationActivity"][];
+            citation_summary?: components["schemas"]["ConversationCitationSummary"] | null;
         };
         /** ConversationUpdateRequest */
         ConversationUpdateRequest: {
@@ -3898,10 +4009,12 @@ export interface components {
             }[] | null;
             /** Sequence */
             sequence: number;
-            /** Trace */
-            trace: {
-                [key: string]: components["schemas"]["JsonValue-Output"];
-            } | null;
+            trace: components["schemas"]["ConversationTrace"] | null;
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            turn_id: string;
         };
         /** MessageResponse */
         sanchezcloud_identity__models__auth__MessageResponse: {
@@ -4936,13 +5049,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Standard SSE stream of typed conversation events. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/event-stream": components["schemas"]["ConversationStreamEventSchema"];
                 };
             };
             /** @description Validation Error */
@@ -4978,37 +5091,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationSummaryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    auto_title_conversation_api_v1_conversations__conversation_id__title_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationAutoTitleResponse"];
                 };
             };
             /** @description Validation Error */

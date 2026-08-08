@@ -286,6 +286,8 @@ def test_chat_requests_reject_legacy_provider_fields() -> None:
     base = {
         "turn_id": str(uuid4()),
         "user_query": "Explain the result",
+        "locale": "en",
+        "time_zone": "UTC",
     }
     with pytest.raises(ValidationError):
         ConversationMessageRequest.model_validate({**base, "llm_provider": "gemini"})

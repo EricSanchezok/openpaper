@@ -78,7 +78,7 @@ def parser_state_redis_url() -> str:
             raise ParserConfigurationError(
                 "PDF_PARSE_REDIS_URL or CELERY_RESULT_BACKEND is required in production"
             )
-        configured = "redis://localhost:6379/0"
+        configured = "redis://127.0.0.1:56379/0"
     if not configured.startswith(("redis://", "rediss://")):
         raise ParserConfigurationError("PDF parser state requires a Redis URL")
     return configured

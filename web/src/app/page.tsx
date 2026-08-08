@@ -1,32 +1,24 @@
-import { ArrowRight } from "iconoir-react";
-import { useTranslations } from "next-intl";
+import { HomePage } from "@/features/home";
 
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/design-system/icons/icon";
+type HomeSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-export default function FoundationSmokePage() {
-  const common = useTranslations("Common");
-  const smoke = useTranslations("FoundationSmoke");
+function firstValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-4xl items-center px-6 py-16">
-      <section className="border-line grid w-full gap-12 border-y py-12 md:grid-cols-[1fr_auto] md:items-end">
-        <div className="max-w-2xl space-y-4">
-          <p className="text-muted text-sm">{smoke("eyebrow")}</p>
-          <h1 className="text-4xl font-semibold tracking-[-0.035em] md:text-5xl">
-            {common("appName")}
-          </h1>
-          <p className="text-secondary max-w-xl text-base leading-7">
-            {smoke("description")}
-          </p>
-        </div>
-        <Button asChild>
-          <a href="http://localhost:6006">
-            {common("actions.openStorybook")}
-            <Icon glyph={ArrowRight} size={16} tone="inverse" />
-          </a>
-        </Button>
-      </section>
-    </main>
-  );
+export default async function HomeRoute({
+  searchParams,
+}: {
+  searchParams: HomeSearchParams;
+}) {
+  const query = await searchParams;
+  const candidate = firstValue(query.conversation);
+  const conversationId =
+    candidate &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      candidate,
+    )
+      ? candidate
+      : undefined;
+  return <HomePage conversationId={conversationId} />;
 }

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/display";
 import {
   Field,
   FieldControl,
+  FieldDescription,
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/field";
@@ -35,6 +36,11 @@ import {
 } from "./authentication-mode";
 import { useAuthSession } from "./auth-session";
 import { authErrorMessageKey } from "./error-messages";
+import {
+  minimumPasswordLength,
+  PasswordLengthGuidance,
+  PasswordMatchGuidance,
+} from "./password-guidance";
 import { createAuthSchemas } from "./schemas";
 
 const pendingVerificationEmailKey = "scholens.pending-verification-email";
@@ -69,7 +75,9 @@ function useAuthenticationSchemas() {
   return React.useMemo(
     () =>
       createAuthSchemas({
+        displayNameMaximum: t("displayNameMaximum"),
         email: t("email"),
+        passwordConfirmationRequired: t("passwordConfirmationRequired"),
         passwordRequired: t("passwordRequired"),
         passwordMinimum: t("passwordMinimum"),
         passwordMismatch: t("passwordMismatch"),
@@ -267,6 +275,19 @@ function RegisterFlow({ returnTo }: { returnTo?: string }) {
       confirmPassword: "",
     },
   });
+  const [password, confirmation] = useWatch({
+    control: form.control,
+    name: ["password", "confirmPassword"],
+  });
+  const confirmationMismatch =
+    confirmation.length > 0 && confirmation !== password;
+  const showConfirmationMismatch =
+    confirmationMismatch &&
+    (Boolean(form.formState.touchedFields.confirmPassword) ||
+      form.formState.submitCount > 0);
+  const showConfirmationGuidance =
+    (confirmation.length > 0 && confirmation === password) ||
+    showConfirmationMismatch;
   const submit = form.handleSubmit(async (values) => {
     setProblem(undefined);
     try {
@@ -360,27 +381,52 @@ function RegisterFlow({ returnTo }: { returnTo?: string }) {
             <PasswordInput
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
-              placeholder={t("fields.passwordMinimum")}
+              minLength={minimumPasswordLength}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("password")}
             />
           </FieldControl>
-          <FieldMessage>{form.formState.errors.password?.message}</FieldMessage>
+          {form.formState.errors.password ? (
+            <FieldMessage>
+              {form.formState.errors.password.message}
+            </FieldMessage>
+          ) : (
+            <FieldDescription>
+              <PasswordLengthGuidance password={password} />
+            </FieldDescription>
+          )}
         </Field>
-        <Field invalid={Boolean(form.formState.errors.confirmPassword)}>
+        <Field
+          invalid={
+            showConfirmationMismatch ||
+            Boolean(form.formState.errors.confirmPassword)
+          }
+        >
           <FieldLabel>{t("fields.confirmPassword")}</FieldLabel>
           <FieldControl>
             <PasswordInput
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
-              placeholder={t("fields.confirmPassword")}
+              minLength={minimumPasswordLength}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("confirmPassword")}
             />
           </FieldControl>
-          <FieldMessage>
-            {form.formState.errors.confirmPassword?.message}
-          </FieldMessage>
+          {showConfirmationGuidance ? (
+            <FieldDescription>
+              <PasswordMatchGuidance
+                confirmation={confirmation}
+                password={password}
+                showMismatch={showConfirmationMismatch}
+              />
+            </FieldDescription>
+          ) : null}
+          {form.formState.errors.confirmPassword &&
+          confirmation.length === 0 ? (
+            <FieldMessage>
+              {form.formState.errors.confirmPassword.message}
+            </FieldMessage>
+          ) : null}
         </Field>
         <Button
           className="w-full"
@@ -574,6 +620,19 @@ function ResetFlow({ token, returnTo }: { token?: string; returnTo?: string }) {
     resolver: zodResolver(schemas.resetPassword),
     defaultValues: { token: token ?? "", newPassword: "", confirmPassword: "" },
   });
+  const [newPassword, confirmation] = useWatch({
+    control: form.control,
+    name: ["newPassword", "confirmPassword"],
+  });
+  const confirmationMismatch =
+    confirmation.length > 0 && confirmation !== newPassword;
+  const showConfirmationMismatch =
+    confirmationMismatch &&
+    (Boolean(form.formState.touchedFields.confirmPassword) ||
+      form.formState.submitCount > 0);
+  const showConfirmationGuidance =
+    (confirmation.length > 0 && confirmation === newPassword) ||
+    showConfirmationMismatch;
   const submit = form.handleSubmit(async (values) => {
     setProblem(undefined);
     try {
@@ -643,29 +702,52 @@ function ResetFlow({ token, returnTo }: { token?: string; returnTo?: string }) {
             <PasswordInput
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
-              placeholder={t("fields.passwordMinimum")}
+              minLength={minimumPasswordLength}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("newPassword")}
             />
           </FieldControl>
-          <FieldMessage>
-            {form.formState.errors.newPassword?.message}
-          </FieldMessage>
+          {form.formState.errors.newPassword ? (
+            <FieldMessage>
+              {form.formState.errors.newPassword.message}
+            </FieldMessage>
+          ) : (
+            <FieldDescription>
+              <PasswordLengthGuidance password={newPassword} />
+            </FieldDescription>
+          )}
         </Field>
-        <Field invalid={Boolean(form.formState.errors.confirmPassword)}>
+        <Field
+          invalid={
+            showConfirmationMismatch ||
+            Boolean(form.formState.errors.confirmPassword)
+          }
+        >
           <FieldLabel>{t("fields.confirmPassword")}</FieldLabel>
           <FieldControl>
             <PasswordInput
               autoComplete="new-password"
               hidePasswordLabel={t("a11y.hidePassword")}
-              placeholder={t("fields.confirmPassword")}
+              minLength={minimumPasswordLength}
               showPasswordLabel={t("a11y.showPassword")}
               {...form.register("confirmPassword")}
             />
           </FieldControl>
-          <FieldMessage>
-            {form.formState.errors.confirmPassword?.message}
-          </FieldMessage>
+          {showConfirmationGuidance ? (
+            <FieldDescription>
+              <PasswordMatchGuidance
+                confirmation={confirmation}
+                password={newPassword}
+                showMismatch={showConfirmationMismatch}
+              />
+            </FieldDescription>
+          ) : null}
+          {form.formState.errors.confirmPassword &&
+          confirmation.length === 0 ? (
+            <FieldMessage>
+              {form.formState.errors.confirmPassword.message}
+            </FieldMessage>
+          ) : null}
         </Field>
         <Button
           className="w-full"

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:7303"),
     title: "Scholens - Blog",
     description: "The fastest way to annotate, understand, and share your papers. Check out our blog for the latest updates and insights.",
     openGraph: {

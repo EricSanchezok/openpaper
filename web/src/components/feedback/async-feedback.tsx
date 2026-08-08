@@ -105,7 +105,7 @@ export function AsyncFeedback({
         presentation === "block" &&
           "border-line bg-surface grid min-h-48 place-items-center rounded-[var(--radius-lg)] border p-8",
         presentation === "overlay" &&
-          "absolute inset-0 z-10 grid place-items-center bg-[color-mix(in_srgb,var(--color-bg-canvas)_86%,transparent)] p-8 backdrop-blur-sm",
+          "absolute inset-0 z-10 grid place-items-center bg-[color-mix(in_oklab,var(--color-bg-canvas)_86%,transparent)] p-8 backdrop-blur-sm",
       )}
       role={state === "error" || state === "offline" ? "alert" : "status"}
     >

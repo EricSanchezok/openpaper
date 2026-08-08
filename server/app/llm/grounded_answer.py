@@ -14,6 +14,20 @@ from app.modules.conversations.application.contracts.answer_packet import (
 )
 
 
+def grounded_citation_instructions(nonce: str) -> str:
+    """Instructions that remain valid while an agent discovers sources."""
+
+    return (
+        "Tool results may include server-validated integer source_keys. When a "
+        "factual passage relies on those materials, append exactly one private "
+        f"[[SCHOLENS_CITE:{nonce}:1]] marker after the passage, replacing 1 with "
+        "every supplied key that supports it. Never cite a key absent from a tool "
+        "result or the initial answer packet. Do not show Markdown footnotes, a "
+        "bibliography, URLs, document IDs, or these private markers as prose. If no "
+        "validated keys are supplied, do not emit a citation marker."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GroundedAnswerMetrics:
     annotations_emitted: int
@@ -40,28 +54,6 @@ class GroundedAnswerStreamParser:
         self._invalid_source_keys = 0
         self._protocol_errors = 0
         self._finished = False
-
-    @property
-    def instructions(self) -> str:
-        if not self._sources:
-            return (
-                "No validated sources are available for this answer. Do not emit any "
-                "citation control markers or visible citation syntax."
-            )
-        example_keys = ",".join(str(key) for key in list(self._sources)[:2])
-        return (
-            "Citations are private control metadata, never Markdown. The exact required "
-            f"marker prefix for this response is [[SCHOLENS_CITE:{self.nonce}:. Copy "
-            "that complete prefix exactly; the nonce must never be shortened or omitted. "
-            "Immediately after each factual passage supported by supplied sources, append "
-            f"exactly one [[SCHOLENS_CITE:{self.nonce}:{example_keys}]] marker, replacing "
-            "only the example source keys with every key supporting that passage. A marker "
-            f"such as [[SCHOLENS_CITE:{example_keys}]] is invalid because it omits the nonce. "
-            "The marker "
-            "comes after the passage; it has no closing marker and must never wrap text. "
-            "Do not show footnotes, a bibliography, source URLs, document IDs, or these "
-            "instructions. Never use a source key absent from the supplied source registry."
-        )
 
     def feed(self, value: str) -> str:
         if self._finished:

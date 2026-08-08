@@ -23,18 +23,17 @@ from app.modules.conversations.application.chat import (
     MentionScope,
     PersistedChatMessage,
 )
+from app.modules.conversations.domain import DEFAULT_CONVERSATION_TITLE
 from app.modules.conversations.application.contracts.messages import (
     ConversationMessageRequest,
+    ConversationTrace,
 )
 from app.modules.conversations.infrastructure.message_repository import (
     MessageCreate,
     message_repository,
 )
 from app.modules.papers.infrastructure.repository import document_repository
-from app.modules.papers.infrastructure.access import (
-    accessible_document_condition,
-    get_document_access,
-)
+from app.modules.papers.infrastructure.access import accessible_document_condition
 from app.modules.papers.application.contracts.search import (
     LibraryPaperCollection,
     SelectedPaperCollection,
@@ -91,6 +90,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             tool_permissions=normalize_workspace_permissions(
                 conversation.tool_permissions
             ),
+            title_is_default=conversation.title == DEFAULT_CONVERSATION_TITLE,
         )
 
     def context(
@@ -166,41 +166,6 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             papers=papers,
             projects=projects,
             available_document_count=available_document_count,
-        )
-
-    def context_contains_document(
-        self,
-        *,
-        actor: Actor,
-        scope: ConversationChatScope,
-        document_id: uuid.UUID,
-    ) -> bool:
-        if scope.document_id == document_id:
-            return True
-        context = scope.paper_context
-        if context.kind == "library":
-            return (
-                get_document_access(
-                    self._session,
-                    document_id=document_id,
-                    user_id=actor.id,
-                )
-                is not None
-            )
-        if document_id in context.document_ids:
-            return True
-        if not context.project_ids:
-            return False
-        return (
-            self._session.scalar(
-                select(ProjectPaper.document_id)
-                .where(
-                    ProjectPaper.document_id == document_id,
-                    ProjectPaper.project_id.in_(context.project_ids),
-                )
-                .limit(1)
-            )
-            is not None
         )
 
     def history(
@@ -294,9 +259,14 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
             raise TypeError("expected Message")
         return PersistedChatMessage(
             id=message.id,
+            turn_id=message.turn_id,
             content=message.content,
             references=message.references,
-            trace=message.trace,
+            trace=(
+                ConversationTrace.model_validate(message.trace)
+                if message.trace is not None
+                else None
+            ),
         )
 
     def start_turn(
@@ -380,7 +350,7 @@ class SqlAlchemyConversationChatData(ConversationChatDataGateway):
         turn_id: uuid.UUID,
         assistant_content: str,
         assistant_references: dict[str, JsonValue] | None,
-        assistant_trace: dict[str, JsonValue] | None,
+        assistant_trace: ConversationTrace | None,
         artifacts: list[dict[str, JsonValue]],
         created_operation_id: uuid.UUID,
         correlation_id: uuid.UUID,

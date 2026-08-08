@@ -4,7 +4,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Xmark } from "iconoir-react";
 import * as React from "react";
 
-import { Icon } from "@/design-system/icons/icon";
+import { Icon, type IconGlyph } from "@/design-system/icons/icon";
 import { cn } from "@/lib/utilities/cn";
 import { IconButton } from "./button";
 
@@ -16,13 +16,14 @@ export const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     closeLabel: string;
+    closeGlyph?: IconGlyph;
   }
->(({ children, className, closeLabel, ...props }, ref) => (
+>(({ children, className, closeGlyph = Xmark, closeLabel, ...props }, ref) => (
   <DialogPrimitive.Portal>
     <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[var(--color-overlay-backdrop)]" />
     <DialogPrimitive.Content
       className={cn(
-        "border-line bg-elevated fixed inset-y-0 right-0 z-50 w-[min(90vw,30rem)] border-l p-6 shadow-[0_0_48px_var(--color-elevation-shadow)]",
+        "border-line bg-elevated shadow-panel fixed inset-y-0 right-0 z-50 w-[min(90vw,30rem)] border-l p-6",
         className,
       )}
       ref={ref}
@@ -35,7 +36,7 @@ export const SheetContent = React.forwardRef<
           label={closeLabel}
           variant="ghost"
         >
-          <Icon glyph={Xmark} size={20} />
+          <Icon glyph={closeGlyph} size={24} />
         </IconButton>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>

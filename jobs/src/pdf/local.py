@@ -1,14 +1,17 @@
-"""Deterministic PyMuPDF analysis and text-only fallback."""
+"""Deterministic local PDF analysis, extraction, and text-only fallback."""
 
 from __future__ import annotations
 
 import logging
 import math
 import re
+import zlib
 from importlib.metadata import version
 from io import BytesIO
 
 import pymupdf
+import pymupdf4llm
+from markitdown import MarkItDown
 from PIL import Image
 
 from src.pdf.models import (
@@ -24,7 +27,11 @@ logger = logging.getLogger(__name__)
 MIN_FALLBACK_CHARACTERS = 1_000
 MIN_PAGE_CHARACTERS = 50
 MIN_VALID_PAGE_RATIO = 0.5
-FALLBACK_WARNING_CODE = "text_only_fallback"
+MIN_COMPRESSED_TEXT_BYTES = 600
+TEXT_ONLY_WARNING_CODE = "text_only_fallback"
+MARKITDOWN_WARNING_CODE = "markitdown_fallback"
+
+_markitdown: MarkItDown | None = None
 
 
 def _non_whitespace_length(value: str) -> int:
@@ -105,7 +112,105 @@ def analyze_pdf(pdf_bytes: bytes) -> LocalPDFAnalysis:
     )
 
 
-def build_text_fallback(analysis: LocalPDFAnalysis) -> ParsedDocument:
+def is_scanned_candidate(analysis: LocalPDFAnalysis) -> bool:
+    """Return True when the text layer is too thin to trust local extraction.
+
+    A PDF is treated as a scan when the native text layer is empty or nearly
+    empty, or when the only "text" is repeated boilerplate (e.g. a per-page
+    copyright watermark). Genuine prose cannot compress below ~0.55 at small
+    sizes, so a low zlib-compressed size is a strong uniqueness signal.
+    """
+    if analysis.non_whitespace_characters < MIN_FALLBACK_CHARACTERS:
+        return True
+    required_pages = max(1, math.ceil(analysis.page_count * MIN_VALID_PAGE_RATIO))
+    if analysis.valid_text_pages < required_pages:
+        return True
+    compressed_bytes = len(zlib.compress(analysis.markdown.encode("utf-8", "ignore")))
+    return compressed_bytes < MIN_COMPRESSED_TEXT_BYTES
+
+
+def extract_markdown_pymupdf4llm(
+    pdf_path: str,
+    *,
+    parser_version: str,
+) -> ParsedDocument:
+    """Extract page-chunked Markdown with exact per-page offsets (primary)."""
+    try:
+        chunks = pymupdf4llm.to_markdown(
+            pdf_path,
+            page_chunks=True,
+            use_llm=False,
+        )
+    except Exception as exc:
+        raise ParserContentError("pymupdf4llm could not extract text") from exc
+
+    page_chunks: dict[int, str] = {}
+    for chunk in chunks:
+        page_number = int(chunk["metadata"].get("page_number", 0))
+        text = str(chunk.get("text", "")).replace("\x00", "")
+        if text.strip():
+            page_chunks[page_number] = text
+
+    if not page_chunks:
+        raise ParserContentError("pymupdf4llm produced no page text")
+
+    markdown_parts: list[str] = []
+    offsets: dict[int, list[int]] = {}
+    offset = 0
+    for page_number in sorted(page_chunks):
+        chunk = page_chunks[page_number]
+        if markdown_parts:
+            chunk = f"\n\n{chunk}"
+        start = offset
+        markdown_parts.append(chunk)
+        offset += len(chunk)
+        offsets[page_number] = [start, offset]
+
+    return ParsedDocument(
+        markdown="".join(markdown_parts),
+        page_offset_map=offsets,
+        backend=ParserBackend.PYMUPDF4LLM,
+        quality=ParserQuality.FULL,
+        parser_version=parser_version,
+    )
+
+
+def extract_markdown_markitdown(
+    pdf_path: str,
+    *,
+    parser_version: str,
+    fallback_offsets: dict[int, list[int]],
+) -> ParsedDocument:
+    """Extract Markdown with a second engine, degraded to text_only offsets.
+
+    MarkItDown has no page-boundary metadata, so offsets are approximated from
+    the deterministic per-page text analysis. This is a degraded tier on
+    purpose: consumers that map offsets to pages may drift by at most one page,
+    and the `text_only` quality lets the UI warn about layout-dependent gaps.
+    """
+    global _markitdown
+    if _markitdown is None:
+        _markitdown = MarkItDown()
+    try:
+        result = _markitdown.convert_local(pdf_path)
+    except Exception as exc:
+        raise ParserContentError("MarkItDown could not extract text") from exc
+    markdown = str(result.text_content or "").replace("\x00", "")
+    if not markdown.strip():
+        raise ParserContentError("MarkItDown produced no text")
+
+    return ParsedDocument(
+        markdown=markdown,
+        page_offset_map=fallback_offsets,
+        backend=ParserBackend.MARKITDOWN,
+        quality=ParserQuality.TEXT_ONLY,
+        parser_version=parser_version,
+        warning_code=MARKITDOWN_WARNING_CODE,
+    )
+
+
+def build_text_last_resort(analysis: LocalPDFAnalysis) -> ParsedDocument:
+    """Deterministic per-page text with exact offsets; never calls a new engine."""
     required_pages = max(1, math.ceil(analysis.page_count * MIN_VALID_PAGE_RATIO))
     if (
         analysis.non_whitespace_characters < MIN_FALLBACK_CHARACTERS
@@ -116,8 +221,8 @@ def build_text_fallback(analysis: LocalPDFAnalysis) -> ParsedDocument:
     return ParsedDocument(
         markdown=analysis.markdown,
         page_offset_map=analysis.page_offset_map,
-        backend=ParserBackend.PYMUPDF,
+        backend=ParserBackend.PYMUPDF4LLM,
         quality=ParserQuality.TEXT_ONLY,
         parser_version=analysis.parser_version,
-        warning_code=FALLBACK_WARNING_CODE,
+        warning_code=TEXT_ONLY_WARNING_CODE,
     )

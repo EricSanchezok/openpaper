@@ -9,7 +9,6 @@ from uuid import UUID
 from app.modules.operation_journal.application import OperationJournal
 from app.modules.operation_journal.domain import OperationAction, ResourceRef
 from app.modules.conversations.application.contracts.conversations import (
-    ConversationAutoTitleResponse,
     ConversationCreateRequest,
     ConversationDetailResponse,
     ConversationListResponse,
@@ -107,7 +106,7 @@ class ConversationGateway(Protocol):
         request: ConversationToolPermissionsRequest,
     ) -> ConversationChange[ConversationToolPermissionsResponse]: ...
 
-    def update_title(
+    def apply_initial_generated_title(
         self,
         *,
         user_id: int,
@@ -254,15 +253,15 @@ class Conversations:
             )
         return result.value
 
-    def apply_generated_title(
+    def apply_initial_generated_title(
         self,
         *,
         actor: Actor,
         operation: OperationContext,
         conversation_id: UUID,
         title: str,
-    ) -> ConversationAutoTitleResponse:
-        if self._gateway.update_title(
+    ) -> None:
+        if self._gateway.apply_initial_generated_title(
             user_id=actor.id,
             conversation_id=conversation_id,
             title=title,
@@ -273,7 +272,6 @@ class Conversations:
                 action=CONVERSATION_TITLE_UPDATED,
                 resources=(ResourceRef("conversation", str(conversation_id)),),
             )
-        return ConversationAutoTitleResponse(title=title)
 
     def delete(
         self,

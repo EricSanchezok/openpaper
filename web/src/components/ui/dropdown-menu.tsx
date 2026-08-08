@@ -20,7 +20,7 @@ export const DropdownMenuContent = React.forwardRef<
   <DropdownPrimitive.Portal>
     <DropdownPrimitive.Content
       className={cn(
-        "border-line bg-elevated z-50 min-w-48 rounded-[var(--radius-lg)] border p-1 shadow-[0_12px_36px_var(--color-elevation-shadow)]",
+        "border-line bg-elevated shadow-overlay z-50 min-w-48 rounded-[var(--radius-lg)] border p-1",
         className,
       )}
       ref={ref}
@@ -71,6 +71,28 @@ export const DropdownMenuCheckboxItem = React.forwardRef<
 ));
 DropdownMenuCheckboxItem.displayName =
   DropdownPrimitive.CheckboxItem.displayName;
+
+export const DropdownMenuRadioItem = React.forwardRef<
+  React.ElementRef<typeof DropdownPrimitive.RadioItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownPrimitive.RadioItem>
+>(({ children, className, ...props }, ref) => (
+  <DropdownPrimitive.RadioItem
+    className={cn(
+      "data-[highlighted]:bg-hover relative flex min-h-9 cursor-default items-center rounded-[var(--radius-md)] py-2 pr-2 pl-8 text-sm outline-none",
+      className,
+    )}
+    ref={ref}
+    {...props}
+  >
+    <span className="absolute left-2">
+      <DropdownPrimitive.ItemIndicator>
+        <span className="bg-primary block size-2 rounded-full" />
+      </DropdownPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownPrimitive.RadioItem>
+));
+DropdownMenuRadioItem.displayName = DropdownPrimitive.RadioItem.displayName;
 
 export const DropdownMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownPrimitive.SubTrigger>,

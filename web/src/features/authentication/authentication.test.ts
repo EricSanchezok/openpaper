@@ -18,7 +18,9 @@ import { safeReturnTo, validatedReturnTo } from "./return-to";
 import { publishAuthEvent, subscribeToAuthEvents } from "./auth-channel";
 
 const messages = {
+  displayNameMaximum: "display-name-maximum",
   email: "email",
+  passwordConfirmationRequired: "confirmation-required",
   passwordRequired: "required",
   passwordMinimum: "minimum",
   passwordMismatch: "mismatch",
@@ -87,6 +89,23 @@ describe("authentication domain foundation", () => {
     expect(result).not.toHaveProperty("confirmPassword");
   });
 
+  it("requires password confirmation and reports a mismatch separately", () => {
+    const schemas = createAuthSchemas(messages);
+    const missing = schemas.register.safeParse({
+      email: "eric@example.com",
+      password: "twelve-chars!",
+      confirmPassword: "",
+    });
+    const mismatch = schemas.register.safeParse({
+      email: "eric@example.com",
+      password: "twelve-chars!",
+      confirmPassword: "different-pass",
+    });
+
+    expect(missing.error?.issues[0]?.message).toBe("confirmation-required");
+    expect(mismatch.error?.issues[0]?.message).toBe("mismatch");
+  });
+
   it("coalesces concurrent refresh calls", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ access_token: "fresh" }), {
@@ -111,7 +130,7 @@ describe("authentication domain foundation", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     const response = await authenticatedFetch(
-      "http://localhost:8000/api/v1/projects",
+      "http://127.0.0.1:7301/api/v1/projects",
     );
     expect(response.status).toBe(204);
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -127,7 +146,7 @@ describe("authentication domain foundation", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(null, { status: 401 }));
     const response = await authenticatedFetch(
-      "http://localhost:8000/api/v1/auth/login",
+      "http://127.0.0.1:7301/api/v1/auth/login",
       { method: "POST" },
     );
     expect(response.status).toBe(401);

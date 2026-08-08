@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-02
+- Superseded in part: the development-port allocation in this record is replaced
+  by [ADR 0006](./0006-local-development-port-contract.md).
 
 ## Context
 

@@ -15,6 +15,9 @@ history; add a later ADR that supersedes it.
 - [ADR 0003: Generated public API contract](./0003-generated-public-api-contract.md)
 - [ADR 0004: Locale-neutral application internationalization](./0004-locale-neutral-next-intl.md)
 - [ADR 0005: Memory-token authentication session](./0005-memory-token-auth-session.md)
+- [ADR 0006: Fixed local-development port block](./0006-local-development-port-contract.md)
+- [ADR 0007: Generated design-system contract](./0007-generated-design-system-contract.md)
+- [ADR 0008: Single Conversation agent](./0008-single-conversation-agent.md)
 
 ## Template
 

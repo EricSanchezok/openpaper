@@ -33,10 +33,15 @@ const preview: Preview = {
           formats={formats}
           locale={locale}
           messages={messages[locale]}
+          now={new Date("2026-08-04T10:00:00Z")}
           timeZone="UTC"
         >
           <QueryProvider>
-            <div className="bg-canvas text-foreground min-h-screen p-6">
+            <div
+              className={`bg-canvas text-foreground min-h-screen ${
+                context.parameters.layout === "fullscreen" ? "" : "p-6"
+              }`}
+            >
               <Story />
             </div>
           </QueryProvider>
@@ -124,6 +129,10 @@ const preview: Preview = {
           styles: { width: "480px", height: "900px" },
         },
         mobile: { name: "Mobile", styles: { width: "390px", height: "844px" } },
+        largeMobile: {
+          name: "Large Mobile",
+          styles: { width: "430px", height: "932px" },
+        },
         smallMobile: {
           name: "Small Mobile",
           styles: { width: "320px", height: "568px" },

@@ -4,6 +4,7 @@ S3 service for file uploads and management.
 
 import logging
 import os
+from typing import Literal, cast
 
 import boto3
 from botocore.config import Config
@@ -16,6 +17,16 @@ logger = logging.getLogger(__name__)
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+
+
+def _s3_addressing_style() -> Literal["auto", "virtual", "path"]:
+    value = os.environ.get("AWS_S3_ADDRESSING_STYLE", "virtual")
+    if value not in {"auto", "virtual", "path"}:
+        raise ValueError("AWS_S3_ADDRESSING_STYLE must be auto, virtual, or path")
+    return cast(Literal["auto", "virtual", "path"], value)
+
+
+AWS_S3_ADDRESSING_STYLE = _s3_addressing_style()
 
 
 def _required_env(name: str) -> str:
@@ -39,7 +50,7 @@ class S3Service:
             region_name=AWS_REGION,
             config=Config(
                 signature_version="s3v4",
-                s3={"addressing_style": "virtual"},
+                s3={"addressing_style": AWS_S3_ADDRESSING_STYLE},
                 connect_timeout=10,
                 read_timeout=60,
                 retries={"mode": "standard", "total_max_attempts": 3},

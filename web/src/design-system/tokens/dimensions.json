@@ -22,7 +22,7 @@
   "layout": {
     "sidebar": {
       "$type": "dimension",
-      "$value": { "value": 248, "unit": "px" }
+      "$value": { "value": 264, "unit": "px" }
     },
     "reading-column": {
       "$type": "dimension",
@@ -47,6 +47,13 @@
   },
   "focus": {
     "width": { "$type": "dimension", "$value": { "value": 2, "unit": "px" } }
+  },
+  "type": {
+    "ui": { "$type": "dimension", "$value": { "value": 13, "unit": "px" } },
+    "caption": {
+      "$type": "dimension",
+      "$value": { "value": 11, "unit": "px" }
+    }
   },
   "opacity": { "disabled": { "$type": "number", "$value": 0.38 } }
 }

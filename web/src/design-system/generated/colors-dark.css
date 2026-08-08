@@ -25,6 +25,7 @@
   --color-danger-bg: #963e38;
   --color-danger-border: #963e38;
   --color-danger-text: #fff2f0;
+  --color-elevation-composer: rgba(0, 0, 0, 0.4);
   --color-elevation-shadow: rgba(0, 0, 0, 0.4);
   --color-focus-ring: #ffffff;
   --color-icon-disabled: #73736e;
@@ -51,4 +52,9 @@
   --color-warning-bg: #7a5a12;
   --color-warning-border: #7a5a12;
   --color-warning-text: #fbf3db;
+  --elevation-composer: 0px 6px 20px -10px rgba(0, 0, 0, 0.4);
+  --elevation-modal: 0px 20px 60px 0px rgba(0, 0, 0, 0.4);
+  --elevation-overlay: 0px 12px 36px 0px rgba(0, 0, 0, 0.4);
+  --elevation-panel: 0px 0px 48px 0px rgba(0, 0, 0, 0.4);
+  --elevation-raised: 0px 4px 12px -4px rgba(0, 0, 0, 0.4);
 }

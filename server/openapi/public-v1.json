@@ -1180,17 +1180,103 @@
         "title": "ConnectorUpdateRequest",
         "type": "object"
       },
-      "ConversationAutoTitleResponse": {
+      "ConversationActivity": {
+        "additionalProperties": false,
+        "description": "One sanitized, user-inspectable tool lifecycle entry.",
         "properties": {
-          "title": {
-            "title": "Title",
+          "artifact_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Count"
+          },
+          "category": {
+            "enum": [
+              "search",
+              "read",
+              "workspace_action",
+              "connector"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "connector_name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Name"
+          },
+          "id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "source_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Count"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "tool_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Name",
             "type": "string"
           }
         },
         "required": [
-          "title"
+          "id",
+          "sequence",
+          "category",
+          "state",
+          "tool_name"
         ],
-        "title": "ConversationAutoTitleResponse",
+        "title": "ConversationActivity",
         "type": "object"
       },
       "ConversationCapabilitiesResponse": {
@@ -1241,6 +1327,33 @@
         "title": "ConversationCapabilitiesResponse",
         "type": "object"
       },
+      "ConversationCitationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation_count": {
+            "minimum": 0.0,
+            "title": "Annotation Count",
+            "type": "integer"
+          },
+          "rejected_source_count": {
+            "minimum": 0.0,
+            "title": "Rejected Source Count",
+            "type": "integer"
+          },
+          "source_count": {
+            "minimum": 0.0,
+            "title": "Source Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_count",
+          "annotation_count",
+          "rejected_source_count"
+        ],
+        "title": "ConversationCitationSummary",
+        "type": "object"
+      },
       "ConversationCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1285,11 +1398,17 @@
             "$ref": "#/components/schemas/ConversationScopeType"
           },
           "title": {
-            "default": "New conversation",
-            "maxLength": 240,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "tool_permissions": {
             "anyOf": [
@@ -1486,6 +1605,14 @@
         "additionalProperties": false,
         "description": "One stable message contract for every conversation scope.",
         "properties": {
+          "locale": {
+            "enum": [
+              "en",
+              "zh-CN"
+            ],
+            "title": "Locale",
+            "type": "string"
+          },
           "mentioned_highlight_ids": {
             "anyOf": [
               {
@@ -1504,6 +1631,12 @@
           "reasoning_level": {
             "$ref": "#/components/schemas/ReasoningLevel",
             "default": "standard"
+          },
+          "time_zone": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Time Zone",
+            "type": "string"
           },
           "turn_id": {
             "format": "uuid",
@@ -1534,7 +1667,9 @@
         },
         "required": [
           "turn_id",
-          "user_query"
+          "user_query",
+          "locale",
+          "time_zone"
         ],
         "title": "ConversationMessageRequest",
         "type": "object"
@@ -1604,6 +1739,188 @@
         ],
         "title": "ConversationScopeType",
         "type": "string"
+      },
+      "ConversationStreamActivityEvent": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/ConversationActivity"
+          },
+          "type": {
+            "const": "activity",
+            "default": "activity",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activity"
+        ],
+        "title": "ConversationStreamActivityEvent",
+        "type": "object"
+      },
+      "ConversationStreamCompleteEvent": {
+        "properties": {
+          "artifacts": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue-Output"
+              },
+              "type": "object"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "complete",
+            "default": "complete",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id"
+        ],
+        "title": "ConversationStreamCompleteEvent",
+        "type": "object"
+      },
+      "ConversationStreamContentDeltaEvent": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "type": {
+            "const": "content_delta",
+            "default": "content_delta",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta"
+        ],
+        "title": "ConversationStreamContentDeltaEvent",
+        "type": "object"
+      },
+      "ConversationStreamErrorEvent": {
+        "properties": {
+          "error": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "title": "Error",
+            "type": "object"
+          },
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ConversationStreamErrorEvent",
+        "type": "object"
+      },
+      "ConversationStreamEventSchema": {
+        "description": "Public schema for the JSON payload carried by each SSE event.",
+        "discriminator": {
+          "mapping": {
+            "activity": "#/components/schemas/ConversationStreamActivityEvent",
+            "complete": "#/components/schemas/ConversationStreamCompleteEvent",
+            "content_delta": "#/components/schemas/ConversationStreamContentDeltaEvent",
+            "error": "#/components/schemas/ConversationStreamErrorEvent",
+            "references": "#/components/schemas/ConversationStreamReferencesEvent",
+            "start": "#/components/schemas/ConversationStreamStartEvent"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ConversationStreamStartEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamActivityEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamContentDeltaEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamReferencesEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamCompleteEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ConversationStreamErrorEvent"
+          }
+        ],
+        "title": "ConversationStreamEventSchema"
+      },
+      "ConversationStreamReferencesEvent": {
+        "properties": {
+          "references": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue-Output"
+            },
+            "title": "References",
+            "type": "object"
+          },
+          "type": {
+            "const": "references",
+            "default": "references",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "references"
+        ],
+        "title": "ConversationStreamReferencesEvent",
+        "type": "object"
+      },
+      "ConversationStreamStartEvent": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "start",
+            "default": "start",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "turn_id"
+        ],
+        "title": "ConversationStreamStartEvent",
+        "type": "object"
       },
       "ConversationSummaryResponse": {
         "properties": {
@@ -1751,6 +2068,30 @@
           "permissions"
         ],
         "title": "ConversationToolPermissionsResponse",
+        "type": "object"
+      },
+      "ConversationTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationActivity"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "citation_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationCitationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ConversationTrace",
         "type": "object"
       },
       "ConversationUpdateRequest": {
@@ -7133,20 +7474,22 @@
           "trace": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/JsonValue-Output"
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/ConversationTrace"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Trace"
+            ]
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
           }
         },
         "required": [
           "id",
+          "turn_id",
           "role",
           "content",
           "references",
@@ -8570,11 +8913,14 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationStreamEventSchema",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Standard SSE stream of typed conversation events."
           },
           "422": {
             "content": {
@@ -8648,51 +8994,6 @@
           }
         ],
         "summary": "Move Conversation"
-      }
-    },
-    "/api/v1/conversations/{conversation_id}/title": {
-      "post": {
-        "operationId": "auto_title_conversation_api_v1_conversations__conversation_id__title_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "conversation_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Conversation Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationAutoTitleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Auto Title Conversation"
       }
     },
     "/api/v1/conversations/{conversation_id}/tool-permissions": {

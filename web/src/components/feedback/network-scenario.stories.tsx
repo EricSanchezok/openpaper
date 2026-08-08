@@ -7,7 +7,7 @@ type PreviewData = { items: Array<{ id: string; title: string }> };
 
 async function loadPreview(scenario: string): Promise<PreviewData> {
   const response = await fetch(
-    `http://localhost:8000/api/v1/foundation-check?scenario=${encodeURIComponent(scenario)}`,
+    `http://127.0.0.1:7301/api/v1/foundation-check?scenario=${encodeURIComponent(scenario)}`,
   );
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
   return response.json() as Promise<PreviewData>;

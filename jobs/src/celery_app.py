@@ -14,8 +14,8 @@ load_dotenv()  # Load environment variables from .env file
 configure_jobs_observability()
 validate_pdf_runtime_configuration()
 
-BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@localhost:5672//")
-BACKEND_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@127.0.0.1:55672//")
+BACKEND_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:56379/0")
 
 # Create Celery instance
 celery_app = Celery(

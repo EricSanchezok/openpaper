@@ -136,6 +136,27 @@ export const RegisterSubmitted: Story = {
   },
 };
 
+export const RegisterPasswordGuidance: Story = {
+  args: { mode: "register" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const password = await canvas.findByLabelText("Password");
+    const confirmation = canvas.getByLabelText("Confirm password");
+
+    await userEvent.type(password, "short");
+    await expect(canvas.getByText("5 of 12 characters")).toBeVisible();
+
+    await userEvent.type(confirmation, "different-pass");
+    await userEvent.tab();
+    await expect(canvas.getByText("Passwords do not match")).toBeVisible();
+
+    await userEvent.clear(password);
+    await userEvent.type(password, "different-pass");
+    await expect(canvas.getByText("Password requirement met")).toBeVisible();
+    await expect(canvas.getByText("Passwords match")).toBeVisible();
+  },
+};
+
 export const ForgotPasswordSent: Story = {
   args: { mode: "forgot" },
   play: async ({ canvasElement }) => {

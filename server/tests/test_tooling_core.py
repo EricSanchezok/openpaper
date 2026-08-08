@@ -337,7 +337,7 @@ def test_workspace_profiles_share_one_canonical_definition_set() -> None:
     conversation_by_name = {tool.name: tool for tool in conversation}
     mcp_by_name = {tool.name: tool for tool in mcp}
 
-    assert set(conversation_by_name) == set(mcp_by_name) | {"finish_tool_use"}
+    assert set(conversation_by_name) == set(mcp_by_name)
     assert "STOP" not in conversation_by_name
     assert "read_file" not in conversation_by_name
     assert len(mcp_by_name) == 32

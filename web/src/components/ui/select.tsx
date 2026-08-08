@@ -36,7 +36,7 @@ export const SelectContent = React.forwardRef<
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       className={cn(
-        "border-line bg-elevated z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[var(--radius-lg)] border p-1 shadow-[0_12px_36px_var(--color-elevation-shadow)]",
+        "border-line bg-elevated shadow-overlay z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[var(--radius-lg)] border p-1",
         className,
       )}
       position={position}

@@ -228,7 +228,7 @@ class PDFProcessingResult(BaseModel):
     preview_s3_key: str | None = None
     parser_markdown_s3_key: str | None = None
     parser_archive_s3_key: str | None = None
-    parser_backend: Literal["mineru", "pymupdf"] | None = None
+    parser_backend: Literal["mineru", "pymupdf4llm", "markitdown"] | None = None
     parser_quality: Literal["full", "text_only"] | None = None
     parser_version: str | None = None
     parser_warning_code: str | None = None

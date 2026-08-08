@@ -65,6 +65,18 @@ Before accepting external source code:
 shadcn/ui is a source distribution mechanism, not a runtime design dependency.
 Imported source becomes Scholens-owned code and follows this handbook.
 
+## Changing and deleting components
+
+Before changing a shared primitive, inspect every consumer and its stories. A
+one-screen visual need stays feature-owned unless it expresses a real shared
+state; call-site classes may position a primitive but must not redefine its
+color, focus, disabled, loading, validation, typography, or elevation contract.
+
+Before deleting a component, search its direct imports, public barrel exports,
+stories, tests, docs, messages, and Figma acceptance mappings. Delete the source
+and obsolete coverage together. Do not leave an alias or compatibility wrapper
+without a documented active consumer.
+
 ## Storybook contract
 
 Stories are executable component states, not a screenshot gallery. A new
@@ -113,3 +125,5 @@ around a `Needs hardening` primitive in page-local code.
   are covered as applicable.
 - Storybook and automated tests pass in Chromium.
 - Product-specific behavior is not duplicated in a second feature.
+- `pnpm design:check` proves tokens, utilities, theme parity, and the Storybook
+  review axes remain intact.
