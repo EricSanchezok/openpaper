@@ -140,7 +140,7 @@ export const Processing: Story = {
     });
     await userEvent.type(composer, "Compare the selected papers");
     await userEvent.click(canvas.getByRole("button", { name: "Ask Scholens" }));
-    await expect(composer).toHaveValue("");
+    await waitFor(() => expect(composer).toHaveValue(""));
     await waitFor(() =>
       expect(canvas.getByText("Searching your research…")).toBeVisible(),
     );
